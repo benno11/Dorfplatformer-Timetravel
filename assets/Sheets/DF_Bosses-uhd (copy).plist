@@ -4,7 +4,7 @@
 	<dict>
 		<key>frames</key>
 		<dict>
-			<key>Final-Hurt.png</key>
+			<key>0e066f8edf0fd4295d6191be67199964.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
@@ -19,7 +19,7 @@
 				<key>textureRotated</key>
 				<false/>
 			</dict>
-			<key>Final-Normal.png</key>
+			<key>3811dc60fbb41d44f5174ea06bad8403.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
@@ -34,7 +34,7 @@
 				<key>textureRotated</key>
 				<false/>
 			</dict>
-			<key>Normal-2.png</key>
+			<key>4f7559ad008e1a950e367401453e5d61.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
@@ -49,7 +49,7 @@
 				<key>textureRotated</key>
 				<true/>
 			</dict>
-			<key>Dead-3.png</key>
+			<key>52711fb63728953a5f8650f274691f6f.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
@@ -64,7 +64,7 @@
 				<key>textureRotated</key>
 				<false/>
 			</dict>
-			<key>Normal-1.png</key>
+			<key>58291c29724f4147429db32224a94990.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
@@ -79,7 +79,7 @@
 				<key>textureRotated</key>
 				<false/>
 			</dict>
-			<key>Dead-2.png</key>
+			<key>82d82a93bdfbb8e70daaea9cddd06ea2.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
@@ -94,7 +94,7 @@
 				<key>textureRotated</key>
 				<false/>
 			</dict>
-			<key>Dead-4.png</key>
+			<key>967d73cf1d64aaefcced2c89fe818bc8.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
@@ -109,7 +109,7 @@
 				<key>textureRotated</key>
 				<true/>
 			</dict>
-			<key>Hurt-1.png</key>
+			<key>9ddfaf13049c0f47340d5aed2205a6f7.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
@@ -124,7 +124,7 @@
 				<key>textureRotated</key>
 				<false/>
 			</dict>
-			<key>Dead-1.png</key>
+			<key>b715ee967a979d675dc286fac7fbcfbe.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
@@ -139,7 +139,7 @@
 				<key>textureRotated</key>
 				<true/>
 			</dict>
-			<key>Normal-3.png</key>
+			<key>b9bb3e4f405cdb0290e3cdbbc0a93c58.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
@@ -154,7 +154,7 @@
 				<key>textureRotated</key>
 				<true/>
 			</dict>
-			<key>Hurt-2.png</key>
+			<key>eb7db0a61a2a98e6a956bf0e2003c286.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>

@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -e
+
+# ---- CONFIG ----
+CXX=g++
+CXXFLAGS="-std=c++17 -O2"
+SRC_DIR="src"
+OUT_PLATFORMER="platformer"
+OUT_SHEET="sheet_config"
+
+# ---- BUILD ----
+$CXX $CXXFLAGS \
+  $SRC_DIR/main.cpp \
+  $SRC_DIR/TileMap.cpp \
+  $SRC_DIR/LevelLoader.cpp \
+  -lSDL2 \
+  -o $OUT_PLATFORMER
+
+$CXX $CXXFLAGS \
+  $SRC_DIR/SheetConfigTool.cpp \
+  -lSDL2 \
+  -lSDL2_image \
+  -o $OUT_SHEET
+
+echo "Build OK -> ./$OUT_PLATFORMER and ./$OUT_SHEET"
