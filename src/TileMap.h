@@ -8,6 +8,7 @@ struct TileMap {
     std::vector<unsigned char> solid;
     std::vector<unsigned char> semisolid;
     std::vector<unsigned char> water;
+    std::vector<unsigned short> tileIds;
     std::vector<unsigned short> bg;
 
     TileMap();

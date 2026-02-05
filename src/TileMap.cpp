@@ -10,6 +10,7 @@ void TileMap::resize(int W,int H){
     solid.assign(w*h,0);
     semisolid.assign(w*h,0);
     water.assign(w*h,0);
+    tileIds.assign(w*h,0);
     bg.assign(w*h,0);
 }
 

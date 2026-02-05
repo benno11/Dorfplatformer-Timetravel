@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -e
-
+#include <SDL2/SDL.h>
 # ---- CONFIG ----
 CXX=g++
 CXXFLAGS="-std=c++17 -O2"

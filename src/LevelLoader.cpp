@@ -1,13 +1,13 @@
-// src/LevelLoader.cpp
 #include "LevelLoader.h"
 
-#include <SDL2/SDL.h> // SDL_Log
+#include <SDL2/SDL.h>
 #include <fstream>
 #include <string>
 #include <vector>
 #include <cctype>
+#include <algorithm>
 
-static constexpr int DEFAULT_TILE_SIZE = 32;
+static constexpr int TILE_SIZE = 32;
 
 /* -----------------------------
    File helpers
@@ -28,301 +28,297 @@ static std::vector<char> loadBlockDefs(const std::string& path) {
         for (char ch : line) {
             if (!std::isspace((unsigned char)ch)) { c = ch; break; }
         }
-        defs.push_back(c); // 0 = empty/unmapped
+        defs.push_back(c);
     }
     return defs;
 }
 
-/* -----------------------------
-   Tile defs -> collision masks
------------------------------- */
-static void applyBlockDefsToMaps(
-    TileMap& map,
-    const std::vector<unsigned short>& tileIds,
-    const std::vector<char>& defs
-) {
+static void applyBlockDefsToMaps(TileMap& map,
+                                 const std::vector<unsigned short>& tileIds,
+                                 const std::vector<char>& defs)
+{
     const int total = (int)tileIds.size();
 
     if ((int)map.solid.size()     != total) map.solid.assign(total, 0);
     if ((int)map.semisolid.size() != total) map.semisolid.assign(total, 0);
     if ((int)map.water.size()     != total) map.water.assign(total, 0);
 
-    if (defs.empty()) {
-        int solidCount = 0;
-        for (int i = 0; i < total; i++) {
-            map.solid[i] = tileIds[i] ? 1 : 0;
-            map.semisolid[i] = 0;
-            map.water[i] = 0;
-            if (map.solid[i]) solidCount++;
-        }
-        SDL_Log("Tile assign (no defs): solid=%d empty=%d", solidCount, total - solidCount);
-        return;
-    }
-
-    int solidCount = 0, semiCount = 0, waterCount = 0;
     for (int i = 0; i < total; i++) {
         unsigned short id = tileIds[i];
-        char d = (id < (int)defs.size()) ? defs[id] : 0;
-
-        map.solid[i]     = (d == '#') ? 1 : 0;
+        char d = (id < defs.size()) ? defs[id] : 0;
+        // Rules:
+        // '=' => semisolid, '^' => water, '#' => air. Anything else => solid fallback.
         map.semisolid[i] = (d == '=') ? 1 : 0;
         map.water[i]     = (d == '^') ? 1 : 0;
-
-        if (map.solid[i]) solidCount++;
-        if (map.semisolid[i]) semiCount++;
-        if (map.water[i]) waterCount++;
+        map.solid[i]     = (d != '=' && d != '^' && d != '#') ? 1 : 0;
     }
-
-    SDL_Log("Tile assign: solid=%d semisolid=%d water=%d empty=%d",
-            solidCount, semiCount, waterCount,
-            total - solidCount - semiCount - waterCount);
 }
 
 /* -----------------------------
-   Debug dump
+   Legacy "chunk" parser
+   Reads one token at a time:
+   - numeric value (possibly missing)
+   - remembers the last a-z letter seen in that token
+   Tokens may look like: "12c" meaning value=12, runLetter='c'
+   Or "" meaning empty
 ------------------------------ */
-static void dumpTileGridFlat(const std::string& filename, const std::vector<unsigned short>& tileIds) {
-    std::ofstream out(filename);
-    if (!out) return;
-    for (size_t i = 0; i < tileIds.size(); i++) {
-        if (i) out << ",";
-        out << tileIds[i];
-    }
-    out << "\n";
+struct LegacyToken {
+    bool hasValue = false;
+    int value = 0;        // chunk.return
+    char lastLetter = 0;  // chunk.lastletter (a-z)
+    bool empty = true;    // chunk.return == ""
+};
+
+static bool isSep(char c) {
+    // token separators: whitespace, underscores, commas, semicolons, newlines, etc.
+    return std::isspace((unsigned char)c) || c == '_' || c == ',' || c == ';' || c == '|';
 }
 
-/* -----------------------------
-   Legacy parsing
------------------------------- */
-/*
-OLD FORMAT (one line per level file):
-  <ver>_<w>_<h>_<tileRLE>_<pos>_<type>_<pos>_<type>_...
+static bool nextLegacyToken(const std::string& s, size_t& i, LegacyToken& out) {
+    // skip seps
+    while (i < s.size() && isSep(s[i])) i++;
+    if (i >= s.size()) return false;
 
-tileRLE contains a-z and digits.
-We treat:
- - letter + digits => run
- - bare letter     => count=1
-Mapping:
-  z -> 0 (air)
-  a..y -> 1..25 (tile IDs)
-*/
+    out = LegacyToken{};
 
-// Parse integer, consuming optional underscore OR end-of-string.
-static bool parseUIntUntilUnderscoreOrEnd(const std::string& s, size_t& i, int& out) {
-    while (i < s.size() && std::isspace((unsigned char)s[i])) i++;
-    if (i >= s.size() || !std::isdigit((unsigned char)s[i])) return false;
-
+    // Parse number part (optional)
     long v = 0;
+    bool neg = false;
+    bool anyDigit = false;
+    if (s[i] == '-') { neg = true; i++; }
     while (i < s.size() && std::isdigit((unsigned char)s[i])) {
+        anyDigit = true;
         v = v * 10 + (s[i] - '0');
         i++;
-        if (v > 1'000'000'000) return false;
+        if (v > 2'000'000'000L) break;
     }
 
-    if (i < s.size() && s[i] == '_') i++;
-    out = (int)v;
-    return true;
-}
+    if (anyDigit) {
+        out.hasValue = true;
+        out.value = neg ? (int)(-v) : (int)v;
+        out.empty = false;
+    } else {
+        out.hasValue = false;
+        out.value = 0;
+        out.empty = true;
+    }
 
-/*
-Expand the legacy RLE stream into a linear sequence of tile IDs.
-IMPORTANT: Do NOT break when a letter has no digits; treat as count=1.
-*/
-static std::vector<unsigned short> decodeOldTileRLE_Stream(const std::string& rle, int total) {
-    std::vector<unsigned short> out;
-    out.reserve(total);
-
-    size_t i = 0;
-    while (i < rle.size() && (int)out.size() < total) {
-        char ch = rle[i];
-
-        // Skip junk safely
-        if (!(ch >= 'a' && ch <= 'z')) { i++; continue; }
-        i++;
-
-        int cnt = 0;
-        bool hasDigits = false;
-        while (i < rle.size() && std::isdigit((unsigned char)rle[i])) {
-            hasDigits = true;
-            cnt = cnt * 10 + (rle[i] - '0');
+    // Parse single trailing letter (run-length) if present.
+    if (i < s.size()) {
+        char ch = s[i];
+        if (ch >= 'a' && ch <= 'z') {
+            out.lastLetter = ch;
+            i++;
+        } else if (ch >= 'A' && ch <= 'Z') {
+            out.lastLetter = (char)std::tolower((unsigned char)ch);
             i++;
         }
-        if (!hasDigits) cnt = 1;
-
-        unsigned short val = (ch == 'z') ? 0 : (unsigned short)(ch - 'a' + 1);
-
-        for (int k = 0; k < cnt && (int)out.size() < total; k++)
-            out.push_back(val);
     }
 
-    if ((int)out.size() < total) out.resize(total, 0);
-    return out;
-}
-
-/*
-This is the KEY: reproduce Scratch LoadBlocks placement.
-
-Scratch pseudo (1-based):
-  temp01 = 1
-  for each tile in stream:
-      Tileist[temp01] = tile
-      temp01 += h
-      if temp01 > total: temp01 += 1 - total
-      if temp01 > h: stop
-
-We implement it 0-based:
-  idx = 0
-  idx += h
-  if idx >= total: idx += 1 - total
-  if idx >= h: stop
-*/
-static std::vector<unsigned short> placeStreamLikeLoadBlocks(
-    const std::vector<unsigned short>& stream,
-    int w, int h
-) {
-    const int total = w * h;
-    std::vector<unsigned short> tileist(total, 0);
-
-    int idx = 0; // temp01-1
-    int written = 0;
-
-    for (int si = 0; si < (int)stream.size(); si++) {
-        tileist[idx] = stream[si];
-        written++;
-
-        idx += h;
-        if (idx >= total) idx += 1 - total;
-        if (idx >= h) break; // matches Scratch "if temp01 > LevelHeight then stop"
+    // If we didn't consume digits or a letter, advance to avoid infinite loop.
+    if (!anyDigit && out.lastLetter == 0) {
+        i++;
     }
 
-    SDL_Log("LoadBlocks placement: wrote=%d/%d", written, total);
-    return tileist;
-}
-
-/*
-Convert column-major Tileist (index = x*h + y) into your engine row-major grid.
-Also flips Y (bottom-up -> top-down) to match your earlier tile drawing conventions.
-*/
-static std::vector<unsigned short> tileistToRowMajorFlipped(
-    const std::vector<unsigned short>& tileist,
-    int w, int h
-) {
-    const int total = w * h;
-    std::vector<unsigned short> out(total, 0);
-
-    for (int x = 0; x < w; x++) {
-        for (int y = 0; y < h; y++) {
-            int src = x * h + y;            // column-major
-            int yFlip = (h - 1 - y);        // bottom-up -> top-down
-            int dst = yFlip * w + x;        // row-major
-            out[dst] = tileist[src];
-        }
-    }
-    return out;
-}
-
-// Object position -> world pixels, matching the SAME Y-flip used for tile insertion.
-static void posToXYLegacy(int pos, int h, int tileSize, float& x, float& y) {
-    int xTile = pos / h;
-    int yTile = pos % h;
-
-    int yTileFlipped = (h - 1 - yTile);
-
-    x = xTile * (float)tileSize + (float)(tileSize / 2);
-    y = yTileFlipped * (float)tileSize + (float)(tileSize / 2);
-}
-
-static bool loadLevelOLDLINE(const std::string& line,
-                             TileMap& map,
-                             std::vector<ObjectInstance>& objects,
-                             LevelMeta& meta)
-{
-    size_t i = 0;
-
-    int ver = 0, w = 0, h = 0;
-    if (!parseUIntUntilUnderscoreOrEnd(line, i, ver)) return false;
-    if (!parseUIntUntilUnderscoreOrEnd(line, i, w)) return false;
-    if (!parseUIntUntilUnderscoreOrEnd(line, i, h)) return false;
-    if (w <= 0 || h <= 0) return false;
-
-    // tileRLE goes until next '_' (it contains no underscores)
-    size_t nextUS = line.find('_', i);
-    if (nextUS == std::string::npos) {
-        SDL_Log("Legacy parse: missing '_' after tileRLE");
-        return false;
-    }
-
-    std::string tileRle = line.substr(i, nextUS - i);
-    i = nextUS + 1;
-
-    map.resize(w, h);
-
-    const int total = w * h;
-    if ((int)map.bg.size() != total) map.bg.assign(total, 0);
-
-    // 1) Expand RLE into a linear stream
-    std::vector<unsigned short> stream = decodeOldTileRLE_Stream(tileRle, total);
-
-    // 2) Place into Tileist using Scratch LoadBlocks stepping
-    std::vector<unsigned short> tileist = placeStreamLikeLoadBlocks(stream, w, h);
-
-    // 3) Convert to engine row-major + flipped Y tile grid
-    std::vector<unsigned short> tileGrid = tileistToRowMajorFlipped(tileist, w, h);
-
-    // Keep tile ids on map (for rendering/editor/save)
-    if ((int)map.tileIds.size() != total) map.tileIds.assign(total, 0);
-    map.tileIds = tileGrid;
-
-    dumpTileGridFlat("level-temp.data", tileGrid);
-
-    auto defs = loadBlockDefs("assets/blockdefined.txt");
-    applyBlockDefsToMaps(map, tileGrid, defs);
-
-    // Objects: pairs <pos>_<type>_... (underscore at end is optional)
-    objects.clear();
-    while (i < line.size()) {
-        int pos = 0, typ = 0;
-        if (!parseUIntUntilUnderscoreOrEnd(line, i, pos)) break;
-        if (!parseUIntUntilUnderscoreOrEnd(line, i, typ)) break;
-
-        ObjectInstance inst;
-        inst.id = "legacy_" + std::to_string(typ);
-        posToXYLegacy(pos, h, DEFAULT_TILE_SIZE, inst.x, inst.y);
-        objects.push_back(inst);
-    }
-
-    meta.name = "Legacy " + std::to_string(ver) + " (" + std::to_string(w) + "x" + std::to_string(h) + ")";
-    SDL_Log("Legacy loaded: tiles=%d objects=%d", total, (int)objects.size());
     return true;
 }
 
 /* -----------------------------
-   Public entry
+   Placement step: matches script
+
+   temp.id starts at 1 in script. We'll use 0-based index.
+
+   write
+   temp.id += max_y
+   if temp.id > total: temp.id += 1-total
+   if temp.id > max_y: error
 ------------------------------ */
+static bool placeTilesLikeScript(const std::string& fileData,
+                                size_t& cursor,
+                                int w, int h,
+                                std::vector<unsigned short>& outRowMajorGrid,
+                                int& outObjCountTokenIndex)
+{
+    const int total = w * h;
+
+    // We'll build Tile_grid as column-major scratch Tileist first (1..total),
+    // then convert to engine row-major (y*w+x) with y flipped.
+    std::vector<unsigned short> tileList(total, 0);
+
+    // Script: parse_next_chunk(); temp.id;
+    // temp.id defaults to 0 in many systems; but in your earlier code you started at 1.
+    // In Scratch-style LoadBlocks, start is 1.
+    int tempId = 1; // 1-based
+
+    LegacyToken t{};
+    int tokenIndex = 0;
+
+    // loopuntil(loader.id > Chunk.upperend):
+    // We can't know upperend exactly; practical rule:
+    // keep consuming tile tokens until we've "failed the step rule" OR until next token clearly is objectCount.
+    //
+    // Your script exits with e500 when wrap pushes temp.id > max_y.
+    // We'll detect that and stop BEFORE objects, returning false if we stop too early.
+    //
+    // The simplest faithful approach:
+    // continue placing until the stepping rule says "would error", then STOP reading tile tokens.
+    while (true) {
+        size_t savedCursor = cursor;
+
+        if (!nextLegacyToken(fileData, cursor, t)) {
+            // ran out
+            outObjCountTokenIndex = tokenIndex;
+            break;
+        }
+        tokenIndex++;
+
+        // temp.block = chunk.return; if chunk.return == "" => temp.block = 2
+        int block = 0;
+        if (t.empty || !t.hasValue) {
+            // matches "chunk.return == """: treat missing numeric as 2
+            block = 2;
+        } else {
+            block = t.value;
+        }
+
+        // run length is based on chunk.lastletter in a-z
+        // If no letter, treat as 'a' (1) to be tolerant.
+        char rl = (t.lastLetter >= 'a' && t.lastLetter <= 'z') ? t.lastLetter : 'a';
+        int run = (rl - 'a') + 1; // a=1 .. z=26
+
+        for (int r = 0; r < run; r++) {
+            // write TileList[tempId]
+            int idx0 = tempId - 1;
+            if (idx0 < 0 || idx0 >= total) {
+                SDL_Log("Tile placement out of range (tempId=%d total=%d)", tempId, total);
+                return false;
+            }
+            tileList[idx0] = (unsigned short)std::max(0, block);
+            SDL_Log("Placing block %d at tempId %d (run %d/%d) tokenIndex=%d", block, tempId, r+1, run, tokenIndex);
+
+            // temp.id += max_y
+            tempId += h;
+
+            // if temp.id > total: temp.id += 1-total
+            if (tempId > total) {
+                tempId += (1 - total);
+
+                // if temp.id > max_y: return e500
+                if (tempId > h) {
+                    // This is the exact script stop condition; we consider tile section ended.
+                    // Rewind cursor to before this token, so objectCount token can be read next.
+                    cursor = savedCursor;
+                    outObjCountTokenIndex = tokenIndex - 1;
+                    goto TILE_DONE;
+                }
+            }
+        }
+    }
+
+TILE_DONE:
+
+    // Convert tileList (column-major) into engine row-major, bottom-up.
+    outRowMajorGrid.assign(total, 0);
+    for (int x = 0; x < w; x++) {
+        for (int y = 0; y < h; y++) {
+            int src = x * h + y;          // column-major
+            int dst = y * w + x; // row-major (bottom-up)
+            outRowMajorGrid[dst] = tileList[src];
+        }
+    }
+
+    return true;
+}
+
+/* -----------------------------
+   Object position mapping
+------------------------------ */
+static void posToXY(int pos, int h, float& x, float& y) {
+    int xt = pos / h;
+    int yt = pos % h;
+    yt = (h - 1 - yt);
+    x = xt * TILE_SIZE + TILE_SIZE / 2;
+    y = yt * TILE_SIZE + TILE_SIZE / 2;
+}
+
+/* =========================================================
+   MAIN: loads legacy tile_grid + objects
+========================================================= */
 bool loadLevelBNNLVL(const std::string& path,
                      TileMap& map,
                      std::vector<ObjectInstance>& objects,
                      LevelMeta& meta)
 {
-    SDL_Log("Loading legacy level: %s", path.c_str());
+    std::string s = readWholeFile(path);
+    if (s.empty()) return false;
 
-    std::string contents = readWholeFile(path);
-    if (contents.empty()) {
-        SDL_Log("Failed to read level file: %s", path.c_str());
+    size_t cur = 0;
+    LegacyToken t{};
+
+    // parse_next_chunk: version
+    if (!nextLegacyToken(s, cur, t) || !t.hasValue) return false;
+    int ver = t.value;
+
+    // parse_next_chunk: max_x
+    if (!nextLegacyToken(s, cur, t) || !t.hasValue) return false;
+    int w = t.value;
+
+    // parse_next_chunk: max_y
+    if (!nextLegacyToken(s, cur, t) || !t.hasValue) return false;
+    int h = t.value;
+
+    if (w <= 0 || h <= 0 || w > 4096 || h > 4096) return false;
+
+    map.resize(w, h);
+
+    const int total = w * h;
+    if ((int)map.tileIds.size() != total) map.tileIds.assign(total, 0);
+    if ((int)map.bg.size()      != total) map.bg.assign(total, 0);
+
+    // parse_next_chunk: temp.id (ignored by script; it just declares it)
+    // Your script does: parse_next_chunk(); temp.id;
+    // That suggests there IS a chunk there (maybe starting id or chunk upperend data).
+    // We'll consume one token but not require it to be numeric.
+    nextLegacyToken(s, cur, t);
+
+    // Tile section
+    std::vector<unsigned short> grid;
+    int dummy = 0;
+    if (!placeTilesLikeScript(s, cur, w, h, grid, dummy)) {
+        SDL_Log("Legacy tile placement failed");
         return false;
     }
 
-    // Old format: each file contains one line. Trim leading whitespace/newlines.
-    std::string line;
-    {
-        size_t a = 0;
-        while (a < contents.size() && std::isspace((unsigned char)contents[a])) a++;
-        size_t b = a;
-        while (b < contents.size() && contents[b] != '\n' && contents[b] != '\r') b++;
-        line = contents.substr(a, b - a);
+    map.tileIds = grid;
+
+    auto defs = loadBlockDefs("assets/blockdefined.txt");
+    applyBlockDefsToMaps(map, map.tileIds, defs);
+
+    // Next chunk should be object count
+    if (!nextLegacyToken(s, cur, t) || !t.hasValue) {
+        // If missing, still OK: no objects
+        objects.clear();
+        meta.name = "Legacy " + std::to_string(ver);
+        return true;
     }
 
-    bool ok = loadLevelOLDLINE(line, map, objects, meta);
-    SDL_Log(ok ? "Legacy level loaded" : "Legacy level load failed");
-    return ok;
+    int objCount = t.value;
+    if (objCount < 0) objCount = 0;
+    if (objCount > 200000) objCount = 200000;
+
+    objects.clear();
+    for (int n = 0; n < objCount; n++) {
+        LegacyToken posT{}, typeT{};
+        if (!nextLegacyToken(s, cur, posT) || !posT.hasValue) break;
+        if (!nextLegacyToken(s, cur, typeT) || !typeT.hasValue) break;
+
+        ObjectInstance o;
+        o.id = std::to_string(typeT.value); // or "legacy_"+...
+        posToXY(posT.value, h, o.x, o.y);
+        objects.push_back(o);
+    }
+
+    meta.name = "Legacy " + std::to_string(ver);
+    SDL_Log("Legacy load OK: %s tiles=%d objects=%d", path.c_str(), total, (int)objects.size());
+    return true;
 }
