@@ -4,7 +4,7 @@
 	<dict>
 		<key>frames</key>
 		<dict>
-			<key>costume1.png</key>
+			<key>Panel.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
@@ -19,22 +19,22 @@
 				<key>textureRotated</key>
 				<false/>
 			</dict>
-			<key>costume2.png</key>
+			<key>Continuebtn.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
 				<key>spriteOffset</key>
 				<string>{0,0}</string>
 				<key>spriteSize</key>
-				<string>{86,88}</string>
+				<string>{88,86}</string>
 				<key>spriteSourceSize</key>
-				<string>{86,88}</string>
+				<string>{88,86}</string>
 				<key>textureRect</key>
-				<string>{{0,309},{86,88}}</string>
+				<string>{{0,309},{88,86}}</string>
 				<key>textureRotated</key>
 				<true/>
 			</dict>
-			<key>costume3.png</key>
+			<key>Retartbtn.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
@@ -49,7 +49,7 @@
 				<key>textureRotated</key>
 				<false/>
 			</dict>
-			<key>costume4.png</key>
+			<key>exitbtn.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>

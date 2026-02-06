@@ -50,7 +50,38 @@ static void applyBlockDefsToMaps(TileMap& map,
         // '=' => semisolid, '^' => water, '#' => air. Anything else => solid fallback.
         map.semisolid[i] = (d == '=') ? 1 : 0;
         map.water[i]     = (d == '^') ? 1 : 0;
-        map.solid[i]     = (d != '=' && d != '^' && d != '#') ? 1 : 0;
+        // Solid is "not air", excluding semisolid and water.
+        map.solid[i]     = (d == '#' && d != '=' && d != '^') ? 1 : 0;
+    }
+}
+
+static void normalizeHorizontalOffset(TileMap& map) {
+    if (map.w <= 0 || map.h <= 0) return;
+    int firstCol = -1;
+    for (int x = 0; x < map.w; ++x) {
+        bool any = false;
+        for (int y = 0; y < map.h; ++y) {
+            int idx = y * map.w + x;
+            if (map.tileIds[idx] != 0 || map.bg[idx] != 0) { any = true; break; }
+            if (map.solid[idx] || map.semisolid[idx] || map.water[idx]) { any = true; break; }
+        }
+        if (any) { firstCol = x; break; }
+    }
+    if (firstCol <= 0) return;
+
+    for (int y = 0; y < map.h; ++y) {
+        for (int x = 0; x < map.w; ++x) {
+            int dst = y * map.w + x;
+            int srcX = x + firstCol;
+            if (srcX < map.w) {
+                int src = y * map.w + srcX;
+                map.tileIds[dst] = map.tileIds[src];
+                map.bg[dst] = map.bg[src];
+            } else {
+                map.tileIds[dst] = 0;
+                map.bg[dst] = 0;
+            }
+        }
     }
 }
 
@@ -217,12 +248,12 @@ static bool placeTilesLikeScript(const std::string& fileData,
 
 TILE_DONE:
 
-    // Convert tileList (column-major) into engine row-major, bottom-up.
+    // Convert tileList (column-major) into engine row-major, with vertical flip.
     outRowMajorGrid.assign(total, 0);
     for (int x = 0; x < w; x++) {
         for (int y = 0; y < h; y++) {
             int src = x * h + y;          // column-major
-            int dst = y * w + x; // row-major (bottom-up)
+            int dst = (h - 1 - y) * w + x; // row-major, flipped vertically
             outRowMajorGrid[dst] = tileList[src];
         }
     }
@@ -267,6 +298,13 @@ bool loadLevelBNNLVL(const std::string& path,
     if (!nextLegacyToken(s, cur, t) || !t.hasValue) return false;
     int h = t.value;
 
+    const float tileGridDivisor = 1;
+
+
+    // Legacy files store tile_grid dimensions as (height, width).
+    w /= tileGridDivisor;
+    h /= tileGridDivisor;
+
     if (w <= 0 || h <= 0 || w > 4096 || h > 4096) return false;
 
     map.resize(w, h);
@@ -275,11 +313,15 @@ bool loadLevelBNNLVL(const std::string& path,
     if ((int)map.tileIds.size() != total) map.tileIds.assign(total, 0);
     if ((int)map.bg.size()      != total) map.bg.assign(total, 0);
 
-    // parse_next_chunk: temp.id (ignored by script; it just declares it)
-    // Your script does: parse_next_chunk(); temp.id;
-    // That suggests there IS a chunk there (maybe starting id or chunk upperend data).
-    // We'll consume one token but not require it to be numeric.
-    nextLegacyToken(s, cur, t);
+    // parse_next_chunk: temp.id (optional; only consume if it's a pure number)
+    // Some files omit this token; if the next token has a run-length letter,
+    // it's the first tile token and should not be consumed here.
+    {
+        size_t savedCur = cur;
+        if (!(nextLegacyToken(s, cur, t) && t.hasValue && t.lastLetter == 0)) {
+            cur = savedCur;
+        }
+    }
 
     // Tile section
     std::vector<unsigned short> grid;
@@ -292,6 +334,8 @@ bool loadLevelBNNLVL(const std::string& path,
     map.tileIds = grid;
 
     auto defs = loadBlockDefs("assets/blockdefined.txt");
+    applyBlockDefsToMaps(map, map.tileIds, defs);
+    normalizeHorizontalOffset(map);
     applyBlockDefsToMaps(map, map.tileIds, defs);
 
     // Next chunk should be object count

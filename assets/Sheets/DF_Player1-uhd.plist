@@ -4,22 +4,22 @@
 	<dict>
 		<key>frames</key>
 		<dict>
-			<key>17ba16309ee5e2c530c110cec4dd21f7.png</key>
+			<key>idle.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
 				<key>spriteOffset</key>
 				<string>{0,0}</string>
 				<key>spriteSize</key>
-				<string>{76,131}</string>
+				<string>{131,76}</string>
 				<key>spriteSourceSize</key>
-				<string>{76,131}</string>
+				<string>{131,76}</string>
 				<key>textureRect</key>
-				<string>{{0,219},{76,131}}</string>
+				<string>{{0,219},{131,76}}</string>
 				<key>textureRotated</key>
-				<true/>
+				<false/>
 			</dict>
-			<key>2c262dea9612d6b6c6241edb65616aa5.png</key>
+			<key>Skiding.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
@@ -34,7 +34,7 @@
 				<key>textureRotated</key>
 				<false/>
 			</dict>
-			<key>2d4558954cee187c53ab5234d9712ab1.png</key>
+			<key>Walk-1.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
@@ -49,7 +49,7 @@
 				<key>textureRotated</key>
 				<false/>
 			</dict>
-			<key>30427cc5b54294a910d6ae42723719dc.png</key>
+			<key>Walk-2.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
@@ -64,22 +64,22 @@
 				<key>textureRotated</key>
 				<false/>
 			</dict>
-			<key>36577437d610e069c25d221ef9a20f9d.png</key>
+			<key>Jump.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
 				<key>spriteOffset</key>
 				<string>{0,0}</string>
 				<key>spriteSize</key>
-				<string>{81,136}</string>
+				<string>{136,81}</string>
 				<key>spriteSourceSize</key>
-				<string>{81,136}</string>
+				<string>{136,81}</string>
 				<key>textureRect</key>
-				<string>{{0,137},{81,136}}</string>
+				<string>{{0,137},{136,81}}</string>
 				<key>textureRotated</key>
 				<true/>
 			</dict>
-			<key>8c852e6adac5bf59f7ec9a4c1b4a69de.png</key>
+			<key>Walk-3.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
@@ -94,7 +94,7 @@
 				<key>textureRotated</key>
 				<false/>
 			</dict>
-			<key>a574dcf7b45332f423468655fe12a13b.png</key>
+			<key>Hurt.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
@@ -109,7 +109,7 @@
 				<key>textureRotated</key>
 				<true/>
 			</dict>
-			<key>b173da7ba8c052ab593d958c0ffbb8d7.png</key>
+			<key>Walk-4.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
@@ -124,7 +124,7 @@
 				<key>textureRotated</key>
 				<false/>
 			</dict>
-			<key>b926440c57b6e9a2a7752af749db4896.png</key>
+			<key>Crouched(unused).png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
@@ -139,7 +139,7 @@
 				<key>textureRotated</key>
 				<false/>
 			</dict>
-			<key>d016e8e81a4ffc9bab05962b6be5408a.png</key>
+			<key>Falling.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
@@ -154,7 +154,7 @@
 				<key>textureRotated</key>
 				<false/>
 			</dict>
-			<key>f988504fa14b730fae37b41e4195d1fa.png</key>
+			<key>Death.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>

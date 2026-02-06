@@ -14,6 +14,7 @@ $CXX $CXXFLAGS \
   $SRC_DIR/TileMap.cpp \
   $SRC_DIR/LevelLoader.cpp \
   -lSDL2 \
+  -lSDL2_image \
   -o $OUT_PLATFORMER
 
 $CXX $CXXFLAGS \
