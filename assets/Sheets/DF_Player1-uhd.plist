@@ -1,129 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
+<plist version="1.0" msg="Spritesheet created with https://gdcolon.com/gdsplitter">
 	<dict>
 		<key>frames</key>
 		<dict>
-			<key>idle.png</key>
-			<dict>
-				<key>aliases</key>
-				<array/>
-				<key>spriteOffset</key>
-				<string>{0,0}</string>
-				<key>spriteSize</key>
-				<string>{131,76}</string>
-				<key>spriteSourceSize</key>
-				<string>{131,76}</string>
-				<key>textureRect</key>
-				<string>{{0,219},{131,76}}</string>
-				<key>textureRotated</key>
-				<false/>
-			</dict>
-			<key>Skiding.png</key>
-			<dict>
-				<key>aliases</key>
-				<array/>
-				<key>spriteOffset</key>
-				<string>{0,0}</string>
-				<key>spriteSize</key>
-				<string>{76,131}</string>
-				<key>spriteSourceSize</key>
-				<string>{76,131}</string>
-				<key>textureRect</key>
-				<string>{{137,137},{76,131}}</string>
-				<key>textureRotated</key>
-				<false/>
-			</dict>
-			<key>Walk-1.png</key>
-			<dict>
-				<key>aliases</key>
-				<array/>
-				<key>spriteOffset</key>
-				<string>{0,0}</string>
-				<key>spriteSize</key>
-				<string>{81,136}</string>
-				<key>spriteSourceSize</key>
-				<string>{81,136}</string>
-				<key>textureRect</key>
-				<string>{{0,0},{81,136}}</string>
-				<key>textureRotated</key>
-				<false/>
-			</dict>
-			<key>Walk-2.png</key>
-			<dict>
-				<key>aliases</key>
-				<array/>
-				<key>spriteOffset</key>
-				<string>{0,0}</string>
-				<key>spriteSize</key>
-				<string>{70,136}</string>
-				<key>spriteSourceSize</key>
-				<string>{70,136}</string>
-				<key>textureRect</key>
-				<string>{{82,0},{70,136}}</string>
-				<key>textureRotated</key>
-				<false/>
-			</dict>
-			<key>Jump.png</key>
-			<dict>
-				<key>aliases</key>
-				<array/>
-				<key>spriteOffset</key>
-				<string>{0,0}</string>
-				<key>spriteSize</key>
-				<string>{136,81}</string>
-				<key>spriteSourceSize</key>
-				<string>{136,81}</string>
-				<key>textureRect</key>
-				<string>{{0,137},{136,81}}</string>
-				<key>textureRotated</key>
-				<true/>
-			</dict>
-			<key>Walk-3.png</key>
-			<dict>
-				<key>aliases</key>
-				<array/>
-				<key>spriteOffset</key>
-				<string>{0,0}</string>
-				<key>spriteSize</key>
-				<string>{80,136}</string>
-				<key>spriteSourceSize</key>
-				<string>{80,136}</string>
-				<key>textureRect</key>
-				<string>{{153,0},{80,136}}</string>
-				<key>textureRotated</key>
-				<false/>
-			</dict>
-			<key>Hurt.png</key>
-			<dict>
-				<key>aliases</key>
-				<array/>
-				<key>spriteOffset</key>
-				<string>{0,0}</string>
-				<key>spriteSize</key>
-				<string>{119,122}</string>
-				<key>spriteSourceSize</key>
-				<string>{119,122}</string>
-				<key>textureRect</key>
-				<string>{{0,296},{119,122}}</string>
-				<key>textureRotated</key>
-				<true/>
-			</dict>
-			<key>Walk-4.png</key>
-			<dict>
-				<key>aliases</key>
-				<array/>
-				<key>spriteOffset</key>
-				<string>{0,0}</string>
-				<key>spriteSize</key>
-				<string>{81,131}</string>
-				<key>spriteSourceSize</key>
-				<string>{81,131}</string>
-				<key>textureRect</key>
-				<string>{{234,0},{81,131}}</string>
-				<key>textureRotated</key>
-				<false/>
-			</dict>
 			<key>Crouched(unused).png</key>
 			<dict>
 				<key>aliases</key>
@@ -135,22 +15,7 @@
 				<key>spriteSourceSize</key>
 				<string>{76,109}</string>
 				<key>textureRect</key>
-				<string>{{132,269},{76,109}}</string>
-				<key>textureRotated</key>
-				<false/>
-			</dict>
-			<key>Falling.png</key>
-			<dict>
-				<key>aliases</key>
-				<array/>
-				<key>spriteOffset</key>
-				<string>{0,0}</string>
-				<key>spriteSize</key>
-				<string>{81,131}</string>
-				<key>spriteSourceSize</key>
-				<string>{81,131}</string>
-				<key>textureRect</key>
-				<string>{{234,132},{81,131}}</string>
+				<string>{{256,282},{76,109}}</string>
 				<key>textureRotated</key>
 				<false/>
 			</dict>
@@ -165,7 +30,142 @@
 				<key>spriteSourceSize</key>
 				<string>{80,121}</string>
 				<key>textureRect</key>
-				<string>{{214,264},{80,121}}</string>
+				<string>{{129,292},{80,121}}</string>
+				<key>textureRotated</key>
+				<false/>
+			</dict>
+			<key>Falling.png</key>
+			<dict>
+				<key>aliases</key>
+				<array/>
+				<key>spriteOffset</key>
+				<string>{0,0}</string>
+				<key>spriteSize</key>
+				<string>{81,131}</string>
+				<key>spriteSourceSize</key>
+				<string>{81,131}</string>
+				<key>textureRect</key>
+				<string>{{182,0},{81,131}}</string>
+				<key>textureRotated</key>
+				<false/>
+			</dict>
+			<key>Hurt.png</key>
+			<dict>
+				<key>aliases</key>
+				<array/>
+				<key>spriteOffset</key>
+				<string>{0,0}</string>
+				<key>spriteSize</key>
+				<string>{119,122}</string>
+				<key>spriteSourceSize</key>
+				<string>{119,122}</string>
+				<key>textureRect</key>
+				<string>{{0,292},{119,122}}</string>
+				<key>textureRotated</key>
+				<false/>
+			</dict>
+			<key>idle.png</key>
+			<dict>
+				<key>aliases</key>
+				<array/>
+				<key>spriteOffset</key>
+				<string>{0,0}</string>
+				<key>spriteSize</key>
+				<string>{76,131}</string>
+				<key>spriteSourceSize</key>
+				<string>{76,131}</string>
+				<key>textureRect</key>
+				<string>{{170,146},{76,131}}</string>
+				<key>textureRotated</key>
+				<false/>
+			</dict>
+			<key>Jump.png</key>
+			<dict>
+				<key>aliases</key>
+				<array/>
+				<key>spriteOffset</key>
+				<string>{0,0}</string>
+				<key>spriteSize</key>
+				<string>{81,136}</string>
+				<key>spriteSourceSize</key>
+				<string>{81,136}</string>
+				<key>textureRect</key>
+				<string>{{0,0},{81,136}}</string>
+				<key>textureRotated</key>
+				<false/>
+			</dict>
+			<key>Skiding.png</key>
+			<dict>
+				<key>aliases</key>
+				<array/>
+				<key>spriteOffset</key>
+				<string>{0,0}</string>
+				<key>spriteSize</key>
+				<string>{76,131}</string>
+				<key>spriteSourceSize</key>
+				<string>{76,131}</string>
+				<key>textureRect</key>
+				<string>{{273,0},{76,131}}</string>
+				<key>textureRotated</key>
+				<false/>
+			</dict>
+			<key>Walk-1.png</key>
+			<dict>
+				<key>aliases</key>
+				<array/>
+				<key>spriteOffset</key>
+				<string>{0,0}</string>
+				<key>spriteSize</key>
+				<string>{81,136}</string>
+				<key>spriteSourceSize</key>
+				<string>{81,136}</string>
+				<key>textureRect</key>
+				<string>{{91,0},{81,136}}</string>
+				<key>textureRotated</key>
+				<false/>
+			</dict>
+			<key>Walk-2.png</key>
+			<dict>
+				<key>aliases</key>
+				<array/>
+				<key>spriteOffset</key>
+				<string>{0,0}</string>
+				<key>spriteSize</key>
+				<string>{70,136}</string>
+				<key>spriteSourceSize</key>
+				<string>{70,136}</string>
+				<key>textureRect</key>
+				<string>{{0,146},{70,136}}</string>
+				<key>textureRotated</key>
+				<false/>
+			</dict>
+			<key>Walk-3.png</key>
+			<dict>
+				<key>aliases</key>
+				<array/>
+				<key>spriteOffset</key>
+				<string>{0,0}</string>
+				<key>spriteSize</key>
+				<string>{80,136}</string>
+				<key>spriteSourceSize</key>
+				<string>{80,136}</string>
+				<key>textureRect</key>
+				<string>{{80,146},{80,136}}</string>
+				<key>textureRotated</key>
+				<false/>
+			</dict>
+			<key>Walk-4.png</key>
+			<dict>
+				<key>aliases</key>
+				<array/>
+				<key>spriteOffset</key>
+				<string>{0,0}</string>
+				<key>spriteSize</key>
+				<string>{81,131}</string>
+				<key>spriteSourceSize</key>
+				<string>{81,131}</string>
+				<key>textureRect</key>
+				<string>{{256,141},{81,131}}</string>
 				<key>textureRotated</key>
 				<false/>
 			</dict>
@@ -181,7 +181,7 @@
 			<key>realTextureFileName</key>
 			<string>DF_Player1-uhd.png</string>
 			<key>size</key>
-			<string>{315,415}</string>
+			<string>{349,414}</string>
 			<key>textureFileName</key>
 			<string>DF_Player1-uhd.png</string>
 		</dict>

@@ -17,8 +17,8 @@ struct Player {
     float y = 64.0f;
     float vx = 0.0f;
     float vy = 0.0f;
-    int w = 20;
-    int h = 28;
+    int w = 40;
+    int h = 56;
     bool onGround = false;
     bool jumpHeld = false;
     bool jumpWasDown = false;
@@ -373,7 +373,7 @@ static void renderFrame(SDL_Renderer* ren, SDL_Texture* tex, const Frame& f, con
     dstRot.w = dst.h;
     dstRot.h = dst.w;
     SDL_Point center{dstRot.w / 2, dstRot.h / 2};
-    SDL_RenderCopyEx(ren, tex, &src, &dstRot, 90.0, &center, SDL_FLIP_NONE);
+    SDL_RenderCopyEx(ren, tex, &src, &dstRot, -90.0, &center, SDL_FLIP_NONE);
 }
 
 static void renderFrameEx(SDL_Renderer* ren, SDL_Texture* tex, const Frame& f, const SDL_Rect& dst, SDL_RendererFlip flip) {
@@ -387,7 +387,7 @@ static void renderFrameEx(SDL_Renderer* ren, SDL_Texture* tex, const Frame& f, c
     dstRot.w = dst.h;
     dstRot.h = dst.w;
     SDL_Point center{dstRot.w / 2, dstRot.h / 2};
-    SDL_RenderCopyEx(ren, tex, &src, &dstRot, 90.0, &center, flip);
+    SDL_RenderCopyEx(ren, tex, &src, &dstRot, -90.0, &center, flip);
 }
 
 static void drawChar5x7(SDL_Renderer* ren, int x, int y, int scale, char ch) {
@@ -511,6 +511,34 @@ int main(int argc, char** argv) {
     blocksFrameByName.reserve(blocksFrameList.size());
     for (const auto& e : blocksFrameList) blocksFrameByName[e.name] = e.frame;
 
+    std::string bgPlist = texPath("plists", "background", "assets/Sheets/DF_Background-uhd.plist");
+    SDL_Texture* bgTex = IMG_LoadTexture(ren, texPath("textures", "background", "assets/Sheets/DF_Background-uhd.png").c_str());
+    auto bgFrameList = loadPlistFrameList(bgPlist);
+    std::unordered_map<std::string, Frame> bgFrameByName;
+    bgFrameByName.reserve(bgFrameList.size());
+    for (const auto& e : bgFrameList) bgFrameByName[e.name] = e.frame;
+
+    std::unordered_map<int, std::string> tileFrameById;
+    {
+        std::ifstream td("assets/tile_defs.json");
+        if (td) {
+            nlohmann::json j;
+            try { td >> j; } catch (...) { j = nlohmann::json(); }
+            auto readSection = [&](const char* key) {
+                if (!j.contains(key) || !j[key].is_object()) return;
+                for (auto it = j[key].begin(); it != j[key].end(); ++it) {
+                    if (!it.value().is_object()) continue;
+                    if (!it.value().contains("frame") || !it.value()["frame"].is_string()) continue;
+                    int id = 0;
+                    try { id = std::stoi(it.key()); } catch (...) { continue; }
+                    tileFrameById[id] = it.value()["frame"].get<std::string>();
+                }
+            };
+            readSection("bg");
+            readSection("fg");
+        }
+    }
+
     std::string playerPlist = texPath("plists", "player", "assets/Sheets/DF_Player1-uhd.plist");
     SDL_Texture* playerTex = IMG_LoadTexture(ren, texPath("textures", "player", "assets/Sheets/DF_Player1-uhd.png").c_str());
     auto playerFrameList = loadPlistFrameList(playerPlist);
@@ -583,83 +611,84 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    std::string levelPath = runLevelSelect(win, ren);
-    if (levelPath.empty()) {
-        SDL_DestroyRenderer(ren);
-        SDL_DestroyWindow(win);
-        SDL_Quit();
-        return 0;
-    }
+    bool fullscreen = false;
+    bool clampCamX = true;
+    bool running = true;
+    while (running) {
+        std::string levelPath = runLevelSelect(win, ren);
+        if (levelPath.empty()) {
+            break;
+        }
 
-    TileMap map;
-    std::vector<ObjectInstance> objects;
-    LevelMeta meta;
-    Player player;
-    std::vector<char> blockDefs = loadBlockDefs("assets/blockdefined.txt");
+        TileMap map;
+        std::vector<ObjectInstance> objects;
+        LevelMeta meta;
+        Player player;
+        std::vector<char> blockDefs = loadBlockDefs("assets/blockdefined.txt");
 
-    auto reloadLevel = [&]() {
-        loadLevelBNNLVL(levelPath, map, objects, meta);
+        auto reloadLevel = [&]() {
+            loadLevelBNNLVL(levelPath, map, objects, meta);
 
         player = Player{};
         for (const auto& o : objects) {
             if (o.id == "player") {
                 player.x = o.x;
-                player.y = o.y;
+                player.y = o.y - 12.0f;
                 break;
             }
         }
 
-        // Teleport player to first tile id 28 and replace it with tile id 2.
-        for (int idx = 0; idx < (int)map.tileIds.size(); ++idx) {
-            if (map.tileIds[idx] != 28) continue;
-            int tx = idx % map.w;
-            int ty = idx / map.w;
-            player.x = tx * map.tileSize;
-            player.y = ty * map.tileSize;
-            map.tileIds[idx] = 2;
-            applyBlockDefAt(map, idx, 2, blockDefs);
-            break;
-        }
-    };
+            // Teleport player to first tile id 28 and replace it with tile id 2.
+            for (int idx = 0; idx < (int)map.tileIds.size(); ++idx) {
+                if (map.tileIds[idx] != 28) continue;
+                int tx = idx % map.w;
+                int ty = idx / map.w;
+                player.x = tx * map.tileSize;
+                player.y = ty * map.tileSize;
+                map.tileIds[idx] = 2;
+                applyBlockDefAt(map, idx, 2, blockDefs);
+                break;
+            }
+        };
 
-    reloadLevel();
+        reloadLevel();
 
-    bool running = true;
-    bool fullscreen = false;
-    bool paused = false;
-    bool showHitboxes = false;
-    bool clampCamX = true;
-    int pauseSelection = 0; // 0 = Resume, 1 = Restart, 2 = Quit
-    SDL_Event e;
-    Uint32 lastTicks = SDL_GetTicks();
+        bool levelRunning = true;
+        bool paused = false;
+        bool showHitboxes = false;
+        int pauseSelection = 0; // 0 = Resume, 1 = Restart, 2 = Quit
+        bool returnToSelect = false;
+        SDL_Event e;
+        Uint32 lastTicks = SDL_GetTicks();
 
-    SDL_Rect pauseBtnContinue{0,0,0,0};
-    SDL_Rect pauseBtnRestart{0,0,0,0};
-    SDL_Rect pauseBtnExit{0,0,0,0};
+        SDL_Rect pauseBtnContinue{0,0,0,0};
+        SDL_Rect pauseBtnRestart{0,0,0,0};
+        SDL_Rect pauseBtnExit{0,0,0,0};
 
-    auto handlePauseSelect = [&](int sel) {
-        pauseSelection = sel;
-        if (pauseSelection == 0) {
-            paused = false;
-        } else if (pauseSelection == 1) {
-            reloadLevel();
-            paused = false;
-        } else {
-            running = false;
-        }
-    };
+        auto handlePauseSelect = [&](int sel) {
+            pauseSelection = sel;
+            if (pauseSelection == 0) {
+                paused = false;
+            } else if (pauseSelection == 1) {
+                reloadLevel();
+                paused = false;
+            } else {
+                returnToSelect = true;
+                levelRunning = false;
+            }
+        };
 
-    while (running) {
-        Uint32 now = SDL_GetTicks();
-        float dt = (now - lastTicks) / 1000.0f;
-        if (dt > 0.05f) dt = 0.05f;
-        lastTicks = now;
+        while (levelRunning) {
+            Uint32 now = SDL_GetTicks();
+            float dt = (now - lastTicks) / 1000.0f;
+            if (dt > 0.05f) dt = 0.05f;
+            lastTicks = now;
 
         float inputMove = 0.0f;
         bool inputDown = false;
 
         while (SDL_PollEvent(&e)) {
-            if (e.type == SDL_QUIT) running = false;
+            if (e.type == SDL_QUIT) { running = false; levelRunning = false; }
             if (e.type == SDL_KEYDOWN && e.key.repeat == 0) {
                 if (e.key.keysym.sym == SDLK_F11) {
                     fullscreen = !fullscreen;
@@ -846,13 +875,58 @@ RENDER_ONLY:
         int screenH = 540;
         float camX = player.x + player.w * 0.5f - screenW * 0.5f;
         float camY = player.y + player.h * 0.5f - screenH * 0.5f;
-        float maxCamX = map.w * map.tileSize - screenW;
+        float maxCamX = map.w * map.tileSize - screenW - map.tileSize;
         float maxCamY = map.h * map.tileSize - screenH;
-        if (clampCamX) camX = std::clamp(camX, 0.0f, std::max(0.0f, maxCamX));
+        if (clampCamX) camX = std::clamp(camX, (float)map.tileSize, std::max((float)map.tileSize, maxCamX));
         camY = std::clamp(camY, 0.0f, std::max(0.0f, maxCamY));
 
         SDL_SetRenderDrawColor(ren, 12, 14, 18, 255);
         SDL_RenderClear(ren);
+
+        // Parallax background (3 layers)
+        if (bgTex && !bgFrameByName.empty()) {
+            auto getBg = [&](const std::string& name) -> const Frame* {
+                auto it = bgFrameByName.find(name);
+                if (it != bgFrameByName.end()) return &it->second;
+                if (name.size() > 4 && name.substr(name.size() - 4) == ".png") {
+                    std::string noExt = name.substr(0, name.size() - 4);
+                    it = bgFrameByName.find(noExt);
+                    if (it != bgFrameByName.end()) return &it->second;
+                }
+                return nullptr;
+            };
+            struct Layer { const char* frame; float factor; float vfactor; };
+            Layer layers[3] = {
+                {"w1b.png", 0.2f, 0.2f},
+                {"w1f.png", 0.8f, 0.8f},
+                {"w1f.png", 0.5f, 0.5f}
+            };
+            for (const auto& layer : layers) {
+                const Frame* f = getBg(layer.frame);
+                if (!f) continue;
+                int fw = f->rotated ? f->rect.h : f->rect.w;
+                int fh = f->rotated ? f->rect.w : f->rect.h;
+                if (fw <= 0 || fh <= 0) continue;
+                float ox = std::fmod(camX * layer.factor, (float)fw);
+                if (ox < 0) ox += fw;
+                // Attach to level bottom (no vertical tiling)
+                float worldBottom = (float)(map.h * map.tileSize);
+                float t = 0.0f;
+                float maxCamY = std::max(1.0f, (float)(map.h * map.tileSize - screenH));
+                float parallaxCamY = maxCamY - camY;
+                t = std::clamp((parallaxCamY / maxCamY) * layer.vfactor, 0.0f, 1.0f);
+                int y = (int)(screenH - fh + t * (float)fh);
+                for (int x = -1; x <= screenW / fw + 1; ++x) {
+                    SDL_Rect dst{
+                        (int)(x * fw - ox),
+                        y,
+                        fw,
+                        fh
+                    };
+                    renderFrame(ren, bgTex, *f, dst);
+                }
+            }
+        }
 
         map.renderBgDebug(ren, camX, camY);
 
@@ -868,10 +942,6 @@ RENDER_ONLY:
                     auto it = blocksFrameByName.find(std::to_string(id));
                     if (it != blocksFrameByName.end()) {
                         frame = &it->second;
-                    } else if (id < blocksFrameList.size()) {
-                        frame = &blocksFrameList[id].frame;
-                    } else if (id > 0 && (id - 1) < blocksFrameList.size()) {
-                        frame = &blocksFrameList[id - 1].frame;
                     }
 
                     if (!frame) continue;
@@ -916,6 +986,11 @@ RENDER_ONLY:
                     SDL_RenderDrawRectF(ren, &rc);
                 }
             }
+
+            // Player hitbox
+            SDL_SetRenderDrawColor(ren, 255, 200, 80, 255);
+            SDL_FRect pr{ player.x - camX, player.y - camY, (float)player.w, (float)player.h };
+            SDL_RenderDrawRectF(ren, &pr);
         }
 
         if (showHitboxes) {
@@ -1074,13 +1149,11 @@ RENDER_ONLY:
             }
 
             if (playerTex && renderFramePtr) {
-                int pw = renderFramePtr->rotated ? renderFramePtr->rect.h : renderFramePtr->rect.w;
-                int ph = renderFramePtr->rotated ? renderFramePtr->rect.w : renderFramePtr->rect.h;
                 SDL_Rect dst{
-                    (int)(pr.x + (pr.w - pw) * 0.5f),
-                    (int)(pr.y + (pr.h - ph) * 0.5f),
-                    pw,
-                    ph
+                    (int)pr.x,
+                    (int)(pr.y + pr.h - pr.h),
+                    (int)pr.w,
+                    (int)pr.h
                 };
                 SDL_RendererFlip flip = (player.facing < 0) ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
                 renderFrameEx(ren, playerTex, *renderFramePtr, dst, flip);
@@ -1196,6 +1269,9 @@ RENDER_ONLY:
 
         SDL_RenderPresent(ren);
         SDL_Delay(16);
+        }
+        if (!running) break;
+        if (returnToSelect) continue;
     }
 
     if (blocksTex) SDL_DestroyTexture(blocksTex);

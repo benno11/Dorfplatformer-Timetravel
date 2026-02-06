@@ -198,11 +198,18 @@ int main(int argc, char** argv) {
     bool running = true;
     bool dragging = false;
     bool panning = false;
+    bool dragScrollH = false;
+    bool dragScrollV = false;
     bool renaming = false;
     SDL_FPoint dragStart{0,0};
     SDL_FPoint panStart{0,0};
+    SDL_FPoint scrollGrab{0,0};
     SDL_FPoint cam{0,0};
     SDL_FRect current{0,0,0,0};
+    SDL_FRect hBar{0,0,0,0};
+    SDL_FRect vBar{0,0,0,0};
+    bool hasHBar = false;
+    bool hasVBar = false;
 
     std::vector<Frame> frames;
     int selected = -1;
@@ -227,6 +234,16 @@ int main(int argc, char** argv) {
 
             if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
                 if (renaming) continue;
+                if (hasHBar && pointInRect((float)e.button.x, (float)e.button.y, hBar)) {
+                    dragScrollH = true;
+                    scrollGrab.x = (float)e.button.x - hBar.x;
+                    continue;
+                }
+                if (hasVBar && pointInRect((float)e.button.x, (float)e.button.y, vBar)) {
+                    dragScrollV = true;
+                    scrollGrab.y = (float)e.button.y - vBar.y;
+                    continue;
+                }
                 float mx = e.button.x + cam.x;
                 float my = e.button.y + cam.y;
                 selected = -1;
@@ -260,6 +277,8 @@ int main(int argc, char** argv) {
                         selected = (int)frames.size() - 1;
                     }
                 }
+                dragScrollH = false;
+                dragScrollV = false;
             }
             if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_RIGHT) {
                 if (renaming) continue;
@@ -267,6 +286,23 @@ int main(int argc, char** argv) {
             }
             if (e.type == SDL_MOUSEMOTION) {
                 if (renaming) continue;
+                if (dragScrollH && hasHBar) {
+                    float trackW = (float)winW - hBar.w;
+                    if (trackW > 0.0f) {
+                        float px = (float)e.motion.x - scrollGrab.x;
+                        px = std::clamp(px, 0.0f, trackW);
+                        float t = px / trackW;
+                        cam.x = t * (float)std::max(0, texW - winW);
+                    }
+                } else if (dragScrollV && hasVBar) {
+                    float trackH = (float)winH - vBar.h;
+                    if (trackH > 0.0f) {
+                        float py = (float)e.motion.y - scrollGrab.y;
+                        py = std::clamp(py, 0.0f, trackH);
+                        float t = py / trackH;
+                        cam.y = t * (float)std::max(0, texH - winH);
+                    }
+                }
                 if (dragging) {
                     float mx = e.motion.x + cam.x;
                     float my = e.motion.y + cam.y;
@@ -348,6 +384,35 @@ int main(int argc, char** argv) {
             r.h = std::fabs(current.h);
             SDL_SetRenderDrawColor(ren, 80, 160, 255, 255);
             SDL_RenderDrawRectF(ren, &r);
+        }
+
+        // Scrollbars
+        hasHBar = texW > winW;
+        hasVBar = texH > winH;
+        const float barThickness = 12.0f;
+        if (hasHBar) {
+            float ratio = (float)winW / (float)texW;
+            float barW = std::max(24.0f, ratio * winW);
+            float trackW = (float)winW - barW;
+            float t = (texW == winW) ? 0.0f : (cam.x / (float)(texW - winW));
+            hBar = { t * trackW, (float)winH - barThickness, barW, barThickness };
+            SDL_SetRenderDrawColor(ren, 40, 40, 52, 200);
+            SDL_FRect track{0.0f, (float)winH - barThickness, (float)winW, barThickness};
+            SDL_RenderFillRectF(ren, &track);
+            SDL_SetRenderDrawColor(ren, 120, 130, 160, 220);
+            SDL_RenderFillRectF(ren, &hBar);
+        }
+        if (hasVBar) {
+            float ratio = (float)winH / (float)texH;
+            float barH = std::max(24.0f, ratio * winH);
+            float trackH = (float)winH - barH;
+            float t = (texH == winH) ? 0.0f : (cam.y / (float)(texH - winH));
+            vBar = { (float)winW - barThickness, t * trackH, barThickness, barH };
+            SDL_SetRenderDrawColor(ren, 40, 40, 52, 200);
+            SDL_FRect track{(float)winW - barThickness, 0.0f, barThickness, (float)winH};
+            SDL_RenderFillRectF(ren, &track);
+            SDL_SetRenderDrawColor(ren, 120, 130, 160, 220);
+            SDL_RenderFillRectF(ren, &vBar);
         }
 
         SDL_RenderPresent(ren);

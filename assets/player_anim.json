@@ -1,7 +1,7 @@
 {
   "fps": 15,
   "idle": ["idle"],
-  "walk": ["Walk-1", "Walk-2", "Walk-3", "Walk-4", "Walk5"],
+  "walk": ["Walk-1", "Walk-2", "Walk-3", "Walk-4"],
   "jump": ["Falling"],
   "fall": ["Falling"],
   "crouch": ["Crouched(unused)"],
