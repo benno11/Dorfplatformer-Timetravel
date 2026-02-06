@@ -898,8 +898,8 @@ RENDER_ONLY:
             struct Layer { const char* frame; float factor; float vfactor; };
             Layer layers[3] = {
                 {"w1b.png", 0.2f, 0.2f},
-                {"w1f.png", 0.8f, 0.8f},
-                {"w1f.png", 0.5f, 0.5f}
+                {"w1f.png", 0.5f, 0.5f},
+                {"w1f.png", 0.8f, 0.8f}
             };
             for (const auto& layer : layers) {
                 const Frame* f = getBg(layer.frame);
