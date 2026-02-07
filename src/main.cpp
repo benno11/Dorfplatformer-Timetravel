@@ -20,17 +20,23 @@
 #include <filesystem>
 #include <sstream>
 #include <iomanip>
+#include <iostream>
+#if defined(__ANDROID__)
+#include <jni.h>
+#endif
 #include "TileMap.h"
 #include "LevelLoader.h"
 #include "Player.h"
 #include "PlayerController.h"
 #include "TextRenderer.h"
 #include "LevelSelect.h"
+#include "AssetPath.h"
 
 
 static std::vector<int> loadLevelNumberList(const std::string& path) {
-    std::ifstream f(path);
-    if (!f) return {};
+    const std::string text = ReadTextFile(path);
+    if (text.empty()) return {};
+    std::istringstream f(text);
     std::vector<int> out;
     std::string line;
     while (std::getline(f, line)) {
@@ -79,15 +85,16 @@ static std::string LevelPathFromId(int levelId) {
     std::ostringstream ss;
     ss << "assets/levels/level_" << std::setw(3) << std::setfill('0') << levelId << ".txt";
     std::string path = ss.str();
-    if (!std::filesystem::exists(path)) return "";
+    if (!FileExists(path)) return "";
     return path;
 }
 
 
 
 static std::vector<char> loadBlockDefs(const std::string& path) {
-    std::ifstream f(path);
-    if (!f) return {};
+    const std::string text = ReadTextFile(path);
+    if (text.empty()) return {};
+    std::istringstream f(text);
     std::vector<char> defs;
     std::string line;
     while (std::getline(f, line)) {
@@ -184,8 +191,9 @@ static bool parseTextureRect(const std::string& s, SDL_Rect& out) {
 
 static std::unordered_map<std::string, Frame> loadPlistFrames(const std::string& plistPath) {
     std::unordered_map<std::string, Frame> frames;
-    std::ifstream in(plistPath);
-    if (!in) return frames;
+    const std::string text = ReadTextFile(plistPath);
+    if (text.empty()) return frames;
+    std::istringstream in(text);
 
     std::string line;
     std::string currentName;
@@ -227,8 +235,9 @@ static std::unordered_map<std::string, Frame> loadPlistFrames(const std::string&
 
 static std::vector<FrameEntry> loadPlistFrameList(const std::string& plistPath) {
     std::vector<FrameEntry> frames;
-    std::ifstream in(plistPath);
-    if (!in) return frames;
+    const std::string text = ReadTextFile(plistPath);
+    if (text.empty()) return frames;
+    std::istringstream in(text);
 
     std::string line;
     std::string currentName;
@@ -297,7 +306,8 @@ static void renderFrameEx(SDL_Renderer* ren, SDL_Texture* tex, const Frame& f, c
 }
 
 static SDL_Texture* loadTextureWithColorKey(SDL_Renderer* ren, const std::string& path, Uint8 r, Uint8 g, Uint8 b) {
-    SDL_Surface* surf = IMG_Load(path.c_str());
+    const std::string resolved = ResolveAssetPath(path);
+    SDL_Surface* surf = IMG_Load(resolved.c_str());
     if (!surf) return nullptr;
     Uint32 key = SDL_MapRGB(surf->format, r, g, b);
     SDL_SetColorKey(surf, SDL_TRUE, key);
@@ -331,10 +341,12 @@ static bool windowToGamePoint(int wx, int wy, int winW, int winH, int baseW, int
 
 int main(int argc, char** argv) {
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "2");
+    SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
+    SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
     SDL_Log("SDL_Init completed");
     IMG_Init(IMG_INIT_PNG);
-    InitTextRenderer("assets/Fonts/Main.ttf");
+    InitTextRenderer(ResolveAssetPath("assets/Fonts/Main.ttf"));
     bool audioReady = false;
 #if HAS_SDL_MIXER
     int mixerFlags = MIX_INIT_MP3;
@@ -366,9 +378,9 @@ int main(int argc, char** argv) {
 
     nlohmann::json texJson;
     {
-        std::ifstream tin("assets/textures.json");
-        if (tin) {
-            try { tin >> texJson; } catch (...) { texJson = nlohmann::json(); }
+        const std::string text = ReadTextFile("assets/textures.json");
+        if (!text.empty()) {
+            try { texJson = nlohmann::json::parse(text); } catch (...) { texJson = nlohmann::json(); }
         }
     }
     auto texPath = [&](const std::string& section, const std::string& key, const std::string& fallback) -> std::string {
@@ -380,7 +392,7 @@ int main(int argc, char** argv) {
     };
 
     std::string pausePlist = texPath("plists", "pause", "assets/Sheets/DF_Pause-uhd.plist");
-    SDL_Texture* pauseTex = IMG_LoadTexture(ren, texPath("textures", "pause", "assets/Sheets/DF_Pause-uhd.png").c_str());
+    SDL_Texture* pauseTex = IMG_LoadTexture(ren, ResolveAssetPath(texPath("textures", "pause", "assets/Sheets/DF_Pause-uhd.png")).c_str());
     auto pauseFrames = loadPlistFrames(pausePlist);
 
     std::string blocksPlist = texPath("plists", "blocks", "assets/Sheets/DF_Blocks-uhd.plist");
@@ -391,7 +403,7 @@ int main(int argc, char** argv) {
     for (const auto& e : blocksFrameList) blocksFrameByName[e.name] = e.frame;
 
     std::string bgPlist = texPath("plists", "background", "assets/Sheets/DF_Background-uhd.plist");
-    SDL_Texture* bgTex = IMG_LoadTexture(ren, texPath("textures", "background", "assets/Sheets/DF_Background-uhd.png").c_str());
+    SDL_Texture* bgTex = IMG_LoadTexture(ren, ResolveAssetPath(texPath("textures", "background", "assets/Sheets/DF_Background-uhd.png")).c_str());
     auto bgFrameList = loadPlistFrameList(bgPlist);
     std::unordered_map<std::string, Frame> bgFrameByName;
     bgFrameByName.reserve(bgFrameList.size());
@@ -399,10 +411,10 @@ int main(int argc, char** argv) {
 
     std::unordered_map<int, std::string> tileFrameById;
     {
-        std::ifstream td("assets/tile_defs.json");
-        if (td) {
+        const std::string text = ReadTextFile("assets/tile_defs.json");
+        if (!text.empty()) {
             nlohmann::json j;
-            try { td >> j; } catch (...) { j = nlohmann::json(); }
+            try { j = nlohmann::json::parse(text); } catch (...) { j = nlohmann::json(); }
             auto readSection = [&](const char* key) {
                 if (!j.contains(key) || !j[key].is_object()) return;
                 for (auto it = j[key].begin(); it != j[key].end(); ++it) {
@@ -419,7 +431,7 @@ int main(int argc, char** argv) {
     }
 
     std::string playerPlist = texPath("plists", "player", "assets/Sheets/DF_Player1-uhd.plist");
-    SDL_Texture* playerTex = IMG_LoadTexture(ren, texPath("textures", "player", "assets/Sheets/DF_Player1-uhd.png").c_str());
+    SDL_Texture* playerTex = IMG_LoadTexture(ren, ResolveAssetPath(texPath("textures", "player", "assets/Sheets/DF_Player1-uhd.png")).c_str());
     auto playerFrameList = loadPlistFrameList(playerPlist);
     std::unordered_map<std::string, Frame> playerFramesByName;
     playerFramesByName.reserve(playerFrameList.size());
@@ -428,7 +440,7 @@ int main(int argc, char** argv) {
 #if HAS_SDL_MIXER
     Mix_Chunk* coinSfx = nullptr;
     if (audioReady) {
-        coinSfx = Mix_LoadWAV("assets/Audio/sfx/Coin.mp3");
+        coinSfx = Mix_LoadWAV(ResolveAssetPath("assets/Audio/sfx/Coin.mp3").c_str());
         if (!coinSfx) SDL_Log("Could not load coin sfx: %s", Mix_GetError());
     }
 #endif
@@ -453,11 +465,11 @@ int main(int argc, char** argv) {
 
     auto loadAnimConfig = [&](const std::string& path) -> AnimConfig {
         AnimConfig cfg;
-        std::ifstream in(path);
-        if (!in) return cfg;
+        const std::string text = ReadTextFile(path);
+        if (text.empty()) return cfg;
         nlohmann::json j;
         try {
-            in >> j;
+            j = nlohmann::json::parse(text);
         } catch (...) {
             return cfg;
         }
@@ -484,10 +496,10 @@ int main(int argc, char** argv) {
     float jumpBufferMax = 0.12f;
     MovementConfig movementCfg{};
     {
-        std::ifstream cin("assets/config.json");
-        if (cin) {
+        const std::string text = ReadTextFile("assets/config.json");
+        if (!text.empty()) {
             nlohmann::json cfg;
-            try { cin >> cfg; } catch (...) { cfg = nlohmann::json(); }
+            try { cfg = nlohmann::json::parse(text); } catch (...) { cfg = nlohmann::json(); }
             if (cfg.contains("jump_buffer_seconds") && cfg["jump_buffer_seconds"].is_number()) {
                 jumpBufferMax = (float)cfg["jump_buffer_seconds"].get<double>();
                 if (jumpBufferMax < 0.0f) jumpBufferMax = 0.0f;
@@ -657,7 +669,7 @@ int main(int argc, char** argv) {
                     Mix_FreeMusic(levelMusic);
                     levelMusic = nullptr;
                 }
-                levelMusic = Mix_LoadMUS(musicPath.c_str());
+                levelMusic = Mix_LoadMUS(ResolveAssetPath(musicPath).c_str());
                 if (levelMusic) {
                     Mix_PlayMusic(levelMusic, -1);
                 } else {
@@ -674,6 +686,7 @@ int main(int argc, char** argv) {
         bool showHitboxes = false;
         int pauseSelection = 0; // 0 = Resume, 1 = Restart, 2 = Quit
         bool returnToSelect = false;
+        std::unordered_map<SDL_FingerID, SDL_FPoint> activeTouches;
         SDL_Event e;
         Uint32 lastTicks = SDL_GetTicks();
 
@@ -704,40 +717,62 @@ int main(int argc, char** argv) {
         bool inputDown = false;
         int screenW = kBaseScreenW;
         int screenH = kBaseScreenH;
-        float uiSize = 84.0f;
-        float uiPad = 22.0f;
+        float uiSize = std::clamp(std::min((float)screenW, (float)screenH) * 0.16f, 110.0f, 190.0f);
+        float uiPad = std::clamp(uiSize * 0.22f, 20.0f, 44.0f);
+        float uiGap = std::clamp(uiSize * 0.18f, 12.0f, 34.0f);
         SDL_FRect touchLeftBtn{uiPad, screenH - uiPad - uiSize, uiSize, uiSize};
-        SDL_FRect touchRightBtn{uiPad + uiSize + 14.0f, screenH - uiPad - uiSize, uiSize, uiSize};
-        SDL_FRect touchDownBtn{uiPad + (uiSize + 14.0f) * 2.0f, screenH - uiPad - uiSize, uiSize, uiSize};
+        SDL_FRect touchRightBtn{uiPad + uiSize + uiGap, screenH - uiPad - uiSize, uiSize, uiSize};
+        SDL_FRect touchDownBtn{uiPad + (uiSize + uiGap) * 2.0f, screenH - uiPad - uiSize, uiSize, uiSize};
         SDL_FRect touchJumpBtn{screenW - uiPad - uiSize, screenH - uiPad - uiSize, uiSize, uiSize};
         bool touchLeft = false;
         bool touchRight = false;
         bool touchDown = false;
         bool touchJump = false;
 
-        if (!paused) {
-            int touchDevices = SDL_GetNumTouchDevices();
-            for (int di = 0; di < touchDevices; ++di) {
-                SDL_TouchID tid = SDL_GetTouchDevice(di);
-                if (tid == 0) continue;
-                int fingerCount = SDL_GetNumTouchFingers(tid);
-                for (int fi = 0; fi < fingerCount; ++fi) {
-                    SDL_Finger* f = SDL_GetTouchFinger(tid, fi);
-                    if (!f) continue;
-                    float px = f->x * screenW;
-                    float py = f->y * screenH;
-                    if (pointInRectF(px, py, touchLeftBtn)) touchLeft = true;
-                    if (pointInRectF(px, py, touchRightBtn)) touchRight = true;
-                    if (pointInRectF(px, py, touchDownBtn)) touchDown = true;
-                    if (pointInRectF(px, py, touchJumpBtn)) touchJump = true;
-                }
+        auto computeTouchButtons = [&]() {
+            touchLeft = false;
+            touchRight = false;
+            touchDown = false;
+            touchJump = false;
+            if (paused) return;
+            int winW = 0, winH = 0;
+            SDL_GetWindowSize(win, &winW, &winH);
+            auto expandRect = [](const SDL_FRect& r, float pad) {
+                return SDL_FRect{r.x - pad, r.y - pad, r.w + pad * 2.0f, r.h + pad * 2.0f};
+            };
+            float hitPad = std::max(8.0f, uiSize * 0.12f);
+            SDL_FRect leftHit = expandRect(touchLeftBtn, hitPad);
+            SDL_FRect rightHit = expandRect(touchRightBtn, hitPad);
+            SDL_FRect downHit = expandRect(touchDownBtn, hitPad);
+            SDL_FRect jumpHit = expandRect(touchJumpBtn, hitPad);
+            for (const auto& kv : activeTouches) {
+                int wx = (int)std::lround(kv.second.x * winW);
+                int wy = (int)std::lround(kv.second.y * winH);
+                int gx = 0, gy = 0;
+                if (!windowToGamePoint(wx, wy, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy)) continue;
+                float px = (float)gx;
+                float py = (float)gy;
+                if (pointInRectF(px, py, leftHit)) touchLeft = true;
+                if (pointInRectF(px, py, rightHit)) touchRight = true;
+                if (pointInRectF(px, py, downHit)) touchDown = true;
+                if (pointInRectF(px, py, jumpHit)) touchJump = true;
             }
-        }
+        };
+        computeTouchButtons();
 
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) { running = false; levelRunning = false; }
             if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
                 paused = true;
+            }
+            if (e.type == SDL_FINGERDOWN) {
+                activeTouches[e.tfinger.fingerId] = SDL_FPoint{e.tfinger.x, e.tfinger.y};
+            }
+            if (e.type == SDL_FINGERMOTION) {
+                activeTouches[e.tfinger.fingerId] = SDL_FPoint{e.tfinger.x, e.tfinger.y};
+            }
+            if (e.type == SDL_FINGERUP) {
+                activeTouches.erase(e.tfinger.fingerId);
             }
             if (e.type == SDL_KEYDOWN && e.key.repeat == 0) {
                 if (e.key.keysym.sym == SDLK_F11) {
@@ -798,6 +833,7 @@ int main(int argc, char** argv) {
                 }
             }
         }
+        computeTouchButtons();
 
         if (!paused) {
             float touchMove = 0.0f;
@@ -1231,8 +1267,7 @@ RENDER_ONLY:
         }
 
         if (!paused) {
-            int touchDevices = SDL_GetNumTouchDevices();
-            bool showMobileUi = touchDevices > 0;
+            bool showMobileUi = (SDL_GetNumTouchDevices() > 0) || !activeTouches.empty();
             if (showMobileUi) {
                 auto drawTouchBtn = [&](const SDL_FRect& r, bool active) {
                     SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
@@ -1246,10 +1281,17 @@ RENDER_ONLY:
                 drawTouchBtn(touchDownBtn, touchDown);
                 drawTouchBtn(touchJumpBtn, touchJump);
                 SDL_SetRenderDrawColor(ren, 240, 240, 240, 220);
-                DrawText(ren, (int)touchLeftBtn.x + 30, (int)touchLeftBtn.y + 28, 2, "L");
-                DrawText(ren, (int)touchRightBtn.x + 30, (int)touchRightBtn.y + 28, 2, "R");
-                DrawText(ren, (int)touchDownBtn.x + 18, (int)touchDownBtn.y + 28, 2, "DN");
-                DrawText(ren, (int)touchJumpBtn.x + 18, (int)touchJumpBtn.y + 28, 2, "JMP");
+                int touchLabelScale = std::clamp((int)std::lround(uiSize / 44.0f), 2, 4);
+                auto drawBtnLabel = [&](const SDL_FRect& btn, const std::string& text) {
+                    int tw = MeasureTextWidth(touchLabelScale, text);
+                    int tx = (int)std::lround(btn.x + (btn.w - tw) * 0.5f);
+                    int ty = (int)std::lround(btn.y + (btn.h * 0.5f) - (10.0f * touchLabelScale));
+                    DrawText(ren, tx, ty, touchLabelScale, text);
+                };
+                drawBtnLabel(touchLeftBtn, "L");
+                drawBtnLabel(touchRightBtn, "R");
+                drawBtnLabel(touchDownBtn, "DN");
+                drawBtnLabel(touchJumpBtn, "JMP");
                 SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
             }
         }
@@ -1298,3 +1340,12 @@ RENDER_ONLY:
     SDL_Quit();
     return 0;
 }
+
+#if defined(__ANDROID__)
+extern "C" JNIEXPORT void JNICALL
+Java_com_Benno111_dorfplatformertimetravel_MainActivity_runNativeGame(JNIEnv*, jobject) {
+    char arg0[] = "platformer";
+    char* argv[] = { arg0, nullptr };
+    main(1, argv);
+}
+#endif

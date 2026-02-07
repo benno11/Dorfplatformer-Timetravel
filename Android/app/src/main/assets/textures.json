@@ -1,0 +1,14 @@
+{
+  "textures": {
+    "pause": "assets/Sheets/DF_Pause-uhd.png",
+    "blocks": "assets/Sheets/DF_Blocks-uhd.png",
+    "player": "assets/Sheets/DF_Player1-uhd.png",
+    "background": "assets/Sheets/DF_Background-uhd.png"
+  },
+  "plists": {
+    "pause": "assets/Sheets/DF_Pause-uhd.plist",
+    "blocks": "assets/Sheets/DF_Blocks-uhd.plist",
+    "player": "assets/Sheets/DF_Player1-uhd.plist",
+    "background": "assets/Sheets/DF_Background-uhd.plist"
+  }
+}

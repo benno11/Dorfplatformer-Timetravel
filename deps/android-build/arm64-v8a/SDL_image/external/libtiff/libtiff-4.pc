@@ -1,0 +1,11 @@
+prefix=/home/benno111/Documents/GitHub/DF-New/deps/android-install/arm64-v8a/SDL_image
+exec_prefix=/home/benno111/Documents/GitHub/DF-New/deps/android-install/arm64-v8a/SDL_image
+libdir=/home/benno111/Documents/GitHub/DF-New/deps/android-install/arm64-v8a/SDL_image/lib
+includedir=/home/benno111/Documents/GitHub/DF-New/deps/android-install/arm64-v8a/SDL_image/include
+
+Name: libtiff
+Description:  Tag Image File Format (TIFF) library.
+Version: 4.2.0
+Libs: -L/home/benno111/Documents/GitHub/DF-New/deps/android-install/arm64-v8a/SDL_image/lib -ltiff
+Libs.private: 
+Cflags: -I/home/benno111/Documents/GitHub/DF-New/deps/android-install/arm64-v8a/SDL_image/include

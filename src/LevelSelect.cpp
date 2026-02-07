@@ -1,17 +1,36 @@
 #include "LevelSelect.h"
+#include "AssetPath.h"
 
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <string>
 #include <vector>
+#include <nlohmann/json.hpp>
 
 #include "TextRenderer.h"
 
 namespace {
 std::vector<std::string> loadLevelList() {
-    namespace fs = std::filesystem;
     std::vector<std::string> out;
+#if defined(__ANDROID__)
+    const std::string text = ReadTextFile("assets/levels/levels.json");
+    if (!text.empty()) {
+        nlohmann::json j;
+        try { j = nlohmann::json::parse(text); } catch (...) { j = nlohmann::json(); }
+        if (j.contains("levels") && j["levels"].is_array()) {
+            for (const auto& v : j["levels"]) {
+                if (!v.is_string()) continue;
+                std::string name = v.get<std::string>();
+                if (name.size() >= 7 && name.substr(name.size() - 7) == ".bnnlvl") {
+                    name = name.substr(0, name.size() - 7) + ".txt";
+                }
+                out.push_back(name);
+            }
+        }
+    }
+#else
+    namespace fs = std::filesystem;
     fs::path dir("assets/levels");
     if (!fs::exists(dir)) return out;
     for (const auto& entry : fs::directory_iterator(dir)) {
@@ -19,6 +38,7 @@ std::vector<std::string> loadLevelList() {
         auto p = entry.path();
         if (p.extension() == ".txt") out.push_back(p.filename().string());
     }
+#endif
     std::sort(out.begin(), out.end());
     return out;
 }
@@ -34,6 +54,10 @@ std::string RunLevelSelect(SDL_Window* win, SDL_Renderer* ren) {
     bool chosen = false;
     bool draggingScrollbar = false;
     int dragOffsetY = 0;
+    SDL_FingerID activeFinger = 0;
+    float lastFingerY = 0.0f;
+    float fingerDownY = 0.0f;
+    bool fingerMoved = false;
 
     int winW = 960, winH = 540;
     SDL_GetWindowSize(win, &winW, &winH);
@@ -69,6 +93,40 @@ std::string RunLevelSelect(SDL_Window* win, SDL_Renderer* ren) {
                 scrollY -= e.wheel.y * rowH;
                 if (scrollY < 0) scrollY = 0;
                 if (scrollY > maxScroll) scrollY = maxScroll;
+            }
+            if (e.type == SDL_FINGERDOWN && activeFinger == 0) {
+                activeFinger = e.tfinger.fingerId;
+                lastFingerY = e.tfinger.y * winH;
+                fingerDownY = lastFingerY;
+                fingerMoved = false;
+            }
+            if (e.type == SDL_FINGERMOTION && e.tfinger.fingerId == activeFinger) {
+                float y = e.tfinger.y * winH;
+                float dy = y - lastFingerY;
+                lastFingerY = y;
+                if (std::fabs(y - fingerDownY) > 6.0f) fingerMoved = true;
+                scrollY -= (int)std::lround(dy);
+                if (scrollY < 0) scrollY = 0;
+                if (scrollY > maxScroll) scrollY = maxScroll;
+            }
+            if (e.type == SDL_FINGERUP && e.tfinger.fingerId == activeFinger) {
+                float y = e.tfinger.y * winH;
+                if (!fingerMoved) {
+                    int localY = (int)std::lround(y) - pad + scrollY;
+                    if (localY >= 0) {
+                        int idx = localY / rowH;
+                        if (idx >= 0 && idx < (int)levels.size()) {
+                            if (selected == idx) {
+                                chosen = true;
+                                running = false;
+                            } else {
+                                selected = idx;
+                            }
+                        }
+                    }
+                }
+                activeFinger = 0;
+                fingerMoved = false;
             }
             if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
                 SDL_Point pt{e.button.x, e.button.y};

@@ -1,0 +1,23 @@
+#cmakedefine01 ARCH_X86
+#cmakedefine01 ARCH_X86_32
+#cmakedefine01 ARCH_X86_64
+#cmakedefine01 ARCH_ARM
+#cmakedefine01 ARCH_AARCH64
+#cmakedefine01 ARCH_PPC64LE
+#cmakedefine01 HAVE_AS_FUNC
+#cmakedefine01 CONFIG_8BPC
+#cmakedefine01 CONFIG_16BPC
+#cmakedefine01 HAVE_ASM
+#cmakedefine01 CONFIG_LOG
+#cmakedefine01 ENDIANNESS_BIG
+#cmakedefine STACK_ALIGNMENT @STACK_ALIGNMENT@
+#cmakedefine PREFIX
+#cmakedefine HAVE_C11_GENERIC
+#cmakedefine HAVE_UNISTD_H
+#cmakedefine HAVE_IO_H
+#cmakedefine HAVE_PTHREAD_NP_H
+#cmakedefine HAVE_ALIGNED_MALLOC
+#cmakedefine HAVE_POSIX_MEMALIGN
+#cmakedefine HAVE_MEMALIGN
+#cmakedefine HAVE_PTHREAD_GETAFFINITY_NP
+#cmakedefine HAVE_PTHREAD_SETAFFINITY_NP

@@ -1,0 +1,11 @@
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL/CMakeFiles/sdl_headers_copy.dir
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL/CMakeFiles/SDL2main.dir
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL/CMakeFiles/SDL2.dir
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL/CMakeFiles/SDL2_test.dir
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL/CMakeFiles/uninstall.dir
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL/CMakeFiles/edit_cache.dir
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL/CMakeFiles/rebuild_cache.dir
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL/CMakeFiles/list_install_components.dir
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL/CMakeFiles/install.dir
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL/CMakeFiles/install/local.dir
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL/CMakeFiles/install/strip.dir

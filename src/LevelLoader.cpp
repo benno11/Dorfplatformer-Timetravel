@@ -1,11 +1,12 @@
 #include "LevelLoader.h"
+#include "AssetPath.h"
 
 #include <SDL2/SDL.h>
-#include <fstream>
 #include <string>
 #include <vector>
 #include <cctype>
 #include <algorithm>
+#include <sstream>
 
 static constexpr int TILE_SIZE = 32;
 
@@ -13,14 +14,13 @@ static constexpr int TILE_SIZE = 32;
    File helpers
 ------------------------------ */
 static std::string readWholeFile(const std::string& path) {
-    std::ifstream f(path, std::ios::binary);
-    if (!f) return {};
-    return std::string((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    return ReadTextFile(path);
 }
 
 static std::vector<char> loadBlockDefs(const std::string& path) {
-    std::ifstream f(path);
-    if (!f) return {};
+    const std::string text = ReadTextFile(path);
+    if (text.empty()) return {};
+    std::istringstream f(text);
     std::vector<char> defs;
     std::string line;
     while (std::getline(f, line)) {
