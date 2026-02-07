@@ -7,6 +7,10 @@ CXXFLAGS="-std=c++17 -O2"
 SRC_DIR="src"
 OUT_PLATFORMER="platformer"
 OUT_SHEET="sheet_config"
+MIXER_LIBS=""
+if pkg-config --exists SDL2_mixer; then
+  MIXER_LIBS="-lSDL2_mixer"
+fi
 
 # ---- BUILD ----
 $CXX $CXXFLAGS \
@@ -15,6 +19,8 @@ $CXX $CXXFLAGS \
   $SRC_DIR/LevelLoader.cpp \
   -lSDL2 \
   -lSDL2_image \
+  -lSDL2_ttf \
+  $MIXER_LIBS \
   -o $OUT_PLATFORMER
 
 $CXX $CXXFLAGS \

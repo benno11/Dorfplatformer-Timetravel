@@ -15,17 +15,23 @@ void TileMap::resize(int W,int H){
 }
 
 unsigned char TileMap::getSolid(int x,int y) const{
-    if(x<0||y<0||x>=w||y>=h) return 1;
+    if(x<0||x>=w) return 1;
+    if(y<0) y=0;
+    else if(y>=h) y=h-1;
     return solid[y*w+x];
 }
 
 unsigned char TileMap::getSemiSolid(int x,int y) const{
-    if(x<0||y<0||x>=w||y>=h) return 0;
+    if(x<0||x>=w) return 0;
+    if(y<0) y=0;
+    else if(y>=h) y=h-1;
     return semisolid[y*w+x];
 }
 
 unsigned char TileMap::getWater(int x,int y) const{
-    if(x<0||y<0||x>=w||y>=h) return 0;
+    if(x<0||x>=w) return 0;
+    if(y<0) y=0;
+    else if(y>=h) y=h-1;
     return water[y*w+x];
 }
 

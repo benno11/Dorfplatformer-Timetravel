@@ -1,5 +1,15 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
+#include <SDL2/SDL_ttf.h>
+#if __has_include(<SDL2/SDL_mixer.h>)
+#include <SDL2/SDL_mixer.h>
+#define HAS_SDL_MIXER 1
+#elif __has_include(<SDL_mixer.h>)
+#include <SDL_mixer.h>
+#define HAS_SDL_MIXER 1
+#else
+#define HAS_SDL_MIXER 0
+#endif
 #include <vector>
 #include <string>
 #include <algorithm>
@@ -9,6 +19,7 @@
 #include <unordered_map>
 #include <nlohmann/json.hpp>
 #include <filesystem>
+#include <sstream>
 #include "TileMap.h"
 #include "LevelLoader.h"
 
@@ -31,6 +42,11 @@ struct Player {
     float animTime = 0.0f;
 };
 
+static void drawText5x7(SDL_Renderer* ren, int x, int y, int scale, const std::string& text);
+static TTF_Font* getMainFont(int scale);
+
+static std::unordered_map<int, TTF_Font*> gFontCache;
+
 static std::vector<std::string> loadLevelList() {
     namespace fs = std::filesystem;
     std::vector<std::string> out;
@@ -45,21 +61,78 @@ static std::vector<std::string> loadLevelList() {
     return out;
 }
 
+static std::string levelIdFromFilename(const std::string& name) {
+    std::string out;
+    for (char ch : name) {
+        if (std::isdigit((unsigned char)ch)) out.push_back(ch);
+    }
+    if (out.empty()) return "000";
+    return out;
+}
+
+static std::vector<int> loadLevelNumberList(const std::string& path) {
+    std::ifstream f(path);
+    if (!f) return {};
+    std::vector<int> out;
+    std::string line;
+    while (std::getline(f, line)) {
+        std::string digits;
+        for (char ch : line) {
+            if (std::isdigit((unsigned char)ch)) digits.push_back(ch);
+        }
+        if (digits.size() < 3) continue;
+        int v = 0;
+        try { v = std::stoi(digits.substr(0, 3)); } catch (...) { continue; }
+        out.push_back(v);
+    }
+    return out;
+}
+
+static int parseLevelIndexFromPath(const std::string& levelPath) {
+    const std::string name = std::filesystem::path(levelPath).stem().string(); // level_001
+    std::string digits;
+    for (char ch : name) {
+        if (std::isdigit((unsigned char)ch)) digits.push_back(ch);
+    }
+    if (digits.empty()) return -1;
+    try { return std::stoi(digits); } catch (...) { return -1; }
+}
+
 static std::string runLevelSelect(SDL_Window* win, SDL_Renderer* ren) {
     std::vector<std::string> levels = loadLevelList();
     if (levels.empty()) return "";
 
-    const int rowH = 28;
-    const int pad = 16;
     int selected = 0;
     int scrollY = 0;
     bool running = true;
     bool chosen = false;
+    bool draggingScrollbar = false;
+    int dragOffsetY = 0;
 
     int winW = 960, winH = 540;
     SDL_GetWindowSize(win, &winW, &winH);
 
     while (running) {
+        SDL_GetWindowSize(win, &winW, &winH);
+        float uiScale = std::min((float)winW / 960.0f, (float)winH / 540.0f);
+        uiScale = std::clamp(uiScale, 0.75f, 2.0f);
+        int rowH = std::max(24, (int)std::lround(28.0f * uiScale));
+        int pad = std::max(10, (int)std::lround(16.0f * uiScale));
+        int textScale = std::max(1, (int)std::lround(2.0f * uiScale));
+
+        int contentH = (int)levels.size() * rowH;
+        int viewportH = std::max(1, winH - pad * 2);
+        int maxScroll = std::max(0, contentH - viewportH);
+        scrollY = std::clamp(scrollY, 0, maxScroll);
+
+        int barW = std::max(8, (int)std::lround(10.0f * uiScale));
+        SDL_Rect track{winW - pad - barW, pad, barW, viewportH};
+        float visibleRatio = (contentH > 0) ? std::clamp((float)viewportH / (float)contentH, 0.0f, 1.0f) : 1.0f;
+        int thumbH = std::max(std::max(16, (int)std::lround(28.0f * uiScale)), (int)std::lround(track.h * visibleRatio));
+        int thumbTravel = std::max(1, track.h - thumbH);
+        int thumbY = track.y + ((maxScroll > 0) ? (int)std::lround((float)scrollY / (float)maxScroll * thumbTravel) : 0);
+        SDL_Rect thumb{track.x, thumbY, barW, thumbH};
+
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) {
@@ -68,9 +141,30 @@ static std::string runLevelSelect(SDL_Window* win, SDL_Renderer* ren) {
             }
             if (e.type == SDL_MOUSEWHEEL) {
                 scrollY -= e.wheel.y * rowH;
-                int maxScroll = std::max(0, (int)levels.size() * rowH - (winH - pad * 2));
                 if (scrollY < 0) scrollY = 0;
                 if (scrollY > maxScroll) scrollY = maxScroll;
+            }
+            if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
+                SDL_Point pt{e.button.x, e.button.y};
+                if (SDL_PointInRect(&pt, &thumb)) {
+                    draggingScrollbar = true;
+                    dragOffsetY = e.button.y - thumb.y;
+                    continue;
+                }
+                if (SDL_PointInRect(&pt, &track)) {
+                    int newThumbY = std::clamp(e.button.y - thumbH / 2, track.y, track.y + track.h - thumbH);
+                    float t = (float)(newThumbY - track.y) / (float)std::max(1, track.h - thumbH);
+                    scrollY = (int)std::lround(t * maxScroll);
+                    continue;
+                }
+            }
+            if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_LEFT) {
+                draggingScrollbar = false;
+            }
+            if (e.type == SDL_MOUSEMOTION && draggingScrollbar) {
+                int newThumbY = std::clamp(e.motion.y - dragOffsetY, track.y, track.y + track.h - thumbH);
+                float t = (float)(newThumbY - track.y) / (float)std::max(1, track.h - thumbH);
+                scrollY = (int)std::lround(t * maxScroll);
             }
             if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
                 int y = e.button.y - pad + scrollY;
@@ -92,9 +186,14 @@ static std::string runLevelSelect(SDL_Window* win, SDL_Renderer* ren) {
                 }
                 if (e.key.keysym.sym == SDLK_DOWN) {
                     selected = std::min(selected + 1, (int)levels.size() - 1);
+                    int rowTop = selected * rowH;
+                    int rowBottom = rowTop + rowH;
+                    if (rowBottom - scrollY > pad + viewportH) scrollY = rowBottom - viewportH;
                 }
                 if (e.key.keysym.sym == SDLK_UP) {
                     selected = std::max(selected - 1, 0);
+                    int rowTop = selected * rowH;
+                    if (rowTop < scrollY) scrollY = rowTop;
                 }
                 if (e.key.keysym.sym == SDLK_RETURN || e.key.keysym.sym == SDLK_KP_ENTER) {
                     chosen = true;
@@ -102,9 +201,6 @@ static std::string runLevelSelect(SDL_Window* win, SDL_Renderer* ren) {
                 }
             }
         }
-
-        std::string title = "Select Level: " + levels[selected] + " (Enter or double-click)";
-        SDL_SetWindowTitle(win, title.c_str());
 
         SDL_SetRenderDrawColor(ren, 18, 18, 22, 255);
         SDL_RenderClear(ren);
@@ -117,8 +213,18 @@ static std::string runLevelSelect(SDL_Window* win, SDL_Renderer* ren) {
             } else {
                 SDL_SetRenderDrawColor(ren, 40, 50, 70, 255);
             }
-            SDL_Rect r{pad, y, winW - pad * 2, rowH - 4};
+            SDL_Rect r{pad, y, winW - pad * 3 - barW, rowH - 4};
             SDL_RenderFillRect(ren, &r);
+
+            SDL_SetRenderDrawColor(ren, 235, 235, 235, 255);
+            drawText5x7(ren, r.x + 8, r.y + 6, textScale, levels[i]);
+        }
+
+        if (maxScroll > 0) {
+            SDL_SetRenderDrawColor(ren, 48, 58, 76, 255);
+            SDL_RenderFillRect(ren, &track);
+            SDL_SetRenderDrawColor(ren, draggingScrollbar ? 220 : 180, draggingScrollbar ? 220 : 180, draggingScrollbar ? 220 : 180, 255);
+            SDL_RenderFillRect(ren, &thumb);
         }
 
         SDL_RenderPresent(ren);
@@ -199,50 +305,20 @@ static void applyBlockDefAt(TileMap& map, int idx, unsigned short tileId, const 
 }
 
 static void drawDigit3x5(SDL_Renderer* ren, int x, int y, int scale, int digit) {
-    static const char* kDigits[10][5] = {
-        {"111","101","101","101","111"}, // 0
-        {"010","110","010","010","111"}, // 1
-        {"111","001","111","100","111"}, // 2
-        {"111","001","111","001","111"}, // 3
-        {"101","101","111","001","001"}, // 4
-        {"111","100","111","001","111"}, // 5
-        {"111","100","111","101","111"}, // 6
-        {"111","001","001","001","001"}, // 7
-        {"111","101","111","101","111"}, // 8
-        {"111","101","111","001","111"}, // 9
-    };
-
     if (digit < 0 || digit > 9) return;
-    for (int row = 0; row < 5; ++row) {
-        for (int col = 0; col < 3; ++col) {
-            if (kDigits[digit][row][col] != '1') continue;
-            SDL_Rect r{ x + col * scale, y + row * scale, scale, scale };
-            SDL_RenderFillRect(ren, &r);
-        }
-    }
+    drawText5x7(ren, x, y, scale, std::to_string(digit));
 }
 
 static void drawNumber3x5(SDL_Renderer* ren, int x, int y, int scale, int value) {
-    if (value < 0) value = -value;
-    int digits[10];
-    int count = 0;
-    if (value == 0) {
-        digits[count++] = 0;
-    } else {
-        while (value > 0 && count < 10) {
-            digits[count++] = value % 10;
-            value /= 10;
-        }
+    std::string s = std::to_string(value);
+    TTF_Font* font = getMainFont(scale);
+    if (!font) return;
+    int textW = 0, textH = 0;
+    if (TTF_SizeUTF8(font, s.c_str(), &textW, &textH) != 0) {
+        drawText5x7(ren, x, y, scale, s);
+        return;
     }
-
-    int digitW = 3 * scale;
-    int spacing = scale;
-    int totalW = count * digitW + (count - 1) * spacing;
-    int startX = x - totalW / 2;
-    for (int i = count - 1; i >= 0; --i) {
-        drawDigit3x5(ren, startX, y, scale, digits[i]);
-        startX += digitW + spacing;
-    }
+    drawText5x7(ren, x - textW / 2, y, scale, s);
 }
 
 struct Frame {
@@ -390,83 +466,66 @@ static void renderFrameEx(SDL_Renderer* ren, SDL_Texture* tex, const Frame& f, c
     SDL_RenderCopyEx(ren, tex, &src, &dstRot, -90.0, &center, flip);
 }
 
-static void drawChar5x7(SDL_Renderer* ren, int x, int y, int scale, char ch) {
-    const char* rows[7] = { "00000","00000","00000","00000","00000","00000","00000" };
-    switch (ch) {
-        case 'A': {
-            static const char* r[7] = {"01110","10001","10001","11111","10001","10001","10001"};
-            std::copy(r, r + 7, rows);
-        } break;
-        case 'D': {
-            static const char* r[7] = {"11110","10001","10001","10001","10001","10001","11110"};
-            std::copy(r, r + 7, rows);
-        } break;
-        case 'E': {
-            static const char* r[7] = {"11111","10000","10000","11110","10000","10000","11111"};
-            std::copy(r, r + 7, rows);
-        } break;
-        case 'I': {
-            static const char* r[7] = {"11111","00100","00100","00100","00100","00100","11111"};
-            std::copy(r, r + 7, rows);
-        } break;
-        case 'M': {
-            static const char* r[7] = {"10001","11011","10101","10001","10001","10001","10001"};
-            std::copy(r, r + 7, rows);
-        } break;
-        case 'P': {
-            static const char* r[7] = {"11110","10001","10001","11110","10000","10000","10000"};
-            std::copy(r, r + 7, rows);
-        } break;
-        case 'Q': {
-            static const char* r[7] = {"01110","10001","10001","10001","10101","10010","01101"};
-            std::copy(r, r + 7, rows);
-        } break;
-        case 'R': {
-            static const char* r[7] = {"11110","10001","10001","11110","10100","10010","10001"};
-            std::copy(r, r + 7, rows);
-        } break;
-        case 'S': {
-            static const char* r[7] = {"01111","10000","10000","01110","00001","00001","11110"};
-            std::copy(r, r + 7, rows);
-        } break;
-        case 'T': {
-            static const char* r[7] = {"11111","00100","00100","00100","00100","00100","00100"};
-            std::copy(r, r + 7, rows);
-        } break;
-        case 'U': {
-            static const char* r[7] = {"10001","10001","10001","10001","10001","10001","01110"};
-            std::copy(r, r + 7, rows);
-        } break;
-        default:
-            break;
-    }
-
-    for (int row = 0; row < 7; ++row) {
-        for (int col = 0; col < 5; ++col) {
-            if (rows[row][col] != '1') continue;
-            SDL_Rect r{ x + col * scale, y + row * scale, scale, scale };
-            SDL_RenderFillRect(ren, &r);
-        }
-    }
+static TTF_Font* getMainFont(int scale) {
+    int pt = std::max(12, scale * 8);
+    auto it = gFontCache.find(pt);
+    if (it != gFontCache.end()) return it->second;
+    TTF_Font* font = TTF_OpenFont("assets/Fonts/Main.ttf", pt);
+    if (!font) return nullptr;
+    gFontCache[pt] = font;
+    return font;
 }
 
 static void drawText5x7(SDL_Renderer* ren, int x, int y, int scale, const std::string& text) {
-    int spacing = scale;
-    int charW = 5 * scale;
-    int cursorX = x;
-    for (char ch : text) {
-        if (ch == ' ') {
-            cursorX += charW + spacing;
-            continue;
-        }
-        drawChar5x7(ren, cursorX, y, scale, (char)std::toupper((unsigned char)ch));
-        cursorX += charW + spacing;
+    if (text.empty()) return;
+    TTF_Font* font = getMainFont(scale);
+    if (!font) return;
+
+    Uint8 r = 255, g = 255, b = 255, a = 255;
+    SDL_GetRenderDrawColor(ren, &r, &g, &b, &a);
+    SDL_Color color{r, g, b, a};
+
+    SDL_Surface* surf = TTF_RenderUTF8_Blended(font, text.c_str(), color);
+    if (!surf) return;
+    SDL_Texture* tex = SDL_CreateTextureFromSurface(ren, surf);
+    if (!tex) {
+        SDL_FreeSurface(surf);
+        return;
     }
+    SDL_Rect dst{x, y, surf->w, surf->h};
+    SDL_FreeSurface(surf);
+    SDL_RenderCopy(ren, tex, nullptr, &dst);
+    SDL_DestroyTexture(tex);
 }
 
 static void drawDebugNumber(SDL_Renderer* ren, int x, int y, int scale, const std::string& label, int value) {
     drawText5x7(ren, x, y, scale, label);
-    drawNumber3x5(ren, x + (int)label.size() * (5 * scale + scale) + 6, y + scale, scale, value);
+    TTF_Font* font = getMainFont(scale);
+    int labelW = 0;
+    if (font) TTF_SizeUTF8(font, label.c_str(), &labelW, nullptr);
+    drawText5x7(ren, x + labelW + 8, y, scale, std::to_string(value));
+}
+
+static SDL_Rect computePresentRect(int winW, int winH, int baseW, int baseH) {
+    if (winW <= 0 || winH <= 0 || baseW <= 0 || baseH <= 0) return SDL_Rect{0, 0, winW, winH};
+    float sx = (float)winW / (float)baseW;
+    float sy = (float)winH / (float)baseH;
+    float s = std::min(sx, sy);
+    int w = std::max(1, (int)std::floor(baseW * s));
+    int h = std::max(1, (int)std::floor(baseH * s));
+    int x = (winW - w) / 2;
+    int y = (winH - h) / 2;
+    return SDL_Rect{x, y, w, h};
+}
+
+static bool windowToGamePoint(int wx, int wy, int winW, int winH, int baseW, int baseH, int& gx, int& gy) {
+    SDL_Rect dst = computePresentRect(winW, winH, baseW, baseH);
+    if (wx < dst.x || wy < dst.y || wx >= dst.x + dst.w || wy >= dst.y + dst.h) return false;
+    float u = (float)(wx - dst.x) / (float)dst.w;
+    float v = (float)(wy - dst.y) / (float)dst.h;
+    gx = std::clamp((int)std::floor(u * baseW), 0, baseW - 1);
+    gy = std::clamp((int)std::floor(v * baseH), 0, baseH - 1);
+    return true;
 }
 
 int main(int argc, char** argv) {
@@ -474,16 +533,36 @@ int main(int argc, char** argv) {
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
     SDL_Log("SDL_Init completed");
     IMG_Init(IMG_INIT_PNG);
+    bool ttfReady = (TTF_Init() == 0);
+    if (!ttfReady) SDL_Log("TTF_Init failed: %s", TTF_GetError());
+    bool audioReady = false;
+#if HAS_SDL_MIXER
+    int mixerFlags = MIX_INIT_MP3;
+    audioReady = (Mix_Init(mixerFlags) & mixerFlags) == mixerFlags &&
+                 Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) == 0;
+    if (!audioReady) SDL_Log("Audio mixer init failed: %s", Mix_GetError());
+#else
+    SDL_Log("SDL_mixer not found at compile time: music playback disabled.");
+#endif
+
+    constexpr int kBaseScreenW = 960;
+    constexpr int kBaseScreenH = 540;
 
     SDL_Window* win = SDL_CreateWindow(
         "Dorfplatformer Timetravel",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-        960, 540,
-        SDL_WINDOW_SHOWN
+        kBaseScreenW, kBaseScreenH,
+        SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE
     );
 
     SDL_Renderer* ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
     SDL_Log("Window and renderer created");
+    SDL_Texture* gameTarget = SDL_CreateTexture(
+        ren,
+        SDL_PIXELFORMAT_RGBA8888,
+        SDL_TEXTUREACCESS_TARGET,
+        kBaseScreenW, kBaseScreenH
+    );
 
     nlohmann::json texJson;
     {
@@ -607,12 +686,40 @@ int main(int argc, char** argv) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Asset Load Error", msg.c_str(), win);
         SDL_DestroyRenderer(ren);
         SDL_DestroyWindow(win);
+        if (audioReady) {
+#if HAS_SDL_MIXER
+            Mix_CloseAudio();
+            Mix_Quit();
+#endif
+        }
+        for (auto& kv : gFontCache) {
+            if (kv.second) TTF_CloseFont(kv.second);
+        }
+        gFontCache.clear();
+        if (ttfReady) TTF_Quit();
+        SDL_Quit();
+        return 1;
+    }
+    if (!gameTarget) {
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Render Target Error", "Failed to create game render target.", win);
+        if (playerTex) SDL_DestroyTexture(playerTex);
+        if (bgTex) SDL_DestroyTexture(bgTex);
+        if (blocksTex) SDL_DestroyTexture(blocksTex);
+        if (pauseTex) SDL_DestroyTexture(pauseTex);
+        SDL_DestroyRenderer(ren);
+        SDL_DestroyWindow(win);
+        for (auto& kv : gFontCache) {
+            if (kv.second) TTF_CloseFont(kv.second);
+        }
+        gFontCache.clear();
+        if (ttfReady) TTF_Quit();
         SDL_Quit();
         return 1;
     }
 
     bool fullscreen = false;
     bool clampCamX = true;
+    const std::vector<int> levelNumberList = loadLevelNumberList("assets/Level Numer List.txt");
     bool running = true;
     while (running) {
         std::string levelPath = runLevelSelect(win, ren);
@@ -624,6 +731,13 @@ int main(int argc, char** argv) {
         std::vector<ObjectInstance> objects;
         LevelMeta meta;
         Player player;
+#if HAS_SDL_MIXER
+        Mix_Music* levelMusic = nullptr;
+#endif
+        char TimeWarpID = 'N';
+        int world_id = 0;
+        int Level_Part_id = 0;
+        int Time_ID = 0;
         std::vector<char> blockDefs = loadBlockDefs("assets/blockdefined.txt");
 
         auto reloadLevel = [&]() {
@@ -648,6 +762,66 @@ int main(int argc, char** argv) {
                 map.tileIds[idx] = 2;
                 applyBlockDefAt(map, idx, 2, blockDefs);
                 break;
+            }
+
+            // Ensure player does not start inside solid geometry.
+            if (rectHitsSolid(map, player.x, player.y, player.w, player.h)) {
+                bool resolved = false;
+                const int maxSteps = std::max(1, map.h * map.tileSize);
+                for (int step = 1; step <= maxSteps; ++step) {
+                    float upY = player.y - (float)step;
+                    if (!rectHitsSolid(map, player.x, upY, player.w, player.h)) {
+                        player.y = upY;
+                        resolved = true;
+                        break;
+                    }
+                    float downY = player.y + (float)step;
+                    if (!rectHitsSolid(map, player.x, downY, player.w, player.h)) {
+                        player.y = downY;
+                        resolved = true;
+                        break;
+                    }
+                }
+                if (!resolved) {
+                    player.vx = 0.0f;
+                    player.vy = 0.0f;
+                }
+            }
+
+            // Time warp marker from tile IDs:
+            // 43 => 'P', 45 => 'F' (45 wins if both are present).
+            TimeWarpID = 'N';
+            for (unsigned short id : map.tileIds) {
+                if (id == 43 && TimeWarpID == 'N') TimeWarpID = 'P';
+                if (id == 45) TimeWarpID = 'F';
+            }
+
+            int levelIndex = parseLevelIndexFromPath(levelPath); // level_001 => 1
+            if (levelIndex > 0 && levelIndex <= (int)levelNumberList.size()) {
+                int code = levelNumberList[levelIndex - 1];
+                world_id = code / 100;
+                Level_Part_id = (code / 10) % 10;
+                Time_ID = code % 10;
+            } else {
+                world_id = 0;
+                Level_Part_id = 0;
+                Time_ID = 0;
+            }
+
+            if (audioReady) {
+#if HAS_SDL_MIXER
+                std::string musicPath = "assets/Audio/Music/" + std::to_string(world_id) + "." + std::to_string(Time_ID) + ".mp3";
+                if (levelMusic) {
+                    Mix_FreeMusic(levelMusic);
+                    levelMusic = nullptr;
+                }
+                levelMusic = Mix_LoadMUS(musicPath.c_str());
+                if (levelMusic) {
+                    Mix_PlayMusic(levelMusic, -1);
+                } else {
+                    SDL_Log("Could not load music: %s (%s)", musicPath.c_str(), Mix_GetError());
+                }
+#endif
             }
         };
 
@@ -716,18 +890,27 @@ int main(int argc, char** argv) {
                 }
             }
             if (paused && e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
-                SDL_Point pt{e.button.x, e.button.y};
-                if (SDL_PointInRect(&pt, &pauseBtnContinue)) handlePauseSelect(0);
-                else if (SDL_PointInRect(&pt, &pauseBtnRestart)) handlePauseSelect(1);
-                else if (SDL_PointInRect(&pt, &pauseBtnExit)) handlePauseSelect(2);
+                int winW = 0, winH = 0, gx = 0, gy = 0;
+                SDL_GetWindowSize(win, &winW, &winH);
+                if (windowToGamePoint(e.button.x, e.button.y, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy)) {
+                    SDL_Point pt{gx, gy};
+                    if (SDL_PointInRect(&pt, &pauseBtnContinue)) handlePauseSelect(0);
+                    else if (SDL_PointInRect(&pt, &pauseBtnRestart)) handlePauseSelect(1);
+                    else if (SDL_PointInRect(&pt, &pauseBtnExit)) handlePauseSelect(2);
+                }
             }
             if (paused && e.type == SDL_FINGERDOWN) {
                 int winW = 0, winH = 0;
                 SDL_GetWindowSize(win, &winW, &winH);
-                SDL_Point pt{(int)(e.tfinger.x * winW), (int)(e.tfinger.y * winH)};
-                if (SDL_PointInRect(&pt, &pauseBtnContinue)) handlePauseSelect(0);
-                else if (SDL_PointInRect(&pt, &pauseBtnRestart)) handlePauseSelect(1);
-                else if (SDL_PointInRect(&pt, &pauseBtnExit)) handlePauseSelect(2);
+                int wx = (int)(e.tfinger.x * winW);
+                int wy = (int)(e.tfinger.y * winH);
+                int gx = 0, gy = 0;
+                if (windowToGamePoint(wx, wy, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy)) {
+                    SDL_Point pt{gx, gy};
+                    if (SDL_PointInRect(&pt, &pauseBtnContinue)) handlePauseSelect(0);
+                    else if (SDL_PointInRect(&pt, &pauseBtnRestart)) handlePauseSelect(1);
+                    else if (SDL_PointInRect(&pt, &pauseBtnExit)) handlePauseSelect(2);
+                }
             }
         }
 
@@ -867,19 +1050,26 @@ int main(int argc, char** argv) {
                 if (dir > 0) player.onGround = true;
                 player.vy = 0.0f;
             }
+
+            const float resetY = (float)((map.h + 7) * map.tileSize);
+            if (player.y > resetY) {
+                reloadLevel();
+                continue;
+            }
         }
 
 RENDER_ONLY:
 
-        int screenW = 960;
-        int screenH = 540;
+        int screenW = kBaseScreenW;
+        int screenH = kBaseScreenH;
         float camX = player.x + player.w * 0.5f - screenW * 0.5f;
         float camY = player.y + player.h * 0.5f - screenH * 0.5f;
         float maxCamX = map.w * map.tileSize - screenW - map.tileSize;
         float maxCamY = map.h * map.tileSize - screenH;
         if (clampCamX) camX = std::clamp(camX, (float)map.tileSize, std::max((float)map.tileSize, maxCamX));
-        camY = std::clamp(camY, 0.0f, std::max(0.0f, maxCamY));
+        camY = std::clamp(camY, (float)map.tileSize, std::max((float)map.tileSize, maxCamY));
 
+        SDL_SetRenderTarget(ren, gameTarget);
         SDL_SetRenderDrawColor(ren, 12, 14, 18, 255);
         SDL_RenderClear(ren);
 
@@ -897,9 +1087,9 @@ RENDER_ONLY:
             };
             struct Layer { const char* frame; float factor; float vfactor; };
             Layer layers[3] = {
-                {"w1b.png", 0.2f, 0.2f},
+                {"w1b.png", 0.5f, 0.5f},
                 {"w1f.png", 0.5f, 0.5f},
-                {"w1f.png", 0.8f, 0.8f}
+                {"w1f.png", 0.7f, 0.7f}
             };
             for (const auto& layer : layers) {
                 const Frame* f = getBg(layer.frame);
@@ -909,13 +1099,11 @@ RENDER_ONLY:
                 if (fw <= 0 || fh <= 0) continue;
                 float ox = std::fmod(camX * layer.factor, (float)fw);
                 if (ox < 0) ox += fw;
-                // Attach to level bottom (no vertical tiling)
-                float worldBottom = (float)(map.h * map.tileSize);
-                float t = 0.0f;
                 float maxCamY = std::max(1.0f, (float)(map.h * map.tileSize - screenH));
                 float parallaxCamY = maxCamY - camY;
-                t = std::clamp((parallaxCamY / maxCamY) * layer.vfactor, 0.0f, 1.0f);
-                int y = (int)(screenH - fh + t * (float)fh);
+                float t = std::clamp((parallaxCamY / maxCamY) * layer.vfactor, 0.0f, 1.0f);
+                float yF = (float)screenH - (float)fh + t * (float)fh;
+                int y = (int)std::lround(yF);
                 for (int x = -1; x <= screenW / fw + 1; ++x) {
                     SDL_Rect dst{
                         (int)(x * fw - ox),
@@ -933,13 +1121,21 @@ RENDER_ONLY:
         // Tile textures (DF_Blocks)
         if (blocksTex && !blocksFrameList.empty()) {
             for (int y = 0; y < map.h; y++) {
+                if (y == 0) continue; // Hide top tile-grid layer.
                 for (int x = 0; x < map.w; x++) {
                     int idx = y * map.w + x;
                     unsigned short id = map.tileIds[idx];
                     if (id == 0) continue;
 
                     const Frame* frame = nullptr;
-                    auto it = blocksFrameByName.find(std::to_string(id));
+                    std::string frameKey = std::to_string(id);
+                    if (id == 24) {
+                        // 24-step cycle: c1..c8, each shown for 3 steps.
+                        const int step = (int)((SDL_GetTicks() / 100) % 24);
+                        const int cIndex = (step / 3) + 1; // 1..8
+                        frameKey = std::string("c") + std::to_string(cIndex);
+                    }
+                    auto it = blocksFrameByName.find(frameKey);
                     if (it != blocksFrameByName.end()) {
                         frame = &it->second;
                     }
@@ -958,6 +1154,7 @@ RENDER_ONLY:
         }
 
         std::string debugAnimName = "IDLE";
+        std::string renderFrameName;
         switch (player.anim) {
             case 1: debugAnimName = "WALK"; break;
             case 2: debugAnimName = "JUMP"; break;
@@ -977,78 +1174,27 @@ RENDER_ONLY:
                     bool isSolid = map.solid[idx] != 0;
                     bool isSemi = map.semisolid[idx] != 0;
                     bool isWater = map.water[idx] != 0;
-                    if (!isSolid && !isSemi && !isWater) continue;
+                    int id = (int)map.tileIds[idx];
+                    bool isAirDebug = (!isSolid && !isSemi && !isWater && id != 2);
+                    if (!isSolid && !isSemi && !isWater && !isAirDebug) continue;
                     SDL_FRect rc{ x * map.tileSize - camX, y * map.tileSize - camY,
                                  (float)map.tileSize, (float)map.tileSize };
                     if (isSolid) SDL_SetRenderDrawColor(ren, 255, 60, 60, 255);
                     else if (isSemi) SDL_SetRenderDrawColor(ren, 120, 220, 255, 255);
-                    else SDL_SetRenderDrawColor(ren, 60, 120, 220, 255);
+                    else if (isWater) SDL_SetRenderDrawColor(ren, 60, 120, 220, 255);
+                    else SDL_SetRenderDrawColor(ren, 180, 180, 180, 255);
                     SDL_RenderDrawRectF(ren, &rc);
                 }
             }
 
             // Player hitbox
             SDL_SetRenderDrawColor(ren, 255, 200, 80, 255);
-            SDL_FRect pr{ player.x - camX, player.y - camY, (float)player.w, (float)player.h };
+            float playerHitboxScreenY = player.y - camY;
+            if (playerHitboxScreenY < 0.0f) playerHitboxScreenY = 0.0f;
+            SDL_FRect pr{ player.x - camX, playerHitboxScreenY, (float)player.w, (float)player.h };
             SDL_RenderDrawRectF(ren, &pr);
         }
 
-        if (showHitboxes) {
-            // Debug UI
-            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
-            SDL_SetRenderDrawColor(ren, 0, 0, 0, 200);
-            SDL_Rect dbgPanel{10, 10, 280, 168};
-            SDL_RenderFillRect(ren, &dbgPanel);
-            SDL_SetRenderDrawColor(ren, 80, 90, 110, 220);
-            SDL_RenderDrawRect(ren, &dbgPanel);
-
-            SDL_SetRenderDrawColor(ren, 230, 230, 230, 255);
-            drawText5x7(ren, 18, 18, 2, "DEBUG");
-            drawDebugNumber(ren, 18, 36, 2, "PX", (int)player.x);
-            drawDebugNumber(ren, 18, 50, 2, "PY", (int)player.y);
-            drawDebugNumber(ren, 18, 64, 2, "VX", (int)player.vx);
-            drawDebugNumber(ren, 18, 78, 2, "VY", (int)player.vy);
-            drawDebugNumber(ren, 140, 36, 2, "CAMX", (int)camX);
-            drawDebugNumber(ren, 140, 50, 2, "CAMY", (int)camY);
-            drawDebugNumber(ren, 140, 64, 2, "WTR", player.inWater ? 1 : 0);
-            drawDebugNumber(ren, 140, 78, 2, "DRN", (int)(45.0f - player.drownTimer));
-            float maxCamX = std::max(0.0f, (float)(map.h * map.tileSize - screenW));
-            float maxCamY = std::max(0.0f, (float)(map.w * map.tileSize - screenH));
-            drawDebugNumber(ren, 18, 92, 2, "BW", map.w);
-            drawDebugNumber(ren, 140, 92, 2, "BH", map.h);
-            drawDebugNumber(ren, 18, 106, 2, "CMINX", 0);
-            drawDebugNumber(ren, 140, 106, 2, "CMAXX", (int)maxCamX);
-            drawDebugNumber(ren, 18, 120, 2, "CMINY", 0);
-            drawDebugNumber(ren, 140, 120, 2, "CMAXY", (int)maxCamY);
-            int fps = (dt > 0.0f) ? (int)(1.0f / dt) : 0;
-            drawDebugNumber(ren, 18, 134, 2, "FPS", fps);
-            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
-
-            // Camera bounds (level extents)
-            SDL_SetRenderDrawColor(ren, 40, 200, 140, 255);
-            SDL_FRect bounds{
-                -camX,
-                -camY,
-                (float)(map.w * map.tileSize),
-                (float)(map.h * map.tileSize)
-            };
-            SDL_RenderDrawRectF(ren, &bounds);
-
-            // Tile IDs (debug)
-            SDL_SetRenderDrawColor(ren, 235, 235, 235, 255);
-            for (int y = 0; y < map.h; y++) {
-                for (int x = 0; x < map.w; x++) {
-                    int idx = y * map.w + x;
-                    int id = (int)map.tileIds[idx];
-                    if (!map.solid[idx] && !map.semisolid[idx] && !map.water[idx]) continue;
-                    int screenX = (int)(x * map.tileSize - camX);
-                    int screenY = (int)(y * map.tileSize - camY);
-                    int centerX = screenX + map.tileSize / 2;
-                    int centerY = screenY + map.tileSize / 2;
-                    drawNumber3x5(ren, centerX, centerY - (5 * 2) / 2, 2, id);
-                }
-            }
-        }
 
         SDL_SetRenderDrawColor(ren, 120, 220, 120, 255);
         for (const auto& obj : objects) {
@@ -1059,7 +1205,6 @@ RENDER_ONLY:
         }
 
         SDL_FRect pr{ player.x - camX, player.y - camY, (float)player.w, (float)player.h };
-        std::string renderFrameName;
         {
             enum PlayerAnim {
                 ANIM_IDLE,
@@ -1165,24 +1310,6 @@ RENDER_ONLY:
             }
         }
 
-        // Debug text (top-left)
-        {
-            int fps = (dt > 0.0f) ? (int)(1.0f / dt) : 0;
-            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
-            SDL_SetRenderDrawColor(ren, 0, 0, 0, 160);
-            SDL_Rect dbg{8, 8, 220, 68};
-            SDL_RenderFillRect(ren, &dbg);
-            SDL_SetRenderDrawColor(ren, 230, 230, 230, 255);
-            drawText5x7(ren, 14, 14, 2, std::string("FPS ") + std::to_string(fps));
-            drawText5x7(ren, 14, 32, 2, std::string("ANIM ") + debugAnimName);
-            if (!renderFrameName.empty()) {
-                std::string id = renderFrameName;
-                if (id.size() > 4 && id.substr(id.size() - 4) == ".png") id.resize(id.size() - 4);
-                drawText5x7(ren, 14, 50, 2, std::string("ID ") + id);
-            }
-            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
-        }
-
         if (paused) {
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
             SDL_SetRenderDrawColor(ren, 10, 10, 14, 180);
@@ -1267,15 +1394,106 @@ RENDER_ONLY:
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
         }
 
+        if (showHitboxes) {
+            // Debug UI (highest render priority)
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+            SDL_SetRenderDrawColor(ren, 0, 0, 0, 200);
+            SDL_Rect dbgPanel{10, 10, 340, 196};
+            SDL_RenderFillRect(ren, &dbgPanel);
+            SDL_SetRenderDrawColor(ren, 80, 90, 110, 220);
+            SDL_RenderDrawRect(ren, &dbgPanel);
+
+            SDL_SetRenderDrawColor(ren, 230, 230, 230, 255);
+            drawText5x7(ren, 18, 18, 2, "DEBUG");
+            drawDebugNumber(ren, 18, 36, 2, "PX", (int)player.x);
+            drawDebugNumber(ren, 18, 50, 2, "PY", (int)player.y);
+            drawDebugNumber(ren, 18, 64, 2, "VX", (int)player.vx);
+            drawDebugNumber(ren, 18, 78, 2, "VY", (int)player.vy);
+            drawDebugNumber(ren, 140, 36, 2, "CAMX", (int)camX);
+            drawDebugNumber(ren, 140, 50, 2, "CAMY", (int)camY);
+            drawDebugNumber(ren, 140, 64, 2, "WTR", player.inWater ? 1 : 0);
+            drawDebugNumber(ren, 140, 78, 2, "DRN", (int)(45.0f - player.drownTimer));
+            float maxCamX = std::max(0.0f, (float)(map.h * map.tileSize - screenW));
+            float maxCamY = std::max(0.0f, (float)(map.w * map.tileSize - screenH));
+            drawDebugNumber(ren, 18, 92, 2, "BW", map.w);
+            drawDebugNumber(ren, 140, 92, 2, "BH", map.h);
+            drawDebugNumber(ren, 18, 106, 2, "CMINX", 0);
+            drawDebugNumber(ren, 140, 106, 2, "CMAXX", (int)maxCamX);
+            drawDebugNumber(ren, 18, 120, 2, "CMINY", 0);
+            drawDebugNumber(ren, 140, 120, 2, "CMAXY", (int)maxCamY);
+            int fps = (dt > 0.0f) ? (int)(1.0f / dt) : 0;
+            drawDebugNumber(ren, 18, 134, 2, "FPS", fps);
+            drawText5x7(ren, 18, 148, 2, std::string("ANIM ") + debugAnimName);
+            if (!renderFrameName.empty()) {
+                std::string id = renderFrameName;
+                if (id.size() > 4 && id.substr(id.size() - 4) == ".png") id.resize(id.size() - 4);
+                drawText5x7(ren, 18, 162, 2, std::string("ID ") + id);
+            }
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
+
+            // Camera bounds (level extents)
+            SDL_SetRenderDrawColor(ren, 40, 200, 140, 255);
+            SDL_FRect bounds{
+                -camX,
+                -camY,
+                (float)(map.w * map.tileSize),
+                (float)(map.h * map.tileSize)
+            };
+            SDL_RenderDrawRectF(ren, &bounds);
+
+            // Tile IDs (debug)
+            SDL_SetRenderDrawColor(ren, 235, 235, 235, 255);
+            for (int y = 0; y < map.h; y++) {
+                for (int x = 0; x < map.w; x++) {
+                    int idx = y * map.w + x;
+                    int id = (int)map.tileIds[idx];
+                    int screenX = (int)(x * map.tileSize - camX);
+                    int screenY = (int)(y * map.tileSize - camY);
+                    int centerX = screenX + map.tileSize / 2;
+                    int centerY = screenY + map.tileSize / 2;
+                    drawNumber3x5(ren, centerX, centerY - (5 * 2) / 2, 2, id);
+                }
+            }
+        }
+
+        SDL_SetRenderTarget(ren, nullptr);
+        int winW = 0, winH = 0;
+        SDL_GetWindowSize(win, &winW, &winH);
+        SDL_Rect presentDst = computePresentRect(winW, winH, kBaseScreenW, kBaseScreenH);
+        SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+        SDL_RenderClear(ren);
+        SDL_RenderCopy(ren, gameTarget, nullptr, &presentDst);
         SDL_RenderPresent(ren);
         SDL_Delay(16);
         }
         if (!running) break;
+        if (audioReady) {
+#if HAS_SDL_MIXER
+            if (levelMusic) {
+            Mix_HaltMusic();
+            Mix_FreeMusic(levelMusic);
+            levelMusic = nullptr;
+            }
+#endif
+        }
         if (returnToSelect) continue;
     }
 
     if (blocksTex) SDL_DestroyTexture(blocksTex);
     if (pauseTex) SDL_DestroyTexture(pauseTex);
+    if (gameTarget) SDL_DestroyTexture(gameTarget);
+    for (auto& kv : gFontCache) {
+        if (kv.second) TTF_CloseFont(kv.second);
+    }
+    gFontCache.clear();
+    if (ttfReady) TTF_Quit();
+    if (audioReady) {
+#if HAS_SDL_MIXER
+        Mix_HaltMusic();
+        Mix_CloseAudio();
+        Mix_Quit();
+#endif
+    }
     SDL_DestroyRenderer(ren);
     SDL_DestroyWindow(win);
     SDL_Log("Shutting down");
