@@ -21,27 +21,10 @@
 #include <sstream>
 #include "TileMap.h"
 #include "LevelLoader.h"
+#include "Player.h"
+#include "PlayerController.h"
 #include "TextRenderer.h"
 #include "LevelSelect.h"
-
-struct Player {
-    float x = 64.0f;
-    float y = 64.0f;
-    float vx = 0.0f;
-    float vy = 0.0f;
-    int w = 40;
-    int h = 56;
-    bool onGround = false;
-    bool jumpHeld = false;
-    bool jumpWasDown = false;
-    float jumpHoldTime = 0.0f;
-    bool inWater = false;
-    float drownTimer = 0.0f;
-    bool freeMove = false;
-    int facing = 1; // 1 = right, -1 = left
-    int anim = 0;
-    float animTime = 0.0f;
-};
 
 
 static std::vector<int> loadLevelNumberList(const std::string& path) {
@@ -73,52 +56,6 @@ static int parseLevelIndexFromPath(const std::string& levelPath) {
 }
 
 
-static bool rectHitsSolid(const TileMap& map, float x, float y, int w, int h) {
-    int t = map.tileSize;
-    int left = (int)std::floor(x / t);
-    int right = (int)std::floor((x + w - 1) / t);
-    int top = (int)std::floor(y / t);
-    int bottom = (int)std::floor((y + h - 1) / t);
-    for (int ty = top; ty <= bottom; ++ty) {
-        for (int tx = left; tx <= right; ++tx) {
-            if (map.getSolid(tx, ty)) return true;
-        }
-    }
-    return false;
-}
-
-static bool rectHitsSemiSolidDown(const TileMap& map, float oldY, float newY, float x, int w, int h) {
-    int t = map.tileSize;
-    int left = (int)std::floor(x / t);
-    int right = (int)std::floor((x + w - 1) / t);
-    int oldBottom = (int)std::floor((oldY + h - 1) / t);
-    int newBottom = (int)std::floor((newY + h - 1) / t);
-    if (newBottom < oldBottom) return false;
-
-    int ty = newBottom;
-    for (int tx = left; tx <= right; ++tx) {
-        if (!map.getSemiSolid(tx, ty)) continue;
-        float tileTop = ty * t;
-        float oldBottomY = oldY + h - 1;
-        float newBottomY = newY + h - 1;
-        if (oldBottomY <= tileTop && newBottomY >= tileTop) return true;
-    }
-    return false;
-}
-
-static bool rectHitsWater(const TileMap& map, float x, float y, int w, int h) {
-    int t = map.tileSize;
-    int left = (int)std::floor(x / t);
-    int right = (int)std::floor((x + w - 1) / t);
-    int top = (int)std::floor(y / t);
-    int bottom = (int)std::floor((y + h - 1) / t);
-    for (int ty = top; ty <= bottom; ++ty) {
-        for (int tx = left; tx <= right; ++tx) {
-            if (map.getWater(tx, ty)) return true;
-        }
-    }
-    return false;
-}
 
 static std::vector<char> loadBlockDefs(const std::string& path) {
     std::ifstream f(path);
@@ -288,6 +225,17 @@ static void renderFrameEx(SDL_Renderer* ren, SDL_Texture* tex, const Frame& f, c
     SDL_RenderCopyEx(ren, tex, &src, &dstRot, -90.0, &center, flip);
 }
 
+static SDL_Texture* loadTextureWithColorKey(SDL_Renderer* ren, const std::string& path, Uint8 r, Uint8 g, Uint8 b) {
+    SDL_Surface* surf = IMG_Load(path.c_str());
+    if (!surf) return nullptr;
+    Uint32 key = SDL_MapRGB(surf->format, r, g, b);
+    SDL_SetColorKey(surf, SDL_TRUE, key);
+    SDL_Texture* tex = SDL_CreateTextureFromSurface(ren, surf);
+    SDL_FreeSurface(surf);
+    if (tex) SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
+    return tex;
+}
+
 static SDL_Rect computePresentRect(int winW, int winH, int baseW, int baseH) {
     if (winW <= 0 || winH <= 0 || baseW <= 0 || baseH <= 0) return SDL_Rect{0, 0, winW, winH};
     float sx = (float)winW / (float)baseW;
@@ -365,7 +313,7 @@ int main(int argc, char** argv) {
     auto pauseFrames = loadPlistFrames(pausePlist);
 
     std::string blocksPlist = texPath("plists", "blocks", "assets/Sheets/DF_Blocks-uhd.plist");
-    SDL_Texture* blocksTex = IMG_LoadTexture(ren, texPath("textures", "blocks", "assets/Sheets/DF_Blocks-uhd.png").c_str());
+    SDL_Texture* blocksTex = loadTextureWithColorKey(ren, texPath("textures", "blocks", "assets/Sheets/DF_Blocks-uhd.png"), 0x9f, 0x61, 0xff);
     auto blocksFrameList = loadPlistFrameList(blocksPlist);
     std::unordered_map<std::string, Frame> blocksFrameByName;
     blocksFrameByName.reserve(blocksFrameList.size());
@@ -455,6 +403,39 @@ int main(int argc, char** argv) {
     };
 
     AnimConfig animCfg = loadAnimConfig("assets/player_anim.json");
+    float jumpBufferMax = 0.12f;
+    MovementConfig movementCfg{};
+    {
+        std::ifstream cin("assets/config.json");
+        if (cin) {
+            nlohmann::json cfg;
+            try { cin >> cfg; } catch (...) { cfg = nlohmann::json(); }
+            if (cfg.contains("jump_buffer_seconds") && cfg["jump_buffer_seconds"].is_number()) {
+                jumpBufferMax = (float)cfg["jump_buffer_seconds"].get<double>();
+                if (jumpBufferMax < 0.0f) jumpBufferMax = 0.0f;
+            }
+            if (cfg.contains("movement") && cfg["movement"].is_object()) {
+                const auto& m = cfg["movement"];
+                auto readMove = [&](const char* key, float& out) {
+                    if (m.contains(key) && m[key].is_number()) out = (float)m[key].get<double>();
+                };
+                readMove("accel_in_water", movementCfg.accelInWater);
+                readMove("accel_ground", movementCfg.accelGround);
+                readMove("max_speed_in_water", movementCfg.maxSpeedInWater);
+                readMove("max_speed_ground", movementCfg.maxSpeedGround);
+                readMove("friction_in_water", movementCfg.frictionInWater);
+                readMove("friction_ground", movementCfg.frictionGround);
+                readMove("gravity_in_water", movementCfg.gravityInWater);
+                readMove("gravity_ground", movementCfg.gravityGround);
+                readMove("jump_speed", movementCfg.jumpSpeed);
+                readMove("jump_hold_gravity", movementCfg.jumpHoldGravity);
+                readMove("jump_hold_max", movementCfg.jumpHoldMax);
+                readMove("jump_cut_speed", movementCfg.jumpCutSpeed);
+                readMove("swim_up_speed", movementCfg.swimUpSpeed);
+                readMove("swim_rise", movementCfg.swimRise);
+            }
+        }
+    }
 
     if (!pauseTex || !blocksTex || !playerTex || pauseFrames.empty() || blocksFrameList.empty() || playerFrameList.empty()) {
         std::string msg = "Failed to load assets:";
@@ -538,18 +519,18 @@ int main(int argc, char** argv) {
             }
 
             // Ensure player does not start inside solid geometry.
-            if (rectHitsSolid(map, player.x, player.y, player.w, player.h)) {
+            if (RectHitsSolid(map, player.x, player.y, player.w, player.h)) {
                 bool resolved = false;
                 const int maxSteps = std::max(1, map.h * map.tileSize);
                 for (int step = 1; step <= maxSteps; ++step) {
                     float upY = player.y - (float)step;
-                    if (!rectHitsSolid(map, player.x, upY, player.w, player.h)) {
+                    if (!RectHitsSolid(map, player.x, upY, player.w, player.h)) {
                         player.y = upY;
                         resolved = true;
                         break;
                     }
                     float downY = player.y + (float)step;
-                    if (!rectHitsSolid(map, player.x, downY, player.w, player.h)) {
+                    if (!RectHitsSolid(map, player.x, downY, player.w, player.h)) {
                         player.y = downY;
                         resolved = true;
                         break;
@@ -688,145 +669,13 @@ int main(int argc, char** argv) {
         }
 
         if (!paused) {
-            const Uint8* keys = SDL_GetKeyboardState(nullptr);
-            bool shiftDown = keys[SDL_SCANCODE_LSHIFT] || keys[SDL_SCANCODE_RSHIFT];
-            player.freeMove = shiftDown;
-            if (player.freeMove) {
-                float freeSpeed = 420.0f;
-                float dx = 0.0f;
-                float dy = 0.0f;
-                if (keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_LEFT]) dx -= 1.0f;
-                if (keys[SDL_SCANCODE_D] || keys[SDL_SCANCODE_RIGHT]) dx += 1.0f;
-                if (keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_UP]) dy -= 1.0f;
-                if (keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_DOWN]) dy += 1.0f;
-                float len = std::sqrt(dx * dx + dy * dy);
-                if (len > 0.0f) { dx /= len; dy /= len; }
-                player.x += dx * freeSpeed * dt;
-                player.y += dy * freeSpeed * dt;
-                player.vx = 0.0f;
-                player.vy = 0.0f;
-                player.onGround = false;
-                player.jumpHeld = false;
-                player.jumpHoldTime = 0.0f;
-                player.jumpWasDown = false;
-            }
-
-            if (player.freeMove) {
+            PlayerUpdateResult upd = UpdatePlayerMovement(
+                player, map, dt, jumpBufferMax, movementCfg, inputMove, inputDown, reloadLevel
+            );
+            if (upd == PlayerUpdateResult::RenderOnly) {
                 goto RENDER_ONLY;
             }
-            float move = 0.0f;
-            if (keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_LEFT]) move -= 1.0f;
-            if (keys[SDL_SCANCODE_D] || keys[SDL_SCANCODE_RIGHT]) move += 1.0f;
-            bool downHeld = keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_DOWN];
-            inputMove = move;
-            inputDown = downHeld;
-
-            bool inWater = rectHitsWater(map, player.x, player.y, player.w, player.h);
-            player.inWater = inWater;
-
-            float accel = inWater ? 900.0f : 1800.0f;
-            float maxSpeed = inWater ? 180.0f : 260.0f;
-            float friction = inWater ? 900.0f : 1600.0f;
-            float gravity = inWater ? 900.0f : 2000.0f;
-            float jumpSpeed = 900.0f;
-            float jumpHoldGravity = 300.0f; // lower gravity while holding jump
-            float jumpHoldMax = 0.42f;      // seconds of extra lift
-            float jumpCutSpeed = 220.0f;    // cap upward speed on early release
-            float swimUpSpeed = 380.0f;
-            float swimRise = 900.0f;
-
-            if (move != 0.0f) {
-                player.vx += move * accel * dt;
-                if (player.vx > maxSpeed) player.vx = maxSpeed;
-                if (player.vx < -maxSpeed) player.vx = -maxSpeed;
-            } else {
-                if (player.vx > 0.0f) {
-                    player.vx = std::max(0.0f, player.vx - friction * dt);
-                } else if (player.vx < 0.0f) {
-                    player.vx = std::min(0.0f, player.vx + friction * dt);
-                }
-            }
-
-            bool jumpDown = keys[SDL_SCANCODE_SPACE] || keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_UP];
-            bool jumpPressed = jumpDown && !player.jumpWasDown;
-            bool jumpReleased = !jumpDown && player.jumpWasDown;
-
-            if (player.onGround && jumpPressed) {
-                player.vy = -jumpSpeed;
-                player.onGround = false;
-                player.jumpHeld = true;
-                player.jumpHoldTime = 0.0f;
-            }
-
-            if (!inWater && player.jumpHeld && jumpDown && player.jumpHoldTime < jumpHoldMax) {
-                player.vy += jumpHoldGravity * dt;
-                player.jumpHoldTime += dt;
-            } else {
-                player.jumpHeld = false;
-            }
-
-            if (jumpReleased && player.vy < -jumpCutSpeed) {
-                player.vy = -jumpCutSpeed;
-            }
-
-            if (inWater) {
-                if (jumpDown) {
-                    player.vy -= swimRise * dt;
-                    if (player.vy < -swimUpSpeed) player.vy = -swimUpSpeed;
-                }
-                if (player.vy > 420.0f) player.vy = 420.0f;
-            }
-
-            player.vy += gravity * dt;
-            player.jumpWasDown = jumpDown;
-
-            if (inWater) {
-                player.drownTimer += dt;
-                if (player.drownTimer >= 45.0f) {
-                    reloadLevel();
-                    player.drownTimer = 0.0f;
-                }
-            } else {
-                player.drownTimer = 0.0f;
-            }
-
-            // Horizontal move
-            float newX = player.x + player.vx * dt;
-            if (!rectHitsSolid(map, newX, player.y, player.w, player.h)) {
-                player.x = newX;
-            } else {
-                int dir = (player.vx > 0) ? 1 : -1;
-                while (!rectHitsSolid(map, player.x + dir, player.y, player.w, player.h)) {
-                    player.x += dir;
-                }
-                player.vx = 0.0f;
-            }
-
-            // Vertical move
-            float newY = player.y + player.vy * dt;
-            if (!rectHitsSolid(map, player.x, newY, player.w, player.h)) {
-                if (player.vy > 0 && rectHitsSemiSolidDown(map, player.y, newY, player.x, player.w, player.h)) {
-                    int t = map.tileSize;
-                    int bottomTile = (int)std::floor((newY + player.h - 1) / t);
-                    player.y = bottomTile * t - player.h + 1;
-                    player.onGround = true;
-                    player.vy = 0.0f;
-                } else {
-                    player.y = newY;
-                    player.onGround = false;
-                }
-            } else {
-                int dir = (player.vy > 0) ? 1 : -1;
-                while (!rectHitsSolid(map, player.x, player.y + dir, player.w, player.h)) {
-                    player.y += dir;
-                }
-                if (dir > 0) player.onGround = true;
-                player.vy = 0.0f;
-            }
-
-            const float resetY = (float)((map.h + 7) * map.tileSize);
-            if (player.y > resetY) {
-                reloadLevel();
+            if (upd == PlayerUpdateResult::Reloaded) {
                 continue;
             }
         }

@@ -1,1 +1,20 @@
-{ "experimental_render_thread": false }
+{
+  "experimental_render_thread": false,
+  "jump_buffer_seconds": 9999.25,
+  "movement": {
+    "accel_in_water": 700.0,
+    "accel_ground": 1200.0,
+    "max_speed_in_water": 400.0,
+    "max_speed_ground": 700.0,
+    "friction_in_water": 900.0,
+    "friction_ground": 3000.0,
+    "gravity_in_water": 900.0,
+    "gravity_ground": 2000.0,
+    "jump_speed": 900.0,
+    "jump_hold_gravity": 300.0,
+    "jump_hold_max": 0.42,
+    "jump_cut_speed": 220.0,
+    "swim_up_speed": 380.0,
+    "swim_rise": 900.0
+  }
+}

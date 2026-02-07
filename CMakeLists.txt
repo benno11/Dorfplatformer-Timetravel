@@ -16,6 +16,7 @@ add_executable(platformer
   src/LevelLoader.cpp
   src/TextRenderer.cpp
   src/LevelSelect.cpp
+  src/PlayerController.cpp
 )
 message(STATUS "Added target: platformer")
 

@@ -19,6 +19,7 @@ $CXX $CXXFLAGS \
   $SRC_DIR/LevelLoader.cpp \
   $SRC_DIR/TextRenderer.cpp \
   $SRC_DIR/LevelSelect.cpp \
+  $SRC_DIR/PlayerController.cpp \
   -lSDL2 \
   -lSDL2_image \
   -lSDL2_ttf \
