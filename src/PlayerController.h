@@ -1,6 +1,5 @@
 #pragma once
 
-#include <functional>
 #include "TileMap.h"
 #include "Player.h"
 
@@ -39,6 +38,5 @@ PlayerUpdateResult UpdatePlayerMovement(
     bool touchDown,
     bool touchJump,
     float& inputMove,
-    bool& inputDown,
-    const std::function<void()>& reloadLevel
+    bool& inputDown
 );

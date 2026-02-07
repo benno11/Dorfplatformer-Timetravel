@@ -16,10 +16,12 @@ fi
 $CXX $CXXFLAGS \
   $SRC_DIR/main.cpp \
   $SRC_DIR/TileMap.cpp \
+  $SRC_DIR/AssetPath.cpp \
   $SRC_DIR/LevelLoader.cpp \
   $SRC_DIR/TextRenderer.cpp \
   $SRC_DIR/LevelSelect.cpp \
   $SRC_DIR/PlayerController.cpp \
+  $SRC_DIR/LevelManager.cpp \
   -lSDL2 \
   -lSDL2_image \
   -lSDL2_ttf \

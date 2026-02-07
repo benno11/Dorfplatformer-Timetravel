@@ -60,10 +60,12 @@ echo "[INFO] Building mobile target with: $CXX"
 $CXX $CXXFLAGS $CPPFLAGS_PKG \
   "$SRC_DIR/main.cpp" \
   "$SRC_DIR/TileMap.cpp" \
+  "$SRC_DIR/AssetPath.cpp" \
   "$SRC_DIR/LevelLoader.cpp" \
   "$SRC_DIR/TextRenderer.cpp" \
   "$SRC_DIR/LevelSelect.cpp" \
   "$SRC_DIR/PlayerController.cpp" \
+  "$SRC_DIR/LevelManager.cpp" \
   $LDFLAGS $LIBS_PKG \
   -o "$OUT_PLATFORMER"
 

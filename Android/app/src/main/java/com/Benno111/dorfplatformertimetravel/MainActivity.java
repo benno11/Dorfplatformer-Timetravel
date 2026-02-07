@@ -36,6 +36,7 @@ public class MainActivity extends SDLActivity {
                         | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                         | View.SYSTEM_UI_FLAG_FULLSCREEN
         );
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
     }
 
     @Override
@@ -43,6 +44,7 @@ public class MainActivity extends SDLActivity {
         // Route Android back to in-game Escape handling.
         SDLActivity.onNativeKeyDown(KeyEvent.KEYCODE_ESCAPE);
         SDLActivity.onNativeKeyUp(KeyEvent.KEYCODE_ESCAPE);
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
     }
 
     @Override

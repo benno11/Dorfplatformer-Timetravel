@@ -61,8 +61,7 @@ PlayerUpdateResult UpdatePlayerMovement(
     bool touchDown,
     bool touchJump,
     float& inputMove,
-    bool& inputDown,
-    const std::function<void()>& reloadLevel
+    bool& inputDown
 ) {
     const Uint8* keys = SDL_GetKeyboardState(nullptr);
     bool shiftDown = keys[SDL_SCANCODE_LSHIFT] || keys[SDL_SCANCODE_RSHIFT];
@@ -169,7 +168,6 @@ PlayerUpdateResult UpdatePlayerMovement(
     if (inWater) {
         player.drownTimer += dt;
         if (player.drownTimer >= 45.0f) {
-            reloadLevel();
             player.drownTimer = 0.0f;
             return PlayerUpdateResult::Reloaded;
         }
@@ -211,7 +209,6 @@ PlayerUpdateResult UpdatePlayerMovement(
 
     const float resetY = (float)((map.h + 7) * map.tileSize);
     if (player.y > resetY) {
-        reloadLevel();
         return PlayerUpdateResult::Reloaded;
     }
 

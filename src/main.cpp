@@ -31,110 +31,8 @@
 #include "TextRenderer.h"
 #include "LevelSelect.h"
 #include "AssetPath.h"
+#include "LevelManager.h"
 
-
-static std::vector<int> loadLevelNumberList(const std::string& path) {
-    const std::string text = ReadTextFile(path);
-    if (text.empty()) return {};
-    std::istringstream f(text);
-    std::vector<int> out;
-    std::string line;
-    while (std::getline(f, line)) {
-        std::string digits;
-        for (char ch : line) {
-            if (std::isdigit((unsigned char)ch)) digits.push_back(ch);
-        }
-        if (digits.size() < 3) continue;
-        int v = 0;
-        try { v = std::stoi(digits.substr(0, 3)); } catch (...) { continue; }
-        out.push_back(v);
-    }
-    return out;
-}
-
-static int parseLevelIndexFromPath(const std::string& levelPath) {
-    const std::string name = std::filesystem::path(levelPath).stem().string(); // level_001
-    std::string digits;
-    for (char ch : name) {
-        if (std::isdigit((unsigned char)ch)) digits.push_back(ch);
-    }
-    if (digits.empty()) return -1;
-    try { return std::stoi(digits); } catch (...) { return -1; }
-}
-
-static int NextLevelId(int currentLevelId) {
-    if (currentLevelId >= 1 && currentLevelId <= 50) {
-        int world = (currentLevelId - 1) / 10 + 1;           // 1..5
-        int inWorldLevel = (currentLevelId - 1) % 10 + 1;    // 1..10
-        if (inWorldLevel >= 1 && inWorldLevel <= 4) return (world - 1) * 10 + 5;
-        if (inWorldLevel >= 5 && inWorldLevel <= 8) return (world - 1) * 10 + 9;
-        if (inWorldLevel >= 9 && inWorldLevel <= 10) return world * 10 + 1;
-    }
-
-    // World 6 special routing.
-    if (currentLevelId == 51 || currentLevelId == 52) return 53;
-    if (currentLevelId == 53 || currentLevelId == 54) return 55;
-    if (currentLevelId == 55) return 57;
-    if (currentLevelId == 56) return 58;
-
-    return -1;
-}
-
-static std::string LevelPathFromId(int levelId) {
-    if (levelId <= 0) return "";
-    std::ostringstream ss;
-    ss << "assets/levels/level_" << std::setw(3) << std::setfill('0') << levelId << ".txt";
-    std::string path = ss.str();
-    if (!FileExists(path)) return "";
-    return path;
-}
-
-
-
-static std::vector<char> loadBlockDefs(const std::string& path) {
-    const std::string text = ReadTextFile(path);
-    if (text.empty()) return {};
-    std::istringstream f(text);
-    std::vector<char> defs;
-    std::string line;
-    while (std::getline(f, line)) {
-        char c = 0;
-        for (char ch : line) {
-            if (!std::isspace((unsigned char)ch)) { c = ch; break; }
-        }
-        defs.push_back(c);
-    }
-    return defs;
-}
-
-static void applyBlockDefAt(TileMap& map, int idx, unsigned short tileId, const std::vector<char>& defs) {
-    char d = (tileId < defs.size()) ? defs[tileId] : 0;
-    map.semisolid[idx] = (d == '=') ? 1 : 0;
-    map.water[idx]     = (d == '^') ? 1 : 0;
-    map.solid[idx]     = (d != '=' && d != '^' && d != '#') ? 0 : 1;
-}
-
-static int collectCoinsAtPlayer(TileMap& map, const Player& player, const std::vector<char>& defs) {
-    int t = map.tileSize;
-    int left = (int)std::floor(player.x / t);
-    int right = (int)std::floor((player.x + player.w - 1) / t);
-    int top = (int)std::floor(player.y / t);
-    int bottom = (int)std::floor((player.y + player.h - 1) / t);
-
-    int collected = 0;
-    for (int ty = top; ty <= bottom; ++ty) {
-        if (ty < 0 || ty >= map.h) continue;
-        for (int tx = left; tx <= right; ++tx) {
-            if (tx < 0 || tx >= map.w) continue;
-            int idx = ty * map.w + tx;
-            if (map.tileIds[idx] != 24) continue;
-            map.tileIds[idx] = 2;
-            applyBlockDefAt(map, idx, 2, defs);
-            collected++;
-        }
-    }
-    return collected;
-}
 
 static bool playerTouchesTileId(const TileMap& map, const Player& player, int idA, int idB) {
     int t = map.tileSize;
@@ -439,9 +337,12 @@ int main(int argc, char** argv) {
     const Frame* fallbackPlayerFrame = !playerFrameList.empty() ? &playerFrameList[0].frame : nullptr;
 #if HAS_SDL_MIXER
     Mix_Chunk* coinSfx = nullptr;
+    Mix_Chunk* loseSfx = nullptr;
     if (audioReady) {
         coinSfx = Mix_LoadWAV(ResolveAssetPath("assets/Audio/sfx/Coin.mp3").c_str());
         if (!coinSfx) SDL_Log("Could not load coin sfx: %s", Mix_GetError());
+        loseSfx = Mix_LoadWAV(ResolveAssetPath("assets/Audio/sfx/Lose.mp3").c_str());
+        if (!loseSfx) SDL_Log("Could not load lose sfx: %s", Mix_GetError());
     }
 #endif
 
@@ -546,6 +447,7 @@ int main(int argc, char** argv) {
         }
 #if HAS_SDL_MIXER
         if (coinSfx) Mix_FreeChunk(coinSfx);
+        if (loseSfx) Mix_FreeChunk(loseSfx);
 #endif
         ShutdownTextRenderer();
         SDL_Quit();
@@ -566,113 +468,82 @@ int main(int argc, char** argv) {
 
     bool fullscreen = false;
     bool clampCamX = true;
-    const std::vector<int> levelNumberList = loadLevelNumberList("assets/Level Numer List.txt");
+    LevelManager levelManager;
     bool running = true;
+    bool startupNoticeShown = false;
     while (running) {
-        std::string levelPath = RunLevelSelect(win, ren);
-        if (levelPath.empty()) {
+        if (!startupNoticeShown) {
+            float noticeTimer = 2.0f;
+            Uint32 noticeLastTicks = SDL_GetTicks();
+            while (running && noticeTimer > 0.0f) {
+                SDL_Event e;
+                while (SDL_PollEvent(&e)) {
+                    if (e.type == SDL_QUIT) running = false;
+                }
+
+                Uint32 now = SDL_GetTicks();
+                float dt = (now - noticeLastTicks) / 1000.0f;
+                if (dt > 0.05f) dt = 0.05f;
+                noticeLastTicks = now;
+                noticeTimer = std::max(0.0f, noticeTimer - dt);
+
+                SDL_SetRenderTarget(ren, gameTarget);
+                SDL_SetRenderDrawColor(ren, 12, 14, 18, 255);
+                SDL_RenderClear(ren);
+
+                SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+                SDL_SetRenderDrawColor(ren, 0, 0, 0, 170);
+                SDL_Rect devHud{kBaseScreenW / 2 - 144, 14, 288, 30};
+                SDL_RenderFillRect(ren, &devHud);
+                SDL_SetRenderDrawColor(ren, 220, 170, 70, 220);
+                SDL_RenderDrawRect(ren, &devHud);
+                DrawText(ren, kBaseScreenW / 2 - 126, 20, 2, "IN DEVELOPMENT");
+                SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
+
+                SDL_SetRenderTarget(ren, nullptr);
+                int winW = 0, winH = 0;
+                SDL_GetWindowSize(win, &winW, &winH);
+                SDL_Rect presentDst = computePresentRect(winW, winH, kBaseScreenW, kBaseScreenH);
+                SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+                SDL_RenderClear(ren);
+                SDL_RenderCopy(ren, gameTarget, nullptr, &presentDst);
+                SDL_RenderPresent(ren);
+                SDL_Delay(16);
+            }
+            startupNoticeShown = true;
+            if (!running) break;
+        }
+
+        std::string selectedLevelPath = RunLevelSelect(win, ren);
+        if (selectedLevelPath.empty()) {
             break;
         }
+        levelManager.setLevelPath(selectedLevelPath);
 
         TileMap map;
         std::vector<ObjectInstance> objects;
         LevelMeta meta;
         Player player;
-        int coinCount = 0;
+        int livesCount = 5;
+        float inDevelopmentNoticeTimer = 0.0f;
 #if HAS_SDL_MIXER
         Mix_Music* levelMusic = nullptr;
 #endif
-        char TimeWarpID = 'N';
-        int world_id = 0;
-        int Level_Part_id = 0;
-        int Time_ID = 0;
-        std::vector<char> blockDefs = loadBlockDefs("assets/blockdefined.txt");
 
         auto reloadLevel = [&]() {
-            loadLevelBNNLVL(levelPath, map, objects, meta);
-            coinCount = 0;
-
-        player = Player{};
-        for (const auto& o : objects) {
-            if (o.id == "player") {
-                player.x = o.x;
-                player.y = o.y - 12.0f;
-                break;
-            }
-        }
-
-            // Teleport player to first tile id 28 and replace it with tile id 2.
-            for (int idx = 0; idx < (int)map.tileIds.size(); ++idx) {
-                if (map.tileIds[idx] != 28) continue;
-                int tx = idx % map.w;
-                int ty = idx / map.w;
-                player.x = tx * map.tileSize;
-                player.y = ty * map.tileSize;
-                map.tileIds[idx] = 2;
-                applyBlockDefAt(map, idx, 2, blockDefs);
-                break;
-            }
-
-            // Ensure player does not start inside solid geometry.
-            if (RectHitsSolid(map, player.x, player.y, player.w, player.h)) {
-                bool resolved = false;
-                const int maxSteps = std::max(1, map.h * map.tileSize);
-                for (int step = 1; step <= maxSteps; ++step) {
-                    float upY = player.y - (float)step;
-                    if (!RectHitsSolid(map, player.x, upY, player.w, player.h)) {
-                        player.y = upY;
-                        resolved = true;
-                        break;
-                    }
-                    float downY = player.y + (float)step;
-                    if (!RectHitsSolid(map, player.x, downY, player.w, player.h)) {
-                        player.y = downY;
-                        resolved = true;
-                        break;
-                    }
-                }
-                if (!resolved) {
-                    player.vx = 0.0f;
-                    player.vy = 0.0f;
-                }
-            }
-
-            // Time warp marker from tile IDs:
-            // 43 => 'P', 45 => 'F' (45 wins if both are present).
-            TimeWarpID = 'N';
-            for (unsigned short id : map.tileIds) {
-                if (id == 43 && TimeWarpID == 'N') TimeWarpID = 'P';
-                if (id == 45) TimeWarpID = 'F';
-            }
-
-            int levelIndex = parseLevelIndexFromPath(levelPath); // level_001 => 1
-            if (levelIndex > 0 && levelIndex <= (int)levelNumberList.size()) {
-                int code = levelNumberList[levelIndex - 1];
-                world_id = code / 100;
-                Level_Part_id = (code / 10) % 10;
-                Time_ID = code % 10;
-            } else {
-                world_id = 0;
-                Level_Part_id = 0;
-                Time_ID = 0;
-            }
+            levelManager.reloadLevel(map, objects, meta, player);
 
             if (audioReady) {
 #if HAS_SDL_MIXER
-                std::string musicPath;
-                if (world_id >= 6 && world_id <= 7) {
-                    musicPath = "assets/Audio/Music/" + std::to_string(world_id) + "." + std::to_string(Level_Part_id) + ".mp3";
-                } else {
-                    musicPath = "assets/Audio/Music/" + std::to_string(world_id) + "." + std::to_string(Time_ID) + ".mp3";
-                }
+                std::string musicPath = levelManager.musicPath();
                 if (levelMusic) {
                     Mix_FreeMusic(levelMusic);
                     levelMusic = nullptr;
                 }
-                levelMusic = Mix_LoadMUS(ResolveAssetPath(musicPath).c_str());
+                levelMusic = musicPath.empty() ? nullptr : Mix_LoadMUS(ResolveAssetPath(musicPath).c_str());
                 if (levelMusic) {
                     Mix_PlayMusic(levelMusic, -1);
-                } else {
+                } else if (!musicPath.empty()) {
                     SDL_Log("Could not load music: %s (%s)", musicPath.c_str(), Mix_GetError());
                 }
 #endif
@@ -680,9 +551,13 @@ int main(int argc, char** argv) {
         };
 
         reloadLevel();
+        inDevelopmentNoticeTimer = 2.0f;
 
         bool levelRunning = true;
         bool paused = false;
+        bool deathSequenceActive = false;
+        bool deathLifeDeducted = false;
+        float deathTimer = 0.0f;
         bool showHitboxes = false;
         int pauseSelection = 0; // 0 = Resume, 1 = Restart, 2 = Quit
         bool returnToSelect = false;
@@ -700,6 +575,7 @@ int main(int argc, char** argv) {
                 paused = false;
             } else if (pauseSelection == 1) {
                 reloadLevel();
+                inDevelopmentNoticeTimer = 2.0f;
                 paused = false;
             } else {
                 returnToSelect = true;
@@ -712,6 +588,9 @@ int main(int argc, char** argv) {
             float dt = (now - lastTicks) / 1000.0f;
             if (dt > 0.05f) dt = 0.05f;
             lastTicks = now;
+            if (inDevelopmentNoticeTimer > 0.0f) {
+                inDevelopmentNoticeTimer = std::max(0.0f, inDevelopmentNoticeTimer - dt);
+            }
 
         float inputMove = 0.0f;
         bool inputDown = false;
@@ -786,15 +665,14 @@ int main(int argc, char** argv) {
                     clampCamX = !clampCamX;
                 }
                 if (e.key.keysym.sym == SDLK_F9) {
-                    int currentLevelId = parseLevelIndexFromPath(levelPath);
-                    int nextLevelId = NextLevelId(currentLevelId);
-                    std::string nextPath = LevelPathFromId(nextLevelId);
+                    std::string nextPath = levelManager.nextLevelPath();
                     if (!nextPath.empty()) {
-                        levelPath = nextPath;
+                        levelManager.setLevelPath(nextPath);
                         reloadLevel();
+                        inDevelopmentNoticeTimer = 2.0f;
                     }
                 }
-                if (e.key.keysym.sym == SDLK_ESCAPE) {
+                if (e.key.keysym.sym == SDLK_ESCAPE || e.key.keysym.sym == SDLK_AC_BACK) {
                     paused = !paused;
                 }
                 if (paused) {
@@ -835,36 +713,65 @@ int main(int argc, char** argv) {
         }
         computeTouchButtons();
 
-        if (!paused) {
+        if (deathSequenceActive && !paused) {
+            deathTimer += dt;
+            if (!deathLifeDeducted && deathTimer >= 0.12f) {
+                livesCount = std::max(0, livesCount - 1);
+                deathLifeDeducted = true;
+            }
+            if (deathLifeDeducted && deathTimer >= 0.90f) {
+                deathSequenceActive = false;
+                deathTimer = 0.0f;
+                if (livesCount > 0) {
+                    reloadLevel();
+                    inDevelopmentNoticeTimer = 2.0f;
+                    continue;
+                } else {
+                    returnToSelect = true;
+                    levelRunning = false;
+                    continue;
+                }
+            }
+        }
+
+        if (!paused && !deathSequenceActive) {
             float touchMove = 0.0f;
             if (touchLeft) touchMove -= 1.0f;
             if (touchRight) touchMove += 1.0f;
             PlayerUpdateResult upd = UpdatePlayerMovement(
                 player, map, dt, jumpBufferMax, movementCfg,
-                touchMove, touchDown, touchJump, inputMove, inputDown, reloadLevel
+                touchMove, touchDown, touchJump, inputMove, inputDown
             );
             if (upd == PlayerUpdateResult::RenderOnly) {
                 goto RENDER_ONLY;
             }
             if (upd == PlayerUpdateResult::Reloaded) {
+                deathSequenceActive = true;
+                deathLifeDeducted = false;
+                deathTimer = 0.0f;
+#if HAS_SDL_MIXER
+                if (audioReady) {
+                    Mix_HaltChannel(-1);
+                    Mix_HaltMusic();
+                    if (loseSfx) Mix_PlayChannel(-1, loseSfx, 0);
+                }
+#endif
                 continue;
             }
 
-            int collectedNow = collectCoinsAtPlayer(map, player, blockDefs);
+            int collectedNow = levelManager.collectCoinsAtPlayer(map, player);
             if (collectedNow > 0) {
-                coinCount += collectedNow;
 #if HAS_SDL_MIXER
                 if (audioReady && coinSfx) Mix_PlayChannel(-1, coinSfx, 0);
 #endif
             }
 
             if (playerTouchesTileId(map, player, 30, 68)) {
-                int currentLevelId = parseLevelIndexFromPath(levelPath);
-                int nextLevelId = NextLevelId(currentLevelId);
-                std::string nextPath = LevelPathFromId(nextLevelId);
+                std::string nextPath = levelManager.nextLevelPath();
                 if (!nextPath.empty()) {
-                    levelPath = nextPath;
+                    levelManager.setLevelPath(nextPath);
                     reloadLevel();
+                    inDevelopmentNoticeTimer = 2.0f;
                     continue;
                 }
             }
@@ -895,23 +802,28 @@ RENDER_ONLY:
                 }
                 return nullptr;
             };
-            struct Layer { const char* frame; float factor; float vfactor; };
-            Layer layers[3] = {
-                {"w1b.png", 0.5f, 0.5f},
-                {"w1f.png", 0.5f, 0.5f},
-                {"w1f.png", 0.7f, 0.7f}
+            struct Layer {
+                const char* frame;
+                bool verticalParallax;
             };
+            Layer layers[3] = {
+                {"w1b.png", false},
+                {"w1f.png", true},
+                {"w1f.png", true}
+            };
+            const float parallaxFactor = 0.5f;
             for (const auto& layer : layers) {
                 const Frame* f = getBg(layer.frame);
                 if (!f) continue;
                 int fw = f->rotated ? f->rect.h : f->rect.w;
                 int fh = f->rotated ? f->rect.w : f->rect.h;
                 if (fw <= 0 || fh <= 0) continue;
-                float ox = std::fmod(camX * layer.factor, (float)fw);
-                if (ox < 0) ox += fw;
+                float ox = std::fmod(camX * parallaxFactor, (float)fw);
                 float maxCamY = std::max(1.0f, (float)(map.h * map.tileSize - screenH));
                 float parallaxCamY = maxCamY - camY;
-                float t = std::clamp((parallaxCamY / maxCamY) * layer.vfactor, 0.0f, 1.0f);
+                float t = std::clamp((parallaxCamY / maxCamY) * parallaxFactor, 0.0f, 1.0f);
+                if (!layer.verticalParallax) t = 0.0f;
+                if (ox < 0) ox += fw;
                 float yF = (float)screenH - (float)fh + t * (float)fh;
                 int y = (int)std::lround(yF);
                 for (int x = -1; x <= screenW / fw + 1; ++x) {
@@ -976,10 +888,24 @@ RENDER_ONLY:
             default: debugAnimName = "IDLE"; break;
         }
 
+        const int tileMinX = std::max(0, (int)std::floor(camX / map.tileSize) - 1);
+        const int tileMaxX = std::min(map.w - 1, (int)std::floor((camX + screenW) / map.tileSize) + 1);
+        const int tileMinY = std::max(0, (int)std::floor(camY / map.tileSize) - 1);
+        const int tileMaxY = std::min(map.h - 1, (int)std::floor((camY + screenH) / map.tileSize) + 1);
+
         if (showHitboxes) {
             // Tile hitboxes
-            for (int y = 0; y < map.h; y++) {
-                for (int x = 0; x < map.w; x++) {
+            std::vector<SDL_FRect> solidHitboxes;
+            std::vector<SDL_FRect> semiHitboxes;
+            std::vector<SDL_FRect> waterHitboxes;
+            std::vector<SDL_FRect> airDebugHitboxes;
+            int visibleTiles = (tileMaxX - tileMinX + 1) * (tileMaxY - tileMinY + 1);
+            solidHitboxes.reserve(visibleTiles);
+            semiHitboxes.reserve(visibleTiles);
+            waterHitboxes.reserve(visibleTiles);
+            airDebugHitboxes.reserve(visibleTiles);
+            for (int y = tileMinY; y <= tileMaxY; y++) {
+                for (int x = tileMinX; x <= tileMaxX; x++) {
                     int idx = y * map.w + x;
                     bool isSolid = map.solid[idx] != 0;
                     bool isSemi = map.semisolid[idx] != 0;
@@ -989,12 +915,27 @@ RENDER_ONLY:
                     if (!isSolid && !isSemi && !isWater && !isAirDebug) continue;
                     SDL_FRect rc{ x * map.tileSize - camX, y * map.tileSize - camY,
                                  (float)map.tileSize, (float)map.tileSize };
-                    if (isSolid) SDL_SetRenderDrawColor(ren, 255, 60, 60, 255);
-                    else if (isSemi) SDL_SetRenderDrawColor(ren, 120, 220, 255, 255);
-                    else if (isWater) SDL_SetRenderDrawColor(ren, 60, 120, 220, 255);
-                    else SDL_SetRenderDrawColor(ren, 180, 180, 180, 255);
-                    SDL_RenderDrawRectF(ren, &rc);
+                    if (isSolid) solidHitboxes.push_back(rc);
+                    else if (isSemi) semiHitboxes.push_back(rc);
+                    else if (isWater) waterHitboxes.push_back(rc);
+                    else airDebugHitboxes.push_back(rc);
                 }
+            }
+            if (!solidHitboxes.empty()) {
+                SDL_SetRenderDrawColor(ren, 255, 60, 60, 255);
+                SDL_RenderDrawRectsF(ren, solidHitboxes.data(), (int)solidHitboxes.size());
+            }
+            if (!semiHitboxes.empty()) {
+                SDL_SetRenderDrawColor(ren, 120, 220, 255, 255);
+                SDL_RenderDrawRectsF(ren, semiHitboxes.data(), (int)semiHitboxes.size());
+            }
+            if (!waterHitboxes.empty()) {
+                SDL_SetRenderDrawColor(ren, 60, 120, 220, 255);
+                SDL_RenderDrawRectsF(ren, waterHitboxes.data(), (int)waterHitboxes.size());
+            }
+            if (!airDebugHitboxes.empty()) {
+                SDL_SetRenderDrawColor(ren, 180, 180, 180, 255);
+                SDL_RenderDrawRectsF(ren, airDebugHitboxes.data(), (int)airDebugHitboxes.size());
             }
 
             // Player hitbox
@@ -1119,6 +1060,39 @@ RENDER_ONLY:
                 SDL_RenderDrawRectF(ren, &pr);
             }
         }
+
+        // HUD: coin counter (always visible, including while paused).
+        SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(ren, 0, 0, 0, 170);
+        SDL_Rect coinHud{10, 10, 138, 28};
+        SDL_RenderFillRect(ren, &coinHud);
+        SDL_SetRenderDrawColor(ren, 200, 180, 60, 220);
+        SDL_RenderDrawRect(ren, &coinHud);
+        DrawText(ren, 16, 16, 2, "COINS");
+        DrawText(ren, 94, 16, 2, std::to_string(levelManager.coinCount()));
+        SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
+
+        if (inDevelopmentNoticeTimer > 0.0f) {
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+            SDL_SetRenderDrawColor(ren, 0, 0, 0, 170);
+            SDL_Rect devHud{screenW / 2 - 144, 14, 288, 30};
+            SDL_RenderFillRect(ren, &devHud);
+            SDL_SetRenderDrawColor(ren, 220, 170, 70, 220);
+            SDL_RenderDrawRect(ren, &devHud);
+            DrawText(ren, screenW / 2 - 126, 20, 2, "IN DEVELOPMENT");
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
+        }
+
+        // HUD: lives counter (bottom-left).
+        SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(ren, 0, 0, 0, 170);
+        SDL_Rect livesHud{10, screenH - 38, 138, 28};
+        SDL_RenderFillRect(ren, &livesHud);
+        SDL_SetRenderDrawColor(ren, 180, 70, 70, 220);
+        SDL_RenderDrawRect(ren, &livesHud);
+        DrawText(ren, 16, screenH - 32, 2, "LIVES");
+        DrawText(ren, 94, screenH - 32, 2, std::to_string(livesCount));
+        SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
 
         if (paused) {
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
@@ -1253,8 +1227,8 @@ RENDER_ONLY:
 
             // Tile IDs (debug)
             SDL_SetRenderDrawColor(ren, 235, 235, 235, 255);
-            for (int y = 0; y < map.h; y++) {
-                for (int x = 0; x < map.w; x++) {
+            for (int y = tileMinY; y <= tileMaxY; y++) {
+                for (int x = tileMinX; x <= tileMaxX; x++) {
                     int idx = y * map.w + x;
                     int id = (int)map.tileIds[idx];
                     int screenX = (int)(x * map.tileSize - camX);
@@ -1332,6 +1306,7 @@ RENDER_ONLY:
     }
 #if HAS_SDL_MIXER
     if (coinSfx) Mix_FreeChunk(coinSfx);
+    if (loseSfx) Mix_FreeChunk(loseSfx);
 #endif
     SDL_DestroyRenderer(ren);
     SDL_DestroyWindow(win);

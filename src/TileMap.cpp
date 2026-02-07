@@ -1,4 +1,38 @@
 #include "TileMap.h"
+#include <algorithm>
+#include <cmath>
+
+static void collectTileRects(
+    const std::vector<unsigned char>& layer,
+    int w,
+    int h,
+    int tileSize,
+    float camX,
+    float camY,
+    int viewW,
+    int viewH,
+    std::vector<SDL_FRect>& out
+) {
+    int minX = std::max(0, (int)std::floor(camX / tileSize) - 1);
+    int maxX = std::min(w - 1, (int)std::floor((camX + (float)viewW) / tileSize) + 1);
+    int minY = std::max(0, (int)std::floor(camY / tileSize) - 1);
+    int maxY = std::min(h - 1, (int)std::floor((camY + (float)viewH) / tileSize) + 1);
+    if (maxX < minX || maxY < minY) return;
+
+    int visibleTiles = (maxX - minX + 1) * (maxY - minY + 1);
+    out.reserve(visibleTiles);
+    for (int y = minY; y <= maxY; ++y) {
+        for (int x = minX; x <= maxX; ++x) {
+            if (!layer[y * w + x]) continue;
+            out.push_back(SDL_FRect{
+                x * tileSize - camX,
+                y * tileSize - camY,
+                (float)tileSize,
+                (float)tileSize
+            });
+        }
+    }
+}
 
 TileMap::TileMap() {
     resize(w,h);
@@ -51,37 +85,65 @@ void TileMap::setWater(int x,int y,unsigned char v){
 }
 
 void TileMap::renderBgDebug(SDL_Renderer* r,float camX,float camY) const{
-    for(int y=0;y<h;y++) for(int x=0;x<w;x++){
-        if(bg[y*w+x]==0) continue;
-        SDL_SetRenderDrawColor(r,30,30,40,255);
-        SDL_FRect rc{ x*tileSize-camX, y*tileSize-camY, (float)tileSize, (float)tileSize };
-        SDL_RenderFillRectF(r,&rc);
+    int viewW = 0, viewH = 0;
+    SDL_GetRendererOutputSize(r, &viewW, &viewH);
+    if (viewW <= 0 || viewH <= 0) return;
+
+    std::vector<SDL_FRect> rects;
+    int minX = std::max(0, (int)std::floor(camX / tileSize) - 1);
+    int maxX = std::min(w - 1, (int)std::floor((camX + (float)viewW) / tileSize) + 1);
+    int minY = std::max(0, (int)std::floor(camY / tileSize) - 1);
+    int maxY = std::min(h - 1, (int)std::floor((camY + (float)viewH) / tileSize) + 1);
+    if (maxX < minX || maxY < minY) return;
+    rects.reserve((maxX - minX + 1) * (maxY - minY + 1));
+    for (int y = minY; y <= maxY; ++y) {
+        for (int x = minX; x <= maxX; ++x) {
+            if (bg[y * w + x] == 0) continue;
+            rects.push_back(SDL_FRect{
+                x * tileSize - camX,
+                y * tileSize - camY,
+                (float)tileSize,
+                (float)tileSize
+            });
+        }
     }
+    if (rects.empty()) return;
+    SDL_SetRenderDrawColor(r,30,30,40,255);
+    SDL_RenderFillRectsF(r, rects.data(), (int)rects.size());
 }
 
 void TileMap::renderSolid(SDL_Renderer* r,float camX,float camY) const{
+    int viewW = 0, viewH = 0;
+    SDL_GetRendererOutputSize(r, &viewW, &viewH);
+    if (viewW <= 0 || viewH <= 0) return;
+
+    std::vector<SDL_FRect> rects;
+    collectTileRects(solid, w, h, tileSize, camX, camY, viewW, viewH, rects);
+    if (rects.empty()) return;
     SDL_SetRenderDrawColor(r,60,60,70,255);
-    for(int y=0;y<h;y++) for(int x=0;x<w;x++){
-        if(!solid[y*w+x]) continue;
-        SDL_FRect rc{ x*tileSize-camX, y*tileSize-camY, (float)tileSize, (float)tileSize };
-        SDL_RenderFillRectF(r,&rc);
-    }
+    SDL_RenderFillRectsF(r, rects.data(), (int)rects.size());
 }
 
 void TileMap::renderSemiSolid(SDL_Renderer* r,float camX,float camY) const{
+    int viewW = 0, viewH = 0;
+    SDL_GetRendererOutputSize(r, &viewW, &viewH);
+    if (viewW <= 0 || viewH <= 0) return;
+
+    std::vector<SDL_FRect> rects;
+    collectTileRects(semisolid, w, h, tileSize, camX, camY, viewW, viewH, rects);
+    if (rects.empty()) return;
     SDL_SetRenderDrawColor(r,90,110,150,255);
-    for(int y=0;y<h;y++) for(int x=0;x<w;x++){
-        if(!semisolid[y*w+x]) continue;
-        SDL_FRect rc{ x*tileSize-camX, y*tileSize-camY, (float)tileSize, (float)tileSize };
-        SDL_RenderFillRectF(r,&rc);
-    }
+    SDL_RenderFillRectsF(r, rects.data(), (int)rects.size());
 }
 
 void TileMap::renderWater(SDL_Renderer* r,float camX,float camY) const{
+    int viewW = 0, viewH = 0;
+    SDL_GetRendererOutputSize(r, &viewW, &viewH);
+    if (viewW <= 0 || viewH <= 0) return;
+
+    std::vector<SDL_FRect> rects;
+    collectTileRects(water, w, h, tileSize, camX, camY, viewW, viewH, rects);
+    if (rects.empty()) return;
     SDL_SetRenderDrawColor(r,40,90,160,255);
-    for(int y=0;y<h;y++) for(int x=0;x<w;x++){
-        if(!water[y*w+x]) continue;
-        SDL_FRect rc{ x*tileSize-camX, y*tileSize-camY, (float)tileSize, (float)tileSize };
-        SDL_RenderFillRectF(r,&rc);
-    }
+    SDL_RenderFillRectsF(r, rects.data(), (int)rects.size());
 }

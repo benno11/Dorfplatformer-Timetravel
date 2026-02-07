@@ -221,6 +221,7 @@ SRC=(
   src/TextRenderer.cpp
   src/LevelSelect.cpp
   src/PlayerController.cpp
+  src/LevelManager.cpp
 )
 
 OUT_LIB="$OUT_DIR/libplatformer.so"

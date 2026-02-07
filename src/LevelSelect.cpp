@@ -164,7 +164,7 @@ std::string RunLevelSelect(SDL_Window* win, SDL_Renderer* ren) {
                 }
             }
             if (e.type == SDL_KEYDOWN && e.key.repeat == 0) {
-                if (e.key.keysym.sym == SDLK_ESCAPE) {
+                if (e.key.keysym.sym == SDLK_ESCAPE || e.key.keysym.sym == SDLK_AC_BACK) {
                     running = false;
                     break;
                 }

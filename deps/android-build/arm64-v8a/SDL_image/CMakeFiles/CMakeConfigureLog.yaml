@@ -14562,3 +14562,833 @@ events:
         
       exitCode: 2
 ...
+
+---
+events:
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckSourceCompiles.cmake:101 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "/usr/share/cmake-3.28/Modules/CheckCCompilerFlag.cmake:51 (cmake_check_compiler_flag)"
+      - "external/dav1d/CMakeLists.txt:264 (check_c_compiler_flag)"
+      - "external/dav1d/CMakeLists.txt:278 (add_compile_option_if_supported)"
+    checks:
+      - "Performing Test COMPILER_SUPPORTS_-Werror=vla"
+    directories:
+      source: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-ABr5PO"
+      binary: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-ABr5PO"
+    cmakeVariables:
+      ANDROID_ABI: "arm64-v8a"
+      ANDROID_ARM_MODE: "thumb"
+      ANDROID_PIE: "TRUE"
+      ANDROID_PLATFORM: "android-24"
+      ANDROID_STL: "c++_static"
+      ANDROID_TOOLCHAIN: "clang"
+      CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-scan-deps"
+      CMAKE_CXX_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_FLAGS: "-g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security "
+      CMAKE_C_FLAGS_DEBUG: "-fno-limit-debug-info "
+      CMAKE_EXE_LINKER_FLAGS: "-static-libstdc++ -Wl,--build-id=sha1 -Wl,--no-rosegment -Wl,--no-undefined-version -Wl,--fatal-warnings -Wl,--no-undefined -Qunused-arguments  "
+      CMAKE_MODULE_PATH: "/home/benno111/Documents/GitHub/DF-New/deps/android-src/SDL_image/cmake"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+      CMAKE_SYSROOT: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+    buildResult:
+      variable: "COMPILER_SUPPORTS_-Werror=vla"
+      cached: true
+      stdout: |
+        Change Dir: '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-ABr5PO'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_ee29b/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_ee29b.dir/build.make CMakeFiles/cmTC_ee29b.dir/build
+        gmake[1]: Entering directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-ABr5PO'
+        Building C object CMakeFiles/cmTC_ee29b.dir/src.c.o
+        /home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang --target=aarch64-none-linux-android24 --sysroot=/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot   -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security   -fPIE   -DCOMPILER_SUPPORTS_-Werror=vla -Werror=vla -MD -MT CMakeFiles/cmTC_ee29b.dir/src.c.o -MF CMakeFiles/cmTC_ee29b.dir/src.c.o.d -o CMakeFiles/cmTC_ee29b.dir/src.c.o -c /home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-ABr5PO/src.c
+        In file included from <built-in>:428:
+        <command line>:3:27: warning: ISO C99 requires whitespace after the macro name [-Wc99-extensions]
+            3 | #define COMPILER_SUPPORTS_-Werror vla
+              |                           ^
+        1 warning generated.
+        Linking C executable cmTC_ee29b
+        /usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_ee29b.dir/link.txt --verbose=1
+        /home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang --target=aarch64-none-linux-android24 --sysroot=/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security   -static-libstdc++ -Wl,--build-id=sha1 -Wl,--no-rosegment -Wl,--no-undefined-version -Wl,--fatal-warnings -Wl,--no-undefined -Qunused-arguments    CMakeFiles/cmTC_ee29b.dir/src.c.o -o cmTC_ee29b  -latomic -lm 
+        gmake[1]: Leaving directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-ABr5PO'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckSourceCompiles.cmake:101 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "/usr/share/cmake-3.28/Modules/CheckCCompilerFlag.cmake:51 (cmake_check_compiler_flag)"
+      - "external/dav1d/CMakeLists.txt:264 (check_c_compiler_flag)"
+      - "external/dav1d/CMakeLists.txt:278 (add_compile_option_if_supported)"
+    checks:
+      - "Performing Test COMPILER_SUPPORTS_-Werror=missing-prototypes"
+    directories:
+      source: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-pxylE9"
+      binary: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-pxylE9"
+    cmakeVariables:
+      ANDROID_ABI: "arm64-v8a"
+      ANDROID_ARM_MODE: "thumb"
+      ANDROID_PIE: "TRUE"
+      ANDROID_PLATFORM: "android-24"
+      ANDROID_STL: "c++_static"
+      ANDROID_TOOLCHAIN: "clang"
+      CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-scan-deps"
+      CMAKE_CXX_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_FLAGS: "-g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security "
+      CMAKE_C_FLAGS_DEBUG: "-fno-limit-debug-info "
+      CMAKE_EXE_LINKER_FLAGS: "-static-libstdc++ -Wl,--build-id=sha1 -Wl,--no-rosegment -Wl,--no-undefined-version -Wl,--fatal-warnings -Wl,--no-undefined -Qunused-arguments  "
+      CMAKE_MODULE_PATH: "/home/benno111/Documents/GitHub/DF-New/deps/android-src/SDL_image/cmake"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+      CMAKE_SYSROOT: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+    buildResult:
+      variable: "COMPILER_SUPPORTS_-Werror=missing-prototypes"
+      cached: true
+      stdout: |
+        Change Dir: '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-pxylE9'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_09353/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_09353.dir/build.make CMakeFiles/cmTC_09353.dir/build
+        gmake[1]: Entering directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-pxylE9'
+        Building C object CMakeFiles/cmTC_09353.dir/src.c.o
+        /home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang --target=aarch64-none-linux-android24 --sysroot=/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot   -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security   -fPIE   -DCOMPILER_SUPPORTS_-Werror=missing-prototypes -Werror=missing-prototypes -MD -MT CMakeFiles/cmTC_09353.dir/src.c.o -MF CMakeFiles/cmTC_09353.dir/src.c.o.d -o CMakeFiles/cmTC_09353.dir/src.c.o -c /home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-pxylE9/src.c
+        In file included from <built-in>:428:
+        <command line>:3:27: warning: ISO C99 requires whitespace after the macro name [-Wc99-extensions]
+            3 | #define COMPILER_SUPPORTS_-Werror missing-prototypes
+              |                           ^
+        1 warning generated.
+        Linking C executable cmTC_09353
+        /usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_09353.dir/link.txt --verbose=1
+        /home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang --target=aarch64-none-linux-android24 --sysroot=/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security   -static-libstdc++ -Wl,--build-id=sha1 -Wl,--no-rosegment -Wl,--no-undefined-version -Wl,--fatal-warnings -Wl,--no-undefined -Qunused-arguments    CMakeFiles/cmTC_09353.dir/src.c.o -o cmTC_09353  -latomic -lm 
+        gmake[1]: Leaving directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-pxylE9'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckSourceCompiles.cmake:101 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CheckCSourceCompiles.cmake:52 (cmake_check_source_compiles)"
+      - "external/libwebp/cmake/cpu.cmake:13 (check_c_source_compiles)"
+      - "external/libwebp/cmake/cpu.cmake:70 (webp_check_compiler_flag)"
+      - "external/libwebp/cmake/deps.cmake:138 (include)"
+      - "external/libwebp/CMakeLists.txt:51 (include)"
+    checks:
+      - "Performing Test WEBP_HAVE_FLAG_SSE41"
+    directories:
+      source: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-jDdPXE"
+      binary: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-jDdPXE"
+    cmakeVariables:
+      ANDROID_ABI: "arm64-v8a"
+      ANDROID_ARM_MODE: "thumb"
+      ANDROID_PIE: "TRUE"
+      ANDROID_PLATFORM: "android-24"
+      ANDROID_STL: "c++_static"
+      ANDROID_TOOLCHAIN: "clang"
+      CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-scan-deps"
+      CMAKE_CXX_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_FLAGS: "-g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -pthread"
+      CMAKE_C_FLAGS_DEBUG: "-fno-limit-debug-info "
+      CMAKE_EXE_LINKER_FLAGS: "-static-libstdc++ -Wl,--build-id=sha1 -Wl,--no-rosegment -Wl,--no-undefined-version -Wl,--fatal-warnings -Wl,--no-undefined -Qunused-arguments  "
+      CMAKE_MODULE_PATH: "/home/benno111/Documents/GitHub/DF-New/deps/android-src/SDL_image/cmake"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+      CMAKE_SYSROOT: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+    buildResult:
+      variable: "WEBP_HAVE_FLAG_SSE41"
+      cached: true
+      stdout: |
+        Change Dir: '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-jDdPXE'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_ece65/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_ece65.dir/build.make CMakeFiles/cmTC_ece65.dir/build
+        gmake[1]: Entering directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-jDdPXE'
+        Building C object CMakeFiles/cmTC_ece65.dir/src.c.o
+        /home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang --target=aarch64-none-linux-android24 --sysroot=/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot -DWEBP_HAVE_FLAG_SSE41 -I/home/benno111/Documents/GitHub/DF-New/deps/android-src/SDL_image/external/libwebp -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -pthread  -fPIE -MD -MT CMakeFiles/cmTC_ece65.dir/src.c.o -MF CMakeFiles/cmTC_ece65.dir/src.c.o.d -o CMakeFiles/cmTC_ece65.dir/src.c.o -c /home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-jDdPXE/src.c
+        /home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-jDdPXE/src.c:5:9: error: use of undeclared identifier 'this'
+            5 |         this is not valid code
+              |         ^
+        1 error generated.
+        gmake[1]: *** [CMakeFiles/cmTC_ece65.dir/build.make:79: CMakeFiles/cmTC_ece65.dir/src.c.o] Error 1
+        gmake[1]: Leaving directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-jDdPXE'
+        gmake: *** [Makefile:127: cmTC_ece65/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckSourceCompiles.cmake:101 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CheckCSourceCompiles.cmake:52 (cmake_check_source_compiles)"
+      - "external/libwebp/cmake/cpu.cmake:13 (check_c_source_compiles)"
+      - "external/libwebp/cmake/cpu.cmake:74 (webp_check_compiler_flag)"
+      - "external/libwebp/cmake/deps.cmake:138 (include)"
+      - "external/libwebp/CMakeLists.txt:51 (include)"
+    checks:
+      - "Performing Test WEBP_HAVE_FLAG_SSE41"
+    directories:
+      source: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-9VSr6v"
+      binary: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-9VSr6v"
+    cmakeVariables:
+      ANDROID_ABI: "arm64-v8a"
+      ANDROID_ARM_MODE: "thumb"
+      ANDROID_PIE: "TRUE"
+      ANDROID_PLATFORM: "android-24"
+      ANDROID_STL: "c++_static"
+      ANDROID_TOOLCHAIN: "clang"
+      CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-scan-deps"
+      CMAKE_CXX_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_FLAGS: "-g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -pthread"
+      CMAKE_C_FLAGS_DEBUG: "-fno-limit-debug-info "
+      CMAKE_EXE_LINKER_FLAGS: "-static-libstdc++ -Wl,--build-id=sha1 -Wl,--no-rosegment -Wl,--no-undefined-version -Wl,--fatal-warnings -Wl,--no-undefined -Qunused-arguments  "
+      CMAKE_MODULE_PATH: "/home/benno111/Documents/GitHub/DF-New/deps/android-src/SDL_image/cmake"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+      CMAKE_SYSROOT: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+    buildResult:
+      variable: "WEBP_HAVE_FLAG_SSE41"
+      cached: true
+      stdout: |
+        Change Dir: '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-9VSr6v'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_0538d/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_0538d.dir/build.make CMakeFiles/cmTC_0538d.dir/build
+        gmake[1]: Entering directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-9VSr6v'
+        Building C object CMakeFiles/cmTC_0538d.dir/src.c.o
+        /home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang --target=aarch64-none-linux-android24 --sysroot=/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot -DWEBP_HAVE_FLAG_SSE41 -I/home/benno111/Documents/GitHub/DF-New/deps/android-src/SDL_image/external/libwebp -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -pthread -msse4.1 -fPIE -MD -MT CMakeFiles/cmTC_0538d.dir/src.c.o -MF CMakeFiles/cmTC_0538d.dir/src.c.o.d -o CMakeFiles/cmTC_0538d.dir/src.c.o -c /home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-9VSr6v/src.c
+        clang: error: unsupported option '-msse4.1' for target 'aarch64-none-linux-android24'
+        gmake[1]: *** [CMakeFiles/cmTC_0538d.dir/build.make:79: CMakeFiles/cmTC_0538d.dir/src.c.o] Error 1
+        gmake[1]: Leaving directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-9VSr6v'
+        gmake: *** [Makefile:127: cmTC_0538d/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckSourceCompiles.cmake:101 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "/usr/share/cmake-3.28/Modules/CheckCCompilerFlag.cmake:51 (cmake_check_compiler_flag)"
+      - "external/libwebp/cmake/cpu.cmake:110 (check_c_compiler_flag)"
+      - "external/libwebp/cmake/deps.cmake:138 (include)"
+      - "external/libwebp/CMakeLists.txt:51 (include)"
+    checks:
+      - "Performing Test HAS_COMPILE_FLAG"
+    directories:
+      source: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-HdA8Oe"
+      binary: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-HdA8Oe"
+    cmakeVariables:
+      ANDROID_ABI: "arm64-v8a"
+      ANDROID_ARM_MODE: "thumb"
+      ANDROID_PIE: "TRUE"
+      ANDROID_PLATFORM: "android-24"
+      ANDROID_STL: "c++_static"
+      ANDROID_TOOLCHAIN: "clang"
+      CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-scan-deps"
+      CMAKE_CXX_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_FLAGS: "-g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -pthread"
+      CMAKE_C_FLAGS_DEBUG: "-fno-limit-debug-info "
+      CMAKE_EXE_LINKER_FLAGS: "-static-libstdc++ -Wl,--build-id=sha1 -Wl,--no-rosegment -Wl,--no-undefined-version -Wl,--fatal-warnings -Wl,--no-undefined -Qunused-arguments  "
+      CMAKE_MODULE_PATH: "/home/benno111/Documents/GitHub/DF-New/deps/android-src/SDL_image/cmake"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+      CMAKE_SYSROOT: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+    buildResult:
+      variable: "HAS_COMPILE_FLAG"
+      cached: true
+      stdout: |
+        Change Dir: '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-HdA8Oe'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_62bd0/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_62bd0.dir/build.make CMakeFiles/cmTC_62bd0.dir/build
+        gmake[1]: Entering directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-HdA8Oe'
+        Building C object CMakeFiles/cmTC_62bd0.dir/src.c.o
+        /home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang --target=aarch64-none-linux-android24 --sysroot=/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot -DHAS_COMPILE_FLAG  -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -pthread -msse4.1 -fPIE   -mno-sse4.1 -MD -MT CMakeFiles/cmTC_62bd0.dir/src.c.o -MF CMakeFiles/cmTC_62bd0.dir/src.c.o.d -o CMakeFiles/cmTC_62bd0.dir/src.c.o -c /home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-HdA8Oe/src.c
+        clang: error: unsupported option '-msse4.1' for target 'aarch64-none-linux-android24'
+        clang: error: unsupported option '-mno-sse4.1' for target 'aarch64-none-linux-android24'
+        gmake[1]: *** [CMakeFiles/cmTC_62bd0.dir/build.make:79: CMakeFiles/cmTC_62bd0.dir/src.c.o] Error 1
+        gmake[1]: Leaving directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-HdA8Oe'
+        gmake: *** [Makefile:127: cmTC_62bd0/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckSourceCompiles.cmake:101 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CheckCSourceCompiles.cmake:52 (cmake_check_source_compiles)"
+      - "external/libwebp/cmake/cpu.cmake:13 (check_c_source_compiles)"
+      - "external/libwebp/cmake/cpu.cmake:70 (webp_check_compiler_flag)"
+      - "external/libwebp/cmake/deps.cmake:138 (include)"
+      - "external/libwebp/CMakeLists.txt:51 (include)"
+    checks:
+      - "Performing Test WEBP_HAVE_FLAG_SSE2"
+    directories:
+      source: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-bqoQ4O"
+      binary: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-bqoQ4O"
+    cmakeVariables:
+      ANDROID_ABI: "arm64-v8a"
+      ANDROID_ARM_MODE: "thumb"
+      ANDROID_PIE: "TRUE"
+      ANDROID_PLATFORM: "android-24"
+      ANDROID_STL: "c++_static"
+      ANDROID_TOOLCHAIN: "clang"
+      CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-scan-deps"
+      CMAKE_CXX_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_FLAGS: "-g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -pthread"
+      CMAKE_C_FLAGS_DEBUG: "-fno-limit-debug-info "
+      CMAKE_EXE_LINKER_FLAGS: "-static-libstdc++ -Wl,--build-id=sha1 -Wl,--no-rosegment -Wl,--no-undefined-version -Wl,--fatal-warnings -Wl,--no-undefined -Qunused-arguments  "
+      CMAKE_MODULE_PATH: "/home/benno111/Documents/GitHub/DF-New/deps/android-src/SDL_image/cmake"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+      CMAKE_SYSROOT: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+    buildResult:
+      variable: "WEBP_HAVE_FLAG_SSE2"
+      cached: true
+      stdout: |
+        Change Dir: '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-bqoQ4O'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_4b60f/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_4b60f.dir/build.make CMakeFiles/cmTC_4b60f.dir/build
+        gmake[1]: Entering directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-bqoQ4O'
+        Building C object CMakeFiles/cmTC_4b60f.dir/src.c.o
+        /home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang --target=aarch64-none-linux-android24 --sysroot=/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot -DWEBP_HAVE_FLAG_SSE2 -I/home/benno111/Documents/GitHub/DF-New/deps/android-src/SDL_image/external/libwebp -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -pthread  -fPIE -MD -MT CMakeFiles/cmTC_4b60f.dir/src.c.o -MF CMakeFiles/cmTC_4b60f.dir/src.c.o.d -o CMakeFiles/cmTC_4b60f.dir/src.c.o -c /home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-bqoQ4O/src.c
+        /home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-bqoQ4O/src.c:5:9: error: use of undeclared identifier 'this'
+            5 |         this is not valid code
+              |         ^
+        1 error generated.
+        gmake[1]: *** [CMakeFiles/cmTC_4b60f.dir/build.make:79: CMakeFiles/cmTC_4b60f.dir/src.c.o] Error 1
+        gmake[1]: Leaving directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-bqoQ4O'
+        gmake: *** [Makefile:127: cmTC_4b60f/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckSourceCompiles.cmake:101 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CheckCSourceCompiles.cmake:52 (cmake_check_source_compiles)"
+      - "external/libwebp/cmake/cpu.cmake:13 (check_c_source_compiles)"
+      - "external/libwebp/cmake/cpu.cmake:74 (webp_check_compiler_flag)"
+      - "external/libwebp/cmake/deps.cmake:138 (include)"
+      - "external/libwebp/CMakeLists.txt:51 (include)"
+    checks:
+      - "Performing Test WEBP_HAVE_FLAG_SSE2"
+    directories:
+      source: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-yIPf0p"
+      binary: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-yIPf0p"
+    cmakeVariables:
+      ANDROID_ABI: "arm64-v8a"
+      ANDROID_ARM_MODE: "thumb"
+      ANDROID_PIE: "TRUE"
+      ANDROID_PLATFORM: "android-24"
+      ANDROID_STL: "c++_static"
+      ANDROID_TOOLCHAIN: "clang"
+      CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-scan-deps"
+      CMAKE_CXX_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_FLAGS: "-g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -pthread"
+      CMAKE_C_FLAGS_DEBUG: "-fno-limit-debug-info "
+      CMAKE_EXE_LINKER_FLAGS: "-static-libstdc++ -Wl,--build-id=sha1 -Wl,--no-rosegment -Wl,--no-undefined-version -Wl,--fatal-warnings -Wl,--no-undefined -Qunused-arguments  "
+      CMAKE_MODULE_PATH: "/home/benno111/Documents/GitHub/DF-New/deps/android-src/SDL_image/cmake"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+      CMAKE_SYSROOT: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+    buildResult:
+      variable: "WEBP_HAVE_FLAG_SSE2"
+      cached: true
+      stdout: |
+        Change Dir: '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-yIPf0p'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_16ffa/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_16ffa.dir/build.make CMakeFiles/cmTC_16ffa.dir/build
+        gmake[1]: Entering directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-yIPf0p'
+        Building C object CMakeFiles/cmTC_16ffa.dir/src.c.o
+        /home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang --target=aarch64-none-linux-android24 --sysroot=/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot -DWEBP_HAVE_FLAG_SSE2 -I/home/benno111/Documents/GitHub/DF-New/deps/android-src/SDL_image/external/libwebp -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -pthread -msse2 -fPIE -MD -MT CMakeFiles/cmTC_16ffa.dir/src.c.o -MF CMakeFiles/cmTC_16ffa.dir/src.c.o.d -o CMakeFiles/cmTC_16ffa.dir/src.c.o -c /home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-yIPf0p/src.c
+        clang: error: unsupported option '-msse2' for target 'aarch64-none-linux-android24'
+        gmake[1]: *** [CMakeFiles/cmTC_16ffa.dir/build.make:79: CMakeFiles/cmTC_16ffa.dir/src.c.o] Error 1
+        gmake[1]: Leaving directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-yIPf0p'
+        gmake: *** [Makefile:127: cmTC_16ffa/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckSourceCompiles.cmake:101 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "/usr/share/cmake-3.28/Modules/CheckCCompilerFlag.cmake:51 (cmake_check_compiler_flag)"
+      - "external/libwebp/cmake/cpu.cmake:110 (check_c_compiler_flag)"
+      - "external/libwebp/cmake/deps.cmake:138 (include)"
+      - "external/libwebp/CMakeLists.txt:51 (include)"
+    checks:
+      - "Performing Test HAS_COMPILE_FLAG"
+    directories:
+      source: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-PJhxrr"
+      binary: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-PJhxrr"
+    cmakeVariables:
+      ANDROID_ABI: "arm64-v8a"
+      ANDROID_ARM_MODE: "thumb"
+      ANDROID_PIE: "TRUE"
+      ANDROID_PLATFORM: "android-24"
+      ANDROID_STL: "c++_static"
+      ANDROID_TOOLCHAIN: "clang"
+      CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-scan-deps"
+      CMAKE_CXX_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_FLAGS: "-g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -pthread"
+      CMAKE_C_FLAGS_DEBUG: "-fno-limit-debug-info "
+      CMAKE_EXE_LINKER_FLAGS: "-static-libstdc++ -Wl,--build-id=sha1 -Wl,--no-rosegment -Wl,--no-undefined-version -Wl,--fatal-warnings -Wl,--no-undefined -Qunused-arguments  "
+      CMAKE_MODULE_PATH: "/home/benno111/Documents/GitHub/DF-New/deps/android-src/SDL_image/cmake"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+      CMAKE_SYSROOT: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+    buildResult:
+      variable: "HAS_COMPILE_FLAG"
+      cached: true
+      stdout: |
+        Change Dir: '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-PJhxrr'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_e3265/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_e3265.dir/build.make CMakeFiles/cmTC_e3265.dir/build
+        gmake[1]: Entering directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-PJhxrr'
+        Building C object CMakeFiles/cmTC_e3265.dir/src.c.o
+        /home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang --target=aarch64-none-linux-android24 --sysroot=/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot -DHAS_COMPILE_FLAG  -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -pthread -msse2 -fPIE   -mno-sse2 -MD -MT CMakeFiles/cmTC_e3265.dir/src.c.o -MF CMakeFiles/cmTC_e3265.dir/src.c.o.d -o CMakeFiles/cmTC_e3265.dir/src.c.o -c /home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-PJhxrr/src.c
+        clang: error: unsupported option '-msse2' for target 'aarch64-none-linux-android24'
+        clang: error: unsupported option '-mno-sse2' for target 'aarch64-none-linux-android24'
+        gmake[1]: *** [CMakeFiles/cmTC_e3265.dir/build.make:79: CMakeFiles/cmTC_e3265.dir/src.c.o] Error 1
+        gmake[1]: Leaving directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-PJhxrr'
+        gmake: *** [Makefile:127: cmTC_e3265/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckSourceCompiles.cmake:101 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CheckCSourceCompiles.cmake:52 (cmake_check_source_compiles)"
+      - "external/libwebp/cmake/cpu.cmake:13 (check_c_source_compiles)"
+      - "external/libwebp/cmake/cpu.cmake:70 (webp_check_compiler_flag)"
+      - "external/libwebp/cmake/deps.cmake:138 (include)"
+      - "external/libwebp/CMakeLists.txt:51 (include)"
+    checks:
+      - "Performing Test WEBP_HAVE_FLAG_MIPS32"
+    directories:
+      source: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-Sew7wP"
+      binary: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-Sew7wP"
+    cmakeVariables:
+      ANDROID_ABI: "arm64-v8a"
+      ANDROID_ARM_MODE: "thumb"
+      ANDROID_PIE: "TRUE"
+      ANDROID_PLATFORM: "android-24"
+      ANDROID_STL: "c++_static"
+      ANDROID_TOOLCHAIN: "clang"
+      CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-scan-deps"
+      CMAKE_CXX_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_FLAGS: "-g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -pthread"
+      CMAKE_C_FLAGS_DEBUG: "-fno-limit-debug-info "
+      CMAKE_EXE_LINKER_FLAGS: "-static-libstdc++ -Wl,--build-id=sha1 -Wl,--no-rosegment -Wl,--no-undefined-version -Wl,--fatal-warnings -Wl,--no-undefined -Qunused-arguments  "
+      CMAKE_MODULE_PATH: "/home/benno111/Documents/GitHub/DF-New/deps/android-src/SDL_image/cmake"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+      CMAKE_SYSROOT: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+    buildResult:
+      variable: "WEBP_HAVE_FLAG_MIPS32"
+      cached: true
+      stdout: |
+        Change Dir: '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-Sew7wP'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_02e91/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_02e91.dir/build.make CMakeFiles/cmTC_02e91.dir/build
+        gmake[1]: Entering directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-Sew7wP'
+        Building C object CMakeFiles/cmTC_02e91.dir/src.c.o
+        /home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang --target=aarch64-none-linux-android24 --sysroot=/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot -DWEBP_HAVE_FLAG_MIPS32 -I/home/benno111/Documents/GitHub/DF-New/deps/android-src/SDL_image/external/libwebp -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -pthread  -fPIE -MD -MT CMakeFiles/cmTC_02e91.dir/src.c.o -MF CMakeFiles/cmTC_02e91.dir/src.c.o.d -o CMakeFiles/cmTC_02e91.dir/src.c.o -c /home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-Sew7wP/src.c
+        /home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-Sew7wP/src.c:5:9: error: use of undeclared identifier 'this'
+            5 |         this is not valid code
+              |         ^
+        1 error generated.
+        gmake[1]: *** [CMakeFiles/cmTC_02e91.dir/build.make:79: CMakeFiles/cmTC_02e91.dir/src.c.o] Error 1
+        gmake[1]: Leaving directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-Sew7wP'
+        gmake: *** [Makefile:127: cmTC_02e91/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckSourceCompiles.cmake:101 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CheckCSourceCompiles.cmake:52 (cmake_check_source_compiles)"
+      - "external/libwebp/cmake/cpu.cmake:13 (check_c_source_compiles)"
+      - "external/libwebp/cmake/cpu.cmake:74 (webp_check_compiler_flag)"
+      - "external/libwebp/cmake/deps.cmake:138 (include)"
+      - "external/libwebp/CMakeLists.txt:51 (include)"
+    checks:
+      - "Performing Test WEBP_HAVE_FLAG_MIPS32"
+    directories:
+      source: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-K49qPw"
+      binary: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-K49qPw"
+    cmakeVariables:
+      ANDROID_ABI: "arm64-v8a"
+      ANDROID_ARM_MODE: "thumb"
+      ANDROID_PIE: "TRUE"
+      ANDROID_PLATFORM: "android-24"
+      ANDROID_STL: "c++_static"
+      ANDROID_TOOLCHAIN: "clang"
+      CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-scan-deps"
+      CMAKE_CXX_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_FLAGS: "-g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -pthread"
+      CMAKE_C_FLAGS_DEBUG: "-fno-limit-debug-info "
+      CMAKE_EXE_LINKER_FLAGS: "-static-libstdc++ -Wl,--build-id=sha1 -Wl,--no-rosegment -Wl,--no-undefined-version -Wl,--fatal-warnings -Wl,--no-undefined -Qunused-arguments  "
+      CMAKE_MODULE_PATH: "/home/benno111/Documents/GitHub/DF-New/deps/android-src/SDL_image/cmake"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+      CMAKE_SYSROOT: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+    buildResult:
+      variable: "WEBP_HAVE_FLAG_MIPS32"
+      cached: true
+      stdout: |
+        Change Dir: '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-K49qPw'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_09187/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_09187.dir/build.make CMakeFiles/cmTC_09187.dir/build
+        gmake[1]: Entering directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-K49qPw'
+        Building C object CMakeFiles/cmTC_09187.dir/src.c.o
+        /home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang --target=aarch64-none-linux-android24 --sysroot=/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot -DWEBP_HAVE_FLAG_MIPS32 -I/home/benno111/Documents/GitHub/DF-New/deps/android-src/SDL_image/external/libwebp -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -pthread -mips32 -fPIE -MD -MT CMakeFiles/cmTC_09187.dir/src.c.o -MF CMakeFiles/cmTC_09187.dir/src.c.o.d -o CMakeFiles/cmTC_09187.dir/src.c.o -c /home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-K49qPw/src.c
+        clang: error: unsupported argument 'mips32' to option '-march='
+        gmake[1]: *** [CMakeFiles/cmTC_09187.dir/build.make:79: CMakeFiles/cmTC_09187.dir/src.c.o] Error 1
+        gmake[1]: Leaving directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-K49qPw'
+        gmake: *** [Makefile:127: cmTC_09187/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckSourceCompiles.cmake:101 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CheckCSourceCompiles.cmake:52 (cmake_check_source_compiles)"
+      - "external/libwebp/cmake/cpu.cmake:13 (check_c_source_compiles)"
+      - "external/libwebp/cmake/cpu.cmake:70 (webp_check_compiler_flag)"
+      - "external/libwebp/cmake/deps.cmake:138 (include)"
+      - "external/libwebp/CMakeLists.txt:51 (include)"
+    checks:
+      - "Performing Test WEBP_HAVE_FLAG_MIPS_DSP_R2"
+    directories:
+      source: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-vGJ4G4"
+      binary: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-vGJ4G4"
+    cmakeVariables:
+      ANDROID_ABI: "arm64-v8a"
+      ANDROID_ARM_MODE: "thumb"
+      ANDROID_PIE: "TRUE"
+      ANDROID_PLATFORM: "android-24"
+      ANDROID_STL: "c++_static"
+      ANDROID_TOOLCHAIN: "clang"
+      CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-scan-deps"
+      CMAKE_CXX_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_FLAGS: "-g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -pthread"
+      CMAKE_C_FLAGS_DEBUG: "-fno-limit-debug-info "
+      CMAKE_EXE_LINKER_FLAGS: "-static-libstdc++ -Wl,--build-id=sha1 -Wl,--no-rosegment -Wl,--no-undefined-version -Wl,--fatal-warnings -Wl,--no-undefined -Qunused-arguments  "
+      CMAKE_MODULE_PATH: "/home/benno111/Documents/GitHub/DF-New/deps/android-src/SDL_image/cmake"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+      CMAKE_SYSROOT: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+    buildResult:
+      variable: "WEBP_HAVE_FLAG_MIPS_DSP_R2"
+      cached: true
+      stdout: |
+        Change Dir: '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-vGJ4G4'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_9fb28/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_9fb28.dir/build.make CMakeFiles/cmTC_9fb28.dir/build
+        gmake[1]: Entering directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-vGJ4G4'
+        Building C object CMakeFiles/cmTC_9fb28.dir/src.c.o
+        /home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang --target=aarch64-none-linux-android24 --sysroot=/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot -DWEBP_HAVE_FLAG_MIPS_DSP_R2 -I/home/benno111/Documents/GitHub/DF-New/deps/android-src/SDL_image/external/libwebp -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -pthread  -fPIE -MD -MT CMakeFiles/cmTC_9fb28.dir/src.c.o -MF CMakeFiles/cmTC_9fb28.dir/src.c.o.d -o CMakeFiles/cmTC_9fb28.dir/src.c.o -c /home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-vGJ4G4/src.c
+        /home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-vGJ4G4/src.c:5:9: error: use of undeclared identifier 'this'
+            5 |         this is not valid code
+              |         ^
+        1 error generated.
+        gmake[1]: *** [CMakeFiles/cmTC_9fb28.dir/build.make:79: CMakeFiles/cmTC_9fb28.dir/src.c.o] Error 1
+        gmake[1]: Leaving directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-vGJ4G4'
+        gmake: *** [Makefile:127: cmTC_9fb28/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckSourceCompiles.cmake:101 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CheckCSourceCompiles.cmake:52 (cmake_check_source_compiles)"
+      - "external/libwebp/cmake/cpu.cmake:13 (check_c_source_compiles)"
+      - "external/libwebp/cmake/cpu.cmake:74 (webp_check_compiler_flag)"
+      - "external/libwebp/cmake/deps.cmake:138 (include)"
+      - "external/libwebp/CMakeLists.txt:51 (include)"
+    checks:
+      - "Performing Test WEBP_HAVE_FLAG_MIPS_DSP_R2"
+    directories:
+      source: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-aPQZnl"
+      binary: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-aPQZnl"
+    cmakeVariables:
+      ANDROID_ABI: "arm64-v8a"
+      ANDROID_ARM_MODE: "thumb"
+      ANDROID_PIE: "TRUE"
+      ANDROID_PLATFORM: "android-24"
+      ANDROID_STL: "c++_static"
+      ANDROID_TOOLCHAIN: "clang"
+      CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-scan-deps"
+      CMAKE_CXX_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_FLAGS: "-g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -pthread"
+      CMAKE_C_FLAGS_DEBUG: "-fno-limit-debug-info "
+      CMAKE_EXE_LINKER_FLAGS: "-static-libstdc++ -Wl,--build-id=sha1 -Wl,--no-rosegment -Wl,--no-undefined-version -Wl,--fatal-warnings -Wl,--no-undefined -Qunused-arguments  "
+      CMAKE_MODULE_PATH: "/home/benno111/Documents/GitHub/DF-New/deps/android-src/SDL_image/cmake"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+      CMAKE_SYSROOT: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+    buildResult:
+      variable: "WEBP_HAVE_FLAG_MIPS_DSP_R2"
+      cached: true
+      stdout: |
+        Change Dir: '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-aPQZnl'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_dbf0a/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_dbf0a.dir/build.make CMakeFiles/cmTC_dbf0a.dir/build
+        gmake[1]: Entering directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-aPQZnl'
+        Building C object CMakeFiles/cmTC_dbf0a.dir/src.c.o
+        /home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang --target=aarch64-none-linux-android24 --sysroot=/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot -DWEBP_HAVE_FLAG_MIPS_DSP_R2 -I/home/benno111/Documents/GitHub/DF-New/deps/android-src/SDL_image/external/libwebp -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -pthread -mdspr2 -fPIE -MD -MT CMakeFiles/cmTC_dbf0a.dir/src.c.o -MF CMakeFiles/cmTC_dbf0a.dir/src.c.o.d -o CMakeFiles/cmTC_dbf0a.dir/src.c.o -c /home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-aPQZnl/src.c
+        clang: error: unsupported option '-mdspr2' for target 'aarch64-none-linux-android24'
+        gmake[1]: *** [CMakeFiles/cmTC_dbf0a.dir/build.make:79: CMakeFiles/cmTC_dbf0a.dir/src.c.o] Error 1
+        gmake[1]: Leaving directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-aPQZnl'
+        gmake: *** [Makefile:127: cmTC_dbf0a/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckSourceCompiles.cmake:101 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "/usr/share/cmake-3.28/Modules/CheckCCompilerFlag.cmake:51 (cmake_check_compiler_flag)"
+      - "external/libwebp/cmake/cpu.cmake:110 (check_c_compiler_flag)"
+      - "external/libwebp/cmake/deps.cmake:138 (include)"
+      - "external/libwebp/CMakeLists.txt:51 (include)"
+    checks:
+      - "Performing Test HAS_COMPILE_FLAG"
+    directories:
+      source: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-HEGGzW"
+      binary: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-HEGGzW"
+    cmakeVariables:
+      ANDROID_ABI: "arm64-v8a"
+      ANDROID_ARM_MODE: "thumb"
+      ANDROID_PIE: "TRUE"
+      ANDROID_PLATFORM: "android-24"
+      ANDROID_STL: "c++_static"
+      ANDROID_TOOLCHAIN: "clang"
+      CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-scan-deps"
+      CMAKE_CXX_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_FLAGS: "-g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -pthread"
+      CMAKE_C_FLAGS_DEBUG: "-fno-limit-debug-info "
+      CMAKE_EXE_LINKER_FLAGS: "-static-libstdc++ -Wl,--build-id=sha1 -Wl,--no-rosegment -Wl,--no-undefined-version -Wl,--fatal-warnings -Wl,--no-undefined -Qunused-arguments  "
+      CMAKE_MODULE_PATH: "/home/benno111/Documents/GitHub/DF-New/deps/android-src/SDL_image/cmake"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+      CMAKE_SYSROOT: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+    buildResult:
+      variable: "HAS_COMPILE_FLAG"
+      cached: true
+      stdout: |
+        Change Dir: '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-HEGGzW'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_09e94/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_09e94.dir/build.make CMakeFiles/cmTC_09e94.dir/build
+        gmake[1]: Entering directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-HEGGzW'
+        Building C object CMakeFiles/cmTC_09e94.dir/src.c.o
+        /home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang --target=aarch64-none-linux-android24 --sysroot=/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot -DHAS_COMPILE_FLAG  -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -pthread -mdspr2 -fPIE   -mno-dspr2 -MD -MT CMakeFiles/cmTC_09e94.dir/src.c.o -MF CMakeFiles/cmTC_09e94.dir/src.c.o.d -o CMakeFiles/cmTC_09e94.dir/src.c.o -c /home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-HEGGzW/src.c
+        clang: error: unsupported option '-mdspr2' for target 'aarch64-none-linux-android24'
+        clang: error: unsupported option '-mno-dspr2' for target 'aarch64-none-linux-android24'
+        gmake[1]: *** [CMakeFiles/cmTC_09e94.dir/build.make:79: CMakeFiles/cmTC_09e94.dir/src.c.o] Error 1
+        gmake[1]: Leaving directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-HEGGzW'
+        gmake: *** [Makefile:127: cmTC_09e94/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckSourceCompiles.cmake:101 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CheckCSourceCompiles.cmake:52 (cmake_check_source_compiles)"
+      - "external/libwebp/cmake/cpu.cmake:13 (check_c_source_compiles)"
+      - "external/libwebp/cmake/cpu.cmake:70 (webp_check_compiler_flag)"
+      - "external/libwebp/cmake/deps.cmake:138 (include)"
+      - "external/libwebp/CMakeLists.txt:51 (include)"
+    checks:
+      - "Performing Test WEBP_HAVE_FLAG_NEON"
+    directories:
+      source: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-O7hEKi"
+      binary: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-O7hEKi"
+    cmakeVariables:
+      ANDROID_ABI: "arm64-v8a"
+      ANDROID_ARM_MODE: "thumb"
+      ANDROID_PIE: "TRUE"
+      ANDROID_PLATFORM: "android-24"
+      ANDROID_STL: "c++_static"
+      ANDROID_TOOLCHAIN: "clang"
+      CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-scan-deps"
+      CMAKE_CXX_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_FLAGS: "-g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -pthread"
+      CMAKE_C_FLAGS_DEBUG: "-fno-limit-debug-info "
+      CMAKE_EXE_LINKER_FLAGS: "-static-libstdc++ -Wl,--build-id=sha1 -Wl,--no-rosegment -Wl,--no-undefined-version -Wl,--fatal-warnings -Wl,--no-undefined -Qunused-arguments  "
+      CMAKE_MODULE_PATH: "/home/benno111/Documents/GitHub/DF-New/deps/android-src/SDL_image/cmake"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+      CMAKE_SYSROOT: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+    buildResult:
+      variable: "WEBP_HAVE_FLAG_NEON"
+      cached: true
+      stdout: |
+        Change Dir: '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-O7hEKi'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_70b1c/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_70b1c.dir/build.make CMakeFiles/cmTC_70b1c.dir/build
+        gmake[1]: Entering directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-O7hEKi'
+        Building C object CMakeFiles/cmTC_70b1c.dir/src.c.o
+        /home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang --target=aarch64-none-linux-android24 --sysroot=/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot -DWEBP_HAVE_FLAG_NEON -I/home/benno111/Documents/GitHub/DF-New/deps/android-src/SDL_image/external/libwebp -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -pthread  -fPIE -MD -MT CMakeFiles/cmTC_70b1c.dir/src.c.o -MF CMakeFiles/cmTC_70b1c.dir/src.c.o.d -o CMakeFiles/cmTC_70b1c.dir/src.c.o -c /home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-O7hEKi/src.c
+        Linking C executable cmTC_70b1c
+        /usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_70b1c.dir/link.txt --verbose=1
+        /home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang --target=aarch64-none-linux-android24 --sysroot=/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -pthread  -static-libstdc++ -Wl,--build-id=sha1 -Wl,--no-rosegment -Wl,--no-undefined-version -Wl,--fatal-warnings -Wl,--no-undefined -Qunused-arguments    CMakeFiles/cmTC_70b1c.dir/src.c.o -o cmTC_70b1c  -latomic -lm 
+        gmake[1]: Leaving directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-O7hEKi'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckSourceCompiles.cmake:101 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CheckCSourceCompiles.cmake:52 (cmake_check_source_compiles)"
+      - "external/libwebp/cmake/cpu.cmake:13 (check_c_source_compiles)"
+      - "external/libwebp/cmake/cpu.cmake:70 (webp_check_compiler_flag)"
+      - "external/libwebp/cmake/deps.cmake:138 (include)"
+      - "external/libwebp/CMakeLists.txt:51 (include)"
+    checks:
+      - "Performing Test WEBP_HAVE_FLAG_MSA"
+    directories:
+      source: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-mEFSim"
+      binary: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-mEFSim"
+    cmakeVariables:
+      ANDROID_ABI: "arm64-v8a"
+      ANDROID_ARM_MODE: "thumb"
+      ANDROID_PIE: "TRUE"
+      ANDROID_PLATFORM: "android-24"
+      ANDROID_STL: "c++_static"
+      ANDROID_TOOLCHAIN: "clang"
+      CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-scan-deps"
+      CMAKE_CXX_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_FLAGS: "-g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -pthread"
+      CMAKE_C_FLAGS_DEBUG: "-fno-limit-debug-info "
+      CMAKE_EXE_LINKER_FLAGS: "-static-libstdc++ -Wl,--build-id=sha1 -Wl,--no-rosegment -Wl,--no-undefined-version -Wl,--fatal-warnings -Wl,--no-undefined -Qunused-arguments  "
+      CMAKE_MODULE_PATH: "/home/benno111/Documents/GitHub/DF-New/deps/android-src/SDL_image/cmake"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+      CMAKE_SYSROOT: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+    buildResult:
+      variable: "WEBP_HAVE_FLAG_MSA"
+      cached: true
+      stdout: |
+        Change Dir: '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-mEFSim'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_1d3bd/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_1d3bd.dir/build.make CMakeFiles/cmTC_1d3bd.dir/build
+        gmake[1]: Entering directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-mEFSim'
+        Building C object CMakeFiles/cmTC_1d3bd.dir/src.c.o
+        /home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang --target=aarch64-none-linux-android24 --sysroot=/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot -DWEBP_HAVE_FLAG_MSA -I/home/benno111/Documents/GitHub/DF-New/deps/android-src/SDL_image/external/libwebp -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -pthread  -fPIE -MD -MT CMakeFiles/cmTC_1d3bd.dir/src.c.o -MF CMakeFiles/cmTC_1d3bd.dir/src.c.o.d -o CMakeFiles/cmTC_1d3bd.dir/src.c.o -c /home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-mEFSim/src.c
+        /home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-mEFSim/src.c:5:9: error: use of undeclared identifier 'this'
+            5 |         this is not valid code
+              |         ^
+        1 error generated.
+        gmake[1]: *** [CMakeFiles/cmTC_1d3bd.dir/build.make:79: CMakeFiles/cmTC_1d3bd.dir/src.c.o] Error 1
+        gmake[1]: Leaving directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-mEFSim'
+        gmake: *** [Makefile:127: cmTC_1d3bd/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckSourceCompiles.cmake:101 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/CheckCSourceCompiles.cmake:52 (cmake_check_source_compiles)"
+      - "external/libwebp/cmake/cpu.cmake:13 (check_c_source_compiles)"
+      - "external/libwebp/cmake/cpu.cmake:74 (webp_check_compiler_flag)"
+      - "external/libwebp/cmake/deps.cmake:138 (include)"
+      - "external/libwebp/CMakeLists.txt:51 (include)"
+    checks:
+      - "Performing Test WEBP_HAVE_FLAG_MSA"
+    directories:
+      source: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-3K7ox2"
+      binary: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-3K7ox2"
+    cmakeVariables:
+      ANDROID_ABI: "arm64-v8a"
+      ANDROID_ARM_MODE: "thumb"
+      ANDROID_PIE: "TRUE"
+      ANDROID_PLATFORM: "android-24"
+      ANDROID_STL: "c++_static"
+      ANDROID_TOOLCHAIN: "clang"
+      CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-scan-deps"
+      CMAKE_CXX_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_FLAGS: "-g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -pthread"
+      CMAKE_C_FLAGS_DEBUG: "-fno-limit-debug-info "
+      CMAKE_EXE_LINKER_FLAGS: "-static-libstdc++ -Wl,--build-id=sha1 -Wl,--no-rosegment -Wl,--no-undefined-version -Wl,--fatal-warnings -Wl,--no-undefined -Qunused-arguments  "
+      CMAKE_MODULE_PATH: "/home/benno111/Documents/GitHub/DF-New/deps/android-src/SDL_image/cmake"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+      CMAKE_SYSROOT: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+    buildResult:
+      variable: "WEBP_HAVE_FLAG_MSA"
+      cached: true
+      stdout: |
+        Change Dir: '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-3K7ox2'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_1d9f6/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_1d9f6.dir/build.make CMakeFiles/cmTC_1d9f6.dir/build
+        gmake[1]: Entering directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-3K7ox2'
+        Building C object CMakeFiles/cmTC_1d9f6.dir/src.c.o
+        /home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang --target=aarch64-none-linux-android24 --sysroot=/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot -DWEBP_HAVE_FLAG_MSA -I/home/benno111/Documents/GitHub/DF-New/deps/android-src/SDL_image/external/libwebp -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -pthread -mmsa -fPIE -MD -MT CMakeFiles/cmTC_1d9f6.dir/src.c.o -MF CMakeFiles/cmTC_1d9f6.dir/src.c.o.d -o CMakeFiles/cmTC_1d9f6.dir/src.c.o -c /home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-3K7ox2/src.c
+        clang: error: unsupported option '-mmsa' for target 'aarch64-none-linux-android24'
+        gmake[1]: *** [CMakeFiles/cmTC_1d9f6.dir/build.make:79: CMakeFiles/cmTC_1d9f6.dir/src.c.o] Error 1
+        gmake[1]: Leaving directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-3K7ox2'
+        gmake: *** [Makefile:127: cmTC_1d9f6/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckSourceCompiles.cmake:101 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "/usr/share/cmake-3.28/Modules/CheckCCompilerFlag.cmake:51 (cmake_check_compiler_flag)"
+      - "external/libwebp/cmake/cpu.cmake:110 (check_c_compiler_flag)"
+      - "external/libwebp/cmake/deps.cmake:138 (include)"
+      - "external/libwebp/CMakeLists.txt:51 (include)"
+    checks:
+      - "Performing Test HAS_COMPILE_FLAG"
+    directories:
+      source: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-Pk4RLM"
+      binary: "/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-Pk4RLM"
+    cmakeVariables:
+      ANDROID_ABI: "arm64-v8a"
+      ANDROID_ARM_MODE: "thumb"
+      ANDROID_PIE: "TRUE"
+      ANDROID_PLATFORM: "android-24"
+      ANDROID_STL: "c++_static"
+      ANDROID_TOOLCHAIN: "clang"
+      CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-scan-deps"
+      CMAKE_CXX_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_COMPILER_TARGET: "aarch64-none-linux-android24"
+      CMAKE_C_FLAGS: "-g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -pthread"
+      CMAKE_C_FLAGS_DEBUG: "-fno-limit-debug-info "
+      CMAKE_EXE_LINKER_FLAGS: "-static-libstdc++ -Wl,--build-id=sha1 -Wl,--no-rosegment -Wl,--no-undefined-version -Wl,--fatal-warnings -Wl,--no-undefined -Qunused-arguments  "
+      CMAKE_MODULE_PATH: "/home/benno111/Documents/GitHub/DF-New/deps/android-src/SDL_image/cmake"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+      CMAKE_SYSROOT: "/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+    buildResult:
+      variable: "HAS_COMPILE_FLAG"
+      cached: true
+      stdout: |
+        Change Dir: '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-Pk4RLM'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_c41fb/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_c41fb.dir/build.make CMakeFiles/cmTC_c41fb.dir/build
+        gmake[1]: Entering directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-Pk4RLM'
+        Building C object CMakeFiles/cmTC_c41fb.dir/src.c.o
+        /home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/clang --target=aarch64-none-linux-android24 --sysroot=/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot -DHAS_COMPILE_FLAG  -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -pthread -mmsa -fPIE   -mno-msa -MD -MT CMakeFiles/cmTC_c41fb.dir/src.c.o -MF CMakeFiles/cmTC_c41fb.dir/src.c.o.d -o CMakeFiles/cmTC_c41fb.dir/src.c.o -c /home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-Pk4RLM/src.c
+        clang: error: unsupported option '-mmsa' for target 'aarch64-none-linux-android24'
+        clang: error: unsupported option '-mno-msa' for target 'aarch64-none-linux-android24'
+        gmake[1]: *** [CMakeFiles/cmTC_c41fb.dir/build.make:79: CMakeFiles/cmTC_c41fb.dir/src.c.o] Error 1
+        gmake[1]: Leaving directory '/home/benno111/Documents/GitHub/DF-New/deps/android-build/arm64-v8a/SDL_image/CMakeFiles/CMakeScratch/TryCompile-Pk4RLM'
+        gmake: *** [Makefile:127: cmTC_c41fb/fast] Error 2
+        
+      exitCode: 2
+...
