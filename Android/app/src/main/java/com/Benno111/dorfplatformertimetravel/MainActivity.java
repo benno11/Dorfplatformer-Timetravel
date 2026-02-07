@@ -12,9 +12,9 @@ public class MainActivity extends SDLActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         enterImmersiveFullscreen();
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
     }
 
     @Override
@@ -22,6 +22,7 @@ public class MainActivity extends SDLActivity {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) {
             enterImmersiveFullscreen();
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
         }
     }
 
