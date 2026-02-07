@@ -1,6 +1,5 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
-#include <SDL2/SDL_ttf.h>
 #if __has_include(<SDL2/SDL_mixer.h>)
 #include <SDL2/SDL_mixer.h>
 #define HAS_SDL_MIXER 1
@@ -22,6 +21,8 @@
 #include <sstream>
 #include "TileMap.h"
 #include "LevelLoader.h"
+#include "TextRenderer.h"
+#include "LevelSelect.h"
 
 struct Player {
     float x = 64.0f;
@@ -42,33 +43,6 @@ struct Player {
     float animTime = 0.0f;
 };
 
-static void drawText5x7(SDL_Renderer* ren, int x, int y, int scale, const std::string& text);
-static TTF_Font* getMainFont(int scale);
-
-static std::unordered_map<int, TTF_Font*> gFontCache;
-
-static std::vector<std::string> loadLevelList() {
-    namespace fs = std::filesystem;
-    std::vector<std::string> out;
-    fs::path dir("assets/levels");
-    if (!fs::exists(dir)) return out;
-    for (const auto& entry : fs::directory_iterator(dir)) {
-        if (!entry.is_regular_file()) continue;
-        auto p = entry.path();
-        if (p.extension() == ".txt") out.push_back(p.filename().string());
-    }
-    std::sort(out.begin(), out.end());
-    return out;
-}
-
-static std::string levelIdFromFilename(const std::string& name) {
-    std::string out;
-    for (char ch : name) {
-        if (std::isdigit((unsigned char)ch)) out.push_back(ch);
-    }
-    if (out.empty()) return "000";
-    return out;
-}
 
 static std::vector<int> loadLevelNumberList(const std::string& path) {
     std::ifstream f(path);
@@ -98,142 +72,6 @@ static int parseLevelIndexFromPath(const std::string& levelPath) {
     try { return std::stoi(digits); } catch (...) { return -1; }
 }
 
-static std::string runLevelSelect(SDL_Window* win, SDL_Renderer* ren) {
-    std::vector<std::string> levels = loadLevelList();
-    if (levels.empty()) return "";
-
-    int selected = 0;
-    int scrollY = 0;
-    bool running = true;
-    bool chosen = false;
-    bool draggingScrollbar = false;
-    int dragOffsetY = 0;
-
-    int winW = 960, winH = 540;
-    SDL_GetWindowSize(win, &winW, &winH);
-
-    while (running) {
-        SDL_GetWindowSize(win, &winW, &winH);
-        float uiScale = std::min((float)winW / 960.0f, (float)winH / 540.0f);
-        uiScale = std::clamp(uiScale, 0.75f, 2.0f);
-        int rowH = std::max(24, (int)std::lround(28.0f * uiScale));
-        int pad = std::max(10, (int)std::lround(16.0f * uiScale));
-        int textScale = std::max(1, (int)std::lround(2.0f * uiScale));
-
-        int contentH = (int)levels.size() * rowH;
-        int viewportH = std::max(1, winH - pad * 2);
-        int maxScroll = std::max(0, contentH - viewportH);
-        scrollY = std::clamp(scrollY, 0, maxScroll);
-
-        int barW = std::max(8, (int)std::lround(10.0f * uiScale));
-        SDL_Rect track{winW - pad - barW, pad, barW, viewportH};
-        float visibleRatio = (contentH > 0) ? std::clamp((float)viewportH / (float)contentH, 0.0f, 1.0f) : 1.0f;
-        int thumbH = std::max(std::max(16, (int)std::lround(28.0f * uiScale)), (int)std::lround(track.h * visibleRatio));
-        int thumbTravel = std::max(1, track.h - thumbH);
-        int thumbY = track.y + ((maxScroll > 0) ? (int)std::lround((float)scrollY / (float)maxScroll * thumbTravel) : 0);
-        SDL_Rect thumb{track.x, thumbY, barW, thumbH};
-
-        SDL_Event e;
-        while (SDL_PollEvent(&e)) {
-            if (e.type == SDL_QUIT) {
-                running = false;
-                break;
-            }
-            if (e.type == SDL_MOUSEWHEEL) {
-                scrollY -= e.wheel.y * rowH;
-                if (scrollY < 0) scrollY = 0;
-                if (scrollY > maxScroll) scrollY = maxScroll;
-            }
-            if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
-                SDL_Point pt{e.button.x, e.button.y};
-                if (SDL_PointInRect(&pt, &thumb)) {
-                    draggingScrollbar = true;
-                    dragOffsetY = e.button.y - thumb.y;
-                    continue;
-                }
-                if (SDL_PointInRect(&pt, &track)) {
-                    int newThumbY = std::clamp(e.button.y - thumbH / 2, track.y, track.y + track.h - thumbH);
-                    float t = (float)(newThumbY - track.y) / (float)std::max(1, track.h - thumbH);
-                    scrollY = (int)std::lround(t * maxScroll);
-                    continue;
-                }
-            }
-            if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_LEFT) {
-                draggingScrollbar = false;
-            }
-            if (e.type == SDL_MOUSEMOTION && draggingScrollbar) {
-                int newThumbY = std::clamp(e.motion.y - dragOffsetY, track.y, track.y + track.h - thumbH);
-                float t = (float)(newThumbY - track.y) / (float)std::max(1, track.h - thumbH);
-                scrollY = (int)std::lround(t * maxScroll);
-            }
-            if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
-                int y = e.button.y - pad + scrollY;
-                if (y >= 0) {
-                    int idx = y / rowH;
-                    if (idx >= 0 && idx < (int)levels.size()) {
-                        selected = idx;
-                        if (e.button.clicks >= 2) {
-                            chosen = true;
-                            running = false;
-                        }
-                    }
-                }
-            }
-            if (e.type == SDL_KEYDOWN && e.key.repeat == 0) {
-                if (e.key.keysym.sym == SDLK_ESCAPE) {
-                    running = false;
-                    break;
-                }
-                if (e.key.keysym.sym == SDLK_DOWN) {
-                    selected = std::min(selected + 1, (int)levels.size() - 1);
-                    int rowTop = selected * rowH;
-                    int rowBottom = rowTop + rowH;
-                    if (rowBottom - scrollY > pad + viewportH) scrollY = rowBottom - viewportH;
-                }
-                if (e.key.keysym.sym == SDLK_UP) {
-                    selected = std::max(selected - 1, 0);
-                    int rowTop = selected * rowH;
-                    if (rowTop < scrollY) scrollY = rowTop;
-                }
-                if (e.key.keysym.sym == SDLK_RETURN || e.key.keysym.sym == SDLK_KP_ENTER) {
-                    chosen = true;
-                    running = false;
-                }
-            }
-        }
-
-        SDL_SetRenderDrawColor(ren, 18, 18, 22, 255);
-        SDL_RenderClear(ren);
-
-        for (int i = 0; i < (int)levels.size(); ++i) {
-            int y = pad + i * rowH - scrollY;
-            if (y + rowH < 0 || y > winH) continue;
-            if (i == selected) {
-                SDL_SetRenderDrawColor(ren, 60, 90, 140, 255);
-            } else {
-                SDL_SetRenderDrawColor(ren, 40, 50, 70, 255);
-            }
-            SDL_Rect r{pad, y, winW - pad * 3 - barW, rowH - 4};
-            SDL_RenderFillRect(ren, &r);
-
-            SDL_SetRenderDrawColor(ren, 235, 235, 235, 255);
-            drawText5x7(ren, r.x + 8, r.y + 6, textScale, levels[i]);
-        }
-
-        if (maxScroll > 0) {
-            SDL_SetRenderDrawColor(ren, 48, 58, 76, 255);
-            SDL_RenderFillRect(ren, &track);
-            SDL_SetRenderDrawColor(ren, draggingScrollbar ? 220 : 180, draggingScrollbar ? 220 : 180, draggingScrollbar ? 220 : 180, 255);
-            SDL_RenderFillRect(ren, &thumb);
-        }
-
-        SDL_RenderPresent(ren);
-        SDL_Delay(16);
-    }
-
-    if (!chosen) return "";
-    return "assets/levels/" + levels[selected];
-}
 
 static bool rectHitsSolid(const TileMap& map, float x, float y, int w, int h) {
     int t = map.tileSize;
@@ -304,22 +142,6 @@ static void applyBlockDefAt(TileMap& map, int idx, unsigned short tileId, const 
     map.solid[idx]     = (d != '=' && d != '^' && d != '#') ? 0 : 1;
 }
 
-static void drawDigit3x5(SDL_Renderer* ren, int x, int y, int scale, int digit) {
-    if (digit < 0 || digit > 9) return;
-    drawText5x7(ren, x, y, scale, std::to_string(digit));
-}
-
-static void drawNumber3x5(SDL_Renderer* ren, int x, int y, int scale, int value) {
-    std::string s = std::to_string(value);
-    TTF_Font* font = getMainFont(scale);
-    if (!font) return;
-    int textW = 0, textH = 0;
-    if (TTF_SizeUTF8(font, s.c_str(), &textW, &textH) != 0) {
-        drawText5x7(ren, x, y, scale, s);
-        return;
-    }
-    drawText5x7(ren, x - textW / 2, y, scale, s);
-}
 
 struct Frame {
     SDL_Rect rect{0,0,0,0};
@@ -466,46 +288,6 @@ static void renderFrameEx(SDL_Renderer* ren, SDL_Texture* tex, const Frame& f, c
     SDL_RenderCopyEx(ren, tex, &src, &dstRot, -90.0, &center, flip);
 }
 
-static TTF_Font* getMainFont(int scale) {
-    int pt = std::max(12, scale * 8);
-    auto it = gFontCache.find(pt);
-    if (it != gFontCache.end()) return it->second;
-    TTF_Font* font = TTF_OpenFont("assets/Fonts/Main.ttf", pt);
-    if (!font) return nullptr;
-    gFontCache[pt] = font;
-    return font;
-}
-
-static void drawText5x7(SDL_Renderer* ren, int x, int y, int scale, const std::string& text) {
-    if (text.empty()) return;
-    TTF_Font* font = getMainFont(scale);
-    if (!font) return;
-
-    Uint8 r = 255, g = 255, b = 255, a = 255;
-    SDL_GetRenderDrawColor(ren, &r, &g, &b, &a);
-    SDL_Color color{r, g, b, a};
-
-    SDL_Surface* surf = TTF_RenderUTF8_Blended(font, text.c_str(), color);
-    if (!surf) return;
-    SDL_Texture* tex = SDL_CreateTextureFromSurface(ren, surf);
-    if (!tex) {
-        SDL_FreeSurface(surf);
-        return;
-    }
-    SDL_Rect dst{x, y, surf->w, surf->h};
-    SDL_FreeSurface(surf);
-    SDL_RenderCopy(ren, tex, nullptr, &dst);
-    SDL_DestroyTexture(tex);
-}
-
-static void drawDebugNumber(SDL_Renderer* ren, int x, int y, int scale, const std::string& label, int value) {
-    drawText5x7(ren, x, y, scale, label);
-    TTF_Font* font = getMainFont(scale);
-    int labelW = 0;
-    if (font) TTF_SizeUTF8(font, label.c_str(), &labelW, nullptr);
-    drawText5x7(ren, x + labelW + 8, y, scale, std::to_string(value));
-}
-
 static SDL_Rect computePresentRect(int winW, int winH, int baseW, int baseH) {
     if (winW <= 0 || winH <= 0 || baseW <= 0 || baseH <= 0) return SDL_Rect{0, 0, winW, winH};
     float sx = (float)winW / (float)baseW;
@@ -533,8 +315,7 @@ int main(int argc, char** argv) {
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
     SDL_Log("SDL_Init completed");
     IMG_Init(IMG_INIT_PNG);
-    bool ttfReady = (TTF_Init() == 0);
-    if (!ttfReady) SDL_Log("TTF_Init failed: %s", TTF_GetError());
+    InitTextRenderer("assets/Fonts/Main.ttf");
     bool audioReady = false;
 #if HAS_SDL_MIXER
     int mixerFlags = MIX_INIT_MP3;
@@ -692,11 +473,7 @@ int main(int argc, char** argv) {
             Mix_Quit();
 #endif
         }
-        for (auto& kv : gFontCache) {
-            if (kv.second) TTF_CloseFont(kv.second);
-        }
-        gFontCache.clear();
-        if (ttfReady) TTF_Quit();
+        ShutdownTextRenderer();
         SDL_Quit();
         return 1;
     }
@@ -708,11 +485,7 @@ int main(int argc, char** argv) {
         if (pauseTex) SDL_DestroyTexture(pauseTex);
         SDL_DestroyRenderer(ren);
         SDL_DestroyWindow(win);
-        for (auto& kv : gFontCache) {
-            if (kv.second) TTF_CloseFont(kv.second);
-        }
-        gFontCache.clear();
-        if (ttfReady) TTF_Quit();
+        ShutdownTextRenderer();
         SDL_Quit();
         return 1;
     }
@@ -722,7 +495,7 @@ int main(int argc, char** argv) {
     const std::vector<int> levelNumberList = loadLevelNumberList("assets/Level Numer List.txt");
     bool running = true;
     while (running) {
-        std::string levelPath = runLevelSelect(win, ren);
+        std::string levelPath = RunLevelSelect(win, ren);
         if (levelPath.empty()) {
             break;
         }
@@ -1366,7 +1139,7 @@ RENDER_ONLY:
                 SDL_RenderDrawRect(ren, &panel);
 
                 SDL_SetRenderDrawColor(ren, 230, 230, 230, 255);
-                drawText5x7(ren, screenW / 2 - 60, screenH / 2 - 70, 3, "PAUSED");
+                DrawText(ren, screenW / 2 - 60, screenH / 2 - 70, 3, "PAUSED");
 
                 SDL_Rect resumeBtn{screenW / 2 - 140, screenH / 2 + 10, 100, 36};
                 SDL_Rect restartBtn{screenW / 2 - 50, screenH / 2 + 10, 100, 36};
@@ -1378,17 +1151,17 @@ RENDER_ONLY:
                 SDL_SetRenderDrawColor(ren, pauseSelection == 0 ? 70 : 45, pauseSelection == 0 ? 120 : 70, pauseSelection == 0 ? 170 : 90, 255);
                 SDL_RenderFillRect(ren, &resumeBtn);
                 SDL_SetRenderDrawColor(ren, 200, 200, 200, 255);
-                drawText5x7(ren, resumeBtn.x + 35, resumeBtn.y + 8, 2, "RESUME");
+                DrawText(ren, resumeBtn.x + 35, resumeBtn.y + 8, 2, "RESUME");
 
                 SDL_SetRenderDrawColor(ren, pauseSelection == 1 ? 70 : 45, pauseSelection == 1 ? 120 : 70, pauseSelection == 1 ? 170 : 90, 255);
                 SDL_RenderFillRect(ren, &restartBtn);
                 SDL_SetRenderDrawColor(ren, 200, 200, 200, 255);
-                drawText5x7(ren, restartBtn.x + 18, restartBtn.y + 8, 2, "RESTART");
+                DrawText(ren, restartBtn.x + 18, restartBtn.y + 8, 2, "RESTART");
 
                 SDL_SetRenderDrawColor(ren, pauseSelection == 2 ? 120 : 70, pauseSelection == 2 ? 70 : 50, pauseSelection == 2 ? 70 : 60, 255);
                 SDL_RenderFillRect(ren, &quitBtn);
                 SDL_SetRenderDrawColor(ren, 200, 200, 200, 255);
-                drawText5x7(ren, quitBtn.x + 30, quitBtn.y + 8, 2, "QUIT");
+                DrawText(ren, quitBtn.x + 30, quitBtn.y + 8, 2, "QUIT");
             }
 
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
@@ -1404,30 +1177,30 @@ RENDER_ONLY:
             SDL_RenderDrawRect(ren, &dbgPanel);
 
             SDL_SetRenderDrawColor(ren, 230, 230, 230, 255);
-            drawText5x7(ren, 18, 18, 2, "DEBUG");
-            drawDebugNumber(ren, 18, 36, 2, "PX", (int)player.x);
-            drawDebugNumber(ren, 18, 50, 2, "PY", (int)player.y);
-            drawDebugNumber(ren, 18, 64, 2, "VX", (int)player.vx);
-            drawDebugNumber(ren, 18, 78, 2, "VY", (int)player.vy);
-            drawDebugNumber(ren, 140, 36, 2, "CAMX", (int)camX);
-            drawDebugNumber(ren, 140, 50, 2, "CAMY", (int)camY);
-            drawDebugNumber(ren, 140, 64, 2, "WTR", player.inWater ? 1 : 0);
-            drawDebugNumber(ren, 140, 78, 2, "DRN", (int)(45.0f - player.drownTimer));
+            DrawText(ren, 18, 18, 2, "DEBUG");
+            DrawDebugNumber(ren, 18, 36, 2, "PX", (int)player.x);
+            DrawDebugNumber(ren, 18, 50, 2, "PY", (int)player.y);
+            DrawDebugNumber(ren, 18, 64, 2, "VX", (int)player.vx);
+            DrawDebugNumber(ren, 18, 78, 2, "VY", (int)player.vy);
+            DrawDebugNumber(ren, 140, 36, 2, "CAMX", (int)camX);
+            DrawDebugNumber(ren, 140, 50, 2, "CAMY", (int)camY);
+            DrawDebugNumber(ren, 140, 64, 2, "WTR", player.inWater ? 1 : 0);
+            DrawDebugNumber(ren, 140, 78, 2, "DRN", (int)(45.0f - player.drownTimer));
             float maxCamX = std::max(0.0f, (float)(map.h * map.tileSize - screenW));
             float maxCamY = std::max(0.0f, (float)(map.w * map.tileSize - screenH));
-            drawDebugNumber(ren, 18, 92, 2, "BW", map.w);
-            drawDebugNumber(ren, 140, 92, 2, "BH", map.h);
-            drawDebugNumber(ren, 18, 106, 2, "CMINX", 0);
-            drawDebugNumber(ren, 140, 106, 2, "CMAXX", (int)maxCamX);
-            drawDebugNumber(ren, 18, 120, 2, "CMINY", 0);
-            drawDebugNumber(ren, 140, 120, 2, "CMAXY", (int)maxCamY);
+            DrawDebugNumber(ren, 18, 92, 2, "BW", map.w);
+            DrawDebugNumber(ren, 140, 92, 2, "BH", map.h);
+            DrawDebugNumber(ren, 18, 106, 2, "CMINX", 0);
+            DrawDebugNumber(ren, 140, 106, 2, "CMAXX", (int)maxCamX);
+            DrawDebugNumber(ren, 18, 120, 2, "CMINY", 0);
+            DrawDebugNumber(ren, 140, 120, 2, "CMAXY", (int)maxCamY);
             int fps = (dt > 0.0f) ? (int)(1.0f / dt) : 0;
-            drawDebugNumber(ren, 18, 134, 2, "FPS", fps);
-            drawText5x7(ren, 18, 148, 2, std::string("ANIM ") + debugAnimName);
+            DrawDebugNumber(ren, 18, 134, 2, "FPS", fps);
+            DrawText(ren, 18, 148, 2, std::string("ANIM ") + debugAnimName);
             if (!renderFrameName.empty()) {
                 std::string id = renderFrameName;
                 if (id.size() > 4 && id.substr(id.size() - 4) == ".png") id.resize(id.size() - 4);
-                drawText5x7(ren, 18, 162, 2, std::string("ID ") + id);
+                DrawText(ren, 18, 162, 2, std::string("ID ") + id);
             }
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
 
@@ -1451,7 +1224,7 @@ RENDER_ONLY:
                     int screenY = (int)(y * map.tileSize - camY);
                     int centerX = screenX + map.tileSize / 2;
                     int centerY = screenY + map.tileSize / 2;
-                    drawNumber3x5(ren, centerX, centerY - (5 * 2) / 2, 2, id);
+                    DrawNumberCentered(ren, centerX, centerY - (5 * 2) / 2, 2, id);
                 }
             }
         }
@@ -1482,11 +1255,7 @@ RENDER_ONLY:
     if (blocksTex) SDL_DestroyTexture(blocksTex);
     if (pauseTex) SDL_DestroyTexture(pauseTex);
     if (gameTarget) SDL_DestroyTexture(gameTarget);
-    for (auto& kv : gFontCache) {
-        if (kv.second) TTF_CloseFont(kv.second);
-    }
-    gFontCache.clear();
-    if (ttfReady) TTF_Quit();
+    ShutdownTextRenderer();
     if (audioReady) {
 #if HAS_SDL_MIXER
         Mix_HaltMusic();
