@@ -57,6 +57,9 @@ PlayerUpdateResult UpdatePlayerMovement(
     float dt,
     float jumpBufferMax,
     const MovementConfig& movement,
+    float touchMove,
+    bool touchDown,
+    bool touchJump,
     float& inputMove,
     bool& inputDown,
     const std::function<void()>& reloadLevel
@@ -86,10 +89,11 @@ PlayerUpdateResult UpdatePlayerMovement(
         return PlayerUpdateResult::RenderOnly;
     }
 
-    float move = 0.0f;
+    float move = touchMove;
     if (keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_LEFT]) move -= 1.0f;
     if (keys[SDL_SCANCODE_D] || keys[SDL_SCANCODE_RIGHT]) move += 1.0f;
-    bool downHeld = keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_DOWN];
+    move = std::clamp(move, -1.0f, 1.0f);
+    bool downHeld = touchDown || keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_DOWN];
     inputMove = move;
     inputDown = downHeld;
 
@@ -119,7 +123,7 @@ PlayerUpdateResult UpdatePlayerMovement(
         }
     }
 
-    bool jumpDown = keys[SDL_SCANCODE_SPACE] || keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_UP];
+    bool jumpDown = touchJump || keys[SDL_SCANCODE_SPACE] || keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_UP];
     bool jumpPressed = jumpDown && !player.jumpWasDown;
     bool jumpReleased = !jumpDown && player.jumpWasDown;
     if (jumpDown == false){

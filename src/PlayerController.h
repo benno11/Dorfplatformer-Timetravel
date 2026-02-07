@@ -35,6 +35,9 @@ PlayerUpdateResult UpdatePlayerMovement(
     float dt,
     float jumpBufferMax,
     const MovementConfig& movement,
+    float touchMove,
+    bool touchDown,
+    bool touchJump,
     float& inputMove,
     bool& inputDown,
     const std::function<void()>& reloadLevel

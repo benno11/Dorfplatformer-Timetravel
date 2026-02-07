@@ -19,6 +19,7 @@
 #include <nlohmann/json.hpp>
 #include <filesystem>
 #include <sstream>
+#include <iomanip>
 #include "TileMap.h"
 #include "LevelLoader.h"
 #include "Player.h"
@@ -55,6 +56,33 @@ static int parseLevelIndexFromPath(const std::string& levelPath) {
     try { return std::stoi(digits); } catch (...) { return -1; }
 }
 
+static int NextLevelId(int currentLevelId) {
+    if (currentLevelId >= 1 && currentLevelId <= 50) {
+        int world = (currentLevelId - 1) / 10 + 1;           // 1..5
+        int inWorldLevel = (currentLevelId - 1) % 10 + 1;    // 1..10
+        if (inWorldLevel >= 1 && inWorldLevel <= 4) return (world - 1) * 10 + 5;
+        if (inWorldLevel >= 5 && inWorldLevel <= 8) return (world - 1) * 10 + 9;
+        if (inWorldLevel >= 9 && inWorldLevel <= 10) return world * 10 + 1;
+    }
+
+    // World 6 special routing.
+    if (currentLevelId == 51 || currentLevelId == 52) return 53;
+    if (currentLevelId == 53 || currentLevelId == 54) return 55;
+    if (currentLevelId == 55) return 57;
+    if (currentLevelId == 56) return 58;
+
+    return -1;
+}
+
+static std::string LevelPathFromId(int levelId) {
+    if (levelId <= 0) return "";
+    std::ostringstream ss;
+    ss << "assets/levels/level_" << std::setw(3) << std::setfill('0') << levelId << ".txt";
+    std::string path = ss.str();
+    if (!std::filesystem::exists(path)) return "";
+    return path;
+}
+
 
 
 static std::vector<char> loadBlockDefs(const std::string& path) {
@@ -77,6 +105,49 @@ static void applyBlockDefAt(TileMap& map, int idx, unsigned short tileId, const 
     map.semisolid[idx] = (d == '=') ? 1 : 0;
     map.water[idx]     = (d == '^') ? 1 : 0;
     map.solid[idx]     = (d != '=' && d != '^' && d != '#') ? 0 : 1;
+}
+
+static int collectCoinsAtPlayer(TileMap& map, const Player& player, const std::vector<char>& defs) {
+    int t = map.tileSize;
+    int left = (int)std::floor(player.x / t);
+    int right = (int)std::floor((player.x + player.w - 1) / t);
+    int top = (int)std::floor(player.y / t);
+    int bottom = (int)std::floor((player.y + player.h - 1) / t);
+
+    int collected = 0;
+    for (int ty = top; ty <= bottom; ++ty) {
+        if (ty < 0 || ty >= map.h) continue;
+        for (int tx = left; tx <= right; ++tx) {
+            if (tx < 0 || tx >= map.w) continue;
+            int idx = ty * map.w + tx;
+            if (map.tileIds[idx] != 24) continue;
+            map.tileIds[idx] = 2;
+            applyBlockDefAt(map, idx, 2, defs);
+            collected++;
+        }
+    }
+    return collected;
+}
+
+static bool playerTouchesTileId(const TileMap& map, const Player& player, int idA, int idB) {
+    int t = map.tileSize;
+    int left = (int)std::floor(player.x / t);
+    int right = (int)std::floor((player.x + player.w - 1) / t);
+    int top = (int)std::floor(player.y / t);
+    int bottom = (int)std::floor((player.y + player.h - 1) / t);
+    for (int ty = top; ty <= bottom; ++ty) {
+        if (ty < 0 || ty >= map.h) continue;
+        for (int tx = left; tx <= right; ++tx) {
+            if (tx < 0 || tx >= map.w) continue;
+            int id = (int)map.tileIds[ty * map.w + tx];
+            if (id == idA || id == idB) return true;
+        }
+    }
+    return false;
+}
+
+static bool pointInRectF(float x, float y, const SDL_FRect& r) {
+    return x >= r.x && y >= r.y && x < (r.x + r.w) && y < (r.y + r.h);
 }
 
 
@@ -354,6 +425,13 @@ int main(int argc, char** argv) {
     playerFramesByName.reserve(playerFrameList.size());
     for (const auto& e : playerFrameList) playerFramesByName[e.name] = e.frame;
     const Frame* fallbackPlayerFrame = !playerFrameList.empty() ? &playerFrameList[0].frame : nullptr;
+#if HAS_SDL_MIXER
+    Mix_Chunk* coinSfx = nullptr;
+    if (audioReady) {
+        coinSfx = Mix_LoadWAV("assets/Audio/sfx/Coin.mp3");
+        if (!coinSfx) SDL_Log("Could not load coin sfx: %s", Mix_GetError());
+    }
+#endif
 
     auto getPlayerFrame = [&](const std::string& name) -> const Frame* {
         auto it = playerFramesByName.find(name);
@@ -454,6 +532,9 @@ int main(int argc, char** argv) {
             Mix_Quit();
 #endif
         }
+#if HAS_SDL_MIXER
+        if (coinSfx) Mix_FreeChunk(coinSfx);
+#endif
         ShutdownTextRenderer();
         SDL_Quit();
         return 1;
@@ -485,6 +566,7 @@ int main(int argc, char** argv) {
         std::vector<ObjectInstance> objects;
         LevelMeta meta;
         Player player;
+        int coinCount = 0;
 #if HAS_SDL_MIXER
         Mix_Music* levelMusic = nullptr;
 #endif
@@ -496,6 +578,7 @@ int main(int argc, char** argv) {
 
         auto reloadLevel = [&]() {
             loadLevelBNNLVL(levelPath, map, objects, meta);
+            coinCount = 0;
 
         player = Player{};
         for (const auto& o : objects) {
@@ -564,7 +647,12 @@ int main(int argc, char** argv) {
 
             if (audioReady) {
 #if HAS_SDL_MIXER
-                std::string musicPath = "assets/Audio/Music/" + std::to_string(world_id) + "." + std::to_string(Time_ID) + ".mp3";
+                std::string musicPath;
+                if (world_id >= 6 && world_id <= 7) {
+                    musicPath = "assets/Audio/Music/" + std::to_string(world_id) + "." + std::to_string(Level_Part_id) + ".mp3";
+                } else {
+                    musicPath = "assets/Audio/Music/" + std::to_string(world_id) + "." + std::to_string(Time_ID) + ".mp3";
+                }
                 if (levelMusic) {
                     Mix_FreeMusic(levelMusic);
                     levelMusic = nullptr;
@@ -614,9 +702,43 @@ int main(int argc, char** argv) {
 
         float inputMove = 0.0f;
         bool inputDown = false;
+        int screenW = kBaseScreenW;
+        int screenH = kBaseScreenH;
+        float uiSize = 84.0f;
+        float uiPad = 22.0f;
+        SDL_FRect touchLeftBtn{uiPad, screenH - uiPad - uiSize, uiSize, uiSize};
+        SDL_FRect touchRightBtn{uiPad + uiSize + 14.0f, screenH - uiPad - uiSize, uiSize, uiSize};
+        SDL_FRect touchDownBtn{uiPad + (uiSize + 14.0f) * 2.0f, screenH - uiPad - uiSize, uiSize, uiSize};
+        SDL_FRect touchJumpBtn{screenW - uiPad - uiSize, screenH - uiPad - uiSize, uiSize, uiSize};
+        bool touchLeft = false;
+        bool touchRight = false;
+        bool touchDown = false;
+        bool touchJump = false;
+
+        if (!paused) {
+            int touchDevices = SDL_GetNumTouchDevices();
+            for (int di = 0; di < touchDevices; ++di) {
+                SDL_TouchID tid = SDL_GetTouchDevice(di);
+                if (tid == 0) continue;
+                int fingerCount = SDL_GetNumTouchFingers(tid);
+                for (int fi = 0; fi < fingerCount; ++fi) {
+                    SDL_Finger* f = SDL_GetTouchFinger(tid, fi);
+                    if (!f) continue;
+                    float px = f->x * screenW;
+                    float py = f->y * screenH;
+                    if (pointInRectF(px, py, touchLeftBtn)) touchLeft = true;
+                    if (pointInRectF(px, py, touchRightBtn)) touchRight = true;
+                    if (pointInRectF(px, py, touchDownBtn)) touchDown = true;
+                    if (pointInRectF(px, py, touchJumpBtn)) touchJump = true;
+                }
+            }
+        }
 
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) { running = false; levelRunning = false; }
+            if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
+                paused = true;
+            }
             if (e.type == SDL_KEYDOWN && e.key.repeat == 0) {
                 if (e.key.keysym.sym == SDLK_F11) {
                     fullscreen = !fullscreen;
@@ -627,6 +749,15 @@ int main(int argc, char** argv) {
                 }
                 if (e.key.keysym.sym == SDLK_F10) {
                     clampCamX = !clampCamX;
+                }
+                if (e.key.keysym.sym == SDLK_F9) {
+                    int currentLevelId = parseLevelIndexFromPath(levelPath);
+                    int nextLevelId = NextLevelId(currentLevelId);
+                    std::string nextPath = LevelPathFromId(nextLevelId);
+                    if (!nextPath.empty()) {
+                        levelPath = nextPath;
+                        reloadLevel();
+                    }
                 }
                 if (e.key.keysym.sym == SDLK_ESCAPE) {
                     paused = !paused;
@@ -669,8 +800,12 @@ int main(int argc, char** argv) {
         }
 
         if (!paused) {
+            float touchMove = 0.0f;
+            if (touchLeft) touchMove -= 1.0f;
+            if (touchRight) touchMove += 1.0f;
             PlayerUpdateResult upd = UpdatePlayerMovement(
-                player, map, dt, jumpBufferMax, movementCfg, inputMove, inputDown, reloadLevel
+                player, map, dt, jumpBufferMax, movementCfg,
+                touchMove, touchDown, touchJump, inputMove, inputDown, reloadLevel
             );
             if (upd == PlayerUpdateResult::RenderOnly) {
                 goto RENDER_ONLY;
@@ -678,12 +813,29 @@ int main(int argc, char** argv) {
             if (upd == PlayerUpdateResult::Reloaded) {
                 continue;
             }
+
+            int collectedNow = collectCoinsAtPlayer(map, player, blockDefs);
+            if (collectedNow > 0) {
+                coinCount += collectedNow;
+#if HAS_SDL_MIXER
+                if (audioReady && coinSfx) Mix_PlayChannel(-1, coinSfx, 0);
+#endif
+            }
+
+            if (playerTouchesTileId(map, player, 30, 68)) {
+                int currentLevelId = parseLevelIndexFromPath(levelPath);
+                int nextLevelId = NextLevelId(currentLevelId);
+                std::string nextPath = LevelPathFromId(nextLevelId);
+                if (!nextPath.empty()) {
+                    levelPath = nextPath;
+                    reloadLevel();
+                    continue;
+                }
+            }
         }
 
 RENDER_ONLY:
 
-        int screenW = kBaseScreenW;
-        int screenH = kBaseScreenH;
         float camX = player.x + player.w * 0.5f - screenW * 0.5f;
         float camY = player.y + player.h * 0.5f - screenH * 0.5f;
         float maxCamX = map.w * map.tileSize - screenW - map.tileSize;
@@ -1078,6 +1230,30 @@ RENDER_ONLY:
             }
         }
 
+        if (!paused) {
+            int touchDevices = SDL_GetNumTouchDevices();
+            bool showMobileUi = touchDevices > 0;
+            if (showMobileUi) {
+                auto drawTouchBtn = [&](const SDL_FRect& r, bool active) {
+                    SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+                    SDL_SetRenderDrawColor(ren, active ? 180 : 120, active ? 180 : 120, active ? 180 : 120, active ? 120 : 80);
+                    SDL_RenderFillRectF(ren, &r);
+                    SDL_SetRenderDrawColor(ren, 230, 230, 230, 180);
+                    SDL_RenderDrawRectF(ren, &r);
+                };
+                drawTouchBtn(touchLeftBtn, touchLeft);
+                drawTouchBtn(touchRightBtn, touchRight);
+                drawTouchBtn(touchDownBtn, touchDown);
+                drawTouchBtn(touchJumpBtn, touchJump);
+                SDL_SetRenderDrawColor(ren, 240, 240, 240, 220);
+                DrawText(ren, (int)touchLeftBtn.x + 30, (int)touchLeftBtn.y + 28, 2, "L");
+                DrawText(ren, (int)touchRightBtn.x + 30, (int)touchRightBtn.y + 28, 2, "R");
+                DrawText(ren, (int)touchDownBtn.x + 18, (int)touchDownBtn.y + 28, 2, "DN");
+                DrawText(ren, (int)touchJumpBtn.x + 18, (int)touchJumpBtn.y + 28, 2, "JMP");
+                SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
+            }
+        }
+
         SDL_SetRenderTarget(ren, nullptr);
         int winW = 0, winH = 0;
         SDL_GetWindowSize(win, &winW, &winH);
@@ -1112,6 +1288,9 @@ RENDER_ONLY:
         Mix_Quit();
 #endif
     }
+#if HAS_SDL_MIXER
+    if (coinSfx) Mix_FreeChunk(coinSfx);
+#endif
     SDL_DestroyRenderer(ren);
     SDL_DestroyWindow(win);
     SDL_Log("Shutting down");

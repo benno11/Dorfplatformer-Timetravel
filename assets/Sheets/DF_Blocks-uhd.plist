@@ -34,6 +34,21 @@
 				<key>textureRotated</key>
 				<false/>
 			</dict>
+			<key>30.png</key>
+			<dict>
+				<key>aliases</key>
+				<array/>
+				<key>spriteOffset</key>
+				<string>{0,0}</string>
+				<key>spriteSize</key>
+				<string>{32,32}</string>
+				<key>spriteSourceSize</key>
+				<string>{32,32}</string>
+				<key>textureRect</key>
+				<string>{{708,276},{32,32}}</string>
+				<key>textureRotated</key>
+				<false/>
+			</dict>
 			<key>12.png</key>
 			<dict>
 				<key>aliases</key>
