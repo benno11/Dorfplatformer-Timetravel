@@ -10,6 +10,8 @@ struct ObjectInstance {
 
 struct LevelMeta {
     std::string name;
+    std::vector<int> entitySpawnPos;
+    std::vector<int> entitySpawnType;
 };
 
 bool loadLevelBNNLVL(const std::string& path, TileMap& map, std::vector<ObjectInstance>& objects, LevelMeta& meta);

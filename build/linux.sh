@@ -3,7 +3,7 @@ set -e
 #include <SDL2/SDL.h>
 # ---- CONFIG ----
 CXX=g++
-CXXFLAGS="-std=c++17 -O2"
+CXXFLAGS="-std=c++17 -O3 -DNDEBUG -flto -fno-plt"
 SRC_DIR="src"
 OUT_PLATFORMER="platformer"
 OUT_SHEET="sheet_config"

@@ -18,6 +18,7 @@ public:
     std::string nextLevelPath() const;
 
     int collectCoinsAtPlayer(TileMap& map, const Player& player);
+    void updateTimeWarpIdAtPlayer(const TileMap& map, const Player& player);
 
     int coinCount() const;
     void resetCoinCount();
@@ -28,6 +29,8 @@ public:
     int levelPartId() const;
     int timeId() const;
     std::string musicPath() const;
+    bool hasLevelCode(int code) const;
+    std::string levelPathByCode(int code) const;
 
 private:
     static std::vector<int> loadLevelNumberList(const std::string& path);

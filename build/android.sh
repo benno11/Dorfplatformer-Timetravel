@@ -209,7 +209,9 @@ echo "[INFO] SDL2_mixer linked"
 
 CXXFLAGS=(
   -std=c++17
-  -O2
+  -O3
+  -DNDEBUG
+  -flto
   -fPIC
 )
 

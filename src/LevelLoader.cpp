@@ -225,8 +225,6 @@ static bool placeTilesLikeScript(const std::string& fileData,
                 return false;
             }
             tileList[idx0] = (unsigned short)std::max(0, block);
-            SDL_Log("Placing block %d at tempId %d (run %d/%d) tokenIndex=%d", block, tempId, r+1, run, tokenIndex);
-
             // temp.id += max_y
             tempId += h;
 
@@ -265,11 +263,12 @@ TILE_DONE:
    Object position mapping
 ------------------------------ */
 static void posToXY(int pos, int h, float& x, float& y) {
-    int xt = pos / h;
-    int yt = pos % h;
-    yt = (h - 1 - yt);
-    x = xt * TILE_SIZE + TILE_SIZE / 2;
-    y = yt * TILE_SIZE + TILE_SIZE / 2;
+    int idx = std::max(0, pos - 1); // legacy list positions are 1-based
+    int xt = idx / h;
+    int yt = idx % h;
+    yt = (h - 1) - yt; // match tile-grid vertical flip used in outRowMajorGrid
+    x = (float)(xt * TILE_SIZE + TILE_SIZE / 2);
+    y = (float)(yt * TILE_SIZE + TILE_SIZE / 2);
 }
 
 /* =========================================================
@@ -338,11 +337,19 @@ bool loadLevelBNNLVL(const std::string& path,
     normalizeHorizontalOffset(map);
     applyBlockDefsToMaps(map, map.tileIds, defs);
 
+    // Legacy OBJ stream quirk: consume one extra token before object section.
+    {
+        LegacyToken preObjT{};
+        nextLegacyToken(s, cur, preObjT);
+    }
+
     // Next chunk should be object count
     if (!nextLegacyToken(s, cur, t) || !t.hasValue) {
         // If missing, still OK: no objects
         objects.clear();
         meta.name = "Legacy " + std::to_string(ver);
+        meta.entitySpawnPos.clear();
+        meta.entitySpawnType.clear();
         return true;
     }
 
@@ -350,15 +357,39 @@ bool loadLevelBNNLVL(const std::string& path,
     if (objCount < 0) objCount = 0;
     if (objCount > 200000) objCount = 200000;
 
-    objects.clear();
+    std::vector<int> entitySpawnPos;
+    std::vector<int> entitySpawnType;
+    entitySpawnPos.reserve(objCount);
+    entitySpawnType.reserve(objCount);
     for (int n = 0; n < objCount; n++) {
         LegacyToken posT{}, typeT{};
         if (!nextLegacyToken(s, cur, posT) || !posT.hasValue) break;
         if (!nextLegacyToken(s, cur, typeT) || !typeT.hasValue) break;
+        entitySpawnPos.push_back(posT.value);
+        entitySpawnType.push_back(typeT.value);
+    }
 
+    const size_t usableObjDataCount = std::min(entitySpawnPos.size(), entitySpawnType.size());
+    if (usableObjDataCount != (size_t)objCount) {
+        SDL_Log("OBJ data count mismatch in %s: header=%d usable=%d",
+                path.c_str(), objCount, (int)usableObjDataCount);
+    }
+    entitySpawnPos.resize(usableObjDataCount);
+    entitySpawnType.resize(usableObjDataCount);
+    meta.entitySpawnPos = entitySpawnPos;
+    meta.entitySpawnType = entitySpawnType;
+
+    // Scratch-style entity spawn loop:
+    // temp22 = 1; repeat len(Entity Spawn POS): tile_id = item temp22; entity setup item temp22(type)
+    objects.clear();
+    objects.reserve(usableObjDataCount);
+    for (size_t temp22 = 0; temp22 < usableObjDataCount; ++temp22) {
+        const int tileId = entitySpawnPos[temp22];
         ObjectInstance o;
-        o.id = std::to_string(typeT.value); // or "legacy_"+...
-        posToXY(posT.value, h, o.x, o.y);
+        posToXY(tileId, h, o.x, o.y);
+        // Keep POS/TYPE aligned by index during creation.
+        const int objectId = std::max(1, entitySpawnType[temp22]);
+        o.id = std::to_string(objectId);
         objects.push_back(o);
     }
 

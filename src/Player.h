@@ -5,7 +5,7 @@ struct Player {
     float y = 64.0f;
     float vx = 0.0f;
     float vy = 0.0f;
-    int w = 40;
+    int w = 30;
     int h = 56;
     bool onGround = false;
     bool jumpHeld = false;

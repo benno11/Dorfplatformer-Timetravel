@@ -1,0 +1,9 @@
+{
+  "global_priority": "warn",
+  "categories": {
+    "application": "info",
+    "audio": "warn",
+    "render": "warn",
+    "input": "warn"
+  }
+}

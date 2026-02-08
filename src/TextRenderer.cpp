@@ -2,12 +2,29 @@
 
 #include <SDL2/SDL_ttf.h>
 #include <algorithm>
+#include <deque>
 #include <unordered_map>
 
 namespace {
 std::unordered_map<int, TTF_Font*> gFontCache;
 std::string gFontPath;
 bool gTtfInited = false;
+std::unordered_map<std::string, int> gDebugLabelWidthCache;
+struct TextCacheEntry {
+    SDL_Texture* tex = nullptr;
+    int w = 0;
+    int h = 0;
+};
+struct RendererTextCache {
+    std::unordered_map<std::string, TextCacheEntry> entries;
+    std::deque<std::string> order;
+};
+std::unordered_map<SDL_Renderer*, RendererTextCache> gTextCacheByRenderer;
+constexpr size_t kMaxTextCacheEntries = 1024;
+
+static std::string makeTextCacheKey(int scale, const std::string& text) {
+    return std::to_string(scale) + "|" + text;
+}
 
 TTF_Font* getFont(int scale) {
     if (!gTtfInited || gFontPath.empty()) return nullptr;
@@ -35,6 +52,13 @@ void ShutdownTextRenderer() {
         if (kv.second) TTF_CloseFont(kv.second);
     }
     gFontCache.clear();
+    gDebugLabelWidthCache.clear();
+    for (auto& byRenderer : gTextCacheByRenderer) {
+        for (auto& kv : byRenderer.second.entries) {
+            if (kv.second.tex) SDL_DestroyTexture(kv.second.tex);
+        }
+    }
+    gTextCacheByRenderer.clear();
     if (gTtfInited) TTF_Quit();
     gTtfInited = false;
 }
@@ -44,21 +68,71 @@ void DrawText(SDL_Renderer* ren, int x, int y, int scale, const std::string& tex
     TTF_Font* font = getFont(scale);
     if (!font) return;
 
-    Uint8 r = 255, g = 255, b = 255, a = 255;
-    SDL_GetRenderDrawColor(ren, &r, &g, &b, &a);
-    SDL_Color color{r, g, b, a};
+    const SDL_Color fillColor{255, 255, 255, 255};
+    const SDL_Color outlineColor{0, 0, 0, 255};
+    const int outlinePx = std::max(1, scale / 2);
+    auto& rendererCache = gTextCacheByRenderer[ren];
 
-    SDL_Surface* surf = TTF_RenderUTF8_Blended(font, text.c_str(), color);
-    if (!surf) return;
-    SDL_Texture* tex = SDL_CreateTextureFromSurface(ren, surf);
-    if (!tex) {
-        SDL_FreeSurface(surf);
-        return;
+    const std::string key = makeTextCacheKey(scale, text);
+    auto itCached = rendererCache.entries.find(key);
+    if (itCached == rendererCache.entries.end()) {
+        SDL_Surface* fillSurf = TTF_RenderUTF8_Blended(font, text.c_str(), fillColor);
+        if (!fillSurf) return;
+        SDL_Surface* outlineSurf = TTF_RenderUTF8_Blended(font, text.c_str(), outlineColor);
+        if (!outlineSurf) {
+            SDL_FreeSurface(fillSurf);
+            return;
+        }
+
+        SDL_Surface* composed = SDL_CreateRGBSurfaceWithFormat(0,
+                                                               fillSurf->w + outlinePx * 2,
+                                                               fillSurf->h + outlinePx * 2,
+                                                               32,
+                                                               SDL_PIXELFORMAT_RGBA32);
+        if (!composed) {
+            SDL_FreeSurface(fillSurf);
+            SDL_FreeSurface(outlineSurf);
+            return;
+        }
+        SDL_FillRect(composed, nullptr, SDL_MapRGBA(composed->format, 0, 0, 0, 0));
+
+        SDL_Rect od{outlinePx - outlinePx, outlinePx, outlineSurf->w, outlineSurf->h};
+        SDL_BlitSurface(outlineSurf, nullptr, composed, &od);
+        od = SDL_Rect{outlinePx + outlinePx, outlinePx, outlineSurf->w, outlineSurf->h};
+        SDL_BlitSurface(outlineSurf, nullptr, composed, &od);
+        od = SDL_Rect{outlinePx, outlinePx - outlinePx, outlineSurf->w, outlineSurf->h};
+        SDL_BlitSurface(outlineSurf, nullptr, composed, &od);
+        od = SDL_Rect{outlinePx, outlinePx + outlinePx, outlineSurf->w, outlineSurf->h};
+        SDL_BlitSurface(outlineSurf, nullptr, composed, &od);
+        SDL_Rect fd{outlinePx, outlinePx, fillSurf->w, fillSurf->h};
+        SDL_BlitSurface(fillSurf, nullptr, composed, &fd);
+
+        SDL_Texture* tex = SDL_CreateTextureFromSurface(ren, composed);
+        SDL_FreeSurface(fillSurf);
+        SDL_FreeSurface(outlineSurf);
+        SDL_FreeSurface(composed);
+        if (!tex) return;
+
+        TextCacheEntry entry;
+        entry.tex = tex;
+        SDL_QueryTexture(tex, nullptr, nullptr, &entry.w, &entry.h);
+        rendererCache.entries[key] = entry;
+        rendererCache.order.push_back(key);
+        itCached = rendererCache.entries.find(key);
+
+        while (rendererCache.order.size() > kMaxTextCacheEntries) {
+            const std::string& oldKey = rendererCache.order.front();
+            auto itOld = rendererCache.entries.find(oldKey);
+            if (itOld != rendererCache.entries.end()) {
+                if (itOld->second.tex) SDL_DestroyTexture(itOld->second.tex);
+                rendererCache.entries.erase(itOld);
+            }
+            rendererCache.order.pop_front();
+        }
     }
-    SDL_Rect dst{x, y, surf->w, surf->h};
-    SDL_FreeSurface(surf);
-    SDL_RenderCopy(ren, tex, nullptr, &dst);
-    SDL_DestroyTexture(tex);
+
+    SDL_Rect dst{x, y, itCached->second.w, itCached->second.h};
+    SDL_RenderCopy(ren, itCached->second.tex, nullptr, &dst);
 }
 
 int MeasureTextWidth(int scale, const std::string& text) {
@@ -66,7 +140,8 @@ int MeasureTextWidth(int scale, const std::string& text) {
     if (!font) return 0;
     int w = 0;
     if (TTF_SizeUTF8(font, text.c_str(), &w, nullptr) != 0) return 0;
-    return w;
+    const int outlinePx = std::max(1, scale / 2);
+    return w + outlinePx * 2;
 }
 
 void DrawNumberCentered(SDL_Renderer* ren, int x, int y, int scale, int value) {
@@ -77,6 +152,14 @@ void DrawNumberCentered(SDL_Renderer* ren, int x, int y, int scale, int value) {
 
 void DrawDebugNumber(SDL_Renderer* ren, int x, int y, int scale, const std::string& label, int value) {
     DrawText(ren, x, y, scale, label);
-    int labelW = MeasureTextWidth(scale, label);
+    std::string cacheKey = std::to_string(scale) + "|" + label;
+    int labelW = 0;
+    auto it = gDebugLabelWidthCache.find(cacheKey);
+    if (it != gDebugLabelWidthCache.end()) {
+        labelW = it->second;
+    } else {
+        labelW = MeasureTextWidth(scale, label);
+        gDebugLabelWidthCache[cacheKey] = labelW;
+    }
     DrawText(ren, x + labelW + 8, y, scale, std::to_string(value));
 }

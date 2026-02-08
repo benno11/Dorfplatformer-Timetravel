@@ -1,5 +1,6 @@
 #include "LevelManager.h"
 
+#include <SDL2/SDL.h>
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -27,6 +28,7 @@ const std::string& LevelManager::levelPath() const {
 void LevelManager::reloadLevel(TileMap& map, std::vector<ObjectInstance>& objects, LevelMeta& meta, Player& player) {
     loadLevelBNNLVL(levelPath_, map, objects, meta);
     coinCount_ = 0;
+    timeWarpId_ = 'N';
 
     player = Player{};
     for (const auto& o : objects) {
@@ -103,6 +105,29 @@ int LevelManager::collectCoinsAtPlayer(TileMap& map, const Player& player) {
     return collected;
 }
 
+void LevelManager::updateTimeWarpIdAtPlayer(const TileMap& map, const Player& player) {
+    int t = map.tileSize;
+    int left = (int)std::floor(player.x / t);
+    int right = (int)std::floor((player.x + player.w - 1) / t);
+    int top = (int)std::floor(player.y / t);
+    int bottom = (int)std::floor((player.y + player.h - 1) / t);
+
+    char next = timeWarpId_;
+    for (int ty = top; ty <= bottom; ++ty) {
+        if (ty < 0 || ty >= map.h) continue;
+        for (int tx = left; tx <= right; ++tx) {
+            if (tx < 0 || tx >= map.w) continue;
+            unsigned short id = map.tileIds[ty * map.w + tx];
+            if (id == 43) next = '1';
+            if (id == 45) next = '2';
+        }
+    }
+    if (next != timeWarpId_) {
+        SDL_Log("timeWarpId changed: %c -> %c (%s)", timeWarpId_, next, levelPath_.c_str());
+        timeWarpId_ = next;
+    }
+}
+
 int LevelManager::coinCount() const {
     return coinCount_;
 }
@@ -137,6 +162,24 @@ std::string LevelManager::musicPath() const {
         return "assets/Audio/Music/" + std::to_string(worldId_) + "." + std::to_string(levelPartId_) + ".mp3";
     }
     return "assets/Audio/Music/" + std::to_string(worldId_) + "." + std::to_string(timeId_) + ".mp3";
+}
+
+bool LevelManager::hasLevelCode(int code) const {
+    for (int i = 0; i < (int)levelNumberList_.size(); ++i) {
+        if (levelNumberList_[i] != code) continue;
+        std::string p = levelPathFromId(i + 1);
+        if (!p.empty()) return true;
+    }
+    return false;
+}
+
+std::string LevelManager::levelPathByCode(int code) const {
+    for (int i = 0; i < (int)levelNumberList_.size(); ++i) {
+        if (levelNumberList_[i] != code) continue;
+        std::string p = levelPathFromId(i + 1);
+        if (!p.empty()) return p;
+    }
+    return "";
 }
 
 std::vector<int> LevelManager::loadLevelNumberList(const std::string& path) {
@@ -216,12 +259,6 @@ void LevelManager::applyBlockDefAt(TileMap& map, int idx, unsigned short tileId)
 }
 
 void LevelManager::updateLevelMetadata(const TileMap& map) {
-    timeWarpId_ = 'N';
-    for (unsigned short id : map.tileIds) {
-        if (id == 43 && timeWarpId_ == 'N') timeWarpId_ = 'P';
-        if (id == 45) timeWarpId_ = 'F';
-    }
-
     int levelIndex = parseLevelIndexFromPath(levelPath_);
     if (levelIndex > 0 && levelIndex <= (int)levelNumberList_.size()) {
         int code = levelNumberList_[levelIndex - 1];

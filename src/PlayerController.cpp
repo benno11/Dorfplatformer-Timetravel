@@ -51,6 +51,17 @@ static bool rectHitsWater(const TileMap& map, float x, float y, int w, int h) {
     return false;
 }
 
+static bool rectHasGroundBelow(const TileMap& map, float x, float y, int w, int h) {
+    int t = map.tileSize;
+    int left = (int)std::floor(x / t);
+    int right = (int)std::floor((x + w - 1) / t);
+    int footTile = (int)std::floor((y + h) / t);
+    for (int tx = left; tx <= right; ++tx) {
+        if (map.getSolid(tx, footTile) || map.getSemiSolid(tx, footTile)) return true;
+    }
+    return false;
+}
+
 PlayerUpdateResult UpdatePlayerMovement(
     Player& player,
     const TileMap& map,
@@ -208,6 +219,11 @@ PlayerUpdateResult UpdatePlayerMovement(
     }
 
     const float resetY = (float)((map.h + 7) * map.tileSize);
+    if (player.vy >= 0.0f) {
+        // High-FPS stability: explicit probe below feet prevents grounded flicker
+        // when vy ~= 0 and no actual Y movement occurs this frame.
+        player.onGround = rectHasGroundBelow(map, player.x, player.y, player.w, player.h);
+    }
     if (player.y > resetY) {
         return PlayerUpdateResult::Reloaded;
     }
