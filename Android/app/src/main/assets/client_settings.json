@@ -3,6 +3,7 @@
   "fullscreen": false,
   "clamp_cam_x": true,
   "show_fps_counter": false,
+  "show_detailed_debugger": false,
   "music_volume": 96,
   "sfx_volume": 96
 }

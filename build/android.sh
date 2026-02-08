@@ -13,6 +13,7 @@ unset CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH INCLUDE LIBRARY_PATH LD_LIBRARY_PA
 # Optional env vars:
 #   API                -> Android API level (default: 24)
 #   ABI                -> arm64-v8a | armeabi-v7a | x86_64 | x86 (default: arm64-v8a)
+#   FAST               -> 1 for fast iteration build flags (default: 0)
 #   SDL2_IMAGE_ROOT    -> root folder for SDL2_image Android build
 #   SDL2_TTF_ROOT      -> root folder for SDL2_ttf Android build
 #   SDL2_MIXER_ROOT    -> root folder for SDL2_mixer Android build
@@ -119,6 +120,7 @@ fi
 
 API="${API:-24}"
 ABI="${ABI:-arm64-v8a}"
+FAST="${FAST:-0}"
 
 case "$ABI" in
   arm64-v8a)
@@ -207,13 +209,22 @@ fi
 LDFLAGS+=( -L"$SDL2_MIXER_ROOT/lib/$ABI" )
 echo "[INFO] SDL2_mixer linked"
 
-CXXFLAGS=(
-  -std=c++17
-  -O3
-  -DNDEBUG
-  -flto
-  -fPIC
-)
+if [ "$FAST" = "1" ]; then
+  CXXFLAGS=(
+    -std=c++17
+    -O1
+    -fPIC
+  )
+  echo "[INFO] FAST build enabled (reduced optimization, no LTO)"
+else
+  CXXFLAGS=(
+    -std=c++17
+    -O3
+    -DNDEBUG
+    -flto
+    -fPIC
+  )
+fi
 
 SRC=(
   src/main.cpp

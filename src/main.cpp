@@ -24,6 +24,14 @@
 #include <iostream>
 #include <array>
 #include <thread>
+#include <mutex>
+#include <atomic>
+#include <condition_variable>
+#include <csignal>
+#include <cstdio>
+#include <cstring>
+#include <exception>
+#include <unistd.h>
 #if defined(__ANDROID__)
 #include <jni.h>
 #endif
@@ -297,7 +305,104 @@ static bool windowToGamePoint(int wx, int wy, int winW, int winH, int baseW, int
     return true;
 }
 
+namespace CrashReporter {
+static std::atomic<bool> running{false};
+static std::atomic<bool> pending{false};
+static std::atomic<bool> handled{false};
+static std::atomic<int> pendingSignal{0};
+static std::thread worker;
+static std::mutex msgMutex;
+static std::string pendingMessage;
+static std::terminate_handler prevTerminate = nullptr;
+
+static void appendCrashLog(const std::string& msg) {
+    std::FILE* f = std::fopen("build/crash.log", "a");
+    if (!f) return;
+    std::fprintf(f, "%s\n", msg.c_str());
+    std::fclose(f);
+}
+
+static void workerMain() {
+    while (running.load(std::memory_order_relaxed)) {
+        if (!pending.load(std::memory_order_relaxed)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            continue;
+        }
+        int sig = pendingSignal.exchange(0, std::memory_order_relaxed);
+        std::string msg;
+        {
+            std::lock_guard<std::mutex> lock(msgMutex);
+            msg = pendingMessage;
+            pendingMessage.clear();
+        }
+        if (sig > 0) {
+            msg = std::string("FATAL SIGNAL: ") + std::to_string(sig) + " (" + ::strsignal(sig) + ")";
+        } else if (msg.empty()) {
+            msg = "FATAL: unknown terminate";
+        }
+        SDL_LogCritical(SDL_LOG_CATEGORY_APPLICATION, "%s", msg.c_str());
+        appendCrashLog(msg);
+        handled.store(true, std::memory_order_relaxed);
+        pending.store(false, std::memory_order_relaxed);
+    }
+}
+
+static void signalHandler(int sig) {
+    pendingSignal.store(sig, std::memory_order_relaxed);
+    pending.store(true, std::memory_order_relaxed);
+    const char* prefix = "FATAL SIGNAL captured\n";
+    (void)!write(2, prefix, std::strlen(prefix));
+    for (volatile int i = 0; i < 5000000; ++i) {}
+    std::_Exit(128 + sig);
+}
+
+static void terminateHandler() {
+    std::string msg = "FATAL: std::terminate called";
+    if (auto ep = std::current_exception()) {
+        try {
+            std::rethrow_exception(ep);
+        } catch (const std::exception& e) {
+            msg = std::string("FATAL terminate exception: ") + e.what();
+        } catch (...) {
+            msg = "FATAL terminate with non-std exception";
+        }
+    }
+    {
+        std::lock_guard<std::mutex> lock(msgMutex);
+        pendingMessage = msg;
+    }
+    pending.store(true, std::memory_order_relaxed);
+    for (int i = 0; i < 80 && !handled.load(std::memory_order_relaxed); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    if (prevTerminate) prevTerminate();
+    std::abort();
+}
+
+static void start() {
+    handled.store(false, std::memory_order_relaxed);
+    pending.store(false, std::memory_order_relaxed);
+    pendingSignal.store(0, std::memory_order_relaxed);
+    running.store(true, std::memory_order_relaxed);
+    worker = std::thread(workerMain);
+    prevTerminate = std::set_terminate(terminateHandler);
+    std::signal(SIGSEGV, signalHandler);
+    std::signal(SIGABRT, signalHandler);
+    std::signal(SIGFPE, signalHandler);
+    std::signal(SIGILL, signalHandler);
+#if defined(SIGBUS)
+    std::signal(SIGBUS, signalHandler);
+#endif
+}
+
+static void stop() {
+    running.store(false, std::memory_order_relaxed);
+    if (worker.joinable()) worker.join();
+}
+}
+
 int main(int argc, char** argv) {
+    CrashReporter::start();
     const std::string buildUuid = makeBuildUuid();
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "2");
     SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
@@ -1170,19 +1275,34 @@ int main(int argc, char** argv) {
         float levelCompleteUiLerp = 0.0f;
         float levelTimerSeconds = 0.0f;
         float cameraSmoothingSuppressTimer = 0.0f;
-        bool fastTravelFlagUp = false;
-        bool fastTravelFlagDown = false;
-        bool fastTravelFlagLeft = false;
-        bool fastTravelFlagRight = false;
-        bool fastTravelFlagExit = false;
+        enum FastTravelDir {
+            FT_UP = 0,
+            FT_DOWN = 1,
+            FT_LEFT = 2,
+            FT_RIGHT = 3,
+            FT_EXIT = 4
+        };
+        int fastTravelActiveDir = -1;
+        bool fastTravelOverlapWasActive = false;
+        float fastTravelBlendVx = 0.0f;
+        float fastTravelBlendVy = 0.0f;
         auto logFastTravelFlags = [&](const char* reason) {
-            SDL_Log("fastTravelFlags (%s): U=%d D=%d L=%d R=%d E=%d",
-                    reason,
-                    fastTravelFlagUp ? 1 : 0,
-                    fastTravelFlagDown ? 1 : 0,
-                    fastTravelFlagLeft ? 1 : 0,
-                    fastTravelFlagRight ? 1 : 0,
-                    fastTravelFlagExit ? 1 : 0);
+            SDL_Log("fastTravel (%s): activeDir=%d", reason, fastTravelActiveDir);
+        };
+        auto fastTravelDirForObjectId = [&](int objId) -> int {
+            if (objId == 57) return FT_UP;
+            if (objId == 58) return FT_DOWN;
+            if (objId == 59) return FT_LEFT;
+            if (objId == 60) return FT_RIGHT;
+            if (objId == 61) return FT_EXIT;
+            return -1;
+        };
+        auto setFastTravelActiveDir = [&](int dir, const char* reason) {
+            if (dir == fastTravelActiveDir) return;
+            fastTravelActiveDir = dir;
+            if (!(reason && std::string(reason) == "noop")) {
+                logFastTravelFlags(reason);
+            }
         };
         float timeTravelTriggerCooldown = 0.0f;
 #if HAS_SDL_MIXER
@@ -1203,12 +1323,10 @@ int main(int argc, char** argv) {
             levelCompleteSnapshotSeconds = 0;
             levelCompleteUiLerp = 0.0f;
             cameraSmoothingSuppressTimer = 0.20f;
-            fastTravelFlagUp = false;
-            fastTravelFlagDown = false;
-            fastTravelFlagLeft = false;
-            fastTravelFlagRight = false;
-            fastTravelFlagExit = false;
-            logFastTravelFlags("reload");
+            setFastTravelActiveDir(-1, "reload");
+            fastTravelOverlapWasActive = false;
+            fastTravelBlendVx = 0.0f;
+            fastTravelBlendVy = 0.0f;
             timeTravelTriggerCooldown = 0.35f;
 
             if (audioReady) {
@@ -1585,14 +1703,132 @@ int main(int argc, char** argv) {
         }
 
         if (!paused && !deathSequenceActive) {
+            const float frameStartX = player.x;
+            const float frameStartY = player.y;
+            std::string movementReasons;
+            auto addMovementReason = [&](const char* reason) {
+                if (!reason || !*reason) return;
+                if (movementReasons.find(reason) != std::string::npos) return;
+                if (!movementReasons.empty()) movementReasons += ",";
+                movementReasons += reason;
+            };
+            bool fastTravelReload = false;
+            bool fastTravelTriggered = false;
+            if (timeTravelTriggerCooldown <= 0.0f) {
+                int overlapDir = -1;
+                for (const auto& obj : objects) {
+                    int objId = 0;
+                    try { objId = std::stoi(obj.id); } catch (...) { continue; }
+                    if (objId < 57 || objId > 61) continue;
+                    if (fastTravelCooldown > 0.0f) break;
+
+                    const float ox = obj.x - 16.0f;
+                    const float oy = obj.y - 16.0f;
+                    const float ow = 32.0f;
+                    const float oh = 32.0f;
+                    const float px1 = player.x;
+                    const float px2 = player.x + (float)player.w;
+                    const float py1 = player.y;
+                    const float py2 = player.y + (float)player.h;
+                    const bool overlap = (px2 > ox) && (px1 < ox + ow) && (py2 > oy) && (py1 < oy + oh);
+                    if (!overlap) continue;
+
+                    const int dir = fastTravelDirForObjectId(objId);
+                    if (dir < 0) continue;
+                    if (dir == FT_EXIT && fastTravelActiveDir < 0) continue;
+                    overlapDir = dir;
+                    break;
+                }
+                if (overlapDir >= 0 && !fastTravelOverlapWasActive) {
+                    setFastTravelActiveDir(overlapDir, "set");
+                }
+                fastTravelOverlapWasActive = (overlapDir >= 0);
+            }
+            if (fastTravelActiveDir >= 0) {
+                const float eps = 0.01f;
+                const float mapW = (float)(map.w * map.tileSize);
+                const float mapH = (float)(map.h * map.tileSize);
+                const float oldX = player.x;
+                const float oldY = player.y;
+                bool positionChanged = false;
+                const float fastTravelSpeed = 900.0f;
+                const float fastTravelBlendSpeed = 21.0f;
+                float targetVx = 0.0f;
+                float targetVy = 0.0f;
+
+                if (fastTravelActiveDir == FT_UP) {
+                    targetVy = -fastTravelSpeed;
+                } else if (fastTravelActiveDir == FT_DOWN) {
+                    targetVy = fastTravelSpeed;
+                } else if (fastTravelActiveDir == FT_LEFT) {
+                    targetVx = -fastTravelSpeed;
+                } else if (fastTravelActiveDir == FT_RIGHT) {
+                    targetVx = fastTravelSpeed;
+                } else if (fastTravelActiveDir == FT_EXIT && fastTravelCooldown <= 0.0f) {
+                    setFastTravelActiveDir(-1, "exit_mode");
+                    fastTravelOverlapWasActive = false;
+                    fastTravelBlendVx = 0.0f;
+                    fastTravelBlendVy = 0.0f;
+                    fastTravelCooldown = 0.2f;
+                }
+
+                const float blendT = std::clamp(fastTravelBlendSpeed * dt, 0.0f, 1.0f);
+                fastTravelBlendVx += (targetVx - fastTravelBlendVx) * blendT;
+                fastTravelBlendVy += (targetVy - fastTravelBlendVy) * blendT;
+
+                if (fastTravelActiveDir != FT_EXIT) {
+                    player.x += fastTravelBlendVx * dt;
+                    player.y += fastTravelBlendVy * dt;
+                    while (player.y + (float)player.h < 0.0f) player.y += mapH;
+                    while (player.y >= mapH) player.y -= mapH;
+                    while (player.x + (float)player.w < 0.0f) player.x += mapW;
+                    while (player.x >= mapW) player.x -= mapW;
+                }
+
+                positionChanged = (std::fabs(player.x - oldX) > eps) || (std::fabs(player.y - oldY) > eps);
+                if (positionChanged) addMovementReason("fast_travel");
+                player.vx = fastTravelBlendVx;
+                player.vy = fastTravelBlendVy;
+                player.onGround = false;
+                if (positionChanged || fastTravelReload) {
+                    fastTravelTriggered = true;
+                }
+                if (positionChanged) {
+                    SDL_Log("fastTravel move: dir=%d from=(%.2f, %.2f) to=(%.2f, %.2f) delta=(%.2f, %.2f)",
+                            fastTravelActiveDir,
+                            oldX, oldY,
+                            player.x, player.y,
+                            player.x - oldX, player.y - oldY);
+                }
+            }
+            if (fastTravelReload) {
+                reloadLevel();
+                continue;
+            }
+
             float touchMove = 0.0f;
             if (touchLeft) touchMove -= 1.0f;
             if (touchRight) touchMove += 1.0f;
-            PlayerUpdateResult upd = UpdatePlayerMovement(
-                player, map, dt, jumpBufferMax, movementCfg,
-                touchMove, touchDown, touchJump, inputMove, inputDown
-            );
+            const bool fastTravelEnabled = fastTravelTriggered;
+            PlayerUpdateResult upd = PlayerUpdateResult::RenderOnly;
+            const float beforeNormalX = player.x;
+            const float beforeNormalY = player.y;
+            if (!fastTravelEnabled) {
+                upd = UpdatePlayerMovement(
+                    player, map, dt, jumpBufferMax, movementCfg,
+                    touchMove, touchDown, touchJump, inputMove, inputDown
+                );
+                if (std::fabs(player.x - beforeNormalX) > 0.01f || std::fabs(player.y - beforeNormalY) > 0.01f) {
+                    addMovementReason("normal_movement");
+                }
+            } else {
+                // Fast-travel mode disables normal movement/physics.
+                inputMove = 0.0f;
+                inputDown = false;
+            }
             {
+                const float beforeWrapX = player.x;
+                const float beforeWrapY = player.y;
                 const int currentLevelId = parseLevelIdFromLevelPath(levelManager.levelPath());
                 const bool horizontalWrapActive = (currentLevelId == 39 || currentLevelId == 40);
                 if (((currentLevelId == 29 &&
@@ -1614,6 +1850,9 @@ int main(int argc, char** argv) {
                     const float mapWidthPx = (float)(map.w * map.tileSize);
                     while (player.x + (float)player.w < 0.0f) player.x += mapWidthPx;
                     while (player.x >= mapWidthPx) player.x -= mapWidthPx;
+                }
+                if (std::fabs(player.x - beforeWrapX) > 0.01f || std::fabs(player.y - beforeWrapY) > 0.01f) {
+                    addMovementReason("world_wrap");
                 }
             }
             if (upd == PlayerUpdateResult::Reloaded) {
@@ -1660,74 +1899,6 @@ int main(int argc, char** argv) {
                 continue;
             }
 
-            bool fastTravelReload = false;
-            bool triggerFtUp = false;
-            bool triggerFtDown = false;
-            bool triggerFtLeft = false;
-            bool triggerFtRight = false;
-            bool triggerFtExit = false;
-            if (timeTravelTriggerCooldown <= 0.0f) {
-                for (const auto& obj : objects) {
-                    int objId = 0;
-                    try { objId = std::stoi(obj.id); } catch (...) { continue; }
-                    if (objId < 57 || objId > 61) continue;
-                    if (fastTravelCooldown > 0.0f) break;
-
-                    const float ox = obj.x - 16.0f;
-                    const float oy = obj.y - 16.0f;
-                    const float ow = 32.0f;
-                    const float oh = 32.0f;
-                    const float px1 = player.x;
-                    const float px2 = player.x + (float)player.w;
-                    const float py1 = player.y;
-                    const float py2 = player.y + (float)player.h;
-                    const bool overlap = (px2 > ox) && (px1 < ox + ow) && (py2 > oy) && (py1 < oy + oh);
-                    if (!overlap) continue;
-
-                    // Once any fast-travel trigger is touched, keep fast-travel enabled in all directions.
-                    const bool hadAllFlags =
-                        fastTravelFlagUp &&
-                        fastTravelFlagDown &&
-                        fastTravelFlagLeft &&
-                        fastTravelFlagRight &&
-                        fastTravelFlagExit;
-                    fastTravelFlagUp = true;
-                    fastTravelFlagDown = true;
-                    fastTravelFlagLeft = true;
-                    fastTravelFlagRight = true;
-                    fastTravelFlagExit = true;
-                    if (!hadAllFlags) {
-                        logFastTravelFlags("unlock");
-                    }
-                    if (objId == 57 && fastTravelFlagUp) triggerFtUp = true;
-                    if (objId == 58 && fastTravelFlagDown) triggerFtDown = true;
-                    if (objId == 59 && fastTravelFlagLeft) triggerFtLeft = true;
-                    if (objId == 60 && fastTravelFlagRight) triggerFtRight = true;
-                    if (objId == 61 && fastTravelFlagExit) triggerFtExit = true;
-                    break;
-                }
-            }
-            if (triggerFtUp || triggerFtDown || triggerFtLeft || triggerFtRight || triggerFtExit) {
-                if (triggerFtUp) player.y = (float)(map.h * map.tileSize - player.h - 1);
-                if (triggerFtDown) player.y = 1.0f;
-                if (triggerFtLeft) player.x = (float)(map.w * map.tileSize - player.w - 1);
-                if (triggerFtRight) player.x = 1.0f;
-                if (triggerFtExit) {
-                    std::string next = levelManager.nextLevelPath();
-                    if (!next.empty()) {
-                        levelManager.setLevelPath(next);
-                        fastTravelReload = true;
-                    }
-                }
-                player.vx = 0.0f;
-                player.vy = 0.0f;
-                player.onGround = false;
-                fastTravelCooldown = 0.2f;
-            }
-            if (fastTravelReload) {
-                reloadLevel();
-                continue;
-            }
             if (upd == PlayerUpdateResult::RenderOnly) {
                 goto RENDER_ONLY;
             }
@@ -1759,6 +1930,7 @@ int main(int argc, char** argv) {
                     player.y = sy - (float)player.h;
                     player.vy = -1800.0f;
                     player.onGround = false;
+                    addMovementReason("spring");
                     break;
                 }
             }
@@ -1783,6 +1955,7 @@ int main(int argc, char** argv) {
                     player.y = by - (float)player.h;
                     player.vy = -1200.0f;
                     player.onGround = false;
+                    addMovementReason("bumper");
                     activeBumperIndices.insert(objIdx);
 #if HAS_SDL_MIXER
                     if (audioReady && bumperSfx) Mix_PlayChannel(-1, bumperSfx, 0);
@@ -1793,12 +1966,21 @@ int main(int argc, char** argv) {
                     player.y = by + bh;
                     player.vy = 1200.0f;
                     player.onGround = false;
+                    addMovementReason("bumper");
                     activeBumperIndices.insert(objIdx);
 #if HAS_SDL_MIXER
                     if (audioReady && bumperSfx) Mix_PlayChannel(-1, bumperSfx, 0);
 #endif
                     break;
                 }
+            }
+            if (std::fabs(player.x - frameStartX) > 0.01f || std::fabs(player.y - frameStartY) > 0.01f) {
+                if (movementReasons.empty()) movementReasons = "unknown";
+                SDL_Log("player move: from=(%.2f, %.2f) to=(%.2f, %.2f) delta=(%.2f, %.2f) reason=%s",
+                        frameStartX, frameStartY,
+                        player.x, player.y,
+                        player.x - frameStartX, player.y - frameStartY,
+                        movementReasons.c_str());
             }
 
             if (!levelCompleteActive && playerTouchesTileId(map, player, 30, 68)) {
@@ -2141,7 +2323,7 @@ RENDER_ONLY:
             const auto& obj = objects[objIdx];
             int objId = 0;
             try { objId = std::stoi(obj.id); } catch (...) { objId = 0; }
-            if (objId >= 57 && objId <= 61) continue; // invisible fast-travel objects
+            const bool isFastTravelChanger = (objId >= 57 && objId <= 61);
             float entityBaseX = obj.x - 16.0f;
             float entityBaseY = obj.y - 16.0f;
             if (renderWrapX) {
@@ -2174,7 +2356,7 @@ RENDER_ONLY:
             }
             if (!of) of = defaultEntityFrame;
 
-            if (entitiesTex && of) {
+            if (!isFastTravelChanger && entitiesTex && of) {
                 const int fw = 32;
                 const int fh = 32;
                 SDL_Rect dst{
@@ -2218,7 +2400,7 @@ RENDER_ONLY:
                     renderFrame(ren, entitiesTex, *of, dstBL);
                     renderFrame(ren, entitiesTex, *of, dstBR);
                 }
-            } else {
+            } else if (!isFastTravelChanger) {
                 SDL_SetRenderDrawColor(ren, 120, 220, 120, 255);
                 SDL_FRect orc{ entityBaseX - camX, entityBaseY - camY, 32.0f, 32.0f };
                 SDL_RenderDrawRectF(ren, &orc);
@@ -2251,7 +2433,8 @@ RENDER_ONLY:
             }
 
             if (showHitboxes) {
-                SDL_SetRenderDrawColor(ren, 255, 150, 60, 255);
+                if (isFastTravelChanger) SDL_SetRenderDrawColor(ren, 220, 60, 220, 255);
+                else SDL_SetRenderDrawColor(ren, 255, 150, 60, 255);
                 SDL_FRect ehb{
                     entityBaseX - camX,
                     entityBaseY - camY,
@@ -2939,6 +3122,7 @@ RENDER_ONLY:
     SDL_DestroyRenderer(ren);
     SDL_DestroyWindow(win);
     SDL_Log("Shutting down");
+    CrashReporter::stop();
     IMG_Quit();
     SDL_Quit();
     return 0;

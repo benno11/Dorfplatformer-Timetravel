@@ -389,6 +389,9 @@ bool loadLevelBNNLVL(const std::string& path,
         posToXY(tileId, h, o.x, o.y);
         // Keep POS/TYPE aligned by index during creation.
         const int objectId = std::max(1, entitySpawnType[temp22]);
+        if (objectId == 61) {
+            o.y += 3.0f * TILE_SIZE;
+        }
         o.id = std::to_string(objectId);
         objects.push_back(o);
     }
