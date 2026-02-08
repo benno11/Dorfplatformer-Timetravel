@@ -1175,6 +1175,16 @@ int main(int argc, char** argv) {
         bool fastTravelFlagLeft = false;
         bool fastTravelFlagRight = false;
         bool fastTravelFlagExit = false;
+        auto logFastTravelFlags = [&](const char* reason) {
+            SDL_Log("fastTravelFlags (%s): U=%d D=%d L=%d R=%d E=%d",
+                    reason,
+                    fastTravelFlagUp ? 1 : 0,
+                    fastTravelFlagDown ? 1 : 0,
+                    fastTravelFlagLeft ? 1 : 0,
+                    fastTravelFlagRight ? 1 : 0,
+                    fastTravelFlagExit ? 1 : 0);
+        };
+        float timeTravelTriggerCooldown = 0.0f;
 #if HAS_SDL_MIXER
         Mix_Music* levelMusic = nullptr;
 #endif
@@ -1198,6 +1208,8 @@ int main(int argc, char** argv) {
             fastTravelFlagLeft = false;
             fastTravelFlagRight = false;
             fastTravelFlagExit = false;
+            logFastTravelFlags("reload");
+            timeTravelTriggerCooldown = 0.35f;
 
             if (audioReady) {
 #if HAS_SDL_MIXER
@@ -1304,6 +1316,9 @@ int main(int argc, char** argv) {
             }
             if (fastTravelCooldown > 0.0f) {
                 fastTravelCooldown = std::max(0.0f, fastTravelCooldown - dt);
+            }
+            if (timeTravelTriggerCooldown > 0.0f) {
+                timeTravelTriggerCooldown = std::max(0.0f, timeTravelTriggerCooldown - dt);
             }
             if (cameraSmoothingSuppressTimer > 0.0f) {
                 cameraSmoothingSuppressTimer = std::max(0.0f, cameraSmoothingSuppressTimer - dt);
@@ -1601,9 +1616,6 @@ int main(int argc, char** argv) {
                     while (player.x >= mapWidthPx) player.x -= mapWidthPx;
                 }
             }
-            if (upd == PlayerUpdateResult::RenderOnly) {
-                goto RENDER_ONLY;
-            }
             if (upd == PlayerUpdateResult::Reloaded) {
                 const float pitResetY = (float)((map.h + 7) * map.tileSize);
                 const bool bottomlessPit = (player.y > pitResetY);
@@ -1648,43 +1660,52 @@ int main(int argc, char** argv) {
                 continue;
             }
 
-            int collectedNow = levelManager.collectCoinsAtPlayer(map, player);
-            if (collectedNow > 0) {
-#if HAS_SDL_MIXER
-                if (audioReady && coinSfx) Mix_PlayChannel(-1, coinSfx, 0);
-#endif
-            }
-            levelManager.updateTimeWarpIdAtPlayer(map, player);
-
             bool fastTravelReload = false;
             bool triggerFtUp = false;
             bool triggerFtDown = false;
             bool triggerFtLeft = false;
             bool triggerFtRight = false;
             bool triggerFtExit = false;
-            for (const auto& obj : objects) {
-                int objId = 0;
-                try { objId = std::stoi(obj.id); } catch (...) { continue; }
-                if (objId < 57 || objId > 61) continue;
-                if (fastTravelCooldown > 0.0f) break;
+            if (timeTravelTriggerCooldown <= 0.0f) {
+                for (const auto& obj : objects) {
+                    int objId = 0;
+                    try { objId = std::stoi(obj.id); } catch (...) { continue; }
+                    if (objId < 57 || objId > 61) continue;
+                    if (fastTravelCooldown > 0.0f) break;
 
-                const float ox = obj.x - 16.0f;
-                const float oy = obj.y - 16.0f;
-                const float ow = 32.0f;
-                const float oh = 32.0f;
-                const float px1 = player.x;
-                const float px2 = player.x + (float)player.w;
-                const float py1 = player.y;
-                const float py2 = player.y + (float)player.h;
-                const bool overlap = (px2 > ox) && (px1 < ox + ow) && (py2 > oy) && (py1 < oy + oh);
-                if (!overlap) continue;
+                    const float ox = obj.x - 16.0f;
+                    const float oy = obj.y - 16.0f;
+                    const float ow = 32.0f;
+                    const float oh = 32.0f;
+                    const float px1 = player.x;
+                    const float px2 = player.x + (float)player.w;
+                    const float py1 = player.y;
+                    const float py2 = player.y + (float)player.h;
+                    const bool overlap = (px2 > ox) && (px1 < ox + ow) && (py2 > oy) && (py1 < oy + oh);
+                    if (!overlap) continue;
 
-                if (objId == 57) { fastTravelFlagUp = true; triggerFtUp = true; }
-                if (objId == 58) { fastTravelFlagDown = true; triggerFtDown = true; }
-                if (objId == 59) { fastTravelFlagLeft = true; triggerFtLeft = true; }
-                if (objId == 60) { fastTravelFlagRight = true; triggerFtRight = true; }
-                if (objId == 61) { fastTravelFlagExit = true; triggerFtExit = true; }
-                break;
+                    // Once any fast-travel trigger is touched, keep fast-travel enabled in all directions.
+                    const bool hadAllFlags =
+                        fastTravelFlagUp &&
+                        fastTravelFlagDown &&
+                        fastTravelFlagLeft &&
+                        fastTravelFlagRight &&
+                        fastTravelFlagExit;
+                    fastTravelFlagUp = true;
+                    fastTravelFlagDown = true;
+                    fastTravelFlagLeft = true;
+                    fastTravelFlagRight = true;
+                    fastTravelFlagExit = true;
+                    if (!hadAllFlags) {
+                        logFastTravelFlags("unlock");
+                    }
+                    if (objId == 57 && fastTravelFlagUp) triggerFtUp = true;
+                    if (objId == 58 && fastTravelFlagDown) triggerFtDown = true;
+                    if (objId == 59 && fastTravelFlagLeft) triggerFtLeft = true;
+                    if (objId == 60 && fastTravelFlagRight) triggerFtRight = true;
+                    if (objId == 61 && fastTravelFlagExit) triggerFtExit = true;
+                    break;
+                }
             }
             if (triggerFtUp || triggerFtDown || triggerFtLeft || triggerFtRight || triggerFtExit) {
                 if (triggerFtUp) player.y = (float)(map.h * map.tileSize - player.h - 1);
@@ -1706,6 +1727,19 @@ int main(int argc, char** argv) {
             if (fastTravelReload) {
                 reloadLevel();
                 continue;
+            }
+            if (upd == PlayerUpdateResult::RenderOnly) {
+                goto RENDER_ONLY;
+            }
+
+            int collectedNow = levelManager.collectCoinsAtPlayer(map, player);
+            if (collectedNow > 0) {
+#if HAS_SDL_MIXER
+                if (audioReady && coinSfx) Mix_PlayChannel(-1, coinSfx, 0);
+#endif
+            }
+            if (timeTravelTriggerCooldown <= 0.0f) {
+                levelManager.updateTimeWarpIdAtPlayer(map, player);
             }
 
             // Spring objects (id 31): bounce player upward on top contact.
@@ -2108,6 +2142,20 @@ RENDER_ONLY:
             int objId = 0;
             try { objId = std::stoi(obj.id); } catch (...) { objId = 0; }
             if (objId >= 57 && objId <= 61) continue; // invisible fast-travel objects
+            float entityBaseX = obj.x - 16.0f;
+            float entityBaseY = obj.y - 16.0f;
+            if (renderWrapX) {
+                const float wrapW = (float)(map.w * map.tileSize);
+                // Keep the primary entity render closest to camera X for stable wrapping.
+                while ((entityBaseX - camX) < -wrapW * 0.5f) entityBaseX += wrapW;
+                while ((entityBaseX - camX) >  wrapW * 0.5f) entityBaseX -= wrapW;
+            }
+            if (renderWrapY) {
+                const float wrapH = (float)(map.h * map.tileSize);
+                // Keep the primary entity render closest to camera Y for stable wrapping.
+                while ((entityBaseY - camY) < -wrapH * 0.5f) entityBaseY += wrapH;
+                while ((entityBaseY - camY) >  wrapH * 0.5f) entityBaseY -= wrapH;
+            }
             const Frame* of = nullptr;
             std::string frameKey = obj.id;
             if (obj.id == "46" && activeBumperIndices.find(objIdx) != activeBumperIndices.end()) {
@@ -2130,8 +2178,8 @@ RENDER_ONLY:
                 const int fw = 32;
                 const int fh = 32;
                 SDL_Rect dst{
-                    (int)std::lround((obj.x - 16.0f) - camX),
-                    (int)std::lround((obj.y - 16.0f) - camY),
+                    (int)std::lround(entityBaseX - camX),
+                    (int)std::lround(entityBaseY - camY),
                     fw,
                     fh
                 };
@@ -2172,9 +2220,7 @@ RENDER_ONLY:
                 }
             } else {
                 SDL_SetRenderDrawColor(ren, 120, 220, 120, 255);
-                float ox = obj.x - 16.0f;
-                float oy = obj.y - 16.0f;
-                SDL_FRect orc{ ox - camX, oy - camY, 32.0f, 32.0f };
+                SDL_FRect orc{ entityBaseX - camX, entityBaseY - camY, 32.0f, 32.0f };
                 SDL_RenderDrawRectF(ren, &orc);
                 if (renderWrapY) {
                     const float wrapH = (float)(map.h * map.tileSize);
@@ -2207,8 +2253,8 @@ RENDER_ONLY:
             if (showHitboxes) {
                 SDL_SetRenderDrawColor(ren, 255, 150, 60, 255);
                 SDL_FRect ehb{
-                    (obj.x - 16.0f) - camX,
-                    (obj.y - 16.0f) - camY,
+                    entityBaseX - camX,
+                    entityBaseY - camY,
                     32.0f,
                     32.0f
                 };

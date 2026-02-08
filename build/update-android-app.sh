@@ -94,14 +94,8 @@ if [ -n "$ndk_arch" ] && [ -n "${ANDROID_NDK_HOME:-}" ]; then
   copy_if_exists "$cxx_shared" "$NATIVE_LIBS_DST/libc++_shared.so"
 fi
 
-mkdir -p "$ASSETS_DST"
-if command -v rsync >/dev/null 2>&1; then
-  rsync -a --delete "$ASSETS_SRC/" "$ASSETS_DST/"
-else
-  rm -rf "$ASSETS_DST"
-  mkdir -p "$ASSETS_DST"
-  cp -a "$ASSETS_SRC/." "$ASSETS_DST/"
-fi
+rm -rf "$ASSETS_DST"
+cp -a "$ASSETS_SRC" "$ASSETS_DST"
 echo "[OK] Synced assets -> $ASSETS_DST"
 
 echo "[DONE] Android app content updated."
