@@ -2,23 +2,37 @@ package com.Benno111.dorfplatformertimetravel;
 
 import android.os.Bundle;
 import android.content.pm.ActivityInfo;
+import android.util.Log;
 import android.view.GestureDetector;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
+import android.os.Build;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 
 import org.libsdl.app.SDLActivity;
 
 public class MainActivity extends SDLActivity {
+    private static final String TAG = "MainActivity";
     private GestureDetector gestureDetector;
+    private final View.OnSystemUiVisibilityChangeListener systemUiListener =
+            visibility -> applyImmersiveMode();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        try {
+            Class.forName("org.libsdl.app.SDLInputConnection");
+            Log.i(TAG, "SDLInputConnection class visible before SDL init");
+        } catch (Throwable t) {
+            Log.e(TAG, "SDLInputConnection class NOT visible before SDL init", t);
+        }
         super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
-        enterImmersiveFullscreen();
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+        getWindow().getDecorView().setOnSystemUiVisibilityChangeListener(systemUiListener);
+        applyImmersiveMode();
         setupTouchDebuggerToggle();
     }
 
@@ -26,23 +40,35 @@ public class MainActivity extends SDLActivity {
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) {
-            enterImmersiveFullscreen();
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+            applyImmersiveMode();
         }
     }
 
-    private void enterImmersiveFullscreen() {
+    @Override
+    protected void onResume() {
+        super.onResume();
+        applyImmersiveMode();
+    }
+
+    private void applyImmersiveMode() {
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         View decorView = getWindow().getDecorView();
-        decorView.setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                        | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                        | View.SYSTEM_UI_FLAG_FULLSCREEN
-        );
-        decorView.setOnSystemUiVisibilityChangeListener(visibility -> enterImmersiveFullscreen());
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        if (Build.VERSION.SDK_INT >= 30) {
+            WindowInsetsController controller = decorView.getWindowInsetsController();
+            if (controller != null) {
+                controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+            }
+        } else {
+            decorView.setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                            | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_FULLSCREEN
+            );
+        }
     }
 
     private void setupTouchDebuggerToggle() {
@@ -96,16 +122,21 @@ public class MainActivity extends SDLActivity {
         // Route Android back to in-game Escape handling.
         SDLActivity.onNativeKeyDown(KeyEvent.KEYCODE_ESCAPE);
         SDLActivity.onNativeKeyUp(KeyEvent.KEYCODE_ESCAPE);
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        applyImmersiveMode();
+    }
+
+    @Override
+    protected String getMainFunction() {
+        return "main";
     }
 
     @Override
     protected String[] getLibraries() {
         return new String[] {
-                "sdl3",
-                "sdl3_image",
-                "sdl3_ttf",
-                "sdl3_mixer",
+                "SDL3",
+                "SDL3_image",
+                "SDL3_ttf",
+                "SDL3_mixer",
                 "platformer"
         };
     }

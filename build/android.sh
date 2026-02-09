@@ -217,16 +217,58 @@ CPPFLAGS=(
   -I"$SDL3_MIXER_ROOT/include"
 )
 
-SDL_VERSION_PROBE='
-#include <SDL3/SDL.h>
-SDL_MAJOR_VERSION SDL_MINOR_VERSION SDL_PATCHLEVEL
-'
-SDL_VERSION_LINE="$("$CXX" -E -P -x c++ - "${CPPFLAGS[@]}" <<<"$SDL_VERSION_PROBE" 2>/dev/null | tail -n1 || true)"
-SDL_MAJOR="$(awk '{print $1}' <<<"$SDL_VERSION_LINE")"
-SDL_MINOR="$(awk '{print $2}' <<<"$SDL_VERSION_LINE")"
-SDL_PATCH="$(awk '{print $3}' <<<"$SDL_VERSION_LINE")"
+# Compatibility shim for lowercase includes used by game code:
+#   #include <sdl3/SDL.h>, <sdl3/SDL_image.h>, ...
+BUILD_INCLUDE_DIR="$PWD/.build/include/sdl3"
+mkdir -p "$BUILD_INCLUDE_DIR"
+for inc in \
+  "$SDL3_ANDROID_ROOT/include/SDL3" \
+  "$SDL3_IMAGE_ROOT/include/SDL3" \
+  "$SDL3_IMAGE_ROOT/include/SDL3_image" \
+  "$SDL3_TTF_ROOT/include/SDL3" \
+  "$SDL3_TTF_ROOT/include/SDL3_ttf" \
+  "$SDL3_MIXER_ROOT/include/SDL3" \
+  "$SDL3_MIXER_ROOT/include/SDL3_mixer"; do
+  [ -d "$inc" ] || continue
+  for h in "$inc"/*.h; do
+    [ -f "$h" ] || continue
+    ln -sf "$h" "$BUILD_INCLUDE_DIR/$(basename "$h")"
+  done
+done
+CPPFLAGS+=(
+  -I"$PWD/.build/include"
+  -I"$PWD/.build/include/sdl3"
+)
+
+SDL_VERSION_HEADER=""
+for vh in \
+  "$SDL3_ANDROID_ROOT/include/SDL3/SDL_version.h" \
+  "$SDL3_IMAGE_ROOT/include/SDL3/SDL_version.h" \
+  "$SDL3_TTF_ROOT/include/SDL3/SDL_version.h" \
+  "$SDL3_MIXER_ROOT/include/SDL3/SDL_version.h"; do
+  if [ -f "$vh" ]; then
+    SDL_VERSION_HEADER="$vh"
+    break
+  fi
+done
+
+SDL_MAJOR=""
+SDL_MINOR=""
+SDL_PATCH=""
+if [ -n "$SDL_VERSION_HEADER" ]; then
+  SDL_MAJOR="$(awk '/#define[[:space:]]+SDL_MAJOR_VERSION[[:space:]]+[0-9]+/{print $3; exit}' "$SDL_VERSION_HEADER")"
+  SDL_MINOR="$(awk '/#define[[:space:]]+SDL_MINOR_VERSION[[:space:]]+[0-9]+/{print $3; exit}' "$SDL_VERSION_HEADER")"
+  SDL_PATCH="$(awk '/#define[[:space:]]+SDL_MICRO_VERSION[[:space:]]+[0-9]+/{print $3; exit}' "$SDL_VERSION_HEADER")"
+  if [ -z "$SDL_PATCH" ]; then
+    SDL_PATCH="$(awk '/#define[[:space:]]+SDL_PATCHLEVEL[[:space:]]+[0-9]+/{print $3; exit}' "$SDL_VERSION_HEADER")"
+  fi
+fi
+
 if [ -z "$SDL_MAJOR" ] || [ -z "$SDL_MINOR" ] || [ -z "$SDL_PATCH" ]; then
   echo "[ERROR] Could not detect SDL version from active compile include path."
+  if [ -n "$SDL_VERSION_HEADER" ]; then
+    echo "[INFO] SDL version header probed: $SDL_VERSION_HEADER"
+  fi
   echo "[INFO] SDL3_ANDROID_ROOT=$SDL3_ANDROID_ROOT"
   echo "[INFO] SDL3_IMAGE_ROOT=$SDL3_IMAGE_ROOT"
   echo "[INFO] SDL3_TTF_ROOT=$SDL3_TTF_ROOT"
@@ -268,6 +310,7 @@ if [ "$FAST" = "1" ]; then
   CXXFLAGS=(
     -std=c++17
     -O1
+    -DSDL_ENABLE_OLD_NAMES=1
     -fPIC
   )
   echo "[INFO] FAST build enabled (reduced optimization, no LTO)"
@@ -276,6 +319,7 @@ else
     -std=c++17
     -O3
     -DNDEBUG
+    -DSDL_ENABLE_OLD_NAMES=1
     -flto
     -fPIC
   )

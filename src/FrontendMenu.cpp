@@ -224,6 +224,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                             else if (settingsSelAudio == 2 && dir != 0) musicVolume = std::clamp(musicVolume + dir * 8, 0, 128);
                             else if (settingsSelAudio == 3 && dir != 0) sfxVolume = std::clamp(sfxVolume + dir * 8, 0, 128);
                             else if (settingsSelAudio == 4) inSettings = false;
+                            if (ctx.applyMenuMusicToggle) ctx.applyMenuMusicToggle();
                             if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
                         }
                         continue;
@@ -355,6 +356,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                                           SDL_PointInRect(&pt, &row2) ? 2 :
                                           SDL_PointInRect(&pt, &row3) ? 3 :
                                           SDL_PointInRect(&pt, &row4) ? 4 : settingsSelAudio;
+                        if (ctx.applyMenuMusicToggle) ctx.applyMenuMusicToggle();
                         if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
                         continue;
                     }
@@ -501,8 +503,9 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         settingsSelAudio = SDL_PointInRect(&pt, &row0) ? 0 :
                                           SDL_PointInRect(&pt, &row1) ? 1 :
                                           SDL_PointInRect(&pt, &row2) ? 2 :
-                                          SDL_PointInRect(&pt, &row3) ? 3 :
-                                          SDL_PointInRect(&pt, &row4) ? 4 : settingsSelAudio;
+                                           SDL_PointInRect(&pt, &row3) ? 3 :
+                                           SDL_PointInRect(&pt, &row4) ? 4 : settingsSelAudio;
+                        if (ctx.applyMenuMusicToggle) ctx.applyMenuMusicToggle();
                         if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
                         continue;
                     }

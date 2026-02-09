@@ -16,12 +16,12 @@ ASSETS_DST="$APP_MAIN_DIR/assets"
 ABI="${ABI:-arm64-v8a}"
 
 if [ ! -d "$ANDROID_DIR" ]; then
-  echo "[ERROR] Android project not found at: $ANDROID_DIR"
+  echo "[error] android project not found at: $ANDROID_DIR"
   exit 1
 fi
 
 if [ ! -d "$ASSETS_SRC" ]; then
-  echo "[ERROR] Assets folder not found at: $ASSETS_SRC"
+  echo "[error] assets folder not found at: $ASSETS_SRC"
   exit 1
 fi
 
@@ -31,7 +31,11 @@ if [ -f "$ROOT_DIR/build/android.env" ]; then
 fi
 
 SDL3_ANDROID_ROOT="${SDL3_ANDROID_ROOT:-$ROOT_DIR/deps/android}"
+SDL3_IMAGE_ROOT="${SDL3_IMAGE_ROOT:-$SDL3_ANDROID_ROOT}"
+SDL3_TTF_ROOT="${SDL3_TTF_ROOT:-$SDL3_ANDROID_ROOT}"
+SDL3_MIXER_ROOT="${SDL3_MIXER_ROOT:-$SDL3_ANDROID_ROOT}"
 NATIVE_BUILD_LIB="$ROOT_DIR/build/android/$ABI/libplatformer.so"
+NATIVE_BUILD_DIR="$ROOT_DIR/build/android/$ABI"
 NATIVE_LIBS_DST="$APP_MAIN_DIR/jniLibs/$ABI"
 
 mkdir -p "$NATIVE_LIBS_DST"
@@ -41,30 +45,54 @@ rm -f \
   "$NATIVE_LIBS_DST/libSDL3_image.so" \
   "$NATIVE_LIBS_DST/libSDL3_ttf.so" \
   "$NATIVE_LIBS_DST/libSDL3_mixer.so" \
+  "$NATIVE_LIBS_DST/libsdl3.so" \
+  "$NATIVE_LIBS_DST/libsdl3_image.so" \
+  "$NATIVE_LIBS_DST/libsdl3_ttf.so" \
+  "$NATIVE_LIBS_DST/libsdl3_mixer.so" \
   "$NATIVE_LIBS_DST/libc++_shared.so"
 
 if [ ! -f "$NATIVE_BUILD_LIB" ]; then
-  echo "[ERROR] Missing native game library: $NATIVE_BUILD_LIB"
-  echo "[HINT] Build it first with: ABI=$ABI ./build/android.sh"
+  echo "[error] missing native game library: $NATIVE_BUILD_LIB"
+  echo "[hint] build it first with: ABI=$ABI ./build/android.sh"
   exit 1
 fi
 
 cp -f "$NATIVE_BUILD_LIB" "$NATIVE_LIBS_DST/libplatformer.so"
-echo "[OK] Synced: $NATIVE_BUILD_LIB -> $NATIVE_LIBS_DST/libplatformer.so"
+echo "[ok] synced: $NATIVE_BUILD_LIB -> $NATIVE_LIBS_DST/libplatformer.so"
 
 copy_if_exists() {
   local src="$1"
   local dst="$2"
   if [ -f "$src" ]; then
     cp -f "$src" "$dst"
-    echo "[OK] Synced: $(basename "$src")"
+    echo "[ok] synced: $(basename "$src")"
+    return 0
   fi
+  return 1
 }
 
-copy_if_exists "$SDL3_ANDROID_ROOT/lib/$ABI/libSDL3.so" "$NATIVE_LIBS_DST/libSDL3.so"
-copy_if_exists "${SDL3_IMAGE_ROOT:-$SDL3_ANDROID_ROOT}/lib/$ABI/libSDL3_image.so" "$NATIVE_LIBS_DST/libSDL3_image.so"
-copy_if_exists "${SDL3_TTF_ROOT:-$SDL3_ANDROID_ROOT}/lib/$ABI/libSDL3_ttf.so" "$NATIVE_LIBS_DST/libSDL3_ttf.so"
-copy_if_exists "${SDL3_MIXER_ROOT:-$SDL3_ANDROID_ROOT}/lib/$ABI/libSDL3_mixer.so" "$NATIVE_LIBS_DST/libSDL3_mixer.so"
+# Prefer freshly built outputs from build/android/<abi>, then fallback to staged deps.
+copy_lib_prefer_build() {
+  local src_libname="$1"
+  local staged_root="$2"
+  local dst="$NATIVE_LIBS_DST/$src_libname"
+  if copy_if_exists "$NATIVE_BUILD_DIR/$src_libname" "$dst"; then
+    return 0
+  fi
+  if copy_if_exists "$staged_root/lib/$ABI/$src_libname" "$dst"; then
+    return 0
+  fi
+  echo "[warn] missing $src_libname in build output and staged deps for ABI=$ABI"
+  echo "       checked:"
+  echo "       $NATIVE_BUILD_DIR/$src_libname"
+  echo "       $staged_root/lib/$ABI/$src_libname"
+  return 1
+}
+
+copy_lib_prefer_build "libSDL3.so" "$SDL3_ANDROID_ROOT"
+copy_lib_prefer_build "libSDL3_image.so" "$SDL3_IMAGE_ROOT"
+copy_lib_prefer_build "libSDL3_ttf.so" "$SDL3_TTF_ROOT"
+copy_lib_prefer_build "libSDL3_mixer.so" "$SDL3_MIXER_ROOT"
 
 # Package libc++_shared.so from NDK for runtime linking.
 if [ -z "${ANDROID_NDK_HOME:-}" ]; then
@@ -103,7 +131,7 @@ fi
 
 rm -rf "$ASSETS_DST"
 cp -a "$ASSETS_SRC" "$ASSETS_DST"
-echo "[OK] Synced assets -> $ASSETS_DST"
+echo "[ok] synced assets -> $ASSETS_DST"
 
-echo "[DONE] Android app content updated."
-echo "[NEXT] cd Android && ./gradlew assembleDebug"
+echo "[done] android app content updated."
+echo "[next] cd Android && ./gradlew assembleDebug"

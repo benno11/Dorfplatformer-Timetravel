@@ -22,15 +22,15 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = true
+            isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
         }
         debug {
-            // Run ProGuard/R8 in debug too so every build path is guarded
-            isMinifyEnabled = true
+            // Keep debug startup deterministic for JNI-bound SDL bridge classes.
+            isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -43,6 +43,12 @@ android {
     }
     kotlinOptions {
         jvmTarget = "11"
+    }
+
+    sourceSets {
+        getByName("main") {
+            java.setSrcDirs(listOf("src/main/java"))
+        }
     }
 }
 

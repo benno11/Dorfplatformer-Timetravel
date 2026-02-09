@@ -34,6 +34,7 @@ struct FrontendMenuContext {
     int* sfxVolume = nullptr;
 
     std::function<void()> applyAudioVolumes;
+    std::function<void()> applyMenuMusicToggle;
 };
 
 FrontendAction runFrontendMenu(FrontendMenuContext& ctx);

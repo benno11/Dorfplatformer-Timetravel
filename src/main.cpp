@@ -701,6 +701,12 @@ int main(int argc, char** argv) {
         reportStartupError("Asset Load Error", msg, win);
         SDL_DestroyRenderer(ren);
         SDL_DestroyWindow(win);
+        if (audioReady) {
+#if HAS_SDL_MIXER
+            Mix_HaltMusic();
+            Mix_HaltChannel(-1);
+#endif
+        }
 #if HAS_SDL_MIXER
         if (coinSfx) { Mix_FreeChunk(coinSfx); coinSfx = nullptr; }
         if (loseSfx) { Mix_FreeChunk(loseSfx); loseSfx = nullptr; }
@@ -870,6 +876,11 @@ int main(int argc, char** argv) {
             menuMusicPlaying = false;
         }
     };
+    auto applyMenuMusicToggle = [&]() {
+        if (!audioReady) return;
+        if (menuMusicEnabled) ensureMenuMusic();
+        else stopMenuMusic();
+    };
 #endif
     LevelManager levelManager;
     bool running = true;
@@ -897,6 +908,7 @@ int main(int argc, char** argv) {
     frontendCtx.sfxVolume = &sfxVolume;
 #if HAS_SDL_MIXER
     frontendCtx.applyAudioVolumes = applyAudioVolumes;
+    frontendCtx.applyMenuMusicToggle = applyMenuMusicToggle;
 #endif
     while (running) {
 #if HAS_SDL_MIXER
@@ -2915,6 +2927,12 @@ RENDER_ONLY:
     if (debugRen && debugRen != ren) SDL_DestroyRenderer(debugRen);
     if (debugWin && debugWin != win) SDL_DestroyWindow(debugWin);
     ShutdownTextRenderer();
+    if (audioReady) {
+#if HAS_SDL_MIXER
+        Mix_HaltMusic();
+        Mix_HaltChannel(-1);
+#endif
+    }
 #if HAS_SDL_MIXER
     if (coinSfx) { Mix_FreeChunk(coinSfx); coinSfx = nullptr; }
     if (loseSfx) { Mix_FreeChunk(loseSfx); loseSfx = nullptr; }
@@ -2925,7 +2943,6 @@ RENDER_ONLY:
 #endif
     if (audioReady) {
 #if HAS_SDL_MIXER
-        Mix_HaltMusic();
         Mix_CloseAudio();
         Mix_Quit();
 #endif
@@ -2938,6 +2955,12 @@ RENDER_ONLY:
     SDL_Quit();
     return 0;
 }
+
+#if defined(__ANDROID__)
+extern "C" int SDL_main(int argc, char** argv) {
+    return main(argc, argv);
+}
+#endif
 
 #if defined(__ANDROID__)
 extern "C" JNIEXPORT void JNICALL

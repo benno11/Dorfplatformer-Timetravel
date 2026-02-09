@@ -22,3 +22,4 @@
 
 # SDL Java bridge classes are looked up from native JNI_OnLoad.
 -keep class org.libsdl.app.** { *; }
+-keep class org.libsdl.app.SDLInputConnection { *; }
