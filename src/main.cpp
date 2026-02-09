@@ -1865,7 +1865,7 @@ int main(int argc, char** argv) {
                     const int area = levelManager.levelPartId();
                     const int ot = levelManager.timeId();
                     if (tw != 'F' && world > 0 && area > 0) {
-                        if (tw == N){
+                        if (tw == 'N'){
                             break;
                         }
                         const bool hasVariant4 = levelManager.hasLevelCode(world * 100 + area * 10 + 4);
