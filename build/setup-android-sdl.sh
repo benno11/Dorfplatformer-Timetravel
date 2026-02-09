@@ -45,8 +45,6 @@ if [ -z "${ANDROID_NDK_HOME:-}" ] && [ -d "$HOME/Android/Sdk/ndk" ]; then
   fi
 fi
 
-: "${ANDROID_NDK_HOME:?Set ANDROID_NDK_HOME}"
-
 ABI="${ABI:-arm64-v8a}"
 API="${API:-24}"
 JOBS="${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}"
