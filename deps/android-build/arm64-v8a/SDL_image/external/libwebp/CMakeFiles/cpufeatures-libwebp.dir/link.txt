@@ -1,2 +1,0 @@
-/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar qc libcpufeatures-libwebp.a "CMakeFiles/cpufeatures-libwebp.dir/home/benno111/Android/Sdk/ndk/29.0.14206865/sources/android/cpufeatures/cpu-features.c.o"
-/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib libcpufeatures-libwebp.a

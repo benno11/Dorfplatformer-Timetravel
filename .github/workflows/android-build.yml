@@ -37,7 +37,7 @@ jobs:
       with:
         path: |
           deps/android
-          deps/android-build
+          deps/android-src
         key: ${{ runner.os }}-android-deps-${{ hashFiles('build/setup-android-sdl.sh', 'build/dep-android.sh') }}
         restore-keys: |
           ${{ runner.os }}-android-deps-

@@ -1,8 +1,0 @@
-/home/benno111/Documents/GitHub/DF-New/deps/android-install/arm64-v8a/SDL_ttf/lib/libSDL2_ttf.so
-/home/benno111/Documents/GitHub/DF-New/deps/android-install/arm64-v8a/SDL_ttf/include/SDL2/SDL_ttf.h
-/home/benno111/Documents/GitHub/DF-New/deps/android-install/arm64-v8a/SDL_ttf/lib/cmake/SDL2_ttf/SDL2_ttfConfig.cmake
-/home/benno111/Documents/GitHub/DF-New/deps/android-install/arm64-v8a/SDL_ttf/lib/cmake/SDL2_ttf/SDL2_ttfConfigVersion.cmake
-/home/benno111/Documents/GitHub/DF-New/deps/android-install/arm64-v8a/SDL_ttf/lib/cmake/SDL2_ttf/SDL2_ttf-shared-targets.cmake
-/home/benno111/Documents/GitHub/DF-New/deps/android-install/arm64-v8a/SDL_ttf/lib/cmake/SDL2_ttf/SDL2_ttf-shared-targets-release.cmake
-/home/benno111/Documents/GitHub/DF-New/deps/android-install/arm64-v8a/SDL_ttf/lib/pkgconfig/SDL2_ttf.pc
-/home/benno111/Documents/GitHub/DF-New/deps/android-install/arm64-v8a/SDL_ttf/share/licenses/SDL2_ttf/LICENSE.txt
