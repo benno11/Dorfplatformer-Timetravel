@@ -32,6 +32,10 @@ jobs:
       run: |
         echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
 
+    - name: Add NDK toolchain to PATH
+      run: |
+        echo "${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
+
     - name: Cache Android dependencies
       uses: actions/cache@v4
       with:
