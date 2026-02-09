@@ -90,6 +90,9 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     enum class SliderDragTarget { None, Music, Sfx };
     SliderDragTarget sliderDrag = SliderDragTarget::None;
     SDL_FingerID sliderDragFinger = 0;
+    Uint64 lastTouchDownTicks = 0;
+    int lastTouchDownWinX = -100000;
+    int lastTouchDownWinY = -100000;
     SDL_Event e;
     const int settingsStartY = 150;
     const int settingsRowH = 30;
@@ -284,6 +287,14 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             }
             if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_LEFT) sliderDrag = SliderDragTarget::None;
             if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
+                // Some platforms emit a synthetic mouse click for taps.
+                // Ignore those duplicate mouse events right after touch.
+                const Uint64 nowTicks = SDL_GetTicks();
+                if (lastTouchDownTicks != 0 && nowTicks >= lastTouchDownTicks && (nowTicks - lastTouchDownTicks) <= 250) {
+                    const int dx = e.button.x - lastTouchDownWinX;
+                    const int dy = e.button.y - lastTouchDownWinY;
+                    if ((dx * dx + dy * dy) <= (24 * 24)) continue;
+                }
                 SDL_Point pt{};
                 if (!mouseToGamePoint(e.button.x, e.button.y, pt)) continue;
                 if (closeMenuOpen) {
@@ -431,6 +442,9 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 SDL_GetWindowSize(ctx.win, &winW, &winH);
                 int wx = (int)std::lround(e.tfinger.x * winW);
                 int wy = (int)std::lround(e.tfinger.y * winH);
+                lastTouchDownTicks = SDL_GetTicks();
+                lastTouchDownWinX = wx;
+                lastTouchDownWinY = wy;
                 SDL_Point pt{};
                 if (!mouseToGamePoint(wx, wy, pt)) continue;
                 if (closeMenuOpen) {
