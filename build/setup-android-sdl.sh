@@ -17,9 +17,19 @@ set -euo pipefail
 #   deps/android/lib/<abi>/libSDL2_ttf.so
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Preserve ANDROID_NDK_HOME if already set
+SAVED_ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-}"
+
 if [ -f "$ROOT_DIR/build/android.env" ]; then
   # shellcheck disable=SC1091
   . "$ROOT_DIR/build/android.env"
+fi
+
+# Restore ANDROID_NDK_HOME if it was set before sourcing android.env
+if [ -n "$SAVED_ANDROID_NDK_HOME" ]; then
+  ANDROID_NDK_HOME="$SAVED_ANDROID_NDK_HOME"
+  export ANDROID_NDK_HOME
 fi
 
 if [ -z "${ANDROID_NDK_HOME:-}" ]; then
@@ -57,9 +67,16 @@ case "$ABI" in
     ;;
 esac
 
+if [ -z "${ANDROID_NDK_HOME:-}" ]; then
+  echo "[ERROR] ANDROID_NDK_HOME is not set. Please set it to the path of your Android NDK installation."
+  exit 1
+fi
+
 TOOLCHAIN="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake"
 if [ ! -f "$TOOLCHAIN" ]; then
   echo "[ERROR] Missing NDK toolchain file: $TOOLCHAIN"
+  echo "[ERROR] ANDROID_NDK_HOME is set to: $ANDROID_NDK_HOME"
+  echo "[ERROR] Please ensure ANDROID_NDK_HOME points to a valid Android NDK installation."
   exit 1
 fi
 
