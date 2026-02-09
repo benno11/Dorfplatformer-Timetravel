@@ -10,28 +10,28 @@ on:
 jobs:
   build-android:
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+
     - name: Set up JDK 11
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
         java-version: '11'
-    
+
     - name: Setup Android NDK
       id: setup-ndk
       uses: nttld/setup-ndk@v1
       with:
         ndk-version: r26d
         add-to-path: true
-    
+
     - name: Set NDK environment variable
       run: |
         echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
-    
+
     - name: Cache Android dependencies
       uses: actions/cache@v4
       with:
@@ -41,52 +41,52 @@ jobs:
         key: ${{ runner.os }}-android-deps-${{ hashFiles('build/setup-android-sdl.sh', 'build/dep-android.sh') }}
         restore-keys: |
           ${{ runner.os }}-android-deps-
-    
+
     - name: Install dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y build-essential cmake ninja-build pkg-config git nlohmann-json3-dev
-    
+
     - name: Setup Android SDL2 libraries
       run: |
         ./build/setup-android-sdl.sh
-    
+
     - name: Install Android dependencies
       run: |
         ./build/dep-android.sh
-    
+
     - name: Build native C++ library
       env:
         ABI: arm64-v8a
       run: |
         ./build/android.sh
-    
+
     - name: Update Android app with native libraries
       env:
         ABI: arm64-v8a
       run: |
         ./build/update-android-app.sh
-    
+
     - name: Make Gradle wrapper executable
       run: |
         chmod +x Android/gradlew
-    
+
     - name: Build Android APK (Debug)
       working-directory: Android
       run: |
         ./gradlew assembleDebug --no-daemon --stacktrace
-    
+
     - name: Build Android APK (Release)
       working-directory: Android
       run: |
         ./gradlew assembleRelease --no-daemon --stacktrace
-    
+
     - name: Upload Debug APK
       uses: actions/upload-artifact@v4
       with:
         name: app-debug-apk
         path: Android/app/build/outputs/apk/debug/app-debug.apk
-    
+
     - name: Upload Release APK
       uses: actions/upload-artifact@v4
       with:
