@@ -48,3 +48,81 @@ SDL drivers: video=x11 audio=pipewire
 init attempt: video+audio (env defaults) -> ok
 SDL_Init completed
 SDL drivers: video=x11 audio=pipewire
+=== startup begin ===
+init attempt: video+audio (env defaults) -> ok
+SDL_Init completed
+SDL drivers: video=x11 audio=pipewire
+audio drivers available: pipewire, pulseaudio, alsa, sndio, jack, disk, dummy
+active audio driver: pipewire
+=== startup begin ===
+init attempt: video+audio (env defaults) -> ok
+SDL_Init completed
+SDL drivers: video=x11 audio=pipewire
+audio drivers available: pipewire, pulseaudio, alsa, sndio, jack, disk, dummy
+active audio driver: pipewire
+=== startup begin ===
+init attempt: video+audio (env defaults) -> ok
+SDL_Init completed
+SDL drivers: video=x11 audio=pipewire
+audio drivers available: pipewire, pulseaudio, alsa, sndio, jack, disk, dummy
+active audio driver: pipewire
+=== startup begin ===
+init attempt: video+audio (env defaults) -> ok
+SDL_Init completed
+SDL drivers: video=x11 audio=pipewire
+audio drivers available: pipewire, pulseaudio, alsa, sndio, jack, disk, dummy
+active audio driver: pipewire
+=== startup begin ===
+init attempt: video+audio (env defaults) -> ok
+SDL_Init completed
+SDL drivers: video=x11 audio=pipewire
+audio drivers available: pipewire, pulseaudio, alsa, sndio, jack, disk, dummy
+active audio driver: pipewire
+=== startup begin ===
+init attempt: video+audio (env defaults) -> ok
+SDL_Init completed
+SDL drivers: video=x11 audio=pipewire
+audio drivers available: pipewire, pulseaudio, alsa, sndio, jack, disk, dummy
+active audio driver: pipewire
+=== startup begin ===
+init attempt: video+audio (env defaults) -> ok
+SDL_Init completed
+SDL drivers: video=x11 audio=pipewire
+audio drivers available: pipewire, pulseaudio, alsa, sndio, jack, disk, dummy
+active audio driver: pipewire
+=== startup begin ===
+init attempt: video+audio (env defaults) -> ok
+SDL_Init completed
+SDL drivers: video=x11 audio=pipewire
+audio drivers available: pipewire, pulseaudio, alsa, sndio, jack, disk, dummy
+active audio driver: pipewire
+=== startup begin ===
+init attempt: video+audio (env defaults) -> ok
+SDL_Init completed
+SDL drivers: video=x11 audio=pipewire
+audio drivers available: pipewire, pulseaudio, alsa, sndio, jack, disk, dummy
+active audio driver: pipewire
+=== startup begin ===
+init attempt: video+audio (env defaults) -> ok
+SDL_Init completed
+SDL drivers: video=x11 audio=pipewire
+audio drivers available: pipewire, pulseaudio, alsa, sndio, jack, disk, dummy
+active audio driver: pipewire
+=== startup begin ===
+init attempt: video+audio (env defaults) -> ok
+SDL_Init completed
+SDL drivers: video=x11 audio=pipewire
+audio drivers available: pipewire, pulseaudio, alsa, sndio, jack, disk, dummy
+active audio driver: pipewire
+=== startup begin ===
+init attempt: video+audio (env defaults) -> ok
+SDL_Init completed
+SDL drivers: video=x11 audio=pipewire
+audio drivers available: pipewire, pulseaudio, alsa, sndio, jack, disk, dummy
+active audio driver: pipewire
+=== startup begin ===
+init attempt: video+audio (env defaults) -> ok
+SDL_Init completed
+SDL drivers: video=x11 audio=pipewire
+audio drivers available: pipewire, pulseaudio, alsa, sndio, jack, disk, dummy
+active audio driver: pipewire

@@ -22,9 +22,9 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     bool& defaultShowHitboxes = *ctx.defaultShowHitboxes;
     bool& defaultShowPlayerHitbox = *ctx.defaultShowPlayerHitbox;
     bool& defaultShowDebugView = *ctx.defaultShowDebugView;
+    bool& defaultHideUnknownObjectTypes = *ctx.defaultHideUnknownObjectTypes;
     bool& menuMusicEnabled = *ctx.menuMusicEnabled;
     bool& muteAllAudio = *ctx.muteAllAudio;
-    float& fastTravelChangeDelay = *ctx.fastTravelChangeDelay;
     int& musicVolume = *ctx.musicVolume;
     int& sfxVolume = *ctx.sfxVolume;
 
@@ -37,6 +37,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     };
 
     bool inSettings = false;
+    bool inComingSoon = false;
     bool closeMenuOpen = false;
     int closeMenuSel = 0; // 0 Resume, 1 Close Game
     int menuSel = 1;     // 0 Settings, 1 Play, 2 Editor
@@ -57,9 +58,6 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             "Build UUID:\n" + ctx.buildUuid;
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "About", aboutText.c_str(), ctx.win);
     };
-    auto showEditorPopup = [&]() {
-        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "Editor", "Editor is not available in this build yet.", ctx.win);
-    };
 #if defined(__ANDROID__)
     constexpr int IDX_VSYNC = 0;
     constexpr int IDX_CAM_CLAMP = 1;
@@ -68,12 +66,11 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     constexpr int IDX_SHOW_HITBOXES = 4;
     constexpr int IDX_SHOW_PLAYER_HITBOX = 5;
     constexpr int IDX_SHOW_DEBUG_VIEW = 6;
-    constexpr int IDX_FAST_TRAVEL_DELAY = 7;
-    constexpr int IDX_MUSIC = 8;
-    constexpr int IDX_SFX = 9;
-    constexpr int IDX_ABOUT = 10;
-    constexpr int IDX_BACK = 11;
-    constexpr int kSettingsCount = 12;
+    constexpr int IDX_MUSIC = 7;
+    constexpr int IDX_SFX = 8;
+    constexpr int IDX_ABOUT = 9;
+    constexpr int IDX_BACK = 10;
+    constexpr int kSettingsCount = 11;
 #else
     constexpr int IDX_FULLSCREEN = 0;
     constexpr int IDX_VSYNC = 1;
@@ -83,12 +80,11 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     constexpr int IDX_SHOW_HITBOXES = 5;
     constexpr int IDX_SHOW_PLAYER_HITBOX = 6;
     constexpr int IDX_SHOW_DEBUG_VIEW = 7;
-    constexpr int IDX_FAST_TRAVEL_DELAY = 8;
-    constexpr int IDX_MUSIC = 9;
-    constexpr int IDX_SFX = 10;
-    constexpr int IDX_ABOUT = 11;
-    constexpr int IDX_BACK = 12;
-    constexpr int kSettingsCount = 13;
+    constexpr int IDX_MUSIC = 8;
+    constexpr int IDX_SFX = 9;
+    constexpr int IDX_ABOUT = 10;
+    constexpr int IDX_BACK = 11;
+    constexpr int kSettingsCount = 12;
 #endif
     int settingsSel = 0;
     enum class SliderDragTarget { None, Music, Sfx };
@@ -174,6 +170,12 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     continue;
                 }
                 if (!inSettings) {
+                    if (inComingSoon) {
+                        if (e.key.key == SDLK_ESCAPE || e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) {
+                            inComingSoon = false;
+                        }
+                        continue;
+                    }
                     if (e.key.key == SDLK_LEFT || e.key.key == SDLK_a) menuSel = (menuSel + 2) % 3;
                     if (e.key.key == SDLK_RIGHT || e.key.key == SDLK_d) menuSel = (menuSel + 1) % 3;
                     if (e.key.key == SDLK_UP || e.key.key == SDLK_w) menuSel = (menuSel + 2) % 3;
@@ -184,7 +186,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                             cleanupMenuAssets();
                             return FrontendAction::StartGame;
                         }
-                        if (menuSel == 2) showEditorPopup();
+                        if (menuSel == 2) inComingSoon = true;
                     }
                     if (e.key.key == SDLK_ESCAPE) {
                         closeMenuOpen = true;
@@ -208,8 +210,6 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     if (e.key.key == SDLK_h) defaultShowHitboxes = !defaultShowHitboxes;
                     if (e.key.key == SDLK_p) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
                     if (e.key.key == SDLK_d) defaultShowDebugView = !defaultShowDebugView;
-                    if (e.key.key == SDLK_LEFTBRACKET) fastTravelChangeDelay = std::clamp(fastTravelChangeDelay - 0.01f, 0.0f, 0.5f);
-                    if (e.key.key == SDLK_RIGHTBRACKET) fastTravelChangeDelay = std::clamp(fastTravelChangeDelay + 0.01f, 0.0f, 0.5f);
                     if (e.key.key == SDLK_ESCAPE) inSettings = false;
 
                     if (settingsTab == 1) {
@@ -229,7 +229,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         continue;
                     }
                     if (settingsTab == 2) {
-                        constexpr int kDebugCount = 6;
+                        constexpr int kDebugCount = 7;
                         if (e.key.key == SDLK_UP || e.key.key == SDLK_w) settingsSelDebug = (settingsSelDebug + kDebugCount - 1) % kDebugCount;
                         if (e.key.key == SDLK_DOWN || e.key.key == SDLK_s) settingsSelDebug = (settingsSelDebug + 1) % kDebugCount;
                         if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) {
@@ -238,7 +238,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                             else if (settingsSelDebug == 2) defaultShowHitboxes = !defaultShowHitboxes;
                             else if (settingsSelDebug == 3) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
                             else if (settingsSelDebug == 4) defaultShowDebugView = !defaultShowDebugView;
-                            else if (settingsSelDebug == 5) inSettings = false;
+                            else if (settingsSelDebug == 5) defaultHideUnknownObjectTypes = !defaultHideUnknownObjectTypes;
+                            else if (settingsSelDebug == 6) inSettings = false;
                         }
                         continue;
                     }
@@ -258,7 +259,6 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         else if (settingsSel == IDX_SHOW_HITBOXES) defaultShowHitboxes = !defaultShowHitboxes;
                         else if (settingsSel == IDX_SHOW_PLAYER_HITBOX) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
                         else if (settingsSel == IDX_SHOW_DEBUG_VIEW) defaultShowDebugView = !defaultShowDebugView;
-                        else if (settingsSel == IDX_FAST_TRAVEL_DELAY && dir != 0) fastTravelChangeDelay = std::clamp(fastTravelChangeDelay + dir * 0.01f, 0.0f, 0.5f);
                         else if (settingsSel == IDX_MUSIC && dir != 0) musicVolume = std::clamp(musicVolume + dir * 8, 0, 128);
                         else if (settingsSel == IDX_SFX && dir != 0) sfxVolume = std::clamp(sfxVolume + dir * 8, 0, 128);
                         else if (settingsSel == IDX_ABOUT) showAboutPopup();
@@ -272,7 +272,6 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         else if (settingsSel == IDX_SHOW_HITBOXES) defaultShowHitboxes = !defaultShowHitboxes;
                         else if (settingsSel == IDX_SHOW_PLAYER_HITBOX) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
                         else if (settingsSel == IDX_SHOW_DEBUG_VIEW) defaultShowDebugView = !defaultShowDebugView;
-                        else if (settingsSel == IDX_FAST_TRAVEL_DELAY && dir != 0) fastTravelChangeDelay = std::clamp(fastTravelChangeDelay + dir * 0.01f, 0.0f, 0.5f);
                         else if (settingsSel == IDX_MUSIC && dir != 0) musicVolume = std::clamp(musicVolume + dir * 8, 0, 128);
                         else if (settingsSel == IDX_SFX && dir != 0) sfxVolume = std::clamp(sfxVolume + dir * 8, 0, 128);
                         else if (settingsSel == IDX_ABOUT) showAboutPopup();
@@ -304,6 +303,11 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     continue;
                 }
                 if (!inSettings) {
+                    if (inComingSoon) {
+                        SDL_Rect backBtn{ctx.baseScreenW / 2 - 110, 430, 220, 54};
+                        if (SDL_PointInRect(&pt, &backBtn)) inComingSoon = false;
+                        continue;
+                    }
                     SDL_Rect settingsBtn = mainMenuBtnRect(0);
                     SDL_Rect playBtn = mainMenuBtnRect(1);
                     SDL_Rect editorBtn = mainMenuBtnRect(2);
@@ -313,7 +317,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         cleanupMenuAssets();
                         return FrontendAction::StartGame;
                     }
-                    if (SDL_PointInRect(&pt, &editorBtn)) { menuSel = 2; showEditorPopup(); continue; }
+                    if (SDL_PointInRect(&pt, &editorBtn)) { menuSel = 2; inComingSoon = true; continue; }
                 } else {
                     for (int ti = 0; ti < kSettingsTabCount; ++ti) {
                         SDL_Rect tr = settingsTabBtn(ti);
@@ -361,21 +365,23 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         SDL_Rect row3 = settingsRowBtn(3);
                         SDL_Rect row4 = settingsRowBtn(4);
                         SDL_Rect row5 = settingsRowBtn(5);
+                        SDL_Rect row6 = settingsRowBtn(6);
                         if (SDL_PointInRect(&pt, &row0)) defaultShowFpsCounter = !defaultShowFpsCounter;
                         else if (SDL_PointInRect(&pt, &row1)) defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
                         else if (SDL_PointInRect(&pt, &row2)) defaultShowHitboxes = !defaultShowHitboxes;
                         else if (SDL_PointInRect(&pt, &row3)) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
                         else if (SDL_PointInRect(&pt, &row4)) defaultShowDebugView = !defaultShowDebugView;
-                        else if (SDL_PointInRect(&pt, &row5)) inSettings = false;
+                        else if (SDL_PointInRect(&pt, &row5)) defaultHideUnknownObjectTypes = !defaultHideUnknownObjectTypes;
+                        else if (SDL_PointInRect(&pt, &row6)) inSettings = false;
                         settingsSelDebug = SDL_PointInRect(&pt, &row0) ? 0 :
                                            SDL_PointInRect(&pt, &row1) ? 1 :
                                            SDL_PointInRect(&pt, &row2) ? 2 :
                                            SDL_PointInRect(&pt, &row3) ? 3 :
                                            SDL_PointInRect(&pt, &row4) ? 4 :
-                                           SDL_PointInRect(&pt, &row5) ? 5 : settingsSelDebug;
+                                           SDL_PointInRect(&pt, &row5) ? 5 :
+                                           SDL_PointInRect(&pt, &row6) ? 6 : settingsSelDebug;
                         continue;
                     }
-                    SDL_Rect fastTravelDelayBtn = settingsRowBtn(IDX_FAST_TRAVEL_DELAY);
                     SDL_Rect aboutBtn = settingsRowBtn(IDX_ABOUT);
                     SDL_Rect backBtn = settingsRowBtn(IDX_BACK);
 #if defined(__ANDROID__)
@@ -393,7 +399,6 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     else if (SDL_PointInRect(&pt, &hitBtn)) defaultShowHitboxes = !defaultShowHitboxes;
                     else if (SDL_PointInRect(&pt, &playerHitBtn)) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
                     else if (SDL_PointInRect(&pt, &debugViewBtn)) defaultShowDebugView = !defaultShowDebugView;
-                    else if (SDL_PointInRect(&pt, &fastTravelDelayBtn)) fastTravelChangeDelay = std::clamp(fastTravelChangeDelay + 0.01f, 0.0f, 0.5f);
                     else if (SDL_PointInRect(&pt, &aboutBtn)) showAboutPopup();
                     else if (SDL_PointInRect(&pt, &backBtn)) inSettings = false;
 #else
@@ -413,7 +418,6 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     else if (SDL_PointInRect(&pt, &hitBtn)) defaultShowHitboxes = !defaultShowHitboxes;
                     else if (SDL_PointInRect(&pt, &playerHitBtn)) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
                     else if (SDL_PointInRect(&pt, &debugViewBtn)) defaultShowDebugView = !defaultShowDebugView;
-                    else if (SDL_PointInRect(&pt, &fastTravelDelayBtn)) fastTravelChangeDelay = std::clamp(fastTravelChangeDelay + 0.01f, 0.0f, 0.5f);
                     else if (SDL_PointInRect(&pt, &aboutBtn)) showAboutPopup();
                     else if (SDL_PointInRect(&pt, &backBtn)) inSettings = false;
 #endif
@@ -445,6 +449,11 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     continue;
                 }
                 if (!inSettings) {
+                    if (inComingSoon) {
+                        SDL_Rect backBtn{ctx.baseScreenW / 2 - 110, 430, 220, 54};
+                        if (SDL_PointInRect(&pt, &backBtn)) inComingSoon = false;
+                        continue;
+                    }
                     SDL_Rect settingsBtn = mainMenuBtnRect(0);
                     SDL_Rect playBtn = mainMenuBtnRect(1);
                     SDL_Rect editorBtn = mainMenuBtnRect(2);
@@ -454,7 +463,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         cleanupMenuAssets();
                         return FrontendAction::StartGame;
                     }
-                    if (SDL_PointInRect(&pt, &editorBtn)) { menuSel = 2; showEditorPopup(); continue; }
+                    if (SDL_PointInRect(&pt, &editorBtn)) { menuSel = 2; inComingSoon = true; continue; }
                 } else {
                     for (int ti = 0; ti < kSettingsTabCount; ++ti) {
                         SDL_Rect tr = settingsTabBtn(ti);
@@ -504,21 +513,23 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         SDL_Rect row3 = settingsRowBtn(3);
                         SDL_Rect row4 = settingsRowBtn(4);
                         SDL_Rect row5 = settingsRowBtn(5);
+                        SDL_Rect row6 = settingsRowBtn(6);
                         if (SDL_PointInRect(&pt, &row0)) defaultShowFpsCounter = !defaultShowFpsCounter;
                         else if (SDL_PointInRect(&pt, &row1)) defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
                         else if (SDL_PointInRect(&pt, &row2)) defaultShowHitboxes = !defaultShowHitboxes;
                         else if (SDL_PointInRect(&pt, &row3)) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
                         else if (SDL_PointInRect(&pt, &row4)) defaultShowDebugView = !defaultShowDebugView;
-                        else if (SDL_PointInRect(&pt, &row5)) inSettings = false;
+                        else if (SDL_PointInRect(&pt, &row5)) defaultHideUnknownObjectTypes = !defaultHideUnknownObjectTypes;
+                        else if (SDL_PointInRect(&pt, &row6)) inSettings = false;
                         settingsSelDebug = SDL_PointInRect(&pt, &row0) ? 0 :
                                            SDL_PointInRect(&pt, &row1) ? 1 :
                                            SDL_PointInRect(&pt, &row2) ? 2 :
                                            SDL_PointInRect(&pt, &row3) ? 3 :
                                            SDL_PointInRect(&pt, &row4) ? 4 :
-                                           SDL_PointInRect(&pt, &row5) ? 5 : settingsSelDebug;
+                                           SDL_PointInRect(&pt, &row5) ? 5 :
+                                           SDL_PointInRect(&pt, &row6) ? 6 : settingsSelDebug;
                         continue;
                     }
-                    SDL_Rect fastTravelDelayBtn = settingsRowBtn(IDX_FAST_TRAVEL_DELAY);
                     SDL_Rect aboutBtn = settingsRowBtn(IDX_ABOUT);
                     SDL_Rect backBtn = settingsRowBtn(IDX_BACK);
 #if defined(__ANDROID__)
@@ -536,7 +547,6 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     else if (SDL_PointInRect(&pt, &hitBtn)) defaultShowHitboxes = !defaultShowHitboxes;
                     else if (SDL_PointInRect(&pt, &playerHitBtn)) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
                     else if (SDL_PointInRect(&pt, &debugViewBtn)) defaultShowDebugView = !defaultShowDebugView;
-                    else if (SDL_PointInRect(&pt, &fastTravelDelayBtn)) fastTravelChangeDelay = std::clamp(fastTravelChangeDelay + 0.01f, 0.0f, 0.5f);
                     else if (SDL_PointInRect(&pt, &aboutBtn)) showAboutPopup();
                     else if (SDL_PointInRect(&pt, &backBtn)) inSettings = false;
 #else
@@ -556,7 +566,6 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     else if (SDL_PointInRect(&pt, &hitBtn)) defaultShowHitboxes = !defaultShowHitboxes;
                     else if (SDL_PointInRect(&pt, &playerHitBtn)) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
                     else if (SDL_PointInRect(&pt, &debugViewBtn)) defaultShowDebugView = !defaultShowDebugView;
-                    else if (SDL_PointInRect(&pt, &fastTravelDelayBtn)) fastTravelChangeDelay = std::clamp(fastTravelChangeDelay + 0.01f, 0.0f, 0.5f);
                     else if (SDL_PointInRect(&pt, &aboutBtn)) showAboutPopup();
                     else if (SDL_PointInRect(&pt, &backBtn)) inSettings = false;
 #endif
@@ -598,6 +607,30 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         SDL_SetRenderDrawColor(ctx.ren, 12, 14, 18, 255);
         SDL_RenderClear(ctx.ren);
         if (!inSettings) {
+            if (inComingSoon) {
+                SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_BLEND);
+                SDL_SetRenderDrawColor(ctx.ren, 8, 12, 20, 255);
+                SDL_Rect bg{0, 0, ctx.baseScreenW, ctx.baseScreenH};
+                SDL_RenderFillRect(ctx.ren, &bg);
+                SDL_SetRenderDrawColor(ctx.ren, 28, 40, 64, 255);
+                SDL_Rect panel{ctx.baseScreenW / 2 - 260, 120, 520, 320};
+                SDL_RenderFillRect(ctx.ren, &panel);
+                SDL_SetRenderDrawColor(ctx.ren, 130, 170, 220, 255);
+                SDL_RenderDrawRect(ctx.ren, &panel);
+                SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_NONE);
+
+                DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(3, "EDITOR") / 2, 164, 3, "EDITOR");
+                DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(2, "COMING SOON") / 2, 214, 2, "COMING SOON");
+                DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(2, "Level editing tools are in development.") / 2, 252, 2, "Level editing tools are in development.");
+                DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(2, "You can play the game now and return later.") / 2, 278, 2, "You can play the game now and return later.");
+
+                SDL_Rect backBtn{ctx.baseScreenW / 2 - 110, 430, 220, 54};
+                SDL_SetRenderDrawColor(ctx.ren, 60, 85, 120, 255);
+                SDL_RenderFillRect(ctx.ren, &backBtn);
+                SDL_SetRenderDrawColor(ctx.ren, 180, 210, 240, 255);
+                SDL_RenderDrawRect(ctx.ren, &backBtn);
+                DrawText(ctx.ren, backBtn.x + (backBtn.w - MeasureTextWidth(2, "BACK")) / 2, backBtn.y + 16, 2, "BACK");
+            } else {
             const Frame* mainLogo = getMenuFrame("Main_logo");
             const Frame* btnSprite = getMenuFrame("btn_sprite");
             const Frame* playLogo = getMenuFrame("play_btn_logo");
@@ -675,6 +708,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 DrawText(ctx.ren, resumeBtn.x + (resumeBtn.w - MeasureTextWidth(2, "RESUME")) / 2, resumeBtn.y + 18, 2, "RESUME");
                 DrawText(ctx.ren, closeBtn.x + (closeBtn.w - MeasureTextWidth(2, "CLOSE")) / 2, closeBtn.y + 18, 2, "CLOSE");
             }
+            }
         } else {
             const std::string title = "SETTINGS";
             DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(3, title) / 2, 84, 3, title);
@@ -730,6 +764,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     std::string("SHOW HITBOXES: ") + (defaultShowHitboxes ? "ON" : "OFF"),
                     std::string("PLAYER HITBOX: ") + (defaultShowPlayerHitbox ? "ON" : "OFF"),
                     std::string("DEBUG HUD: ") + (defaultShowDebugView ? "ON" : "OFF"),
+                    std::string("HIDE UNKNOWN OBJECT TYPES: ") + (defaultHideUnknownObjectTypes ? "ON" : "OFF"),
                     "BACK"
                 };
                 for (int i = 0; i < (int)rows.size(); ++i) {
@@ -753,7 +788,6 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     std::string("SHOW HITBOXES: ") + (defaultShowHitboxes ? "ON" : "OFF"),
                     std::string("PLAYER HITBOX: ") + (defaultShowPlayerHitbox ? "ON" : "OFF"),
                     std::string("DEBUG HUD: ") + (defaultShowDebugView ? "ON" : "OFF"),
-                    std::string("FAST TRAVEL DELAY: ") + std::to_string((int)std::lround(fastTravelChangeDelay * 1000.0f)) + "ms",
                     std::string("MUSIC: ") + std::to_string((musicVolume * 100) / 128) + "%",
                     std::string("SFX: ") + std::to_string((sfxVolume * 100) / 128) + "%",
                     "ABOUT",
@@ -769,7 +803,6 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     std::string("SHOW HITBOXES: ") + (defaultShowHitboxes ? "ON" : "OFF"),
                     std::string("PLAYER HITBOX: ") + (defaultShowPlayerHitbox ? "ON" : "OFF"),
                     std::string("DEBUG HUD: ") + (defaultShowDebugView ? "ON" : "OFF"),
-                    std::string("FAST TRAVEL DELAY: ") + std::to_string((int)std::lround(fastTravelChangeDelay * 1000.0f)) + "ms",
                     std::string("MUSIC: ") + std::to_string((musicVolume * 100) / 128) + "%",
                     std::string("SFX: ") + std::to_string((sfxVolume * 100) / 128) + "%",
                     "ABOUT",

@@ -2,12 +2,19 @@
 #include <sdl3/SDL_image.h>
 #if __has_include(<sdl3/SDL_mixer.h>)
 #include <sdl3/SDL_mixer.h>
-// SDL3_mixer uses MIX_* APIs; keep disabled until audio layer is ported.
-#define HAS_SDL_MIXER 0
+// SDL3_mixer v3 uses MIX_* APIs; legacy Mix_* gameplay audio path is not ported yet.
+#define HAS_SDL3_MIXER 1
+#define HAS_SDL_MIXER 1
+#elif __has_include(<SDL3_mixer/SDL_mixer.h>)
+#include <SDL3_mixer/SDL_mixer.h>
+#define HAS_SDL3_MIXER 1
+#define HAS_SDL_MIXER 1
 #elif __has_include(<SDL_mixer.h>)
 #include <SDL_mixer.h>
+#define HAS_SDL3_MIXER 0
 #define HAS_SDL_MIXER 1
 #else
+#define HAS_SDL3_MIXER 0
 #define HAS_SDL_MIXER 0
 #endif
 #include <vector>
@@ -52,6 +59,178 @@
 
 #include "GameSupport.h"
 #include "CrashReporter.h"
+
+#if HAS_SDL3_MIXER
+// SDL3_mixer v3 compatibility layer for existing SDL2-style Mix_* calls.
+struct Mix_Chunk { MIX_Audio* audio = nullptr; };
+using Mix_Music = Mix_Chunk;
+
+static MIX_Mixer* g_mix_mixer = nullptr;
+static std::vector<MIX_Track*> g_mix_channels;
+static MIX_Track* g_mix_music_track = nullptr;
+static bool g_mix_initialized = false;
+
+#ifndef MIX_INIT_MP3
+#define MIX_INIT_MP3 0x00000008
+#endif
+#ifndef MIX_DEFAULT_FORMAT
+#define MIX_DEFAULT_FORMAT SDL_AUDIO_S16
+#endif
+
+static MIX_Track* mix_track_at(int idx) {
+    if (idx < 0) return nullptr;
+    if ((int)g_mix_channels.size() <= idx) g_mix_channels.resize(idx + 1, nullptr);
+    if (!g_mix_channels[idx] && g_mix_mixer) g_mix_channels[idx] = MIX_CreateTrack(g_mix_mixer);
+    return g_mix_channels[idx];
+}
+
+static int mix_find_channel() {
+    for (int i = 0; i < (int)g_mix_channels.size(); ++i) {
+        if (!g_mix_channels[i] || !MIX_TrackPlaying(g_mix_channels[i])) return i;
+    }
+    g_mix_channels.push_back(nullptr);
+    return (int)g_mix_channels.size() - 1;
+}
+
+static int Mix_Init(int flags) {
+    const bool ok = MIX_Init();
+    g_mix_initialized = ok;
+    return ok ? flags : 0;
+}
+
+static int Mix_OpenAudio(int frequency, SDL_AudioFormat format, int channels, int chunksize) {
+    (void)chunksize;
+    if (g_mix_mixer) return 0;
+    SDL_AudioSpec want{};
+    want.freq = frequency;
+    want.format = format;
+    want.channels = (Uint8)((channels <= 0) ? 2 : channels);
+    g_mix_mixer = MIX_CreateMixerDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &want);
+    return g_mix_mixer ? 0 : -1;
+}
+
+static const char* Mix_GetError() { return SDL_GetError(); }
+
+static Mix_Chunk* Mix_LoadWAV(const char* path) {
+    if (!g_mix_mixer || !path) return nullptr;
+    MIX_Audio* a = MIX_LoadAudio(g_mix_mixer, path, false);
+    if (!a) return nullptr;
+    Mix_Chunk* c = new Mix_Chunk();
+    c->audio = a;
+    return c;
+}
+
+static Mix_Music* Mix_LoadMUS(const char* path) {
+    return Mix_LoadWAV(path);
+}
+
+static int Mix_PlayChannel(int channel, Mix_Chunk* chunk, int loops) {
+    if (!g_mix_mixer || !chunk || !chunk->audio) return -1;
+    const int idx = (channel < 0) ? mix_find_channel() : channel;
+    MIX_Track* t = mix_track_at(idx);
+    if (!t) return -1;
+    if (!MIX_SetTrackAudio(t, chunk->audio)) return -1;
+    MIX_SetTrackLoops(t, loops);
+    if (!MIX_PlayTrack(t, 0)) return -1;
+    return idx;
+}
+
+static int Mix_PlayMusic(Mix_Music* music, int loops) {
+    if (!g_mix_mixer || !music || !music->audio) return -1;
+    if (!g_mix_music_track) g_mix_music_track = MIX_CreateTrack(g_mix_mixer);
+    if (!g_mix_music_track) return -1;
+    if (!MIX_SetTrackAudio(g_mix_music_track, music->audio)) return -1;
+    MIX_SetTrackLoops(g_mix_music_track, loops);
+    return MIX_PlayTrack(g_mix_music_track, 0) ? 0 : -1;
+}
+
+static int Mix_Playing(int channel) {
+    if (channel < 0) {
+        for (MIX_Track* t : g_mix_channels) if (t && MIX_TrackPlaying(t)) return 1;
+        return 0;
+    }
+    MIX_Track* t = mix_track_at(channel);
+    return (t && MIX_TrackPlaying(t)) ? 1 : 0;
+}
+
+static int Mix_PlayingMusic() {
+    return (g_mix_music_track && MIX_TrackPlaying(g_mix_music_track)) ? 1 : 0;
+}
+
+static void Mix_HaltMusic() {
+    if (g_mix_music_track) (void)MIX_StopTrack(g_mix_music_track, 0);
+}
+
+static int Mix_HaltChannel(int channel) {
+    if (!g_mix_mixer) return 0;
+    if (channel < 0) return MIX_StopAllTracks(g_mix_mixer, 0) ? 0 : -1;
+    MIX_Track* t = mix_track_at(channel);
+    if (!t) return 0;
+    return MIX_StopTrack(t, 0) ? 0 : -1;
+}
+
+static int Mix_VolumeMusic(int volume) {
+    if (!g_mix_mixer) return volume;
+    const float gain = std::clamp(volume / 128.0f, 0.0f, 1.0f);
+    (void)MIX_SetMixerGain(g_mix_mixer, gain);
+    if (g_mix_music_track) (void)MIX_SetTrackGain(g_mix_music_track, gain);
+    return volume;
+}
+
+static int Mix_Volume(int channel, int volume) {
+    const float gain = std::clamp(volume / 128.0f, 0.0f, 1.0f);
+    if (channel < 0) {
+        for (MIX_Track* t : g_mix_channels) if (t) (void)MIX_SetTrackGain(t, gain);
+        return volume;
+    }
+    MIX_Track* t = mix_track_at(channel);
+    if (t) (void)MIX_SetTrackGain(t, gain);
+    return volume;
+}
+
+static int Mix_VolumeChunk(Mix_Chunk* chunk, int volume) {
+    (void)chunk;
+    return volume;
+}
+
+static void Mix_FreeChunk(Mix_Chunk* chunk) {
+    if (!chunk) return;
+    if (chunk->audio && g_mix_initialized) MIX_DestroyAudio(chunk->audio);
+    chunk->audio = nullptr;
+    delete chunk;
+}
+
+static void Mix_FreeMusic(Mix_Music* music) {
+    Mix_FreeChunk(music);
+}
+
+static void Mix_CloseAudio() {
+    if (g_mix_mixer) {
+        (void)MIX_StopAllTracks(g_mix_mixer, 0);
+    }
+    if (g_mix_music_track) {
+        MIX_DestroyTrack(g_mix_music_track);
+        g_mix_music_track = nullptr;
+    }
+    for (MIX_Track*& t : g_mix_channels) {
+        if (t) {
+            MIX_DestroyTrack(t);
+            t = nullptr;
+        }
+    }
+    g_mix_channels.clear();
+    if (g_mix_mixer) {
+        MIX_DestroyMixer(g_mix_mixer);
+        g_mix_mixer = nullptr;
+    }
+}
+
+static void Mix_Quit() {
+    MIX_Quit();
+    g_mix_initialized = false;
+}
+#endif
+
 int main(int argc, char** argv) {
     CrashReporter::start();
     const std::string buildUuid = makeBuildUuid();
@@ -201,6 +380,8 @@ int main(int argc, char** argv) {
     audioReady = (Mix_Init(mixerFlags) & mixerFlags) == mixerFlags &&
                  Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) == 0;
     if (!audioReady) SDL_Log("Audio mixer init failed: %s", Mix_GetError());
+#elif HAS_SDL3_MIXER
+    SDL_Log("SDL3_mixer detected at compile time, but legacy Mix_* audio path is disabled (requires MIX_* port).");
 #else
     SDL_Log("SDL_mixer not found at compile time: music playback disabled.");
 #endif
@@ -520,20 +701,21 @@ int main(int argc, char** argv) {
         reportStartupError("Asset Load Error", msg, win);
         SDL_DestroyRenderer(ren);
         SDL_DestroyWindow(win);
+#if HAS_SDL_MIXER
+        if (coinSfx) { Mix_FreeChunk(coinSfx); coinSfx = nullptr; }
+        if (loseSfx) { Mix_FreeChunk(loseSfx); loseSfx = nullptr; }
+        if (victorySfx) { Mix_FreeChunk(victorySfx); victorySfx = nullptr; }
+        if (messageSfx) { Mix_FreeChunk(messageSfx); messageSfx = nullptr; }
+        if (bumperSfx) { Mix_FreeChunk(bumperSfx); bumperSfx = nullptr; }
+        if (menuMusic) { Mix_FreeMusic(menuMusic); menuMusic = nullptr; }
+#endif
         if (audioReady) {
 #if HAS_SDL_MIXER
             Mix_CloseAudio();
             Mix_Quit();
 #endif
+            audioReady = false;
         }
-#if HAS_SDL_MIXER
-        if (coinSfx) Mix_FreeChunk(coinSfx);
-        if (loseSfx) Mix_FreeChunk(loseSfx);
-        if (victorySfx) Mix_FreeChunk(victorySfx);
-        if (messageSfx) Mix_FreeChunk(messageSfx);
-        if (bumperSfx) Mix_FreeChunk(bumperSfx);
-        if (menuMusic) Mix_FreeMusic(menuMusic);
-#endif
         ShutdownTextRenderer();
         SDL_Quit();
         return 1;
@@ -560,9 +742,10 @@ int main(int argc, char** argv) {
     bool defaultShowHitboxes = false;
     bool defaultShowPlayerHitbox = false;
     bool defaultShowDebugView = false;
+    bool defaultHideUnknownObjectTypes = false;
     bool menuMusicEnabled = true;
     bool muteAllAudio = false;
-    float fastTravelChangeDelay = 0.09f;
+    float fastTravelChangeDelay = 0.0f;
     int musicVolume = 96; // 0..128
     int sfxVolume = 96;   // 0..128
     std::string clientSettingsPath = "client_settings.json";
@@ -584,6 +767,7 @@ int main(int argc, char** argv) {
         j["show_hitboxes"] = defaultShowHitboxes;
         j["show_player_hitbox"] = defaultShowPlayerHitbox;
         j["show_debug_view"] = defaultShowDebugView;
+        j["hide_unknown_object_types"] = defaultHideUnknownObjectTypes;
         j["menu_music_enabled"] = menuMusicEnabled;
         j["mute_all_audio"] = muteAllAudio;
         j["fast_travel_delay"] = fastTravelChangeDelay;
@@ -605,10 +789,12 @@ int main(int argc, char** argv) {
             if (j.contains("show_hitboxes") && j["show_hitboxes"].is_boolean()) defaultShowHitboxes = j["show_hitboxes"].get<bool>();
             if (j.contains("show_player_hitbox") && j["show_player_hitbox"].is_boolean()) defaultShowPlayerHitbox = j["show_player_hitbox"].get<bool>();
             if (j.contains("show_debug_view") && j["show_debug_view"].is_boolean()) defaultShowDebugView = j["show_debug_view"].get<bool>();
+            if (j.contains("hide_unknown_object_types") && j["hide_unknown_object_types"].is_boolean()) defaultHideUnknownObjectTypes = j["hide_unknown_object_types"].get<bool>();
             if (j.contains("menu_music_enabled") && j["menu_music_enabled"].is_boolean()) menuMusicEnabled = j["menu_music_enabled"].get<bool>();
             if (j.contains("mute_all_audio") && j["mute_all_audio"].is_boolean()) muteAllAudio = j["mute_all_audio"].get<bool>();
             if (j.contains("fast_travel_delay") && j["fast_travel_delay"].is_number()) {
-                fastTravelChangeDelay = std::clamp((float)j["fast_travel_delay"].get<double>(), 0.0f, 0.5f);
+                // Deprecated: delay removed in favor of immediate smooth transitions.
+                fastTravelChangeDelay = 0.0f;
             }
             if (j.contains("music_volume") && j["music_volume"].is_number_integer()) musicVolume = std::clamp(j["music_volume"].get<int>(), 0, 128);
             if (j.contains("sfx_volume") && j["sfx_volume"].is_number_integer()) sfxVolume = std::clamp(j["sfx_volume"].get<int>(), 0, 128);
@@ -628,10 +814,11 @@ int main(int argc, char** argv) {
                     if (j.contains("show_hitboxes") && j["show_hitboxes"].is_boolean()) defaultShowHitboxes = j["show_hitboxes"].get<bool>();
                     if (j.contains("show_player_hitbox") && j["show_player_hitbox"].is_boolean()) defaultShowPlayerHitbox = j["show_player_hitbox"].get<bool>();
                     if (j.contains("show_debug_view") && j["show_debug_view"].is_boolean()) defaultShowDebugView = j["show_debug_view"].get<bool>();
+                    if (j.contains("hide_unknown_object_types") && j["hide_unknown_object_types"].is_boolean()) defaultHideUnknownObjectTypes = j["hide_unknown_object_types"].get<bool>();
                     if (j.contains("menu_music_enabled") && j["menu_music_enabled"].is_boolean()) menuMusicEnabled = j["menu_music_enabled"].get<bool>();
                     if (j.contains("mute_all_audio") && j["mute_all_audio"].is_boolean()) muteAllAudio = j["mute_all_audio"].get<bool>();
                     if (j.contains("fast_travel_delay") && j["fast_travel_delay"].is_number()) {
-                        fastTravelChangeDelay = std::clamp((float)j["fast_travel_delay"].get<double>(), 0.0f, 0.5f);
+                        fastTravelChangeDelay = 0.0f;
                     }
                     if (j.contains("music_volume") && j["music_volume"].is_number_integer()) musicVolume = std::clamp(j["music_volume"].get<int>(), 0, 128);
                     if (j.contains("sfx_volume") && j["sfx_volume"].is_number_integer()) sfxVolume = std::clamp(j["sfx_volume"].get<int>(), 0, 128);
@@ -703,9 +890,9 @@ int main(int argc, char** argv) {
     frontendCtx.defaultShowHitboxes = &defaultShowHitboxes;
     frontendCtx.defaultShowPlayerHitbox = &defaultShowPlayerHitbox;
     frontendCtx.defaultShowDebugView = &defaultShowDebugView;
+    frontendCtx.defaultHideUnknownObjectTypes = &defaultHideUnknownObjectTypes;
     frontendCtx.menuMusicEnabled = &menuMusicEnabled;
     frontendCtx.muteAllAudio = &muteAllAudio;
-    frontendCtx.fastTravelChangeDelay = &fastTravelChangeDelay;
     frontendCtx.musicVolume = &musicVolume;
     frontendCtx.sfxVolume = &sfxVolume;
 #if HAS_SDL_MIXER
@@ -768,8 +955,6 @@ int main(int argc, char** argv) {
             FT_EXIT = 4
         };
         int fastTravelActiveDir = -1;
-        int fastTravelPendingDir = -1;
-        float fastTravelPendingTimer = 0.0f;
         bool fastTravelOverlapWasActive = false;
         float fastTravelBlendVx = 0.0f;
         float fastTravelBlendVy = 0.0f;
@@ -791,12 +976,6 @@ int main(int argc, char** argv) {
                 logFastTravelFlags(reason);
             }
         };
-        auto queueFastTravelDirChange = [&](int dir) {
-            if (dir == fastTravelActiveDir && fastTravelPendingDir < 0) return;
-            if (fastTravelPendingDir == dir) return;
-            fastTravelPendingDir = dir;
-            fastTravelPendingTimer = std::max(0.0f, fastTravelChangeDelay);
-        };
         float timeTravelTriggerCooldown = 0.0f;
 #if HAS_SDL_MIXER
         Mix_Music* levelMusic = nullptr;
@@ -817,8 +996,6 @@ int main(int argc, char** argv) {
             levelCompleteUiLerp = 0.0f;
             cameraSmoothingSuppressTimer = 0.20f;
             setFastTravelActiveDir(-1, "reload");
-            fastTravelPendingDir = -1;
-            fastTravelPendingTimer = 0.0f;
             fastTravelOverlapWasActive = false;
             fastTravelBlendVx = 0.0f;
             fastTravelBlendVy = 0.0f;
@@ -853,6 +1030,7 @@ int main(int argc, char** argv) {
         bool showHitboxes = defaultShowHitboxes;
         bool showPlayerHitbox = defaultShowPlayerHitbox;
         bool showDebugView = defaultShowDebugView;
+        bool hideUnknownObjectTypes = defaultHideUnknownObjectTypes;
         bool showFpsCounter = defaultShowFpsCounter;
         showDetailedDebugger = defaultShowDetailedDebugger;
         if (showDetailedDebugger && !debugWin) {
@@ -915,6 +1093,62 @@ int main(int argc, char** argv) {
                 levelRunning = false;
             }
         };
+        auto toggleDetailedDebugger = [&]() {
+            showDetailedDebugger = !showDetailedDebugger;
+            if (showDetailedDebugger && !debugWin) {
+#if defined(__ANDROID__)
+                debugWin = win;
+                debugRen = ren;
+#else
+                debugWin = SDL_CreateWindow("Detailed Debugger",
+                                            560, 760,
+                                            SDL_WINDOW_RESIZABLE);
+                if (debugWin) {
+                    debugRen = SDL_CreateRenderer(debugWin, nullptr);
+                    if (!debugRen) {
+                        SDL_DestroyWindow(debugWin);
+                        debugWin = nullptr;
+                        showDetailedDebugger = false;
+                    }
+                } else {
+                    showDetailedDebugger = false;
+                }
+#endif
+            } else if (!showDetailedDebugger) {
+#if defined(__ANDROID__)
+                debugWin = nullptr;
+                debugRen = nullptr;
+#endif
+            }
+            if (debugWin) {
+#if !defined(__ANDROID__)
+                if (showDetailedDebugger) SDL_ShowWindow(debugWin);
+                else SDL_HideWindow(debugWin);
+#endif
+            }
+        };
+        auto handleDetailedDebuggerTap = [&](int mx, int my) -> bool {
+            if (!showDetailedDebugger) return false;
+            SDL_Rect tab0{12, 38, 130, 36};
+            SDL_Rect tab1{152, 38, 130, 36};
+            SDL_Rect tab2{292, 38, 130, 36};
+            SDL_Rect tab3{432, 38, 130, 36};
+            SDL_Rect closeBtn{500, 8, 52, 24};
+            SDL_Point pt{mx, my};
+            bool handled = false;
+            if (SDL_PointInRect(&pt, &tab0)) { detailedDebugSubmenu = 0; handled = true; }
+            else if (SDL_PointInRect(&pt, &tab1)) { detailedDebugSubmenu = 1; handled = true; }
+            else if (SDL_PointInRect(&pt, &tab2)) { detailedDebugSubmenu = 2; handled = true; }
+            else if (SDL_PointInRect(&pt, &tab3)) { detailedDebugSubmenu = 3; handled = true; }
+            else if (SDL_PointInRect(&pt, &closeBtn)) { toggleDetailedDebugger(); handled = true; }
+            if (detailedDebugSubmenu == 1) {
+                SDL_Rect prevBtn{12, 92, 120, 34};
+                SDL_Rect nextBtn{142, 92, 120, 34};
+                if (SDL_PointInRect(&pt, &prevBtn)) { detailedDebugObjectIndex--; handled = true; }
+                if (SDL_PointInRect(&pt, &nextBtn)) { detailedDebugObjectIndex++; handled = true; }
+            }
+            return handled;
+        };
 
         while (levelRunning) {
             Uint32 now = SDL_GetTicks();
@@ -939,13 +1173,6 @@ int main(int argc, char** argv) {
             }
             if (fastTravelCooldown > 0.0f) {
                 fastTravelCooldown = std::max(0.0f, fastTravelCooldown - dt);
-            }
-            if (fastTravelPendingTimer > 0.0f) {
-                fastTravelPendingTimer = std::max(0.0f, fastTravelPendingTimer - dt);
-            }
-            if (fastTravelPendingDir >= 0 && fastTravelPendingTimer <= 0.0f) {
-                setFastTravelActiveDir(fastTravelPendingDir, "set_delayed");
-                fastTravelPendingDir = -1;
             }
             if (timeTravelTriggerCooldown > 0.0f) {
                 timeTravelTriggerCooldown = std::max(0.0f, timeTravelTriggerCooldown - dt);
@@ -1063,28 +1290,30 @@ int main(int argc, char** argv) {
                 e.button.button == SDL_BUTTON_LEFT) {
                 const int mx = e.button.x;
                 const int my = e.button.y;
-                // Touch-friendly submenu tabs.
-                SDL_Rect tab0{12, 38, 130, 36};
-                SDL_Rect tab1{152, 38, 130, 36};
-                SDL_Rect tab2{292, 38, 130, 36};
-                SDL_Rect tab3{432, 38, 130, 36};
-                SDL_Point pt{mx, my};
-                if (SDL_PointInRect(&pt, &tab0)) detailedDebugSubmenu = 0;
-                else if (SDL_PointInRect(&pt, &tab1)) detailedDebugSubmenu = 1;
-                else if (SDL_PointInRect(&pt, &tab2)) detailedDebugSubmenu = 2;
-                else if (SDL_PointInRect(&pt, &tab3)) detailedDebugSubmenu = 3;
-                if (detailedDebugSubmenu == 1) {
-                    SDL_Rect prevBtn{12, 92, 120, 34};
-                    SDL_Rect nextBtn{142, 92, 120, 34};
-                    if (SDL_PointInRect(&pt, &prevBtn)) detailedDebugObjectIndex--;
-                    if (SDL_PointInRect(&pt, &nextBtn)) detailedDebugObjectIndex++;
-                }
+                (void)handleDetailedDebuggerTap(mx, my);
             }
             if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST) {
                 paused = true;
             }
             if (e.type == SDL_FINGERDOWN) {
-                activeTouches[e.tfinger.fingerID] = SDL_FPoint{e.tfinger.x, e.tfinger.y};
+                bool consumedByDebugger = false;
+                if (debugWin && e.tfinger.windowID == SDL_GetWindowID(debugWin)) {
+                    int dbgW = 0, dbgH = 0;
+                    SDL_GetWindowSize(debugWin, &dbgW, &dbgH);
+                    const int mx = (int)std::lround(e.tfinger.x * dbgW);
+                    const int my = (int)std::lround(e.tfinger.y * dbgH);
+                    consumedByDebugger = handleDetailedDebuggerTap(mx, my);
+                }
+                if (!consumedByDebugger && e.tfinger.windowID == SDL_GetWindowID(win)) {
+                    // Touch hotspot (top-right) to toggle detailed debugger on mobile.
+                    if (e.tfinger.x >= 0.92f && e.tfinger.y <= 0.10f) {
+                        toggleDetailedDebugger();
+                        consumedByDebugger = true;
+                    }
+                }
+                if (!consumedByDebugger) {
+                    activeTouches[e.tfinger.fingerID] = SDL_FPoint{e.tfinger.x, e.tfinger.y};
+                }
             }
             if (e.type == SDL_FINGERMOTION) {
                 activeTouches[e.tfinger.fingerID] = SDL_FPoint{e.tfinger.x, e.tfinger.y};
@@ -1118,38 +1347,7 @@ int main(int argc, char** argv) {
                     clampCamX = !clampCamX;
                 }
                 if (e.key.key == SDLK_F5) {
-                    showDetailedDebugger = !showDetailedDebugger;
-                    if (showDetailedDebugger && !debugWin) {
-#if defined(__ANDROID__)
-                        debugWin = win;
-                        debugRen = ren;
-#else
-                        debugWin = SDL_CreateWindow("Detailed Debugger",
-                                                    560, 760,
-                                                    SDL_WINDOW_RESIZABLE);
-                        if (debugWin) {
-                            debugRen = SDL_CreateRenderer(debugWin, nullptr);
-                            if (!debugRen) {
-                                SDL_DestroyWindow(debugWin);
-                                debugWin = nullptr;
-                                showDetailedDebugger = false;
-                            }
-                        } else {
-                            showDetailedDebugger = false;
-                        }
-#endif
-                    } else if (!showDetailedDebugger) {
-#if defined(__ANDROID__)
-                        debugWin = nullptr;
-                        debugRen = nullptr;
-#endif
-                    }
-                    if (debugWin) {
-#if !defined(__ANDROID__)
-                        if (showDetailedDebugger) SDL_ShowWindow(debugWin);
-                        else SDL_HideWindow(debugWin);
-#endif
-                    }
+                    toggleDetailedDebugger();
                 }
                 if (e.key.key == SDLK_F4) {
                     detailedDebugSubmenu = (detailedDebugSubmenu + 1) % 4;
@@ -1229,44 +1427,41 @@ int main(int argc, char** argv) {
         if (!paused && !deathSequenceActive) {
             const float frameStartX = player.x;
             const float frameStartY = player.y;
-            std::string movementReasons;
-            auto addMovementReason = [&](const char* reason) {
-                if (!reason || !*reason) return;
-                if (movementReasons.find(reason) != std::string::npos) return;
-                if (!movementReasons.empty()) movementReasons += ",";
-                movementReasons += reason;
+            enum MovementReasonMask : unsigned int {
+                MR_FAST_TRAVEL = 1u << 0,
+                MR_NORMAL_MOVEMENT = 1u << 1,
+                MR_WORLD_WRAP = 1u << 2,
+                MR_SPRING = 1u << 3,
+                MR_BUMPER = 1u << 4,
+            };
+            unsigned int movementReasons = 0u;
+            auto addMovementReason = [&](unsigned int reasonBit) {
+                movementReasons |= reasonBit;
             };
             bool fastTravelReload = false;
             bool fastTravelTriggered = false;
             auto ejectFromFastTravel = [&](int dirHint) {
+                // Always eject upward when leaving fast travel to avoid floor trapping.
                 float ex = 0.0f;
-                float ey = 0.0f;
-                const float blendLen = std::sqrt(fastTravelBlendVx * fastTravelBlendVx + fastTravelBlendVy * fastTravelBlendVy);
-                if (blendLen > 0.001f) {
-                    ex = fastTravelBlendVx / blendLen;
-                    ey = fastTravelBlendVy / blendLen;
-                } else {
-                    if (dirHint == FT_UP) ey = -1.0f;
-                    else if (dirHint == FT_DOWN) ey = 1.0f;
-                    else if (dirHint == FT_LEFT) ex = -1.0f;
-                    else if (dirHint == FT_RIGHT) ex = 1.0f;
-                    else ey = -1.0f;
-                }
+                if (dirHint == FT_LEFT) ex = -0.35f;
+                else if (dirHint == FT_RIGHT) ex = 0.35f;
+                float ey = -1.0f;
 
-                player.x += ex * 18.0f;
-                player.y += ey * 18.0f;
+                player.x += ex * 10.0f;
+                player.y += ey * 22.0f;
 
-                // Try to push player out if the exit lands inside a solid tile.
+                // First priority: force upward out of solids.
                 if (RectHitsSolid(map, player.x, player.y, player.w, player.h)) {
-                    for (int i = 0; i < 8; ++i) {
-                        player.x += ex * 4.0f;
-                        player.y += ey * 4.0f;
+                    for (int i = 0; i < 20; ++i) {
+                        player.y -= 5.0f;
                         if (!RectHitsSolid(map, player.x, player.y, player.w, player.h)) break;
                     }
                 }
+                // Secondary: tiny directional nudge if still stuck.
                 if (RectHitsSolid(map, player.x, player.y, player.w, player.h)) {
-                    for (int i = 0; i < 12; ++i) {
-                        player.y -= 4.0f;
+                    for (int i = 0; i < 8; ++i) {
+                        player.x += ex * 4.0f;
+                        player.y -= 3.0f;
                         if (!RectHitsSolid(map, player.x, player.y, player.w, player.h)) break;
                     }
                 }
@@ -1308,12 +1503,9 @@ int main(int argc, char** argv) {
                         overlapDir = dir;
                     }
                 }
-                if (overlapDir >= 0 && !fastTravelOverlapWasActive) {
-                    queueFastTravelDirChange(overlapDir);
-                }
-                if (overlapDir < 0) {
-                    fastTravelPendingDir = -1;
-                    fastTravelPendingTimer = 0.0f;
+                if (overlapDir >= 0) {
+                    // No delay; velocity blending provides smooth transitions.
+                    setFastTravelActiveDir(overlapDir, "set_overlap");
                 }
                 fastTravelOverlapWasActive = (overlapDir >= 0);
             }
@@ -1366,14 +1558,14 @@ int main(int argc, char** argv) {
                 }
 
                 positionChanged = (std::fabs(player.x - oldX) > eps) || (std::fabs(player.y - oldY) > eps);
-                if (positionChanged) addMovementReason("fast_travel");
+                if (positionChanged) addMovementReason(MR_FAST_TRAVEL);
                 player.vx = fastTravelBlendVx;
                 player.vy = fastTravelBlendVy;
                 player.onGround = false;
                 if (positionChanged || fastTravelReload) {
                     fastTravelTriggered = true;
                 }
-                if (positionChanged) {
+                if (positionChanged && showDebugView) {
                     SDL_Log("fastTravel move: dir=%d from=(%.2f, %.2f) to=(%.2f, %.2f) delta=(%.2f, %.2f)",
                             fastTravelActiveDir,
                             oldX, oldY,
@@ -1403,15 +1595,15 @@ int main(int argc, char** argv) {
             PlayerUpdateResult upd = PlayerUpdateResult::RenderOnly;
             const float beforeNormalX = player.x;
             const float beforeNormalY = player.y;
-            if (!fastTravelEnabled) {
-                upd = UpdatePlayerMovement(
-                    player, map, dt, jumpBufferMax, movementCfg,
-                    touchMove, touchDown, touchJump, inputMove, inputDown
-                );
-                if (std::fabs(player.x - beforeNormalX) > 0.01f || std::fabs(player.y - beforeNormalY) > 0.01f) {
-                    addMovementReason("normal_movement");
-                }
-            } else {
+                if (!fastTravelEnabled) {
+                    upd = UpdatePlayerMovement(
+                        player, map, dt, jumpBufferMax, movementCfg,
+                        touchMove, touchDown, touchJump, inputMove, inputDown
+                    );
+                    if (std::fabs(player.x - beforeNormalX) > 0.01f || std::fabs(player.y - beforeNormalY) > 0.01f) {
+                        addMovementReason(MR_NORMAL_MOVEMENT);
+                    }
+                } else {
                 // Fast-travel mode disables normal movement/physics.
                 inputMove = 0.0f;
                 inputDown = false;
@@ -1442,7 +1634,7 @@ int main(int argc, char** argv) {
                     while (player.x >= mapWidthPx) player.x -= mapWidthPx;
                 }
                 if (std::fabs(player.x - beforeWrapX) > 0.01f || std::fabs(player.y - beforeWrapY) > 0.01f) {
-                    addMovementReason("world_wrap");
+                    addMovementReason(MR_WORLD_WRAP);
                 }
             }
             if (upd == PlayerUpdateResult::Reloaded) {
@@ -1522,7 +1714,7 @@ int main(int argc, char** argv) {
                     player.y = sy - (float)player.h;
                     player.vy = -1800.0f;
                     player.onGround = false;
-                    addMovementReason("spring");
+                    addMovementReason(MR_SPRING);
                     break;
                 }
             }
@@ -1547,7 +1739,7 @@ int main(int argc, char** argv) {
                     player.y = by - (float)player.h;
                     player.vy = -1200.0f;
                     player.onGround = false;
-                    addMovementReason("bumper");
+                    addMovementReason(MR_BUMPER);
                     activeBumperIndices.insert(objIdx);
 #if HAS_SDL_MIXER
                     if (audioReady && bumperSfx) Mix_PlayChannel(-1, bumperSfx, 0);
@@ -1558,7 +1750,7 @@ int main(int argc, char** argv) {
                     player.y = by + bh;
                     player.vy = 1200.0f;
                     player.onGround = false;
-                    addMovementReason("bumper");
+                    addMovementReason(MR_BUMPER);
                     activeBumperIndices.insert(objIdx);
 #if HAS_SDL_MIXER
                     if (audioReady && bumperSfx) Mix_PlayChannel(-1, bumperSfx, 0);
@@ -1566,13 +1758,19 @@ int main(int argc, char** argv) {
                     break;
                 }
             }
-            if (std::fabs(player.x - frameStartX) > 0.01f || std::fabs(player.y - frameStartY) > 0.01f) {
-                if (movementReasons.empty()) movementReasons = "unknown";
+            if (showDebugView && (std::fabs(player.x - frameStartX) > 0.01f || std::fabs(player.y - frameStartY) > 0.01f)) {
+                std::string reasonText;
+                if (movementReasons & MR_FAST_TRAVEL) reasonText += (reasonText.empty() ? "" : ",") + std::string("fast_travel");
+                if (movementReasons & MR_NORMAL_MOVEMENT) reasonText += (reasonText.empty() ? "" : ",") + std::string("normal_movement");
+                if (movementReasons & MR_WORLD_WRAP) reasonText += (reasonText.empty() ? "" : ",") + std::string("world_wrap");
+                if (movementReasons & MR_SPRING) reasonText += (reasonText.empty() ? "" : ",") + std::string("spring");
+                if (movementReasons & MR_BUMPER) reasonText += (reasonText.empty() ? "" : ",") + std::string("bumper");
+                if (reasonText.empty()) reasonText = "unknown";
                 SDL_Log("player move: from=(%.2f, %.2f) to=(%.2f, %.2f) delta=(%.2f, %.2f) reason=%s",
                         frameStartX, frameStartY,
                         player.x, player.y,
                         player.x - frameStartX, player.y - frameStartY,
-                        movementReasons.c_str());
+                        reasonText.c_str());
             }
 
             if (!levelCompleteActive && playerTouchesTileId(map, player, 30, 68)) {
@@ -1936,14 +2134,22 @@ RENDER_ONLY:
             if (mapIt != entityFrameKeyByObjectId.end()) frameKey = mapIt->second;
 
             auto it = entitiesFrameByName.find(frameKey);
+            bool objectTypeKnown = false;
             if (it != entitiesFrameByName.end()) {
                 of = &it->second;
+                objectTypeKnown = true;
             } else {
                 std::string pngKey = frameKey + ".png";
                 it = entitiesFrameByName.find(pngKey);
-                if (it != entitiesFrameByName.end()) of = &it->second;
+                if (it != entitiesFrameByName.end()) {
+                    of = &it->second;
+                    objectTypeKnown = true;
+                }
             }
             if (!of) of = defaultEntityFrame;
+            if (!isFastTravelChanger && hideUnknownObjectTypes && !objectTypeKnown) {
+                continue;
+            }
 
             if (!isFastTravelChanger && entitiesTex && of) {
                 const int fw = 32;
@@ -2709,21 +2915,22 @@ RENDER_ONLY:
     if (debugRen && debugRen != ren) SDL_DestroyRenderer(debugRen);
     if (debugWin && debugWin != win) SDL_DestroyWindow(debugWin);
     ShutdownTextRenderer();
+#if HAS_SDL_MIXER
+    if (coinSfx) { Mix_FreeChunk(coinSfx); coinSfx = nullptr; }
+    if (loseSfx) { Mix_FreeChunk(loseSfx); loseSfx = nullptr; }
+    if (victorySfx) { Mix_FreeChunk(victorySfx); victorySfx = nullptr; }
+    if (messageSfx) { Mix_FreeChunk(messageSfx); messageSfx = nullptr; }
+    if (bumperSfx) { Mix_FreeChunk(bumperSfx); bumperSfx = nullptr; }
+    if (menuMusic) { Mix_FreeMusic(menuMusic); menuMusic = nullptr; }
+#endif
     if (audioReady) {
 #if HAS_SDL_MIXER
         Mix_HaltMusic();
         Mix_CloseAudio();
         Mix_Quit();
 #endif
+        audioReady = false;
     }
-#if HAS_SDL_MIXER
-    if (coinSfx) Mix_FreeChunk(coinSfx);
-    if (loseSfx) Mix_FreeChunk(loseSfx);
-    if (victorySfx) Mix_FreeChunk(victorySfx);
-    if (messageSfx) Mix_FreeChunk(messageSfx);
-    if (bumperSfx) Mix_FreeChunk(bumperSfx);
-    if (menuMusic) Mix_FreeMusic(menuMusic);
-#endif
     SDL_DestroyRenderer(ren);
     SDL_DestroyWindow(win);
     SDL_Log("Shutting down");

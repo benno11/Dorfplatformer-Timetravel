@@ -64,6 +64,23 @@ fi
 SDL3_PKG_CONFIG_PATH="$LOCAL_SDL3_PC_PATH"
 echo "[INFO] Using rebuilt sdl3.pc from: $LOCAL_SDL3_PC_PATH"
 
+# Prefer rebuilt/local SDL3_mixer pkg-config metadata first.
+MIXER_PKG_CONFIG_PATH="$SDL3_PKG_CONFIG_PATH${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+LOCAL_MIXER_PC_PATH=""
+for d in \
+  "$ROOT_DIR/deps/linux-sdl3-mixer-src/build" \
+  "/usr/local/lib/pkgconfig" \
+  "/usr/lib/pkgconfig"; do
+  if [ -f "$d/sdl3-mixer.pc" ] || [ -f "$d/sdl3_mixer.pc" ]; then
+    LOCAL_MIXER_PC_PATH="$d"
+    break
+  fi
+done
+if [ -n "$LOCAL_MIXER_PC_PATH" ]; then
+  MIXER_PKG_CONFIG_PATH="$LOCAL_MIXER_PC_PATH:$SDL3_PKG_CONFIG_PATH${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+  echo "[INFO] Using SDL3_mixer pkg-config path: $LOCAL_MIXER_PC_PATH"
+fi
+
 PKG_SDL3=""
 for p in sdl3 SDL3; do
   if PKG_CONFIG_PATH="$SDL3_PKG_CONFIG_PATH" pkg-config --exists "$p"; then
@@ -87,7 +104,7 @@ for p in sdl3_ttf sdl3-ttf SDL3_ttf; do
 done
 PKG_MIXER=""
 for p in sdl3_mixer sdl3-mixer; do
-  if pkg-config --exists "$p"; then
+  if PKG_CONFIG_PATH="$MIXER_PKG_CONFIG_PATH" pkg-config --exists "$p"; then
     PKG_MIXER="$p"
     break
   fi
@@ -103,6 +120,18 @@ for d in /usr/include/SDL3 /usr/include/SDL3_image /usr/include/SDL3_ttf /usr/in
     INCLUDE_DIRS_FOR_SHIM+=("$d")
   fi
 done
+if [ -d "$ROOT_DIR/deps/linux-sdl3-src/include/SDL3" ]; then
+  INCLUDE_DIRS_FOR_SHIM+=("$ROOT_DIR/deps/linux-sdl3-src/include/SDL3")
+fi
+if [ -d "$ROOT_DIR/deps/linux-sdl3-image-src/include/SDL3_image" ]; then
+  INCLUDE_DIRS_FOR_SHIM+=("$ROOT_DIR/deps/linux-sdl3-image-src/include/SDL3_image")
+fi
+if [ -d "$ROOT_DIR/deps/linux-sdl3-ttf-src/include/SDL3_ttf" ]; then
+  INCLUDE_DIRS_FOR_SHIM+=("$ROOT_DIR/deps/linux-sdl3-ttf-src/include/SDL3_ttf")
+fi
+if [ -d "$ROOT_DIR/deps/linux-sdl3-mixer-src/include/SDL3_mixer" ]; then
+  INCLUDE_DIRS_FOR_SHIM+=("$ROOT_DIR/deps/linux-sdl3-mixer-src/include/SDL3_mixer")
+fi
 
 # SDL3 core
 if [ -n "$PKG_SDL3" ]; then
@@ -113,6 +142,10 @@ if [ -n "$PKG_SDL3" ]; then
   fi
   if [ -f /usr/local/include/SDL3/SDL.h ]; then
     INCLUDE_DIRS_FOR_SHIM+=(/usr/local/include/SDL3)
+  fi
+  if [ -f "$ROOT_DIR/deps/linux-sdl3-src/include/SDL3/SDL.h" ]; then
+    SDL_CFLAGS_ARR+=("-I$ROOT_DIR/deps/linux-sdl3-src/include")
+    INCLUDE_DIRS_FOR_SHIM+=("$ROOT_DIR/deps/linux-sdl3-src/include/SDL3")
   fi
 elif SDL3_HDR_DIR="$(find_header_dir SDL3/SDL.h)"; then
   SDL_CFLAGS_ARR+=("-I$SDL3_HDR_DIR")
@@ -137,6 +170,10 @@ elif SDL3_IMAGE_HDR_DIR="$(find_header_dir SDL3_image/SDL_image.h)"; then
   SDL_CFLAGS_ARR+=("-I$SDL3_IMAGE_HDR_DIR")
   SDL_LIBS_ARR+=("-lSDL3_image")
   INCLUDE_DIRS_FOR_SHIM+=("$SDL3_IMAGE_HDR_DIR")
+elif [ -f "$ROOT_DIR/deps/linux-sdl3-image-src/include/SDL3_image/SDL_image.h" ]; then
+  SDL_CFLAGS_ARR+=("-I$ROOT_DIR/deps/linux-sdl3-image-src/include")
+  SDL_LIBS_ARR+=("-lSDL3_image")
+  INCLUDE_DIRS_FOR_SHIM+=("$ROOT_DIR/deps/linux-sdl3-image-src/include/SDL3_image")
 else
   echo "[ERROR] Missing SDL3_image development files (pkg-config or SDL3_image/SDL_image.h)."
   exit 1
@@ -156,20 +193,38 @@ elif SDL3_TTF_HDR_DIR="$(find_header_dir SDL3_ttf/SDL_ttf.h)"; then
   SDL_CFLAGS_ARR+=("-I$SDL3_TTF_HDR_DIR")
   SDL_LIBS_ARR+=("-lSDL3_ttf")
   INCLUDE_DIRS_FOR_SHIM+=("$SDL3_TTF_HDR_DIR")
+elif [ -f "$ROOT_DIR/deps/linux-sdl3-ttf-src/include/SDL3_ttf/SDL_ttf.h" ]; then
+  SDL_CFLAGS_ARR+=("-I$ROOT_DIR/deps/linux-sdl3-ttf-src/include")
+  SDL_LIBS_ARR+=("-lSDL3_ttf")
+  INCLUDE_DIRS_FOR_SHIM+=("$ROOT_DIR/deps/linux-sdl3-ttf-src/include/SDL3_ttf")
 else
   echo "[ERROR] Missing SDL3_ttf development files (pkg-config or SDL3_ttf/SDL_ttf.h)."
   exit 1
 fi
 
 # Optional mixer
-if [ -n "$PKG_MIXER" ]; then
-  append_split_flags "$(pkg-config --cflags "$PKG_MIXER" 2>/dev/null || true)" SDL_CFLAGS_ARR
-  append_split_flags "$(pkg-config --libs "$PKG_MIXER" 2>/dev/null || true)" MIXER_LIBS_ARR
+LOCAL_MIXER_SO="$ROOT_DIR/deps/linux-sdl3-mixer-src/build/libSDL3_mixer.so"
+if [ -f "$LOCAL_MIXER_SO" ]; then
+  MIXER_LIBS_ARR+=("$LOCAL_MIXER_SO" "-Wl,-rpath,$ROOT_DIR/deps/linux-sdl3-mixer-src/build")
+  echo "[INFO] SDL3_mixer link target: $LOCAL_MIXER_SO"
+  if [ -f "$ROOT_DIR/deps/linux-sdl3-mixer-src/include/SDL3_mixer/SDL_mixer.h" ]; then
+    SDL_CFLAGS_ARR+=("-I$ROOT_DIR/deps/linux-sdl3-mixer-src/include")
+    INCLUDE_DIRS_FOR_SHIM+=("$ROOT_DIR/deps/linux-sdl3-mixer-src/include/SDL3_mixer")
+  fi
+elif [ -n "$PKG_MIXER" ]; then
+  append_split_flags "$(PKG_CONFIG_PATH="$MIXER_PKG_CONFIG_PATH" pkg-config --cflags "$PKG_MIXER" 2>/dev/null || true)" SDL_CFLAGS_ARR
+  append_split_flags "$(PKG_CONFIG_PATH="$MIXER_PKG_CONFIG_PATH" pkg-config --libs "$PKG_MIXER" 2>/dev/null || true)" MIXER_LIBS_ARR
+  MIXER_LIBDIR="$(PKG_CONFIG_PATH="$MIXER_PKG_CONFIG_PATH" pkg-config --variable=libdir "$PKG_MIXER" 2>/dev/null || echo unknown)"
+  echo "[INFO] SDL3_mixer link target: $MIXER_LIBDIR/libSDL3_mixer.so"
   if [ -f /usr/include/SDL3_mixer/SDL_mixer.h ]; then
     INCLUDE_DIRS_FOR_SHIM+=(/usr/include/SDL3_mixer)
   fi
   if [ -f /usr/local/include/SDL3_mixer/SDL_mixer.h ]; then
     INCLUDE_DIRS_FOR_SHIM+=(/usr/local/include/SDL3_mixer)
+  fi
+  if [ -f "$ROOT_DIR/deps/linux-sdl3-mixer-src/include/SDL3_mixer/SDL_mixer.h" ]; then
+    SDL_CFLAGS_ARR+=("-I$ROOT_DIR/deps/linux-sdl3-mixer-src/include")
+    INCLUDE_DIRS_FOR_SHIM+=("$ROOT_DIR/deps/linux-sdl3-mixer-src/include/SDL3_mixer")
   fi
 elif SDL3_MIXER_HDR_DIR="$(find_header_dir SDL3_mixer/SDL_mixer.h)"; then
   SDL_CFLAGS_ARR+=("-I$SDL3_MIXER_HDR_DIR")
@@ -245,8 +300,8 @@ SHEET_SOURCES=(
   "${SDL_CFLAGS_ARR[@]}" \
   "${JSON_FLAGS[@]}" \
   "${PLATFORMER_SOURCES[@]}" \
-  "${SDL_LIBS_ARR[@]}" \
   "${MIXER_LIBS_ARR[@]}" \
+  "${SDL_LIBS_ARR[@]}" \
   -o "$OUT_PLATFORMER"
 
 if [ "$BUILD_SHEET" = "1" ]; then
