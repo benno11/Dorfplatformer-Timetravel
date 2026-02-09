@@ -49,19 +49,7 @@ jobs:
 
     - name: Setup Android SDL2 libraries
       run: |
-        ./build/setup-android-sdl.sh
-
-    - name: Install Android dependencies
-      run: |
-        ./build/dep-android.sh
-
-    - name: Build native C++ library
-      env:
-        # Building for arm64-v8a (most common modern Android architecture)
-        # To support additional architectures, add more build steps with different ABI values
-        ABI: arm64-v8a
-      run: |
-        ./build/android.sh
+        ./build/FullBuildandroid.sh
 
     - name: Update Android app with native libraries
       env:
