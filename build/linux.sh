@@ -188,7 +188,7 @@ for inc in "${INCLUDE_DIRS_FOR_SHIM[@]}"; do
     ln -sf "$h" "$BUILD_INCLUDE_DIR/$(basename "$h")"
   done
 done
-SDL_CFLAGS_ARR+=("-I$ROOT_DIR/.build/include")
+SDL_CFLAGS_ARR+=("-I$ROOT_DIR/.build/include" "-I$ROOT_DIR/.build/include/sdl3")
 
 echo "[INFO] SDL include shim: $BUILD_INCLUDE_DIR"
 

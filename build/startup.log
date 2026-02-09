@@ -1,0 +1,50 @@
+=== startup begin ===
+init attempt: video+audio (env defaults) -> unknown error
+init attempt: video only (env defaults) -> unknown error
+init attempt: video+audio (x11 + dummy audio) -> unknown error
+init attempt: video only (x11) -> unknown error
+init attempt: video only (offscreen) -> unknown error
+init attempt: video only (dummy) -> unknown error
+init failed
+SDL_Init failed.
+video+audio (env defaults): unknown error
+video only (env defaults): unknown error
+video+audio (x11 + dummy audio): unknown error
+video only (x11): unknown error
+video only (offscreen): unknown error
+video only (dummy): unknown error
+DISPLAY=:0
+WAYLAND_DISPLAY=<unset>
+XDG_RUNTIME_DIR=/run/user/1000
+available_video_drivers=wayland, x11, kmsdrm, offscreen, dummy, evdev
+SDL_VIDEODRIVER=dummy
+SDL_AUDIODRIVER=<unset>
+=== startup begin ===
+init attempt: video+audio (env defaults) -> unknown error
+init attempt: video only (env defaults) -> unknown error
+init attempt: video+audio (x11 + dummy audio) -> unknown error
+init attempt: video only (x11) -> unknown error
+init attempt: video only (offscreen) -> unknown error
+init attempt: video only (dummy) -> unknown error
+init failed
+SDL_Init failed.
+video+audio (env defaults): unknown error
+video only (env defaults): unknown error
+video+audio (x11 + dummy audio): unknown error
+video only (x11): unknown error
+video only (offscreen): unknown error
+video only (dummy): unknown error
+DISPLAY=:0
+WAYLAND_DISPLAY=<unset>
+XDG_RUNTIME_DIR=/run/user/1000
+available_video_drivers=wayland, x11, kmsdrm, offscreen, dummy, evdev
+SDL_VIDEODRIVER=dummy
+SDL_AUDIODRIVER=<unset>
+=== startup begin ===
+init attempt: video+audio (env defaults) -> ok
+SDL_Init completed
+SDL drivers: video=x11 audio=pipewire
+=== startup begin ===
+init attempt: video+audio (env defaults) -> ok
+SDL_Init completed
+SDL drivers: video=x11 audio=pipewire

@@ -2,7 +2,8 @@
 #include <sdl3/SDL_image.h>
 #if __has_include(<sdl3/SDL_mixer.h>)
 #include <sdl3/SDL_mixer.h>
-#define HAS_SDL_MIXER 1
+// SDL3_mixer uses MIX_* APIs; keep disabled until audio layer is ported.
+#define HAS_SDL_MIXER 0
 #elif __has_include(<SDL_mixer.h>)
 #include <SDL_mixer.h>
 #define HAS_SDL_MIXER 1
@@ -34,6 +35,7 @@
 #include <unistd.h>
 #include <cstdlib>
 #include <vector>
+#include <fstream>
 #if defined(__ANDROID__)
 #include <jni.h>
 #endif
@@ -68,6 +70,12 @@ int main(int argc, char** argv) {
         if (e && *e) return std::string(e);
         return "unknown error";
     };
+    std::ofstream startupLog("build/startup.log", std::ios::app);
+    auto logStartup = [&](const std::string& line) {
+        SDL_Log("%s", line.c_str());
+        if (startupLog.is_open()) startupLog << line << "\n";
+    };
+    logStartup("=== startup begin ===");
     auto envOrUnset = [](const char* name) -> std::string {
         const char* v = std::getenv(name);
         return (v && *v) ? std::string(v) : std::string("<unset>");
@@ -78,27 +86,76 @@ int main(int argc, char** argv) {
         const char* audioDriver; // nullptr means keep current env
         Uint32 flags;
     };
+    auto hasVideoDriver = [](const char* name) -> bool {
+        const int n = SDL_GetNumVideoDrivers();
+        for (int i = 0; i < n; ++i) {
+            const char* d = SDL_GetVideoDriver(i);
+            if (d && std::strcmp(d, name) == 0) return true;
+        }
+        return false;
+    };
+    auto listVideoDrivers = []() -> std::string {
+        std::string out;
+        const int n = SDL_GetNumVideoDrivers();
+        for (int i = 0; i < n; ++i) {
+            const char* d = SDL_GetVideoDriver(i);
+            if (!d) continue;
+            if (!out.empty()) out += ", ";
+            out += d;
+        }
+        if (out.empty()) out = "<none>";
+        return out;
+    };
+    auto listAudioDrivers = []() -> std::string {
+        std::string out;
+        const int n = SDL_GetNumAudioDrivers();
+        for (int i = 0; i < n; ++i) {
+            const char* d = SDL_GetAudioDriver(i);
+            if (!d) continue;
+            if (!out.empty()) out += ", ";
+            out += d;
+        }
+        if (out.empty()) out = "<none>";
+        return out;
+    };
     std::vector<InitAttempt> attempts = {
         {"video+audio (env defaults)", nullptr, nullptr, SDL_INIT_VIDEO | SDL_INIT_AUDIO},
         {"video only (env defaults)", nullptr, nullptr, SDL_INIT_VIDEO},
-        {"video+audio (x11 + dummy audio)", "x11", "dummy", SDL_INIT_VIDEO | SDL_INIT_AUDIO},
-        {"video only (x11)", "x11", nullptr, SDL_INIT_VIDEO},
-        {"video+audio (wayland + dummy audio)", "wayland", "dummy", SDL_INIT_VIDEO | SDL_INIT_AUDIO},
-        {"video only (wayland)", "wayland", nullptr, SDL_INIT_VIDEO},
     };
+    const bool hasX11 = !envOrUnset("DISPLAY").empty() && envOrUnset("DISPLAY") != "<unset>";
+    const bool hasWayland = !envOrUnset("WAYLAND_DISPLAY").empty() && envOrUnset("WAYLAND_DISPLAY") != "<unset>";
+    if (hasX11 && hasVideoDriver("x11")) {
+        attempts.push_back({"video+audio (x11 + dummy audio)", "x11", "dummy", SDL_INIT_VIDEO | SDL_INIT_AUDIO});
+        attempts.push_back({"video only (x11)", "x11", nullptr, SDL_INIT_VIDEO});
+    }
+    if (hasWayland && hasVideoDriver("wayland")) {
+        attempts.push_back({"video+audio (wayland + dummy audio)", "wayland", "dummy", SDL_INIT_VIDEO | SDL_INIT_AUDIO});
+        attempts.push_back({"video only (wayland)", "wayland", nullptr, SDL_INIT_VIDEO});
+    }
+    if (hasVideoDriver("offscreen")) {
+        attempts.push_back({"video only (offscreen)", "offscreen", nullptr, SDL_INIT_VIDEO});
+    }
+    if (hasVideoDriver("dummy")) {
+        attempts.push_back({"video only (dummy)", "dummy", nullptr, SDL_INIT_VIDEO});
+    }
 
     bool sdlOk = false;
     std::string initTrace;
     for (const auto& a : attempts) {
         if (a.videoDriver) setenv("SDL_VIDEODRIVER", a.videoDriver, 1);
+        else unsetenv("SDL_VIDEODRIVER");
         if (a.audioDriver) setenv("SDL_AUDIODRIVER", a.audioDriver, 1);
+        else unsetenv("SDL_AUDIODRIVER");
         SDL_Quit();
-        if (SDL_Init(a.flags) == 0) {
+        if (SDL_Init(a.flags)) {
             initTrace += std::string(a.label) + ": ok\n";
+            logStartup(std::string("init attempt: ") + a.label + " -> ok");
             sdlOk = true;
             break;
         }
-        initTrace += std::string(a.label) + ": " + sdlErr() + "\n";
+        const std::string err = sdlErr();
+        initTrace += std::string(a.label) + ": " + err + "\n";
+        logStartup(std::string("init attempt: ") + a.label + " -> " + err);
     }
     if (!sdlOk) {
         std::string msg = "SDL_Init failed.\n";
@@ -106,13 +163,37 @@ int main(int argc, char** argv) {
         msg += "DISPLAY=" + envOrUnset("DISPLAY") + "\n";
         msg += "WAYLAND_DISPLAY=" + envOrUnset("WAYLAND_DISPLAY") + "\n";
         msg += "XDG_RUNTIME_DIR=" + envOrUnset("XDG_RUNTIME_DIR") + "\n";
+        msg += "available_video_drivers=" + listVideoDrivers() + "\n";
         msg += "SDL_VIDEODRIVER=" + envOrUnset("SDL_VIDEODRIVER") + "\n";
         msg += "SDL_AUDIODRIVER=" + envOrUnset("SDL_AUDIODRIVER");
+        logStartup("init failed");
+        logStartup(msg);
         reportStartupError("SDL Init Error", msg, nullptr);
         CrashReporter::stop();
         return 1;
     }
-    SDL_Log("SDL_Init completed");
+    logStartup("SDL_Init completed");
+    logStartup(std::string("SDL drivers: video=") +
+               (SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "<none>") +
+               " audio=" +
+               (SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver() : "<none>"));
+    if ((SDL_WasInit(SDL_INIT_AUDIO) & SDL_INIT_AUDIO) == 0) {
+        unsetenv("SDL_AUDIODRIVER");
+        if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
+            logStartup(std::string("audio init attempt (env default) failed: ") + sdlErr());
+            setenv("SDL_AUDIODRIVER", "dummy", 1);
+            if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
+                logStartup(std::string("audio init attempt (dummy) failed: ") + sdlErr());
+            } else {
+                logStartup("audio init attempt (dummy): ok");
+            }
+        } else {
+            logStartup("audio init attempt (env default): ok");
+        }
+    }
+    logStartup(std::string("audio drivers available: ") + listAudioDrivers());
+    logStartup(std::string("active audio driver: ") +
+               (SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver() : "<none>"));
     InitTextRenderer(ResolveAssetPath("assets/Fonts/Main.ttf"));
     bool audioReady = false;
 #if HAS_SDL_MIXER
@@ -127,11 +208,11 @@ int main(int argc, char** argv) {
     constexpr int kBaseScreenW = 960;
     constexpr int kBaseScreenH = 540;
 
-    SDL_Window* win = SDL_CreateWindow(
-        "Dorfplatformer Timetravel",
-        kBaseScreenW, kBaseScreenH,
-        SDL_WINDOW_RESIZABLE
-    );
+    SDL_Window* win = SDL_CreateWindow("Dorfplatformer Timetravel", kBaseScreenW, kBaseScreenH, SDL_WINDOW_RESIZABLE);
+    if (!win) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "SDL_CreateWindow(resizable) failed: %s", SDL_GetError());
+        win = SDL_CreateWindow("Dorfplatformer Timetravel", kBaseScreenW, kBaseScreenH, 0);
+    }
     if (!win) {
         reportStartupError("Window Error", std::string("SDL_CreateWindow failed: ") + SDL_GetError(), nullptr);
         ShutdownTextRenderer();
@@ -141,6 +222,10 @@ int main(int argc, char** argv) {
     }
 
     SDL_Renderer* ren = SDL_CreateRenderer(win, nullptr);
+    if (!ren) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "SDL_CreateRenderer(default) failed: %s", SDL_GetError());
+        ren = SDL_CreateRenderer(win, "software");
+    }
     if (!ren) {
         reportStartupError("Renderer Error", std::string("SDL_CreateRenderer failed: ") + SDL_GetError(), win);
         SDL_DestroyWindow(win);
