@@ -1,6 +1,7 @@
 {
   "build_uuid": "8f3b2d19-4a61-4f11-a6ce-2f8d7e91c4b7",
   "fullscreen": false,
+  "vsync": false,
   "clamp_cam_x": true,
   "show_fps_counter": false,
   "show_detailed_debugger": false,

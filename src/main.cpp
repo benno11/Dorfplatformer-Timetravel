@@ -742,6 +742,7 @@ int main(int argc, char** argv) {
     }
 
     bool fullscreen = false;
+    bool vsyncEnabled = false;
     bool clampCamX = true;
     bool defaultShowFpsCounter = false;
     bool defaultShowDetailedDebugger = false;
@@ -759,6 +760,7 @@ int main(int argc, char** argv) {
         nlohmann::json j;
         j["build_uuid"] = buildUuid;
         j["fullscreen"] = fullscreen;
+        j["vsync"] = vsyncEnabled;
         j["clamp_cam_x"] = clampCamX;
         j["show_fps_counter"] = defaultShowFpsCounter;
         j["show_detailed_debugger"] = defaultShowDetailedDebugger;
@@ -773,6 +775,7 @@ int main(int argc, char** argv) {
             nlohmann::json j;
             try { j = nlohmann::json::parse(text); } catch (...) { j = nlohmann::json(); }
             if (j.contains("fullscreen") && j["fullscreen"].is_boolean()) fullscreen = j["fullscreen"].get<bool>();
+            if (j.contains("vsync") && j["vsync"].is_boolean()) vsyncEnabled = j["vsync"].get<bool>();
             if (j.contains("clamp_cam_x") && j["clamp_cam_x"].is_boolean()) clampCamX = j["clamp_cam_x"].get<bool>();
             if (j.contains("show_fps_counter") && j["show_fps_counter"].is_boolean()) defaultShowFpsCounter = j["show_fps_counter"].get<bool>();
             if (j.contains("show_detailed_debugger") && j["show_detailed_debugger"].is_boolean()) defaultShowDetailedDebugger = j["show_detailed_debugger"].get<bool>();
@@ -787,6 +790,7 @@ int main(int argc, char** argv) {
                 try { j = nlohmann::json::parse(placeholderText); } catch (...) { j = nlohmann::json(); }
                 if (!j.is_null()) {
                     if (j.contains("fullscreen") && j["fullscreen"].is_boolean()) fullscreen = j["fullscreen"].get<bool>();
+                    if (j.contains("vsync") && j["vsync"].is_boolean()) vsyncEnabled = j["vsync"].get<bool>();
                     if (j.contains("clamp_cam_x") && j["clamp_cam_x"].is_boolean()) clampCamX = j["clamp_cam_x"].get<bool>();
                     if (j.contains("show_fps_counter") && j["show_fps_counter"].is_boolean()) defaultShowFpsCounter = j["show_fps_counter"].get<bool>();
                     if (j.contains("show_detailed_debugger") && j["show_detailed_debugger"].is_boolean()) defaultShowDetailedDebugger = j["show_detailed_debugger"].get<bool>();
@@ -801,6 +805,16 @@ int main(int argc, char** argv) {
             }
         }
     }
+    auto applyRenderVsync = [&]() {
+#if SDL_VERSION_ATLEAST(2, 0, 18)
+        if (SDL_RenderSetVSync(ren, vsyncEnabled ? 1 : 0) != 0) {
+            SDL_Log("Could not set renderer VSync=%d: %s", vsyncEnabled ? 1 : 0, SDL_GetError());
+        }
+#else
+        SDL_Log("Renderer VSync toggle unsupported on this SDL version.");
+#endif
+    };
+    applyRenderVsync();
     SDL_Log("Build UUID: %s", buildUuid.c_str());
 #if HAS_SDL_MIXER
     auto applyAudioVolumes = [&]() {
@@ -840,9 +854,9 @@ int main(int argc, char** argv) {
         bool inSettings = false;
         int menuSel = 0;     // 0 Play, 1 Settings, 2 Quit
 #if defined(__ANDROID__)
-        constexpr int kSettingsCount = 6; // ClampCam, ShowFPS, Debugger, Music, SFX, Back
+        constexpr int kSettingsCount = 7; // VSync, ClampCam, ShowFPS, Debugger, Music, SFX, Back
 #else
-        constexpr int kSettingsCount = 7; // Fullscreen, ClampCam, ShowFPS, Debugger, Music, SFX, Back
+        constexpr int kSettingsCount = 8; // Fullscreen, VSync, ClampCam, ShowFPS, Debugger, Music, SFX, Back
 #endif
         int settingsSel = 0;
         enum class SliderDragTarget { None, Music, Sfx };
@@ -884,22 +898,8 @@ int main(int argc, char** argv) {
                             const int dir = (e.key.keysym.sym == SDLK_LEFT) ? -1 : (e.key.keysym.sym == SDLK_RIGHT ? 1 : 0);
 #if defined(__ANDROID__)
                             if (settingsSel == 0) {
-                                clampCamX = !clampCamX;
-                            } else if (settingsSel == 1) {
-                                defaultShowFpsCounter = !defaultShowFpsCounter;
-                            } else if (settingsSel == 2) {
-                                defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
-                            } else if (settingsSel == 3) {
-                                if (dir != 0) musicVolume = std::clamp(musicVolume + dir * 8, 0, 128);
-                            } else if (settingsSel == 4) {
-                                if (dir != 0) sfxVolume = std::clamp(sfxVolume + dir * 8, 0, 128);
-                            } else {
-                                inSettings = false;
-                            }
-#else
-                            if (settingsSel == 0) {
-                                fullscreen = !fullscreen;
-                                SDL_SetWindowFullscreen(win, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+                                vsyncEnabled = !vsyncEnabled;
+                                applyRenderVsync();
                             } else if (settingsSel == 1) {
                                 clampCamX = !clampCamX;
                             } else if (settingsSel == 2) {
@@ -909,6 +909,26 @@ int main(int argc, char** argv) {
                             } else if (settingsSel == 4) {
                                 if (dir != 0) musicVolume = std::clamp(musicVolume + dir * 8, 0, 128);
                             } else if (settingsSel == 5) {
+                                if (dir != 0) sfxVolume = std::clamp(sfxVolume + dir * 8, 0, 128);
+                            } else {
+                                inSettings = false;
+                            }
+#else
+                            if (settingsSel == 0) {
+                                fullscreen = !fullscreen;
+                                SDL_SetWindowFullscreen(win, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+                            } else if (settingsSel == 1) {
+                                vsyncEnabled = !vsyncEnabled;
+                                applyRenderVsync();
+                            } else if (settingsSel == 2) {
+                                clampCamX = !clampCamX;
+                            } else if (settingsSel == 3) {
+                                defaultShowFpsCounter = !defaultShowFpsCounter;
+                            } else if (settingsSel == 4) {
+                                defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
+                            } else if (settingsSel == 5) {
+                                if (dir != 0) musicVolume = std::clamp(musicVolume + dir * 8, 0, 128);
+                            } else if (settingsSel == 6) {
                                 if (dir != 0) sfxVolume = std::clamp(sfxVolume + dir * 8, 0, 128);
                             } else {
                                 inSettings = false;
@@ -929,11 +949,11 @@ int main(int argc, char** argv) {
                     if (!windowToGamePoint(e.motion.x, e.motion.y, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy)) continue;
                     SDL_Point pt{gx, gy};
 #if defined(__ANDROID__)
-                    SDL_Rect musicSlider{kBaseScreenW / 2 - 70, 326, 200, 10};
-                    SDL_Rect sfxSlider{kBaseScreenW / 2 - 70, 366, 200, 10};
-#else
                     SDL_Rect musicSlider{kBaseScreenW / 2 - 70, 366, 200, 10};
                     SDL_Rect sfxSlider{kBaseScreenW / 2 - 70, 406, 200, 10};
+#else
+                    SDL_Rect musicSlider{kBaseScreenW / 2 - 70, 406, 200, 10};
+                    SDL_Rect sfxSlider{kBaseScreenW / 2 - 70, 446, 200, 10};
 #endif
                     if (sliderDrag == SliderDragTarget::Music) musicVolume = sliderValueFromPoint(pt.x, musicSlider);
                     if (sliderDrag == SliderDragTarget::Sfx) sfxVolume = sliderValueFromPoint(pt.x, sfxSlider);
@@ -958,18 +978,23 @@ int main(int argc, char** argv) {
                         }
                     } else {
 #if defined(__ANDROID__)
-                        SDL_Rect camBtn{kBaseScreenW / 2 - 140, 180, 280, 32};
-                        SDL_Rect fpsBtn{kBaseScreenW / 2 - 140, 220, 280, 32};
-                        SDL_Rect dbgBtn{kBaseScreenW / 2 - 140, 260, 280, 32};
-                        SDL_Rect backBtn{kBaseScreenW / 2 - 140, 380, 280, 32};
-                        SDL_Rect musicSlider{kBaseScreenW / 2 - 70, 326, 200, 10};
-                        SDL_Rect sfxSlider{kBaseScreenW / 2 - 70, 366, 200, 10};
+                        SDL_Rect vsyncBtn{kBaseScreenW / 2 - 140, 180, 280, 32};
+                        SDL_Rect camBtn{kBaseScreenW / 2 - 140, 220, 280, 32};
+                        SDL_Rect fpsBtn{kBaseScreenW / 2 - 140, 260, 280, 32};
+                        SDL_Rect dbgBtn{kBaseScreenW / 2 - 140, 300, 280, 32};
+                        SDL_Rect backBtn{kBaseScreenW / 2 - 140, 420, 280, 32};
+                        SDL_Rect musicSlider{kBaseScreenW / 2 - 70, 366, 200, 10};
+                        SDL_Rect sfxSlider{kBaseScreenW / 2 - 70, 406, 200, 10};
                         if (SDL_PointInRect(&pt, &musicSlider)) {
                             musicVolume = sliderValueFromPoint(pt.x, musicSlider);
                             sliderDrag = SliderDragTarget::Music;
                         } else if (SDL_PointInRect(&pt, &sfxSlider)) {
                             sfxVolume = sliderValueFromPoint(pt.x, sfxSlider);
                             sliderDrag = SliderDragTarget::Sfx;
+                        } else if (SDL_PointInRect(&pt, &vsyncBtn)) {
+                            sliderDrag = SliderDragTarget::None;
+                            vsyncEnabled = !vsyncEnabled;
+                            applyRenderVsync();
                         } else if (SDL_PointInRect(&pt, &camBtn)) {
                             sliderDrag = SliderDragTarget::None;
                             clampCamX = !clampCamX;
@@ -987,12 +1012,13 @@ int main(int argc, char** argv) {
                         }
 #else
                         SDL_Rect fullBtn{kBaseScreenW / 2 - 140, 180, 280, 32};
-                        SDL_Rect camBtn{kBaseScreenW / 2 - 140, 220, 280, 32};
-                        SDL_Rect fpsBtn{kBaseScreenW / 2 - 140, 260, 280, 32};
-                        SDL_Rect dbgBtn{kBaseScreenW / 2 - 140, 300, 280, 32};
-                        SDL_Rect backBtn{kBaseScreenW / 2 - 140, 420, 280, 32};
-                        SDL_Rect musicSlider{kBaseScreenW / 2 - 70, 366, 200, 10};
-                        SDL_Rect sfxSlider{kBaseScreenW / 2 - 70, 406, 200, 10};
+                        SDL_Rect vsyncBtn{kBaseScreenW / 2 - 140, 220, 280, 32};
+                        SDL_Rect camBtn{kBaseScreenW / 2 - 140, 260, 280, 32};
+                        SDL_Rect fpsBtn{kBaseScreenW / 2 - 140, 300, 280, 32};
+                        SDL_Rect dbgBtn{kBaseScreenW / 2 - 140, 340, 280, 32};
+                        SDL_Rect backBtn{kBaseScreenW / 2 - 140, 460, 280, 32};
+                        SDL_Rect musicSlider{kBaseScreenW / 2 - 70, 406, 200, 10};
+                        SDL_Rect sfxSlider{kBaseScreenW / 2 - 70, 446, 200, 10};
                         if (SDL_PointInRect(&pt, &musicSlider)) {
                             musicVolume = sliderValueFromPoint(pt.x, musicSlider);
                             sliderDrag = SliderDragTarget::Music;
@@ -1005,6 +1031,10 @@ int main(int argc, char** argv) {
                             fullscreen = !fullscreen;
                             SDL_SetWindowFullscreen(win, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
 #endif
+                        } else if (SDL_PointInRect(&pt, &vsyncBtn)) {
+                            sliderDrag = SliderDragTarget::None;
+                            vsyncEnabled = !vsyncEnabled;
+                            applyRenderVsync();
                         } else if (SDL_PointInRect(&pt, &camBtn)) {
                             sliderDrag = SliderDragTarget::None;
                             clampCamX = !clampCamX;
@@ -1045,12 +1075,13 @@ int main(int argc, char** argv) {
                         }
                     } else {
 #if defined(__ANDROID__)
-                        SDL_Rect camBtn{kBaseScreenW / 2 - 140, 180, 280, 32};
-                        SDL_Rect fpsBtn{kBaseScreenW / 2 - 140, 220, 280, 32};
-                        SDL_Rect dbgBtn{kBaseScreenW / 2 - 140, 260, 280, 32};
-                        SDL_Rect backBtn{kBaseScreenW / 2 - 140, 380, 280, 32};
-                        SDL_Rect musicSlider{kBaseScreenW / 2 - 70, 326, 200, 10};
-                        SDL_Rect sfxSlider{kBaseScreenW / 2 - 70, 366, 200, 10};
+                        SDL_Rect vsyncBtn{kBaseScreenW / 2 - 140, 180, 280, 32};
+                        SDL_Rect camBtn{kBaseScreenW / 2 - 140, 220, 280, 32};
+                        SDL_Rect fpsBtn{kBaseScreenW / 2 - 140, 260, 280, 32};
+                        SDL_Rect dbgBtn{kBaseScreenW / 2 - 140, 300, 280, 32};
+                        SDL_Rect backBtn{kBaseScreenW / 2 - 140, 420, 280, 32};
+                        SDL_Rect musicSlider{kBaseScreenW / 2 - 70, 366, 200, 10};
+                        SDL_Rect sfxSlider{kBaseScreenW / 2 - 70, 406, 200, 10};
                         if (SDL_PointInRect(&pt, &musicSlider)) {
                             musicVolume = sliderValueFromPoint(pt.x, musicSlider);
                             sliderDrag = SliderDragTarget::Music;
@@ -1059,6 +1090,10 @@ int main(int argc, char** argv) {
                             sfxVolume = sliderValueFromPoint(pt.x, sfxSlider);
                             sliderDrag = SliderDragTarget::Sfx;
                             sliderDragFinger = e.tfinger.fingerId;
+                        } else if (SDL_PointInRect(&pt, &vsyncBtn)) {
+                            sliderDrag = SliderDragTarget::None;
+                            vsyncEnabled = !vsyncEnabled;
+                            applyRenderVsync();
                         } else if (SDL_PointInRect(&pt, &camBtn)) {
                             sliderDrag = SliderDragTarget::None;
                             clampCamX = !clampCamX;
@@ -1076,12 +1111,13 @@ int main(int argc, char** argv) {
                         }
 #else
                         SDL_Rect fullBtn{kBaseScreenW / 2 - 140, 180, 280, 32};
-                        SDL_Rect camBtn{kBaseScreenW / 2 - 140, 220, 280, 32};
-                        SDL_Rect fpsBtn{kBaseScreenW / 2 - 140, 260, 280, 32};
-                        SDL_Rect dbgBtn{kBaseScreenW / 2 - 140, 300, 280, 32};
-                        SDL_Rect backBtn{kBaseScreenW / 2 - 140, 420, 280, 32};
-                        SDL_Rect musicSlider{kBaseScreenW / 2 - 70, 366, 200, 10};
-                        SDL_Rect sfxSlider{kBaseScreenW / 2 - 70, 406, 200, 10};
+                        SDL_Rect vsyncBtn{kBaseScreenW / 2 - 140, 220, 280, 32};
+                        SDL_Rect camBtn{kBaseScreenW / 2 - 140, 260, 280, 32};
+                        SDL_Rect fpsBtn{kBaseScreenW / 2 - 140, 300, 280, 32};
+                        SDL_Rect dbgBtn{kBaseScreenW / 2 - 140, 340, 280, 32};
+                        SDL_Rect backBtn{kBaseScreenW / 2 - 140, 460, 280, 32};
+                        SDL_Rect musicSlider{kBaseScreenW / 2 - 70, 406, 200, 10};
+                        SDL_Rect sfxSlider{kBaseScreenW / 2 - 70, 446, 200, 10};
                         if (SDL_PointInRect(&pt, &musicSlider)) {
                             musicVolume = sliderValueFromPoint(pt.x, musicSlider);
                             sliderDrag = SliderDragTarget::Music;
@@ -1096,6 +1132,10 @@ int main(int argc, char** argv) {
                             fullscreen = !fullscreen;
                             SDL_SetWindowFullscreen(win, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
 #endif
+                        } else if (SDL_PointInRect(&pt, &vsyncBtn)) {
+                            sliderDrag = SliderDragTarget::None;
+                            vsyncEnabled = !vsyncEnabled;
+                            applyRenderVsync();
                         } else if (SDL_PointInRect(&pt, &camBtn)) {
                             sliderDrag = SliderDragTarget::None;
                             clampCamX = !clampCamX;
@@ -1127,11 +1167,11 @@ int main(int argc, char** argv) {
                     if (!windowToGamePoint(wx, wy, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy)) continue;
                     SDL_Point pt{gx, gy};
 #if defined(__ANDROID__)
-                    SDL_Rect musicSlider{kBaseScreenW / 2 - 70, 326, 200, 10};
-                    SDL_Rect sfxSlider{kBaseScreenW / 2 - 70, 366, 200, 10};
-#else
                     SDL_Rect musicSlider{kBaseScreenW / 2 - 70, 366, 200, 10};
                     SDL_Rect sfxSlider{kBaseScreenW / 2 - 70, 406, 200, 10};
+#else
+                    SDL_Rect musicSlider{kBaseScreenW / 2 - 70, 406, 200, 10};
+                    SDL_Rect sfxSlider{kBaseScreenW / 2 - 70, 446, 200, 10};
 #endif
                     if (sliderDrag == SliderDragTarget::Music) musicVolume = sliderValueFromPoint(pt.x, musicSlider);
                     if (sliderDrag == SliderDragTarget::Sfx) sfxVolume = sliderValueFromPoint(pt.x, sfxSlider);
@@ -1167,18 +1207,8 @@ int main(int argc, char** argv) {
                 const std::string title = "SETTINGS";
                 DrawText(ren, kBaseScreenW / 2 - MeasureTextWidth(3, title) / 2, 84, 3, title);
 #if defined(__ANDROID__)
-                std::string rows[6] = {
-                    std::string("CAM CLAMP: ") + (clampCamX ? "ON" : "OFF"),
-                    std::string("FPS COUNTER: ") + (defaultShowFpsCounter ? "ON" : "OFF"),
-                    std::string("DETAILED DEBUGGER: ") + (defaultShowDetailedDebugger ? "ON" : "OFF"),
-                    std::string("MUSIC: ") + std::to_string((musicVolume * 100) / 128) + "%",
-                    std::string("SFX: ") + std::to_string((sfxVolume * 100) / 128) + "%",
-                    "BACK"
-                };
-                for (int i = 0; i < 6; ++i) {
-#else
                 std::string rows[7] = {
-                    std::string("FULLSCREEN: ") + (fullscreen ? "ON" : "OFF"),
+                    std::string("VSYNC: ") + (vsyncEnabled ? "ON" : "OFF"),
                     std::string("CAM CLAMP: ") + (clampCamX ? "ON" : "OFF"),
                     std::string("FPS COUNTER: ") + (defaultShowFpsCounter ? "ON" : "OFF"),
                     std::string("DETAILED DEBUGGER: ") + (defaultShowDetailedDebugger ? "ON" : "OFF"),
@@ -1187,6 +1217,18 @@ int main(int argc, char** argv) {
                     "BACK"
                 };
                 for (int i = 0; i < 7; ++i) {
+#else
+                std::string rows[8] = {
+                    std::string("FULLSCREEN: ") + (fullscreen ? "ON" : "OFF"),
+                    std::string("VSYNC: ") + (vsyncEnabled ? "ON" : "OFF"),
+                    std::string("CAM CLAMP: ") + (clampCamX ? "ON" : "OFF"),
+                    std::string("FPS COUNTER: ") + (defaultShowFpsCounter ? "ON" : "OFF"),
+                    std::string("DETAILED DEBUGGER: ") + (defaultShowDetailedDebugger ? "ON" : "OFF"),
+                    std::string("MUSIC: ") + std::to_string((musicVolume * 100) / 128) + "%",
+                    std::string("SFX: ") + std::to_string((sfxVolume * 100) / 128) + "%",
+                    "BACK"
+                };
+                for (int i = 0; i < 8; ++i) {
 #endif
                     int y = 180 + i * 40;
                     if (i == settingsSel) {
@@ -1210,12 +1252,12 @@ int main(int argc, char** argv) {
                     SDL_RenderFillRect(ren, &fill);
                 };
 #if defined(__ANDROID__)
-                drawSlider(kBaseScreenW / 2 - 70, 326, 200, 10, musicVolume);
-                drawSlider(kBaseScreenW / 2 - 70, 366, 200, 10, sfxVolume);
-                DrawText(ren, 12, kBaseScreenH - 24, 1, std::string("BUILD UUID: ") + buildUuid);
-#else
                 drawSlider(kBaseScreenW / 2 - 70, 366, 200, 10, musicVolume);
                 drawSlider(kBaseScreenW / 2 - 70, 406, 200, 10, sfxVolume);
+                DrawText(ren, 12, kBaseScreenH - 24, 1, std::string("BUILD UUID: ") + buildUuid);
+#else
+                drawSlider(kBaseScreenW / 2 - 70, 406, 200, 10, musicVolume);
+                drawSlider(kBaseScreenW / 2 - 70, 446, 200, 10, sfxVolume);
                 DrawText(ren, 12, kBaseScreenH - 24, 1, std::string("BUILD UUID: ") + buildUuid);
 #endif
             }
@@ -1394,6 +1436,9 @@ int main(int argc, char** argv) {
         std::unordered_map<SDL_FingerID, SDL_FPoint> activeTouches;
         SDL_Event e;
         Uint32 lastTicks = SDL_GetTicks();
+        Uint32 lastPresentTicks = lastTicks;
+        Uint32 nextPresentTicks = lastTicks;
+        int renderFpsDisplay = 0;
 
         SDL_Rect pauseBtnContinue{0,0,0,0};
         SDL_Rect pauseBtnRestart{0,0,0,0};
@@ -1415,8 +1460,8 @@ int main(int argc, char** argv) {
         while (levelRunning) {
             Uint32 now = SDL_GetTicks();
             float dt = (now - lastTicks) / 1000.0f;
-            if (dt > 0.05f) dt = 0.05f;
             lastTicks = now;
+            const int updateFpsDisplay = std::clamp((dt > 0.0f) ? (int)(1.0f / dt) : 0, 0, 999999);
             verticalWrapActive = false;
             activeBumperIndices.clear();
             frameMsHistory[frameMsHistoryHead] = dt * 1000.0f;
@@ -1460,7 +1505,8 @@ int main(int argc, char** argv) {
 #endif
             }
             if (levelCompleteActive && levelCompleteCounting && !paused) {
-                int payoutPerFrame = std::max(1, (int)std::lround(1200.0f * dt));
+                // Uncapped payout during level complete: process full remaining bonus immediately.
+                int payoutPerFrame = std::max(1, levelCompleteCoinBonus + levelCompleteTimeScore);
                 int coinStep = std::min(levelCompleteCoinBonus, payoutPerFrame);
                 if (coinStep > 0) {
                     levelCompleteCoinBonus -= coinStep;
@@ -1857,7 +1903,7 @@ int main(int argc, char** argv) {
             }
             if (upd == PlayerUpdateResult::Reloaded) {
                 const float pitResetY = (float)((map.h + 7) * map.tileSize);
-                const bool bottomlessPit = (player.y > pitResetY);
+                const bool bottomlessPit = (player.y >= pitResetY);
                 if (bottomlessPit) {
                     // Bottomless pit routing, based on world/area/time variant logic.
                     const char tw = levelManager.timeWarpId();
@@ -1865,27 +1911,26 @@ int main(int argc, char** argv) {
                     const int area = levelManager.levelPartId();
                     const int ot = levelManager.timeId();
                     if (tw != 'F' && world > 0 && area > 0) {
-                        if (tw == 'N'){
-                            break;
-                        }
-                        const bool hasVariant4 = levelManager.hasLevelCode(world * 100 + area * 10 + 4);
-                        int targetTime = 2;
-                        if (ot == 1) {
-                            if (tw == '2') {
+                        // In normal world ('N'), pit falls should trigger death flow.
+                        if (tw != 'N') {
+                            int targetTime = 2;
+                            if (ot == 1) {
+                                if (tw == '2') {
+                                    targetTime = 3;
+                                } else {
+                                    targetTime = 2;
+                                }
+                            } else if (ot == 2) {
                                 targetTime = 3;
                             } else {
                                 targetTime = 2;
                             }
-                        } else if (ot == 2) {
-                            targetTime = 3;
-                        } else {
-                            targetTime = 2;
-                        }
-                        std::string pitPath = levelManager.levelPathByCode(world * 100 + area * 10 + targetTime);
-                        if (!pitPath.empty()) {
-                                levelManager.setLevelPath(pitPath);
-                                reloadLevel();
-                                continue;
+                            std::string pitPath = levelManager.levelPathByCode(world * 100 + area * 10 + targetTime);
+                            if (!pitPath.empty()) {
+                                    levelManager.setLevelPath(pitPath);
+                                    reloadLevel();
+                                    continue;
+                            }
                         }
                     }
                 }
@@ -2748,8 +2793,8 @@ RENDER_ONLY:
             DrawText(ren, screenW / 2 - MeasureTextWidth(bonusScale, bonusLine3) / 2 + completeSlideInXForY(bonusStartY + bonusLineGap * 2), bonusStartY + bonusLineGap * 2, bonusScale, bonusLine3);
         }
         if (showFpsCounter) {
-            const int fps = (dt > 0.0f) ? (int)(1.0f / dt) : 0;
-            const std::string fpsText = std::string("FPS: ") + std::to_string(fps);
+            const std::string fpsText = std::string("UFPS: ") + std::to_string(updateFpsDisplay) +
+                                        " RFPS: " + std::to_string(renderFpsDisplay);
             const int fpsScale = 2;
             const int fpsX = screenW - 10 - MeasureTextWidth(fpsScale, fpsText);
             DrawText(ren, fpsX, 10, fpsScale, fpsText);
@@ -2782,8 +2827,8 @@ RENDER_ONLY:
             DrawDebugNumber(ren, 140, 106, 2, "CMAXX", (int)maxCamX);
             DrawDebugNumber(ren, 18, 120, 2, "CMINY", 0);
             DrawDebugNumber(ren, 140, 120, 2, "CMAXY", (int)maxCamY);
-            int fps = (dt > 0.0f) ? (int)(1.0f / dt) : 0;
-            DrawDebugNumber(ren, 18, 134, 2, "FPS", fps);
+            DrawDebugNumber(ren, 18, 134, 2, "UFPS", updateFpsDisplay);
+            DrawDebugNumber(ren, 140, 134, 2, "RFPS", renderFpsDisplay);
             DrawText(ren, 18, 148, 2, std::string("ANIM ") + debugAnimName);
             if (!renderFrameName.empty()) {
                 std::string id = renderFrameName;
@@ -2854,7 +2899,19 @@ RENDER_ONLY:
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
         SDL_RenderClear(ren);
         SDL_RenderCopy(ren, gameTarget, nullptr, &presentDst);
-        SDL_RenderPresent(ren);
+        {
+            const Uint32 presentNow = SDL_GetTicks();
+            const bool shouldPresent = !vsyncEnabled || presentNow >= nextPresentTicks;
+            if (shouldPresent) {
+                SDL_RenderPresent(ren);
+                const Uint32 presentedAt = SDL_GetTicks();
+                const Uint32 presentDelta = presentedAt - lastPresentTicks;
+                renderFpsDisplay = std::clamp((presentDelta > 0) ? (int)(1000u / presentDelta) : 0, 0, 999999);
+                lastPresentTicks = presentedAt;
+                // Render cadence limiter only; update loop remains uncapped.
+                nextPresentTicks = presentedAt + 16;
+            }
+        }
         if (showDetailedDebugger && debugRen && debugWin) {
             int dbgW = 0, dbgH = 0;
             SDL_GetWindowSize(debugWin, &dbgW, &dbgH);
@@ -2884,7 +2941,8 @@ RENDER_ONLY:
             if (detailedDebugSubmenu == 0) {
                 long rssKB = -1, vmKB = -1;
                 readProcessMemoryKB(rssKB, vmKB);
-                DrawText(debugRen, 12, y, 2, std::string("FPS: ") + std::to_string((dt > 0.0f) ? (int)(1.0f / dt) : 0)); y += 20;
+                DrawText(debugRen, 12, y, 2, std::string("UFPS: ") + std::to_string(updateFpsDisplay)); y += 20;
+                DrawText(debugRen, 12, y, 2, std::string("RFPS: ") + std::to_string(renderFpsDisplay)); y += 20;
                 DrawText(debugRen, 12, y, 2, std::string("Frame ms: ") + std::to_string((int)std::lround(dt * 1000.0f))); y += 20;
                 DrawText(debugRen, 12, y, 2, std::string("Memory RSS MB: ") + (rssKB >= 0 ? std::to_string((int)(rssKB / 1024)) : "N/A")); y += 20;
                 DrawText(debugRen, 12, y, 2, std::string("Memory VM MB: ") + (vmKB >= 0 ? std::to_string((int)(vmKB / 1024)) : "N/A")); y += 20;
