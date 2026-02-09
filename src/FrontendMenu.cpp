@@ -1,7 +1,7 @@
 #include "FrontendMenu.h"
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_image.h>
+#include <sdl3/SDL.h>
+#include <sdl3/SDL_image.h>
 
 #include <algorithm>
 #include <cmath>
@@ -45,12 +45,14 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     int settingsSelDebug = 0;
     constexpr int kSettingsTabCount = 4;
     auto showAboutPopup = [&]() {
-        SDL_version sdlVer{};
-        SDL_GetVersion(&sdlVer);
+        const int sdlVer = SDL_GetVersion();
+        const int sdlMajor = SDL_VERSIONNUM_MAJOR(sdlVer);
+        const int sdlMinor = SDL_VERSIONNUM_MINOR(sdlVer);
+        const int sdlPatch = SDL_VERSIONNUM_MICRO(sdlVer);
         const std::string aboutText =
             "Dorfplatformer Timetravel\n\n"
             "In-development build.\n"
-            "SDL: " + std::to_string((int)sdlVer.major) + "." + std::to_string((int)sdlVer.minor) + "." + std::to_string((int)sdlVer.patch) + "\n"
+            "SDL: " + std::to_string(sdlMajor) + "." + std::to_string(sdlMinor) + "." + std::to_string(sdlPatch) + "\n"
             "\n"
             "Build UUID:\n" + ctx.buildUuid;
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "About", aboutText.c_str(), ctx.win);
@@ -157,10 +159,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             }
             if (e.type == SDL_KEYDOWN && e.key.repeat == 0) {
                 if (closeMenuOpen) {
-                    if (e.key.keysym.sym == SDLK_UP || e.key.keysym.sym == SDLK_w) closeMenuSel = (closeMenuSel + 1) % 2;
-                    if (e.key.keysym.sym == SDLK_DOWN || e.key.keysym.sym == SDLK_s) closeMenuSel = (closeMenuSel + 1) % 2;
-                    if (e.key.keysym.sym == SDLK_ESCAPE) closeMenuOpen = false;
-                    if (e.key.keysym.sym == SDLK_RETURN || e.key.keysym.sym == SDLK_KP_ENTER) {
+                    if (e.key.key == SDLK_UP || e.key.key == SDLK_w) closeMenuSel = (closeMenuSel + 1) % 2;
+                    if (e.key.key == SDLK_DOWN || e.key.key == SDLK_s) closeMenuSel = (closeMenuSel + 1) % 2;
+                    if (e.key.key == SDLK_ESCAPE) closeMenuOpen = false;
+                    if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) {
                         if (closeMenuSel == 0) {
                             closeMenuOpen = false;
                         } else {
@@ -172,11 +174,11 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     continue;
                 }
                 if (!inSettings) {
-                    if (e.key.keysym.sym == SDLK_LEFT || e.key.keysym.sym == SDLK_a) menuSel = (menuSel + 2) % 3;
-                    if (e.key.keysym.sym == SDLK_RIGHT || e.key.keysym.sym == SDLK_d) menuSel = (menuSel + 1) % 3;
-                    if (e.key.keysym.sym == SDLK_UP || e.key.keysym.sym == SDLK_w) menuSel = (menuSel + 2) % 3;
-                    if (e.key.keysym.sym == SDLK_DOWN || e.key.keysym.sym == SDLK_s) menuSel = (menuSel + 1) % 3;
-                    if (e.key.keysym.sym == SDLK_RETURN || e.key.keysym.sym == SDLK_KP_ENTER) {
+                    if (e.key.key == SDLK_LEFT || e.key.key == SDLK_a) menuSel = (menuSel + 2) % 3;
+                    if (e.key.key == SDLK_RIGHT || e.key.key == SDLK_d) menuSel = (menuSel + 1) % 3;
+                    if (e.key.key == SDLK_UP || e.key.key == SDLK_w) menuSel = (menuSel + 2) % 3;
+                    if (e.key.key == SDLK_DOWN || e.key.key == SDLK_s) menuSel = (menuSel + 1) % 3;
+                    if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) {
                         if (menuSel == 0) inSettings = true;
                         if (menuSel == 1) {
                             cleanupMenuAssets();
@@ -184,39 +186,39 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         }
                         if (menuSel == 2) showEditorPopup();
                     }
-                    if (e.key.keysym.sym == SDLK_ESCAPE) {
+                    if (e.key.key == SDLK_ESCAPE) {
                         closeMenuOpen = true;
                         closeMenuSel = 0;
                     }
                 } else {
-                    if (e.key.keysym.sym == SDLK_TAB || e.key.keysym.sym == SDLK_q || e.key.keysym.sym == SDLK_e) {
+                    if (e.key.key == SDLK_TAB || e.key.key == SDLK_q || e.key.key == SDLK_e) {
                         settingsTab = (settingsTab + 1) % kSettingsTabCount;
                         continue;
                     }
-                    if (e.key.keysym.sym == SDLK_1) { settingsTab = 0; continue; }
-                    if (e.key.keysym.sym == SDLK_2) { settingsTab = 1; continue; }
-                    if (e.key.keysym.sym == SDLK_3) { settingsTab = 2; continue; }
-                    if (e.key.keysym.sym == SDLK_4) { settingsTab = 3; continue; }
-                    if (e.key.keysym.sym == SDLK_UP || e.key.keysym.sym == SDLK_w) settingsSel = (settingsSel + kSettingsCount - 1) % kSettingsCount;
-                    if (e.key.keysym.sym == SDLK_DOWN || e.key.keysym.sym == SDLK_s) settingsSel = (settingsSel + 1) % kSettingsCount;
-                    if (e.key.keysym.sym == SDLK_v) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
-                    if (e.key.keysym.sym == SDLK_c) clampCamX = !clampCamX;
-                    if (e.key.keysym.sym == SDLK_f) defaultShowFpsCounter = !defaultShowFpsCounter;
-                    if (e.key.keysym.sym == SDLK_g) defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
-                    if (e.key.keysym.sym == SDLK_h) defaultShowHitboxes = !defaultShowHitboxes;
-                    if (e.key.keysym.sym == SDLK_p) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
-                    if (e.key.keysym.sym == SDLK_d) defaultShowDebugView = !defaultShowDebugView;
-                    if (e.key.keysym.sym == SDLK_LEFTBRACKET) fastTravelChangeDelay = std::clamp(fastTravelChangeDelay - 0.01f, 0.0f, 0.5f);
-                    if (e.key.keysym.sym == SDLK_RIGHTBRACKET) fastTravelChangeDelay = std::clamp(fastTravelChangeDelay + 0.01f, 0.0f, 0.5f);
-                    if (e.key.keysym.sym == SDLK_ESCAPE) inSettings = false;
+                    if (e.key.key == SDLK_1) { settingsTab = 0; continue; }
+                    if (e.key.key == SDLK_2) { settingsTab = 1; continue; }
+                    if (e.key.key == SDLK_3) { settingsTab = 2; continue; }
+                    if (e.key.key == SDLK_4) { settingsTab = 3; continue; }
+                    if (e.key.key == SDLK_UP || e.key.key == SDLK_w) settingsSel = (settingsSel + kSettingsCount - 1) % kSettingsCount;
+                    if (e.key.key == SDLK_DOWN || e.key.key == SDLK_s) settingsSel = (settingsSel + 1) % kSettingsCount;
+                    if (e.key.key == SDLK_v) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
+                    if (e.key.key == SDLK_c) clampCamX = !clampCamX;
+                    if (e.key.key == SDLK_f) defaultShowFpsCounter = !defaultShowFpsCounter;
+                    if (e.key.key == SDLK_g) defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
+                    if (e.key.key == SDLK_h) defaultShowHitboxes = !defaultShowHitboxes;
+                    if (e.key.key == SDLK_p) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
+                    if (e.key.key == SDLK_d) defaultShowDebugView = !defaultShowDebugView;
+                    if (e.key.key == SDLK_LEFTBRACKET) fastTravelChangeDelay = std::clamp(fastTravelChangeDelay - 0.01f, 0.0f, 0.5f);
+                    if (e.key.key == SDLK_RIGHTBRACKET) fastTravelChangeDelay = std::clamp(fastTravelChangeDelay + 0.01f, 0.0f, 0.5f);
+                    if (e.key.key == SDLK_ESCAPE) inSettings = false;
 
                     if (settingsTab == 1) {
                         constexpr int kAudioCount = 5;
-                        if (e.key.keysym.sym == SDLK_UP || e.key.keysym.sym == SDLK_w) settingsSelAudio = (settingsSelAudio + kAudioCount - 1) % kAudioCount;
-                        if (e.key.keysym.sym == SDLK_DOWN || e.key.keysym.sym == SDLK_s) settingsSelAudio = (settingsSelAudio + 1) % kAudioCount;
-                        if (e.key.keysym.sym == SDLK_RETURN || e.key.keysym.sym == SDLK_KP_ENTER ||
-                            e.key.keysym.sym == SDLK_LEFT || e.key.keysym.sym == SDLK_RIGHT) {
-                            const int dir = (e.key.keysym.sym == SDLK_LEFT) ? -1 : (e.key.keysym.sym == SDLK_RIGHT ? 1 : 0);
+                        if (e.key.key == SDLK_UP || e.key.key == SDLK_w) settingsSelAudio = (settingsSelAudio + kAudioCount - 1) % kAudioCount;
+                        if (e.key.key == SDLK_DOWN || e.key.key == SDLK_s) settingsSelAudio = (settingsSelAudio + 1) % kAudioCount;
+                        if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER ||
+                            e.key.key == SDLK_LEFT || e.key.key == SDLK_RIGHT) {
+                            const int dir = (e.key.key == SDLK_LEFT) ? -1 : (e.key.key == SDLK_RIGHT ? 1 : 0);
                             if (settingsSelAudio == 0) menuMusicEnabled = !menuMusicEnabled;
                             else if (settingsSelAudio == 1) muteAllAudio = !muteAllAudio;
                             else if (settingsSelAudio == 2 && dir != 0) musicVolume = std::clamp(musicVolume + dir * 8, 0, 128);
@@ -228,9 +230,9 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     }
                     if (settingsTab == 2) {
                         constexpr int kDebugCount = 6;
-                        if (e.key.keysym.sym == SDLK_UP || e.key.keysym.sym == SDLK_w) settingsSelDebug = (settingsSelDebug + kDebugCount - 1) % kDebugCount;
-                        if (e.key.keysym.sym == SDLK_DOWN || e.key.keysym.sym == SDLK_s) settingsSelDebug = (settingsSelDebug + 1) % kDebugCount;
-                        if (e.key.keysym.sym == SDLK_RETURN || e.key.keysym.sym == SDLK_KP_ENTER) {
+                        if (e.key.key == SDLK_UP || e.key.key == SDLK_w) settingsSelDebug = (settingsSelDebug + kDebugCount - 1) % kDebugCount;
+                        if (e.key.key == SDLK_DOWN || e.key.key == SDLK_s) settingsSelDebug = (settingsSelDebug + 1) % kDebugCount;
+                        if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) {
                             if (settingsSelDebug == 0) defaultShowFpsCounter = !defaultShowFpsCounter;
                             else if (settingsSelDebug == 1) defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
                             else if (settingsSelDebug == 2) defaultShowHitboxes = !defaultShowHitboxes;
@@ -241,13 +243,13 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         continue;
                     }
                     if (settingsTab == 3) {
-                        if (e.key.keysym.sym == SDLK_ESCAPE || e.key.keysym.sym == SDLK_RETURN || e.key.keysym.sym == SDLK_KP_ENTER) inSettings = false;
+                        if (e.key.key == SDLK_ESCAPE || e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) inSettings = false;
                         continue;
                     }
 
-                    if (e.key.keysym.sym == SDLK_RETURN || e.key.keysym.sym == SDLK_KP_ENTER ||
-                        e.key.keysym.sym == SDLK_LEFT || e.key.keysym.sym == SDLK_RIGHT) {
-                        const int dir = (e.key.keysym.sym == SDLK_LEFT) ? -1 : (e.key.keysym.sym == SDLK_RIGHT ? 1 : 0);
+                    if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER ||
+                        e.key.key == SDLK_LEFT || e.key.key == SDLK_RIGHT) {
+                        const int dir = (e.key.key == SDLK_LEFT) ? -1 : (e.key.key == SDLK_RIGHT ? 1 : 0);
 #if defined(__ANDROID__)
                         if (settingsSel == IDX_VSYNC) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
                         else if (settingsSel == IDX_CAM_CLAMP) clampCamX = !clampCamX;
@@ -262,7 +264,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         else if (settingsSel == IDX_ABOUT) showAboutPopup();
                         else inSettings = false;
 #else
-                        if (settingsSel == IDX_FULLSCREEN) { fullscreen = !fullscreen; SDL_SetWindowFullscreen(ctx.win, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0); }
+                        if (settingsSel == IDX_FULLSCREEN) { fullscreen = !fullscreen; SDL_SetWindowFullscreen(ctx.win, fullscreen); }
                         else if (settingsSel == IDX_VSYNC) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
                         else if (settingsSel == IDX_CAM_CLAMP) clampCamX = !clampCamX;
                         else if (settingsSel == IDX_SHOW_FPS) defaultShowFpsCounter = !defaultShowFpsCounter;
@@ -403,7 +405,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_Rect hitBtn = settingsRowBtn(IDX_SHOW_HITBOXES);
                     SDL_Rect playerHitBtn = settingsRowBtn(IDX_SHOW_PLAYER_HITBOX);
                     SDL_Rect debugViewBtn = settingsRowBtn(IDX_SHOW_DEBUG_VIEW);
-                    if (SDL_PointInRect(&pt, &fullBtn)) { fullscreen = !fullscreen; SDL_SetWindowFullscreen(ctx.win, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0); }
+                    if (SDL_PointInRect(&pt, &fullBtn)) { fullscreen = !fullscreen; SDL_SetWindowFullscreen(ctx.win, fullscreen); }
                     else if (SDL_PointInRect(&pt, &vsyncBtn)) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
                     else if (SDL_PointInRect(&pt, &camBtn)) clampCamX = !clampCamX;
                     else if (SDL_PointInRect(&pt, &fpsBtn)) defaultShowFpsCounter = !defaultShowFpsCounter;
@@ -475,11 +477,11 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         if (SDL_PointInRect(&pt, &musicSlider)) {
                             musicVolume = sliderValueFromPoint(pt.x, musicSlider);
                             sliderDrag = SliderDragTarget::Music;
-                            sliderDragFinger = e.tfinger.fingerId;
+                            sliderDragFinger = e.tfinger.fingerID;
                         } else if (SDL_PointInRect(&pt, &sfxSlider)) {
                             sfxVolume = sliderValueFromPoint(pt.x, sfxSlider);
                             sliderDrag = SliderDragTarget::Sfx;
-                            sliderDragFinger = e.tfinger.fingerId;
+                            sliderDragFinger = e.tfinger.fingerID;
                         } else if (SDL_PointInRect(&pt, &row0)) {
                             menuMusicEnabled = !menuMusicEnabled;
                         } else if (SDL_PointInRect(&pt, &row1)) {
@@ -546,7 +548,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_Rect hitBtn = settingsRowBtn(IDX_SHOW_HITBOXES);
                     SDL_Rect playerHitBtn = settingsRowBtn(IDX_SHOW_PLAYER_HITBOX);
                     SDL_Rect debugViewBtn = settingsRowBtn(IDX_SHOW_DEBUG_VIEW);
-                    if (SDL_PointInRect(&pt, &fullBtn)) { fullscreen = !fullscreen; SDL_SetWindowFullscreen(ctx.win, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0); }
+                    if (SDL_PointInRect(&pt, &fullBtn)) { fullscreen = !fullscreen; SDL_SetWindowFullscreen(ctx.win, fullscreen); }
                     else if (SDL_PointInRect(&pt, &vsyncBtn)) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
                     else if (SDL_PointInRect(&pt, &camBtn)) clampCamX = !clampCamX;
                     else if (SDL_PointInRect(&pt, &fpsBtn)) defaultShowFpsCounter = !defaultShowFpsCounter;
@@ -562,7 +564,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 }
             }
             if (e.type == SDL_FINGERMOTION && inSettings && sliderDrag != SliderDragTarget::None &&
-                e.tfinger.fingerId == sliderDragFinger) {
+                e.tfinger.fingerID == sliderDragFinger) {
                 int winW = 0, winH = 0, gx = 0, gy = 0;
                 SDL_GetWindowSize(ctx.win, &winW, &winH);
                 int wx = (int)std::lround(e.tfinger.x * winW);
@@ -575,7 +577,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 if (sliderDrag == SliderDragTarget::Sfx) sfxVolume = sliderValueFromPoint(pt.x, sfxSlider);
                 if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
             }
-            if (e.type == SDL_FINGERUP && e.tfinger.fingerId == sliderDragFinger) {
+            if (e.type == SDL_FINGERUP && e.tfinger.fingerID == sliderDragFinger) {
                 sliderDrag = SliderDragTarget::None;
             }
             if (e.type == SDL_MOUSEMOTION && inSettings && sliderDrag != SliderDragTarget::None) {

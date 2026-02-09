@@ -1,6 +1,6 @@
 #include "CrashReporter.h"
 
-#include <SDL2/SDL.h>
+#include <sdl3/SDL.h>
 
 #include <atomic>
 #include <csignal>

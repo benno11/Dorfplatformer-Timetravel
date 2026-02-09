@@ -14,7 +14,7 @@ set -euo pipefail
 #
 # Required for compilation (build/android.sh):
 #   ANDROID_NDK_HOME
-#   SDL2_ANDROID_ROOT (must contain include/ and lib/<abi>/)
+#   SDL3_ANDROID_ROOT (must contain include/ and lib/<abi>/)
 
 if command -v sudo >/dev/null 2>&1; then
   SUDO="sudo"
@@ -130,8 +130,8 @@ else
   echo "[OK] Android SDK variable is set."
 fi
 
-if [ -z "${SDL2_ANDROID_ROOT:-}" ]; then
-  echo "[INFO] SDL2_ANDROID_ROOT not set. Trying auto-detection..."
+if [ -z "${SDL3_ANDROID_ROOT:-}" ]; then
+  echo "[INFO] SDL3_ANDROID_ROOT not set. Trying auto-detection..."
   is_valid_sdl_root() {
     [ -d "$1/include" ] && [ -d "$1/lib" ] && \
       { [ -d "$1/lib/arm64-v8a" ] || [ -d "$1/lib/armeabi-v7a" ] || [ -d "$1/lib/x86_64" ] || [ -d "$1/lib/x86" ]; }
@@ -141,25 +141,25 @@ if [ -z "${SDL2_ANDROID_ROOT:-}" ]; then
     "$PWD/deps/android"
     "$PWD/deps/sdl-android"
     "$PWD/deps/SDL-android"
-    "$HOME/Android/SDL2"
-    "$HOME/SDL2-android"
-    "$HOME/Android/sdl2"
+    "$HOME/Android/sdl3"
+    "$HOME/sdl3-android"
+    "$HOME/Android/sdl3"
   )
 
   for c in "${CANDIDATES[@]}"; do
     if is_valid_sdl_root "$c"; then
-      SDL2_ANDROID_ROOT="$c"
-      export SDL2_ANDROID_ROOT
-      echo "[OK] Auto-detected SDL2_ANDROID_ROOT=$SDL2_ANDROID_ROOT"
+      SDL3_ANDROID_ROOT="$c"
+      export SDL3_ANDROID_ROOT
+      echo "[OK] Auto-detected SDL3_ANDROID_ROOT=$SDL3_ANDROID_ROOT"
       break
     fi
   done
 
-  if [ -z "${SDL2_ANDROID_ROOT:-}" ]; then
-    echo "[WARN] Could not auto-detect SDL2_ANDROID_ROOT."
+  if [ -z "${SDL3_ANDROID_ROOT:-}" ]; then
+    echo "[WARN] Could not auto-detect SDL3_ANDROID_ROOT."
   fi
 else
-  echo "[OK] SDL2_ANDROID_ROOT=$SDL2_ANDROID_ROOT"
+  echo "[OK] SDL3_ANDROID_ROOT=$SDL3_ANDROID_ROOT"
 fi
 
 if [ "${DOWNLOAD_SDL:-0}" = "1" ]; then
@@ -167,7 +167,7 @@ if [ "${DOWNLOAD_SDL:-0}" = "1" ]; then
   mkdir -p deps/android-src
   cd deps/android-src
 
-  SDL_REF="${SDL_REF:-release-2.32.x}"
+  SDL_REF="${SDL_REF:-release-3.4.x}"
   SDL_IMAGE_REF="${SDL_IMAGE_REF:-release-2.8.x}"
   SDL_TTF_REF="${SDL_TTF_REF:-release-2.24.x}"
   SDL_MIXER_REF="${SDL_MIXER_REF:-release-2.8.x}"
@@ -191,22 +191,22 @@ if [ "${DOWNLOAD_SDL:-0}" = "1" ]; then
   <root>/include/
   <root>/lib/<abi>/
 Then export:
-  SDL2_ANDROID_ROOT=<root>
-  SDL2_IMAGE_ROOT=<root or separate root>
-  SDL2_TTF_ROOT=<root or separate root>
-  SDL2_MIXER_ROOT=<optional root>
+  SDL3_ANDROID_ROOT=<root>
+  SDL3_IMAGE_ROOT=<root or separate root>
+  SDL3_TTF_ROOT=<root or separate root>
+  SDL3_MIXER_ROOT=<optional root>
 MSG
 fi
 
-if [ -n "${SDL2_ANDROID_ROOT:-}" ]; then
+if [ -n "${SDL3_ANDROID_ROOT:-}" ]; then
   cat > build/android.env <<EOF
 export ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-}"
 export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
 export ANDROID_HOME="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
-export SDL2_ANDROID_ROOT="$SDL2_ANDROID_ROOT"
-export SDL2_IMAGE_ROOT="\${SDL2_IMAGE_ROOT:-$SDL2_ANDROID_ROOT}"
-export SDL2_TTF_ROOT="\${SDL2_TTF_ROOT:-$SDL2_ANDROID_ROOT}"
-export SDL2_MIXER_ROOT="\${SDL2_MIXER_ROOT:-$SDL2_ANDROID_ROOT}"
+export SDL3_ANDROID_ROOT="$SDL3_ANDROID_ROOT"
+export SDL3_IMAGE_ROOT="\${SDL3_IMAGE_ROOT:-$SDL3_ANDROID_ROOT}"
+export SDL3_TTF_ROOT="\${SDL3_TTF_ROOT:-$SDL3_ANDROID_ROOT}"
+export SDL3_MIXER_ROOT="\${SDL3_MIXER_ROOT:-$SDL3_ANDROID_ROOT}"
 EOF
   echo "[OK] Wrote build/android.env"
   echo "[INFO] Load it with: source build/android.env"

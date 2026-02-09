@@ -9,6 +9,7 @@
 #include <nlohmann/json.hpp>
 
 #include "TextRenderer.h"
+#include "GameSupport.h"
 
 namespace {
 std::vector<std::string> loadLevelList() {
@@ -95,12 +96,12 @@ std::string RunLevelSelect(SDL_Window* win, SDL_Renderer* ren) {
                 if (scrollY > maxScroll) scrollY = maxScroll;
             }
             if (e.type == SDL_FINGERDOWN && activeFinger == 0) {
-                activeFinger = e.tfinger.fingerId;
+                activeFinger = e.tfinger.fingerID;
                 lastFingerY = e.tfinger.y * winH;
                 fingerDownY = lastFingerY;
                 fingerMoved = false;
             }
-            if (e.type == SDL_FINGERMOTION && e.tfinger.fingerId == activeFinger) {
+            if (e.type == SDL_FINGERMOTION && e.tfinger.fingerID == activeFinger) {
                 float y = e.tfinger.y * winH;
                 float dy = y - lastFingerY;
                 lastFingerY = y;
@@ -109,7 +110,7 @@ std::string RunLevelSelect(SDL_Window* win, SDL_Renderer* ren) {
                 if (scrollY < 0) scrollY = 0;
                 if (scrollY > maxScroll) scrollY = maxScroll;
             }
-            if (e.type == SDL_FINGERUP && e.tfinger.fingerId == activeFinger) {
+            if (e.type == SDL_FINGERUP && e.tfinger.fingerID == activeFinger) {
                 float y = e.tfinger.y * winH;
                 if (!fingerMoved) {
                     int localY = (int)std::lround(y) - pad + scrollY;
@@ -129,14 +130,14 @@ std::string RunLevelSelect(SDL_Window* win, SDL_Renderer* ren) {
                 fingerMoved = false;
             }
             if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
-                SDL_Point pt{e.button.x, e.button.y};
+                SDL_Point pt{(int)e.button.x, (int)e.button.y};
                 if (SDL_PointInRect(&pt, &thumb)) {
                     draggingScrollbar = true;
-                    dragOffsetY = e.button.y - thumb.y;
+                    dragOffsetY = (int)e.button.y - thumb.y;
                     continue;
                 }
                 if (SDL_PointInRect(&pt, &track)) {
-                    int newThumbY = std::clamp(e.button.y - thumbH / 2, track.y, track.y + track.h - thumbH);
+                    int newThumbY = std::clamp((int)e.button.y - thumbH / 2, track.y, track.y + track.h - thumbH);
                     float t = (float)(newThumbY - track.y) / (float)std::max(1, track.h - thumbH);
                     scrollY = (int)std::lround(t * maxScroll);
                     continue;
@@ -146,12 +147,12 @@ std::string RunLevelSelect(SDL_Window* win, SDL_Renderer* ren) {
                 draggingScrollbar = false;
             }
             if (e.type == SDL_MOUSEMOTION && draggingScrollbar) {
-                int newThumbY = std::clamp(e.motion.y - dragOffsetY, track.y, track.y + track.h - thumbH);
+                int newThumbY = std::clamp((int)e.motion.y - dragOffsetY, track.y, track.y + track.h - thumbH);
                 float t = (float)(newThumbY - track.y) / (float)std::max(1, track.h - thumbH);
                 scrollY = (int)std::lround(t * maxScroll);
             }
             if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
-                int y = e.button.y - pad + scrollY;
+                int y = (int)e.button.y - pad + scrollY;
                 if (y >= 0) {
                     int idx = y / rowH;
                     if (idx >= 0 && idx < (int)levels.size()) {
@@ -164,22 +165,22 @@ std::string RunLevelSelect(SDL_Window* win, SDL_Renderer* ren) {
                 }
             }
             if (e.type == SDL_KEYDOWN && e.key.repeat == 0) {
-                if (e.key.keysym.sym == SDLK_ESCAPE || e.key.keysym.sym == SDLK_AC_BACK) {
+                if (e.key.key == SDLK_ESCAPE || e.key.key == SDLK_AC_BACK) {
                     running = false;
                     break;
                 }
-                if (e.key.keysym.sym == SDLK_DOWN) {
+                if (e.key.key == SDLK_DOWN) {
                     selected = std::min(selected + 1, (int)levels.size() - 1);
                     int rowTop = selected * rowH;
                     int rowBottom = rowTop + rowH;
                     if (rowBottom - scrollY > pad + viewportH) scrollY = rowBottom - viewportH;
                 }
-                if (e.key.keysym.sym == SDLK_UP) {
+                if (e.key.key == SDLK_UP) {
                     selected = std::max(selected - 1, 0);
                     int rowTop = selected * rowH;
                     if (rowTop < scrollY) scrollY = rowTop;
                 }
-                if (e.key.keysym.sym == SDLK_RETURN || e.key.keysym.sym == SDLK_KP_ENTER) {
+                if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) {
                     chosen = true;
                     running = false;
                 }

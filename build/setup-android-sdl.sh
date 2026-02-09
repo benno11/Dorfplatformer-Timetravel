@@ -3,9 +3,9 @@ set -euo pipefail
 
 # Prevent silent hangs on network operations.
 export GIT_TERMINAL_PROMPT=0
-NETWORK_TIMEOUT_SECONDS="${NETWORK_TIMEOUT_SECONDS:-900}"
+NETWORK_TIMEOUT_SECONDS="${NETWORK_TIMEOUT_SECONDS:-180}"
 
-# Build and stage SDL2, SDL2_image, SDL2_ttf, SDL2_mixer for Android into deps/android
+# Build and stage SDL3, SDL3_image, SDL3_ttf, SDL3_mixer for Android into deps/android
 #
 # Usage:
 #   ./build/setup-android-sdl.sh
@@ -15,10 +15,10 @@ NETWORK_TIMEOUT_SECONDS="${NETWORK_TIMEOUT_SECONDS:-900}"
 #   ANDROID_NDK_HOME
 #
 # Output layout (used by build/android.sh):
-#   deps/android/include/SDL2/...
-#   deps/android/lib/<abi>/libSDL2.so
-#   deps/android/lib/<abi>/libSDL2_image.so
-#   deps/android/lib/<abi>/libSDL2_ttf.so
+#   deps/android/include/SDL3/...
+#   deps/android/lib/<abi>/libSDL3.so
+#   deps/android/lib/<abi>/libSDL3_image.so
+#   deps/android/lib/<abi>/libSDL3_ttf.so
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
@@ -104,7 +104,23 @@ run_with_timeout() {
   if command -v timeout >/dev/null 2>&1; then
     timeout "$NETWORK_TIMEOUT_SECONDS" "$@"
   else
-    "$@"
+    # Portable fallback when coreutils timeout is unavailable.
+    "$@" &
+    local cmd_pid=$!
+    local waited=0
+    while kill -0 "$cmd_pid" 2>/dev/null; do
+      if [ "$waited" -ge "$NETWORK_TIMEOUT_SECONDS" ]; then
+        kill "$cmd_pid" 2>/dev/null || true
+        sleep 1
+        kill -9 "$cmd_pid" 2>/dev/null || true
+        wait "$cmd_pid" 2>/dev/null || true
+        echo "[ERROR] Command timed out after ${NETWORK_TIMEOUT_SECONDS}s: $*" >&2
+        return 124
+      fi
+      sleep 1
+      waited=$((waited + 1))
+    done
+    wait "$cmd_pid"
   fi
 }
 
@@ -115,48 +131,47 @@ clone_or_update() {
   shift 3
   local fallbacks=("$@")
   local dir="$SRC_ROOT/$name"
-  local chosen_ref="$ref"
-  local remote_ref=""
+  local candidates=("$ref" "${fallbacks[@]}")
+  local chosen_ref=""
+  local candidate=""
+  local ok=0
 
-  resolve_remote_ref() {
-    local candidate="$1"
-    if run_with_timeout git ls-remote --exit-code --heads "$url" "$candidate" >/dev/null 2>&1; then
-      echo "refs/heads/$candidate"
-      return 0
-    fi
-    if run_with_timeout git ls-remote --exit-code --tags "$url" "$candidate" >/dev/null 2>&1; then
-      echo "refs/tags/$candidate"
-      return 0
-    fi
-    return 1
-  }
+  echo "[INFO] Resolving ref for $name (requested: $ref)"
 
-  if remote_ref="$(resolve_remote_ref "$chosen_ref")"; then
-    :
-  else
-    for alt in "${fallbacks[@]}"; do
-      if remote_ref="$(resolve_remote_ref "$alt")"; then
-        echo "[WARN] $name ref '$chosen_ref' not found, using '$alt'"
-        chosen_ref="$alt"
+  if [ ! -d "$dir/.git" ]; then
+    for candidate in "${candidates[@]}"; do
+      [ -n "$candidate" ] || continue
+      echo "[INFO] Cloning $name ($candidate)"
+      rm -rf "$dir"
+      if run_with_timeout git clone --depth 1 --branch "$candidate" "$url" "$dir"; then
+        chosen_ref="$candidate"
+        ok=1
         break
       fi
+      echo "[WARN] Failed to clone $name with ref '$candidate'"
+    done
+  else
+    for candidate in "${candidates[@]}"; do
+      [ -n "$candidate" ] || continue
+      echo "[INFO] Updating $name ($candidate)"
+      if run_with_timeout git -C "$dir" fetch --depth 1 origin "$candidate"; then
+        chosen_ref="$candidate"
+        ok=1
+        break
+      fi
+      echo "[WARN] Failed to update $name with ref '$candidate'"
     done
   fi
 
-  if [ -z "$remote_ref" ]; then
+  if [ "$ok" -ne 1 ]; then
     echo "[ERROR] Could not find a valid ref for $name"
     echo "        Tried: $ref ${fallbacks[*]}"
     exit 1
   fi
 
-  if [ ! -d "$dir/.git" ]; then
-    echo "[INFO] Cloning $name ($chosen_ref)"
-    run_with_timeout git clone --depth 1 --branch "$chosen_ref" "$url" "$dir"
-  else
-    echo "[INFO] Updating $name ($chosen_ref)"
-    run_with_timeout git -C "$dir" fetch --depth 1 origin "$chosen_ref" || run_with_timeout git -C "$dir" fetch --depth 1 origin "$remote_ref"
-    git -C "$dir" checkout -f "$chosen_ref" || git -C "$dir" checkout -f "origin/$chosen_ref" || git -C "$dir" checkout -f FETCH_HEAD
-    git -C "$dir" reset --hard "origin/$chosen_ref" || git -C "$dir" reset --hard FETCH_HEAD || true
+  if [ -d "$dir/.git" ]; then
+    git -C "$dir" checkout -f FETCH_HEAD
+    git -C "$dir" reset --hard FETCH_HEAD
   fi
 }
 
@@ -189,20 +204,26 @@ cmake_android() {
   cmake --install "$bld"
 }
 
-SDL_REF="${SDL_REF:-release-2.32.x}"
-SDL_IMAGE_REF="${SDL_IMAGE_REF:-release-2.8.x}"
-SDL_TTF_REF="${SDL_TTF_REF:-release-2.24.x}"
-SDL_MIXER_REF="${SDL_MIXER_REF:-release-2.8.x}"
+SDL_REF="${SDL_REF:-release-3.4.x}"
+SDL_IMAGE_REF="${SDL_IMAGE_REF:-main}"
+SDL_TTF_REF="${SDL_TTF_REF:-main}"
+SDL_MIXER_REF="${SDL_MIXER_REF:-main}"
 
-clone_or_update "SDL" "https://github.com/libsdl-org/SDL.git" "$SDL_REF" "release-2.32.x" "release-2.32" "release-2.30.x" "main"
-clone_or_update "SDL_image" "https://github.com/libsdl-org/SDL_image.git" "$SDL_IMAGE_REF" "release-2.8" "main"
-clone_or_update "SDL_ttf" "https://github.com/libsdl-org/SDL_ttf.git" "$SDL_TTF_REF" "release-2.24" "main"
-clone_or_update "SDL_mixer" "https://github.com/libsdl-org/SDL_mixer.git" "$SDL_MIXER_REF" "release-2.8" "main"
+clone_or_update "SDL" "https://github.com/libsdl-org/SDL.git" "$SDL_REF" "release-3.4.x" "release-3.4" "main"
+clone_or_update "SDL_image" "https://github.com/libsdl-org/SDL_image.git" "$SDL_IMAGE_REF" "main"
+clone_or_update "SDL_ttf" "https://github.com/libsdl-org/SDL_ttf.git" "$SDL_TTF_REF" "main"
+clone_or_update "SDL_mixer" "https://github.com/libsdl-org/SDL_mixer.git" "$SDL_MIXER_REF" "main"
 sync_submodules "$SRC_ROOT/SDL_image"
 sync_submodules "$SRC_ROOT/SDL_ttf"
 sync_submodules "$SRC_ROOT/SDL_mixer"
 
-echo "[INFO] Building SDL2"
+if [ ! -f "$SRC_ROOT/SDL/include/SDL3/SDL.h" ]; then
+  echo "[ERROR] SDL source checkout is not SDL3. Ref '$SDL_REF' resolved to an incompatible layout."
+  echo "[HINT] Use an SDL3 ref such as: release-3.4.x"
+  exit 1
+fi
+
+echo "[INFO] Building SDL3"
 cmake_android \
   "$SRC_ROOT/SDL" \
   "$BUILD_ROOT/SDL" \
@@ -211,50 +232,56 @@ cmake_android \
   -DSDL_STATIC=OFF \
   -DSDL_TESTS=OFF
 
-SDL2_CMAKE_DIR="$INSTALL_ROOT/SDL/lib/cmake/SDL2"
+SDL3_CMAKE_DIR="$INSTALL_ROOT/SDL/lib/cmake/SDL3"
 
-echo "[INFO] Building SDL2_image"
+echo "[INFO] Building SDL3_image"
 cmake_android \
   "$SRC_ROOT/SDL_image" \
   "$BUILD_ROOT/SDL_image" \
   "$INSTALL_ROOT/SDL_image" \
-  -DSDL2IMAGE_SAMPLES=OFF \
-  -DSDL2IMAGE_VENDORED=ON \
-  -DSDL2_DIR="$SDL2_CMAKE_DIR"
+  -DBUILD_TESTING=OFF \
+  -DSDL3IMAGE_SAMPLES=OFF \
+  -DSDL3IMAGE_VENDORED=ON \
+  -DSDL3_DIR="$SDL3_CMAKE_DIR"
 
-echo "[INFO] Building SDL2_ttf"
+echo "[INFO] Building SDL3_ttf"
 cmake_android \
   "$SRC_ROOT/SDL_ttf" \
   "$BUILD_ROOT/SDL_ttf" \
   "$INSTALL_ROOT/SDL_ttf" \
-  -DSDL2TTF_SAMPLES=OFF \
-  -DSDL2TTF_VENDORED=ON \
-  -DSDL2TTF_HARFBUZZ=OFF \
-  -DSDL2_DIR="$SDL2_CMAKE_DIR"
+  -DBUILD_TESTING=OFF \
+  -DSDL3TTF_SAMPLES=OFF \
+  -DSDL3TTF_VENDORED=ON \
+  -DSDL3TTF_HARFBUZZ=OFF \
+  -DSDL3_DIR="$SDL3_CMAKE_DIR"
 
-echo "[INFO] Building SDL2_mixer"
+echo "[INFO] Building SDL3_mixer"
 cmake_android \
   "$SRC_ROOT/SDL_mixer" \
   "$BUILD_ROOT/SDL_mixer" \
   "$INSTALL_ROOT/SDL_mixer" \
-  -DSDL2MIXER_SAMPLES=OFF \
-  -DSDL2MIXER_VENDORED=ON \
-  -DSDL2MIXER_OPUS=ON \
-  -DSDL2MIXER_MOD=OFF \
-  -DSDL2MIXER_MIDI=OFF \
-  -DSDL2_DIR="$SDL2_CMAKE_DIR"
+  -DBUILD_TESTING=OFF \
+  -DSDLMIXER_TESTS=OFF \
+  -DSDLMIXER_EXAMPLES=OFF \
+  -DSDLMIXER_VENDORED=ON \
+  -DSDLMIXER_OPUS=ON \
+  -DSDLMIXER_MOD=OFF \
+  -DSDLMIXER_MIDI=OFF \
+  -DSDL3_DIR="$SDL3_CMAKE_DIR"
 
 # Stage include and libs in a unified root.
 rm -rf "$STAGE_ROOT/include"
-mkdir -p "$STAGE_ROOT/include/SDL2" "$STAGE_ROOT/lib/$ABI"
+mkdir -p "$STAGE_ROOT/include/SDL3" "$STAGE_ROOT/lib/$ABI"
 
 copy_headers() {
   local from="$1"
-  if [ -d "$from/include/SDL2" ]; then
-    cp -a "$from/include/SDL2/." "$STAGE_ROOT/include/SDL2/"
-  elif [ -d "$from/include" ]; then
-    # Some packages may stage headers directly in include/
-    find "$from/include" -maxdepth 1 -type f -name '*.h' -exec cp -a {} "$STAGE_ROOT/include/SDL2/" \;
+  if [ -d "$from/include/SDL3" ]; then
+    cp -a "$from/include/SDL3/." "$STAGE_ROOT/include/SDL3/"
+  fi
+  # Keep a flattened SDL3 include layout expected by existing build scripts:
+  # include/SDL3/SDL_image.h, include/SDL3/SDL_ttf.h, include/SDL3/SDL_mixer.h.
+  if [ -d "$from/include" ]; then
+    find "$from/include" -mindepth 1 -maxdepth 2 -type f -name '*.h' -exec cp -a {} "$STAGE_ROOT/include/SDL3/" \;
   fi
 }
 
@@ -275,26 +302,26 @@ copy_libs "$INSTALL_ROOT/SDL_image/lib"
 copy_libs "$INSTALL_ROOT/SDL_ttf/lib"
 copy_libs "$INSTALL_ROOT/SDL_mixer/lib"
 
-if [ ! -f "$STAGE_ROOT/lib/$ABI/libSDL2.so" ]; then
-  echo "[WARN] Could not find libSDL2.so in staged output."
+if [ ! -f "$STAGE_ROOT/lib/$ABI/libSDL3.so" ]; then
+  echo "[WARN] Could not find libSDL3.so in staged output."
 fi
 
 echo "[OK] Staged Android SDL deps at: $STAGE_ROOT"
-if [ -f "$STAGE_ROOT/include/SDL2/SDL_version.h" ]; then
-  SDL_MAJOR="$(awk '/#define[[:space:]]+SDL_MAJOR_VERSION[[:space:]]+[0-9]+/{print $3; exit}' "$STAGE_ROOT/include/SDL2/SDL_version.h")"
-  SDL_MINOR="$(awk '/#define[[:space:]]+SDL_MINOR_VERSION[[:space:]]+[0-9]+/{print $3; exit}' "$STAGE_ROOT/include/SDL2/SDL_version.h")"
-  SDL_PATCH="$(awk '/#define[[:space:]]+SDL_MICRO_VERSION[[:space:]]+[0-9]+/{print $3; exit}' "$STAGE_ROOT/include/SDL2/SDL_version.h")"
+if [ -f "$STAGE_ROOT/include/SDL3/SDL_version.h" ]; then
+  SDL_MAJOR="$(awk '/#define[[:space:]]+SDL_MAJOR_VERSION[[:space:]]+[0-9]+/{print $3; exit}' "$STAGE_ROOT/include/SDL3/SDL_version.h")"
+  SDL_MINOR="$(awk '/#define[[:space:]]+SDL_MINOR_VERSION[[:space:]]+[0-9]+/{print $3; exit}' "$STAGE_ROOT/include/SDL3/SDL_version.h")"
+  SDL_PATCH="$(awk '/#define[[:space:]]+SDL_MICRO_VERSION[[:space:]]+[0-9]+/{print $3; exit}' "$STAGE_ROOT/include/SDL3/SDL_version.h")"
   if [ -z "$SDL_PATCH" ]; then
-    SDL_PATCH="$(awk '/#define[[:space:]]+SDL_PATCHLEVEL[[:space:]]+[0-9]+/{print $3; exit}' "$STAGE_ROOT/include/SDL2/SDL_version.h")"
+    SDL_PATCH="$(awk '/#define[[:space:]]+SDL_PATCHLEVEL[[:space:]]+[0-9]+/{print $3; exit}' "$STAGE_ROOT/include/SDL3/SDL_version.h")"
   fi
   echo "[INFO] Staged SDL header version: ${SDL_MAJOR:-0}.${SDL_MINOR:-0}.${SDL_PATCH:-0}"
 fi
 cat > "$ROOT_DIR/build/android.env" <<ENV
 export ANDROID_NDK_HOME="$ANDROID_NDK_HOME"
-export SDL2_ANDROID_ROOT="$STAGE_ROOT"
-export SDL2_IMAGE_ROOT="$STAGE_ROOT"
-export SDL2_TTF_ROOT="$STAGE_ROOT"
-export SDL2_MIXER_ROOT="$STAGE_ROOT"
+export SDL3_ANDROID_ROOT="$STAGE_ROOT"
+export SDL3_IMAGE_ROOT="$STAGE_ROOT"
+export SDL3_TTF_ROOT="$STAGE_ROOT"
+export SDL3_MIXER_ROOT="$STAGE_ROOT"
 ENV
 
 echo "[OK] Wrote: $ROOT_DIR/build/android.env"

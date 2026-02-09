@@ -1121,13 +1121,13 @@ events:
     kind: "find_package-v1"
     backtrace:
       - "CMakeLists.txt:44 (find_package)"
-    name: "SDL2"
+    name: "sdl3"
     configs:
       -
-        filename: "SDL2Config.cmake"
+        filename: "sdl3Config.cmake"
         kind: "cmake"
       -
-        filename: "sdl2-config.cmake"
+        filename: "sdl3-config.cmake"
         kind: "cmake"
     version_request:
       exact: false
@@ -1138,7 +1138,7 @@ events:
       policy_scope: true
       bypass_provider: false
       names:
-        - "SDL2"
+        - "sdl3"
       path_suffixes:
         - ""
       paths:
@@ -1153,73 +1153,73 @@ events:
         CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
     candidates:
       -
-        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/SDL2Config.cmake"
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/sdl3Config.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/sdl2-config.cmake"
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/sdl3-config.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/home/benno111/.cargo/SDL2Config.cmake"
+        path: "/home/benno111/.cargo/sdl3Config.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/home/benno111/.cargo/sdl2-config.cmake"
+        path: "/home/benno111/.cargo/sdl3-config.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/home/benno111/.local/SDL2Config.cmake"
+        path: "/home/benno111/.local/sdl3Config.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/home/benno111/.local/sdl2-config.cmake"
+        path: "/home/benno111/.local/sdl3-config.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/home/benno111/.codex/tmp/arg0/codex-arg0acTai9/SDL2Config.cmake"
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg0acTai9/sdl3Config.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/home/benno111/.codex/tmp/arg0/codex-arg0acTai9/sdl2-config.cmake"
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg0acTai9/sdl3-config.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/app/SDL2Config.cmake"
+        path: "/app/sdl3Config.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/app/sdl2-config.cmake"
+        path: "/app/sdl3-config.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/usr/SDL2Config.cmake"
+        path: "/usr/sdl3Config.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/usr/sdl2-config.cmake"
+        path: "/usr/sdl3-config.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL2_net/SDL2Config.cmake"
+        path: "/usr/lib/x86_64-linux-gnu/cmake/sdl3_net/sdl3Config.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL2_net/sdl2-config.cmake"
+        path: "/usr/lib/x86_64-linux-gnu/cmake/sdl3_net/sdl3-config.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL2_mixer/SDL2Config.cmake"
+        path: "/usr/lib/x86_64-linux-gnu/cmake/sdl3_mixer/sdl3Config.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL2_mixer/sdl2-config.cmake"
+        path: "/usr/lib/x86_64-linux-gnu/cmake/sdl3_mixer/sdl3-config.cmake"
         mode: "config"
         reason: "no_exist"
     found:
-      path: "/usr/lib/x86_64-linux-gnu/cmake/SDL2/SDL2Config.cmake"
+      path: "/usr/lib/x86_64-linux-gnu/cmake/sdl3/sdl3Config.cmake"
       mode: "config"
-      version: "2.32.62"
+      version: "3.4.62"
     search_context:
       ENV{PATH}:
         - "/home/benno111/.cargo/bin"
@@ -1246,13 +1246,13 @@ events:
     kind: "find_package-v1"
     backtrace:
       - "CMakeLists.txt:45 (find_package)"
-    name: "SDL2_image"
+    name: "sdl3_image"
     configs:
       -
-        filename: "SDL2_imageConfig.cmake"
+        filename: "sdl3_imageConfig.cmake"
         kind: "cmake"
       -
-        filename: "sdl2_image-config.cmake"
+        filename: "sdl3_image-config.cmake"
         kind: "cmake"
     version_request:
       exact: false
@@ -1263,7 +1263,7 @@ events:
       policy_scope: true
       bypass_provider: false
       names:
-        - "SDL2_image"
+        - "sdl3_image"
       path_suffixes:
         - ""
       paths:
@@ -1278,75 +1278,75 @@ events:
         CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
     candidates:
       -
-        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/SDL2_imageConfig.cmake"
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/sdl3_imageConfig.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/sdl2_image-config.cmake"
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/sdl3_image-config.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/home/benno111/.cargo/SDL2_imageConfig.cmake"
+        path: "/home/benno111/.cargo/sdl3_imageConfig.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/home/benno111/.cargo/sdl2_image-config.cmake"
+        path: "/home/benno111/.cargo/sdl3_image-config.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/home/benno111/.local/SDL2_imageConfig.cmake"
+        path: "/home/benno111/.local/sdl3_imageConfig.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/home/benno111/.local/sdl2_image-config.cmake"
+        path: "/home/benno111/.local/sdl3_image-config.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/home/benno111/.codex/tmp/arg0/codex-arg0acTai9/SDL2_imageConfig.cmake"
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg0acTai9/sdl3_imageConfig.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/home/benno111/.codex/tmp/arg0/codex-arg0acTai9/sdl2_image-config.cmake"
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg0acTai9/sdl3_image-config.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/app/SDL2_imageConfig.cmake"
+        path: "/app/sdl3_imageConfig.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/app/sdl2_image-config.cmake"
+        path: "/app/sdl3_image-config.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/usr/SDL2_imageConfig.cmake"
+        path: "/usr/sdl3_imageConfig.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/usr/sdl2_image-config.cmake"
+        path: "/usr/sdl3_image-config.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.71-linux-x64/bin/linux-x86_64/SDL2_imageConfig.cmake"
+        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.71-linux-x64/bin/linux-x86_64/sdl3_imageConfig.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.71-linux-x64/bin/linux-x86_64/sdl2_image-config.cmake"
+        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.71-linux-x64/bin/linux-x86_64/sdl3_image-config.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/SDL2_imageConfig.cmake"
+        path: "/sdl3_imageConfig.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/sdl2_image-config.cmake"
+        path: "/sdl3_image-config.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/opt/SDL2_imageConfig.cmake"
+        path: "/opt/sdl3_imageConfig.cmake"
         mode: "config"
         reason: "no_exist"
       -
-        path: "/opt/sdl2_image-config.cmake"
+        path: "/opt/sdl3_image-config.cmake"
         mode: "config"
         reason: "no_exist"
     found: null

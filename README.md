@@ -1,8 +1,8 @@
 Platformer Engine
 
 Features included:
-- SDL2 C++ 2D platformer
-- SDL2 version required: 2.32.11 or newer
+- sdl3 C++ 2D platformer
+- sdl3 version required: 3.4.0 or newer
 - Background + solid tile grids
 - Tilesheet-based BG rendering
 - Object system (ID-based, JSON-defined)

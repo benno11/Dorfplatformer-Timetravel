@@ -8,15 +8,15 @@ unset CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH INCLUDE LIBRARY_PATH LD_LIBRARY_PA
 #
 # Required env vars:
 #   ANDROID_NDK_HOME   -> path to Android NDK
-#   SDL2_ANDROID_ROOT  -> root folder containing Android builds of SDL2 libs/includes
+#   SDL3_ANDROID_ROOT  -> root folder containing Android builds of SDL3 libs/includes
 #
 # Optional env vars:
 #   API                -> Android API level (default: 24)
 #   ABI                -> arm64-v8a | armeabi-v7a | x86_64 | x86 (default: arm64-v8a)
 #   FAST               -> 1 for fast iteration build flags (default: 0)
-#   SDL2_IMAGE_ROOT    -> root folder for SDL2_image Android build
-#   SDL2_TTF_ROOT      -> root folder for SDL2_ttf Android build
-#   SDL2_MIXER_ROOT    -> root folder for SDL2_mixer Android build
+#   SDL3_IMAGE_ROOT    -> root folder for SDL3_image Android build
+#   SDL3_TTF_ROOT      -> root folder for SDL3_ttf Android build
+#   SDL3_MIXER_ROOT    -> root folder for SDL3_mixer Android build
 #
 # Expected folder layout per *_ROOT:
 #   include/
@@ -32,12 +32,12 @@ fi
 
 FORCE_STAGED_SDL_ROOT="${FORCE_STAGED_SDL_ROOT:-1}"
 if [ "$FORCE_STAGED_SDL_ROOT" = "1" ]; then
-  SDL2_ANDROID_ROOT="$PWD/deps/android"
-  SDL2_IMAGE_ROOT="$SDL2_ANDROID_ROOT"
-  SDL2_TTF_ROOT="$SDL2_ANDROID_ROOT"
-  SDL2_MIXER_ROOT="$SDL2_ANDROID_ROOT"
-  export SDL2_ANDROID_ROOT SDL2_IMAGE_ROOT SDL2_TTF_ROOT SDL2_MIXER_ROOT
-  echo "[INFO] FORCE_STAGED_SDL_ROOT=1 -> using staged SDL root: $SDL2_ANDROID_ROOT"
+  SDL3_ANDROID_ROOT="$PWD/deps/android"
+  SDL3_IMAGE_ROOT="$SDL3_ANDROID_ROOT"
+  SDL3_TTF_ROOT="$SDL3_ANDROID_ROOT"
+  SDL3_MIXER_ROOT="$SDL3_ANDROID_ROOT"
+  export SDL3_ANDROID_ROOT SDL3_IMAGE_ROOT SDL3_TTF_ROOT SDL3_MIXER_ROOT
+  echo "[INFO] FORCE_STAGED_SDL_ROOT=1 -> using staged SDL root: $SDL3_ANDROID_ROOT"
 fi
 
 if [ -z "${ANDROID_NDK_HOME:-}" ]; then
@@ -63,67 +63,67 @@ if [ -z "${ANDROID_NDK_HOME:-}" ] && [ -d "$HOME/Android/Sdk/ndk" ]; then
   fi
 fi
 
-if [ -z "${SDL2_ANDROID_ROOT:-}" ]; then
+if [ -z "${SDL3_ANDROID_ROOT:-}" ]; then
   for c in \
     "$PWD/deps/android" \
     "$PWD/deps/android-sdl" \
     "$PWD/deps/sdl-android" \
     "$PWD/deps/SDL-android" \
-    "$HOME/Android/SDL2-android" \
-    "$HOME/Android/SDL2" \
-    "$HOME/SDL2-android" \
-    "$HOME/Android/sdl2"; do
+    "$HOME/Android/sdl3-android" \
+    "$HOME/Android/sdl3" \
+    "$HOME/sdl3-android" \
+    "$HOME/Android/sdl3"; do
     if [ -d "$c/include" ] && [ -d "$c/lib" ] && \
        { [ -d "$c/lib/arm64-v8a" ] || [ -d "$c/lib/armeabi-v7a" ] || [ -d "$c/lib/x86_64" ] || [ -d "$c/lib/x86" ]; }; then
-      SDL2_ANDROID_ROOT="$c"
-      export SDL2_ANDROID_ROOT
+      SDL3_ANDROID_ROOT="$c"
+      export SDL3_ANDROID_ROOT
       break
     fi
   done
 fi
 
 : "${ANDROID_NDK_HOME:?Set ANDROID_NDK_HOME}"
-if [ -z "${SDL2_ANDROID_ROOT:-}" ]; then
-  echo "[ERROR] SDL2_ANDROID_ROOT not found."
+if [ -z "${SDL3_ANDROID_ROOT:-}" ]; then
+  echo "[ERROR] SDL3_ANDROID_ROOT not found."
   echo "[HINT] Expected layout:"
   echo "       <root>/include"
   echo "       <root>/lib/<abi>"
   echo "[HINT] Set it explicitly, for example:"
-  echo "       SDL2_ANDROID_ROOT=/path/to/sdl-android ./build/android.sh"
+  echo "       SDL3_ANDROID_ROOT=/path/to/sdl-android ./build/android.sh"
   echo "[INFO] Checked candidates:"
   printf '  - %s\n' \
     "$PWD/deps/android" \
     "$PWD/deps/android-sdl" \
     "$PWD/deps/sdl-android" \
     "$PWD/deps/SDL-android" \
-    "$HOME/Android/SDL2-android" \
-    "$HOME/Android/SDL2" \
-    "$HOME/SDL2-android" \
-    "$HOME/Android/sdl2"
+    "$HOME/Android/sdl3-android" \
+    "$HOME/Android/sdl3" \
+    "$HOME/sdl3-android" \
+    "$HOME/Android/sdl3"
   exit 1
 fi
 
-if [ ! -f "$SDL2_ANDROID_ROOT/include/SDL2/SDL.h" ]; then
-  echo "[ERROR] Missing staged SDL headers: $SDL2_ANDROID_ROOT/include/SDL2/SDL.h"
+if [ ! -f "$SDL3_ANDROID_ROOT/include/SDL3/SDL.h" ]; then
+  echo "[ERROR] Missing staged SDL headers: $SDL3_ANDROID_ROOT/include/SDL3/SDL.h"
   echo "[HINT] Run: ./build/setup-android-sdl.sh"
   exit 1
 fi
-SDL2_IMAGE_ROOT="${SDL2_IMAGE_ROOT:-$SDL2_ANDROID_ROOT}"
-SDL2_TTF_ROOT="${SDL2_TTF_ROOT:-$SDL2_ANDROID_ROOT}"
-SDL2_MIXER_ROOT="${SDL2_MIXER_ROOT:-$SDL2_ANDROID_ROOT}"
+SDL3_IMAGE_ROOT="${SDL3_IMAGE_ROOT:-$SDL3_ANDROID_ROOT}"
+SDL3_TTF_ROOT="${SDL3_TTF_ROOT:-$SDL3_ANDROID_ROOT}"
+SDL3_MIXER_ROOT="${SDL3_MIXER_ROOT:-$SDL3_ANDROID_ROOT}"
 
-if [ ! -f "$SDL2_IMAGE_ROOT/include/SDL2/SDL_image.h" ]; then
-  echo "[ERROR] Missing staged SDL_image headers: $SDL2_IMAGE_ROOT/include/SDL2/SDL_image.h"
+if [ ! -f "$SDL3_IMAGE_ROOT/include/SDL3/SDL_image.h" ]; then
+  echo "[ERROR] Missing staged SDL_image headers: $SDL3_IMAGE_ROOT/include/SDL3/SDL_image.h"
   echo "[HINT] Run: ./build/setup-android-sdl.sh"
   exit 1
 fi
-if [ ! -f "$SDL2_TTF_ROOT/include/SDL2/SDL_ttf.h" ]; then
-  echo "[ERROR] Missing staged SDL_ttf headers: $SDL2_TTF_ROOT/include/SDL2/SDL_ttf.h"
+if [ ! -f "$SDL3_TTF_ROOT/include/SDL3/SDL_ttf.h" ]; then
+  echo "[ERROR] Missing staged SDL_ttf headers: $SDL3_TTF_ROOT/include/SDL3/SDL_ttf.h"
   echo "[HINT] Run: ./build/setup-android-sdl.sh"
   exit 1
 fi
-if [ ! -f "$SDL2_MIXER_ROOT/include/SDL2/SDL_mixer.h" ]; then
-  echo "[ERROR] Missing staged SDL_mixer headers: $SDL2_MIXER_ROOT/include/SDL2/SDL_mixer.h"
+if [ ! -f "$SDL3_MIXER_ROOT/include/SDL3/SDL_mixer.h" ]; then
+  echo "[ERROR] Missing staged SDL_mixer headers: $SDL3_MIXER_ROOT/include/SDL3/SDL_mixer.h"
   echo "[HINT] Run: ./build/setup-android-sdl.sh"
   exit 1
 fi
@@ -131,7 +131,7 @@ fi
 API="${API:-24}"
 ABI="${ABI:-arm64-v8a}"
 FAST="${FAST:-0}"
-SDL_REQUIRED_VERSION="${SDL_REQUIRED_VERSION:-2.32.11}"
+SDL_REQUIRED_VERSION="${SDL_REQUIRED_VERSION:-3.4.0}"
 ver_ge() {
   local a="$1" b="$2"
   local a1 a2 a3 b1 b2 b3
@@ -179,10 +179,10 @@ OUT_DIR="build/android/$ABI"
 mkdir -p "$OUT_DIR"
 rm -f \
   "$OUT_DIR/libplatformer.so" \
-  "$OUT_DIR/libSDL2.so" \
-  "$OUT_DIR/libSDL2_image.so" \
-  "$OUT_DIR/libSDL2_ttf.so" \
-  "$OUT_DIR/libSDL2_mixer.so"
+  "$OUT_DIR/libSDL3.so" \
+  "$OUT_DIR/libSDL3_image.so" \
+  "$OUT_DIR/libSDL3_ttf.so" \
+  "$OUT_DIR/libSDL3_mixer.so"
 
 JSON_INCLUDE_ROOT="${JSON_INCLUDE_ROOT:-}"
 
@@ -211,14 +211,14 @@ fi
 
 CPPFLAGS=(
   -I"$JSON_INCLUDE_ROOT"
-  -I"$SDL2_ANDROID_ROOT/include"
-  -I"$SDL2_IMAGE_ROOT/include"
-  -I"$SDL2_TTF_ROOT/include"
-  -I"$SDL2_MIXER_ROOT/include"
+  -I"$SDL3_ANDROID_ROOT/include"
+  -I"$SDL3_IMAGE_ROOT/include"
+  -I"$SDL3_TTF_ROOT/include"
+  -I"$SDL3_MIXER_ROOT/include"
 )
 
 SDL_VERSION_PROBE='
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 SDL_MAJOR_VERSION SDL_MINOR_VERSION SDL_PATCHLEVEL
 '
 SDL_VERSION_LINE="$("$CXX" -E -P -x c++ - "${CPPFLAGS[@]}" <<<"$SDL_VERSION_PROBE" 2>/dev/null | tail -n1 || true)"
@@ -227,42 +227,42 @@ SDL_MINOR="$(awk '{print $2}' <<<"$SDL_VERSION_LINE")"
 SDL_PATCH="$(awk '{print $3}' <<<"$SDL_VERSION_LINE")"
 if [ -z "$SDL_MAJOR" ] || [ -z "$SDL_MINOR" ] || [ -z "$SDL_PATCH" ]; then
   echo "[ERROR] Could not detect SDL version from active compile include path."
-  echo "[INFO] SDL2_ANDROID_ROOT=$SDL2_ANDROID_ROOT"
-  echo "[INFO] SDL2_IMAGE_ROOT=$SDL2_IMAGE_ROOT"
-  echo "[INFO] SDL2_TTF_ROOT=$SDL2_TTF_ROOT"
-  echo "[INFO] SDL2_MIXER_ROOT=$SDL2_MIXER_ROOT"
+  echo "[INFO] SDL3_ANDROID_ROOT=$SDL3_ANDROID_ROOT"
+  echo "[INFO] SDL3_IMAGE_ROOT=$SDL3_IMAGE_ROOT"
+  echo "[INFO] SDL3_TTF_ROOT=$SDL3_TTF_ROOT"
+  echo "[INFO] SDL3_MIXER_ROOT=$SDL3_MIXER_ROOT"
   exit 1
 fi
 SDL_STAGED_VERSION="${SDL_MAJOR}.${SDL_MINOR}.${SDL_PATCH}"
 if ! ver_ge "$SDL_STAGED_VERSION" "$SDL_REQUIRED_VERSION"; then
   echo "[ERROR] SDL version too old in compile path: required >= $SDL_REQUIRED_VERSION, found $SDL_STAGED_VERSION"
   echo "[HINT] Rebuild Android SDL with:"
-  echo "       SDL_REF=release-2.32.x FORCE_REBUILD_SDL=1 ./build/setup-android-sdl.sh"
+  echo "       SDL_REF=release-3.4.x FORCE_REBUILD_SDL=1 ./build/setup-android-sdl.sh"
   exit 1
 fi
 echo "[INFO] Using SDL in compile path: $SDL_STAGED_VERSION (required >= $SDL_REQUIRED_VERSION)"
 
 LDFLAGS=(
-  -L"$SDL2_ANDROID_ROOT/lib/$ABI"
-  -L"$SDL2_IMAGE_ROOT/lib/$ABI"
-  -L"$SDL2_TTF_ROOT/lib/$ABI"
-  -lSDL2
-  -lSDL2_image
-  -lSDL2_ttf
-  -lSDL2_mixer
+  -L"$SDL3_ANDROID_ROOT/lib/$ABI"
+  -L"$SDL3_IMAGE_ROOT/lib/$ABI"
+  -L"$SDL3_TTF_ROOT/lib/$ABI"
+  -lSDL3
+  -lSDL3_image
+  -lSDL3_ttf
+  -lSDL3_mixer
   -landroid
   -llog
   -lGLESv2
   -lEGL
   -Wl,--no-undefined
 )
-if [ ! -d "$SDL2_MIXER_ROOT/lib/$ABI" ]; then
-  echo "[ERROR] Missing staged SDL_mixer libs: $SDL2_MIXER_ROOT/lib/$ABI"
+if [ ! -d "$SDL3_MIXER_ROOT/lib/$ABI" ]; then
+  echo "[ERROR] Missing staged SDL_mixer libs: $SDL3_MIXER_ROOT/lib/$ABI"
   echo "[HINT] Run: ./build/setup-android-sdl.sh"
   exit 1
 fi
-LDFLAGS+=( -L"$SDL2_MIXER_ROOT/lib/$ABI" )
-echo "[INFO] SDL2_mixer linked"
+LDFLAGS+=( -L"$SDL3_MIXER_ROOT/lib/$ABI" )
+echo "[INFO] SDL3_mixer linked"
 
 if [ "$FAST" = "1" ]; then
   CXXFLAGS=(
@@ -309,8 +309,8 @@ copy_if_exists() {
     echo "[OK] Synced next to game: $(basename "$src")"
   fi
 }
-copy_if_exists "$SDL2_ANDROID_ROOT/lib/$ABI/libSDL2.so" "$OUT_DIR/libSDL2.so"
-copy_if_exists "$SDL2_IMAGE_ROOT/lib/$ABI/libSDL2_image.so" "$OUT_DIR/libSDL2_image.so"
-copy_if_exists "$SDL2_TTF_ROOT/lib/$ABI/libSDL2_ttf.so" "$OUT_DIR/libSDL2_ttf.so"
-copy_if_exists "$SDL2_MIXER_ROOT/lib/$ABI/libSDL2_mixer.so" "$OUT_DIR/libSDL2_mixer.so"
+copy_if_exists "$SDL3_ANDROID_ROOT/lib/$ABI/libSDL3.so" "$OUT_DIR/libSDL3.so"
+copy_if_exists "$SDL3_IMAGE_ROOT/lib/$ABI/libSDL3_image.so" "$OUT_DIR/libSDL3_image.so"
+copy_if_exists "$SDL3_TTF_ROOT/lib/$ABI/libSDL3_ttf.so" "$OUT_DIR/libSDL3_ttf.so"
+copy_if_exists "$SDL3_MIXER_ROOT/lib/$ABI/libSDL3_mixer.so" "$OUT_DIR/libSDL3_mixer.so"
 echo "[NEXT] Sync into Android app: ABI=$ABI ./build/update-android-app.sh"

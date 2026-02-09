@@ -3,8 +3,8 @@ set -euo pipefail
 
 # Updates SDL version defaults across build scripts/config.
 # Usage:
-#   ./build/set-sdl-version.sh 2.32.11
-#   ./build/set-sdl-version.sh 2.32.11 release-2.32.x
+#   ./build/set-sdl-version.sh 3.4.0
+#   ./build/set-sdl-version.sh 3.4.0 release-3.4.x
 
 if [ $# -lt 1 ] || [ $# -gt 2 ]; then
   echo "Usage: $0 <sdl_version> [sdl_ref]"
@@ -13,7 +13,7 @@ fi
 
 SDL_VERSION="$1"
 if [[ ! "$SDL_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "[ERROR] SDL version must be like: 2.32.11"
+  echo "[ERROR] SDL version must be like: 3.4.0"
   exit 1
 fi
 
@@ -31,7 +31,7 @@ replace_line() {
   local file="$1"
   local pattern="$2"
   local replacement="$3"
-  if ! grep -qE "$pattern" "$file"; then
+  if ! grep -qE -- "$pattern" "$file"; then
     echo "[WARN] Pattern not found in $file: $pattern"
     return
   fi
@@ -43,8 +43,8 @@ replace_line "CMakeLists.txt" \
   "set(PROJECT_SDL_MIN_VERSION \"$SDL_VERSION\")"
 
 replace_line "README.md" \
-  '- SDL2 version required: [0-9]+\.[0-9]+\.[0-9]+ or newer' \
-  "- SDL2 version required: $SDL_VERSION or newer"
+  '- sdl3 version required: [0-9]+\.[0-9]+\.[0-9]+ or newer' \
+  "- sdl3 version required: $SDL_VERSION or newer"
 
 replace_line "build/linux.sh" \
   'SDL_REQUIRED_VERSION="\$\{SDL_REQUIRED_VERSION:-[0-9]+\.[0-9]+\.[0-9]+\}"' \
@@ -55,12 +55,12 @@ replace_line "build/mobile.sh" \
   "SDL_REQUIRED_VERSION=\"\${SDL_REQUIRED_VERSION:-$SDL_VERSION}\""
 
 replace_line "build/dep-linux.sh" \
-  'SDL2_REQUIRED_VERSION="\$\{SDL2_REQUIRED_VERSION:-[0-9]+\.[0-9]+\.[0-9]+\}"' \
-  "SDL2_REQUIRED_VERSION=\"\${SDL2_REQUIRED_VERSION:-$SDL_VERSION}\""
+  'SDL3_REQUIRED_VERSION="\$\{SDL3_REQUIRED_VERSION:-[0-9]+\.[0-9]+\.[0-9]+\}"' \
+  "SDL3_REQUIRED_VERSION=\"\${SDL3_REQUIRED_VERSION:-$SDL_VERSION}\""
 
 replace_line "build/dep-linux.sh" \
-  'SDL2_SOURCE_REF="\$\{SDL2_SOURCE_REF:-[^}]+\}"' \
-  "SDL2_SOURCE_REF=\"\${SDL2_SOURCE_REF:-$SDL_REF}\""
+  'SDL3_SOURCE_REF="\$\{SDL3_SOURCE_REF:-[^}]+\}"' \
+  "SDL3_SOURCE_REF=\"\${SDL3_SOURCE_REF:-$SDL_REF}\""
 
 replace_line "build/setup-android-sdl.sh" \
   'SDL_REF="\$\{SDL_REF:-[^}]+\}"' \

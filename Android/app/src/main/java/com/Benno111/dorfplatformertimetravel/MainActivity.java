@@ -50,10 +50,10 @@ public class MainActivity extends SDLActivity {
     @Override
     protected String[] getLibraries() {
         return new String[] {
-                "SDL2",
-                "SDL2_image",
-                "SDL2_ttf",
-                "SDL2_mixer",
+                "sdl3",
+                "sdl3_image",
+                "sdl3_ttf",
+                "sdl3_mixer",
                 "platformer"
         };
     }

@@ -30,17 +30,17 @@ if [ -f "$ROOT_DIR/build/android.env" ]; then
   . "$ROOT_DIR/build/android.env"
 fi
 
-SDL2_ANDROID_ROOT="${SDL2_ANDROID_ROOT:-$ROOT_DIR/deps/android}"
+SDL3_ANDROID_ROOT="${SDL3_ANDROID_ROOT:-$ROOT_DIR/deps/android}"
 NATIVE_BUILD_LIB="$ROOT_DIR/build/android/$ABI/libplatformer.so"
 NATIVE_LIBS_DST="$APP_MAIN_DIR/jniLibs/$ABI"
 
 mkdir -p "$NATIVE_LIBS_DST"
 rm -f \
   "$NATIVE_LIBS_DST/libplatformer.so" \
-  "$NATIVE_LIBS_DST/libSDL2.so" \
-  "$NATIVE_LIBS_DST/libSDL2_image.so" \
-  "$NATIVE_LIBS_DST/libSDL2_ttf.so" \
-  "$NATIVE_LIBS_DST/libSDL2_mixer.so" \
+  "$NATIVE_LIBS_DST/libSDL3.so" \
+  "$NATIVE_LIBS_DST/libSDL3_image.so" \
+  "$NATIVE_LIBS_DST/libSDL3_ttf.so" \
+  "$NATIVE_LIBS_DST/libSDL3_mixer.so" \
   "$NATIVE_LIBS_DST/libc++_shared.so"
 
 if [ ! -f "$NATIVE_BUILD_LIB" ]; then
@@ -61,10 +61,10 @@ copy_if_exists() {
   fi
 }
 
-copy_if_exists "$SDL2_ANDROID_ROOT/lib/$ABI/libSDL2.so" "$NATIVE_LIBS_DST/libSDL2.so"
-copy_if_exists "${SDL2_IMAGE_ROOT:-$SDL2_ANDROID_ROOT}/lib/$ABI/libSDL2_image.so" "$NATIVE_LIBS_DST/libSDL2_image.so"
-copy_if_exists "${SDL2_TTF_ROOT:-$SDL2_ANDROID_ROOT}/lib/$ABI/libSDL2_ttf.so" "$NATIVE_LIBS_DST/libSDL2_ttf.so"
-copy_if_exists "${SDL2_MIXER_ROOT:-$SDL2_ANDROID_ROOT}/lib/$ABI/libSDL2_mixer.so" "$NATIVE_LIBS_DST/libSDL2_mixer.so"
+copy_if_exists "$SDL3_ANDROID_ROOT/lib/$ABI/libSDL3.so" "$NATIVE_LIBS_DST/libSDL3.so"
+copy_if_exists "${SDL3_IMAGE_ROOT:-$SDL3_ANDROID_ROOT}/lib/$ABI/libSDL3_image.so" "$NATIVE_LIBS_DST/libSDL3_image.so"
+copy_if_exists "${SDL3_TTF_ROOT:-$SDL3_ANDROID_ROOT}/lib/$ABI/libSDL3_ttf.so" "$NATIVE_LIBS_DST/libSDL3_ttf.so"
+copy_if_exists "${SDL3_MIXER_ROOT:-$SDL3_ANDROID_ROOT}/lib/$ABI/libSDL3_mixer.so" "$NATIVE_LIBS_DST/libSDL3_mixer.so"
 
 # Package libc++_shared.so from NDK for runtime linking.
 if [ -z "${ANDROID_NDK_HOME:-}" ]; then

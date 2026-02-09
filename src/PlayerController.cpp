@@ -1,6 +1,6 @@
 #include "PlayerController.h"
 
-#include <SDL2/SDL.h>
+#include <sdl3/SDL.h>
 #include <algorithm>
 #include <cmath>
 
@@ -74,7 +74,7 @@ PlayerUpdateResult UpdatePlayerMovement(
     float& inputMove,
     bool& inputDown
 ) {
-    const Uint8* keys = SDL_GetKeyboardState(nullptr);
+    const bool* keys = SDL_GetKeyboardState(nullptr);
     bool shiftDown = keys[SDL_SCANCODE_LSHIFT] || keys[SDL_SCANCODE_RSHIFT];
     player.freeMove = shiftDown;
 

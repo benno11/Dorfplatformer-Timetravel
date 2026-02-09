@@ -1,6 +1,6 @@
 #include "AssetPath.h"
 
-#include <SDL2/SDL.h>
+#include <sdl3/SDL.h>
 
 #include <vector>
 
@@ -16,18 +16,18 @@ std::string ResolveAssetPath(const std::string& path) {
 
 std::string ReadTextFile(const std::string& path) {
     const std::string resolved = ResolveAssetPath(path);
-    SDL_RWops* rw = SDL_RWFromFile(resolved.c_str(), "rb");
-    if (!rw) return {};
+    SDL_IOStream* io = SDL_IOFromFile(resolved.c_str(), "rb");
+    if (!io) return {};
 
-    const Sint64 sz = SDL_RWsize(rw);
+    const Sint64 sz = SDL_GetIOSize(io);
     if (sz <= 0) {
-        SDL_RWclose(rw);
+        SDL_CloseIO(io);
         return {};
     }
 
     std::vector<char> data(static_cast<size_t>(sz));
-    const size_t got = SDL_RWread(rw, data.data(), 1, data.size());
-    SDL_RWclose(rw);
+    const size_t got = static_cast<size_t>(SDL_ReadIO(io, data.data(), data.size()));
+    SDL_CloseIO(io);
     if (got != data.size()) return {};
 
     return std::string(data.begin(), data.end());
@@ -35,8 +35,8 @@ std::string ReadTextFile(const std::string& path) {
 
 bool FileExists(const std::string& path) {
     const std::string resolved = ResolveAssetPath(path);
-    SDL_RWops* rw = SDL_RWFromFile(resolved.c_str(), "rb");
-    if (!rw) return false;
-    SDL_RWclose(rw);
+    SDL_IOStream* io = SDL_IOFromFile(resolved.c_str(), "rb");
+    if (!io) return false;
+    SDL_CloseIO(io);
     return true;
 }

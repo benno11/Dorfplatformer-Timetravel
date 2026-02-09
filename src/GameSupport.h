@@ -1,12 +1,44 @@
 #pragma once
 
-#include <SDL2/SDL.h>
+#include <sdl3/SDL.h>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 #include "TileMap.h"
 #include "Player.h"
+
+// SDL3 helper overloads for legacy SDL_Rect call sites.
+static inline bool SDL_RenderRect(SDL_Renderer* renderer, const SDL_Rect* rect) {
+    if (!rect) return SDL_RenderRect(renderer, static_cast<const SDL_FRect*>(nullptr));
+    const SDL_FRect r{(float)rect->x, (float)rect->y, (float)rect->w, (float)rect->h};
+    return SDL_RenderRect(renderer, &r);
+}
+
+static inline bool SDL_RenderFillRect(SDL_Renderer* renderer, const SDL_Rect* rect) {
+    if (!rect) return SDL_RenderFillRect(renderer, static_cast<const SDL_FRect*>(nullptr));
+    const SDL_FRect r{(float)rect->x, (float)rect->y, (float)rect->w, (float)rect->h};
+    return SDL_RenderFillRect(renderer, &r);
+}
+
+static inline bool SDL_RenderTexture(SDL_Renderer* renderer, SDL_Texture* texture, const SDL_Rect* srcrect, const SDL_Rect* dstrect) {
+    const SDL_FRect srcf{srcrect ? (float)srcrect->x : 0.0f, srcrect ? (float)srcrect->y : 0.0f, srcrect ? (float)srcrect->w : 0.0f, srcrect ? (float)srcrect->h : 0.0f};
+    const SDL_FRect dstf{dstrect ? (float)dstrect->x : 0.0f, dstrect ? (float)dstrect->y : 0.0f, dstrect ? (float)dstrect->w : 0.0f, dstrect ? (float)dstrect->h : 0.0f};
+    return SDL_RenderTexture(renderer, texture, srcrect ? &srcf : nullptr, dstrect ? &dstf : nullptr);
+}
+
+static inline bool SDL_RenderTextureRotated(SDL_Renderer* renderer, SDL_Texture* texture, const SDL_Rect* srcrect, const SDL_Rect* dstrect, double angle, const SDL_Point* center, SDL_FlipMode flip) {
+    const SDL_FRect srcf{srcrect ? (float)srcrect->x : 0.0f, srcrect ? (float)srcrect->y : 0.0f, srcrect ? (float)srcrect->w : 0.0f, srcrect ? (float)srcrect->h : 0.0f};
+    const SDL_FRect dstf{dstrect ? (float)dstrect->x : 0.0f, dstrect ? (float)dstrect->y : 0.0f, dstrect ? (float)dstrect->w : 0.0f, dstrect ? (float)dstrect->h : 0.0f};
+    SDL_FPoint cf;
+    SDL_FPoint* cfp = nullptr;
+    if (center) {
+      cf.x = (float)center->x;
+      cf.y = (float)center->y;
+      cfp = &cf;
+    }
+    return SDL_RenderTextureRotated(renderer, texture, srcrect ? &srcf : nullptr, dstrect ? &dstf : nullptr, angle, cfp, flip);
+}
 
 struct Frame {
     SDL_Rect rect{0, 0, 0, 0};

@@ -1,7 +1,7 @@
 #include "LevelLoader.h"
 #include "AssetPath.h"
 
-#include <SDL2/SDL.h>
+#include <sdl3/SDL.h>
 #include <string>
 #include <vector>
 #include <cctype>

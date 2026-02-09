@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 project(platformer LANGUAGES CXX)
-set(PROJECT_SDL_MIN_VERSION "2.32.11")
+set(PROJECT_SDL_MIN_VERSION "3.4.0")
 
 message(STATUS "Configuring ${PROJECT_NAME}")
 message(STATUS "CMake version: ${CMAKE_VERSION}")
@@ -42,32 +42,32 @@ add_executable(platformer
 )
 message(STATUS "Added target: platformer")
 
-find_package(SDL2 ${PROJECT_SDL_MIN_VERSION} QUIET)
-if (NOT SDL2_FOUND)
-  message(WARNING "SDL2 ${PROJECT_SDL_MIN_VERSION}+ not found; falling back to system SDL2 version.")
-  find_package(SDL2 REQUIRED)
+find_package(sdl3 ${PROJECT_SDL_MIN_VERSION} QUIET)
+if (NOT sdl3_FOUND)
+  message(WARNING "sdl3 ${PROJECT_SDL_MIN_VERSION}+ not found; falling back to system sdl3 version.")
+  find_package(sdl3 REQUIRED)
 endif()
-find_package(SDL2_image REQUIRED)
-find_package(SDL2_ttf REQUIRED)
-find_package(SDL2_mixer QUIET)
+find_package(sdl3_image REQUIRED)
+find_package(sdl3_ttf REQUIRED)
+find_package(sdl3_mixer QUIET)
 find_package(nlohmann_json REQUIRED)
-message(STATUS "Found SDL2: ${SDL2_VERSION}")
-message(STATUS "Found SDL2_image: ${SDL2_image_VERSION}")
+message(STATUS "Found sdl3: ${sdl3_VERSION}")
+message(STATUS "Found sdl3_image: ${sdl3_image_VERSION}")
 message(STATUS "Found nlohmann_json: ${nlohmann_json_VERSION}")
 
 target_link_libraries(platformer
-  SDL2::SDL2
-  SDL2_image::SDL2_image
-  SDL2_ttf::SDL2_ttf
+  sdl3::sdl3
+  sdl3_image::sdl3_image
+  sdl3_ttf::sdl3_ttf
   nlohmann_json::nlohmann_json
 )
-if (SDL2_mixer_FOUND)
-  target_link_libraries(platformer SDL2_mixer::SDL2_mixer)
-  message(STATUS "Linked platformer: SDL2_mixer::SDL2_mixer")
+if (sdl3_mixer_FOUND)
+  target_link_libraries(platformer sdl3_mixer::sdl3_mixer)
+  message(STATUS "Linked platformer: sdl3_mixer::sdl3_mixer")
 else()
-  message(WARNING "SDL2_mixer not found: music playback disabled")
+  message(WARNING "sdl3_mixer not found: music playback disabled")
 endif()
-message(STATUS "Linked platformer: SDL2::SDL2, nlohmann_json::nlohmann_json")
+message(STATUS "Linked platformer: sdl3::sdl3, nlohmann_json::nlohmann_json")
 
 add_executable(sheet_config
   src/SheetConfigTool.cpp
@@ -75,7 +75,7 @@ add_executable(sheet_config
 message(STATUS "Added target: sheet_config")
 
 target_link_libraries(sheet_config
-  SDL2::SDL2
-  SDL2_image::SDL2_image
+  sdl3::sdl3
+  sdl3_image::sdl3_image
 )
-message(STATUS "Linked sheet_config: SDL2::SDL2, SDL2_image::SDL2_image")
+message(STATUS "Linked sheet_config: sdl3::sdl3, sdl3_image::sdl3_image")

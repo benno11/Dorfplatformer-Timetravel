@@ -1,6 +1,6 @@
 #include "GameSupport.h"
 
-#include <SDL2/SDL_image.h>
+#include <sdl3/SDL_image.h>
 
 #include <algorithm>
 #include <cmath>
@@ -190,7 +190,7 @@ SDL_Texture* loadTextureWithColorKey(SDL_Renderer* ren, const std::string& path,
     const std::string resolved = ResolveAssetPath(path);
     SDL_Surface* surf = IMG_Load(resolved.c_str());
     if (!surf) return nullptr;
-    Uint32 key = SDL_MapRGB(surf->format, r, g, b);
+    Uint32 key = SDL_MapSurfaceRGB(surf, r, g, b);
     SDL_SetColorKey(surf, SDL_TRUE, key);
     SDL_Texture* tex = SDL_CreateTextureFromSurface(ren, surf);
     SDL_FreeSurface(surf);

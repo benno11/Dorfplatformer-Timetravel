@@ -1,7 +1,7 @@
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_image.h>
-#if __has_include(<SDL2/SDL_mixer.h>)
-#include <SDL2/SDL_mixer.h>
+#include <sdl3/SDL.h>
+#include <sdl3/SDL_image.h>
+#if __has_include(<sdl3/SDL_mixer.h>)
+#include <sdl3/SDL_mixer.h>
 #define HAS_SDL_MIXER 1
 #elif __has_include(<SDL_mixer.h>)
 #include <SDL_mixer.h>
@@ -32,6 +32,8 @@
 #include <cstring>
 #include <exception>
 #include <unistd.h>
+#include <cstdlib>
+#include <vector>
 #if defined(__ANDROID__)
 #include <jni.h>
 #endif
@@ -58,21 +60,59 @@ int main(int argc, char** argv) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, title, msg.c_str(), parent);
 #endif
     };
-    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "2");
+    SDL_SetHint("SDL_RENDER_SCALE_QUALITY", "2");
     SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
     SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) {
-        reportStartupError("SDL Init Error", std::string("SDL_Init failed: ") + SDL_GetError(), nullptr);
+    auto sdlErr = []() -> std::string {
+        const char* e = SDL_GetError();
+        if (e && *e) return std::string(e);
+        return "unknown error";
+    };
+    auto envOrUnset = [](const char* name) -> std::string {
+        const char* v = std::getenv(name);
+        return (v && *v) ? std::string(v) : std::string("<unset>");
+    };
+    struct InitAttempt {
+        const char* label;
+        const char* videoDriver; // nullptr means keep current env
+        const char* audioDriver; // nullptr means keep current env
+        Uint32 flags;
+    };
+    std::vector<InitAttempt> attempts = {
+        {"video+audio (env defaults)", nullptr, nullptr, SDL_INIT_VIDEO | SDL_INIT_AUDIO},
+        {"video only (env defaults)", nullptr, nullptr, SDL_INIT_VIDEO},
+        {"video+audio (x11 + dummy audio)", "x11", "dummy", SDL_INIT_VIDEO | SDL_INIT_AUDIO},
+        {"video only (x11)", "x11", nullptr, SDL_INIT_VIDEO},
+        {"video+audio (wayland + dummy audio)", "wayland", "dummy", SDL_INIT_VIDEO | SDL_INIT_AUDIO},
+        {"video only (wayland)", "wayland", nullptr, SDL_INIT_VIDEO},
+    };
+
+    bool sdlOk = false;
+    std::string initTrace;
+    for (const auto& a : attempts) {
+        if (a.videoDriver) setenv("SDL_VIDEODRIVER", a.videoDriver, 1);
+        if (a.audioDriver) setenv("SDL_AUDIODRIVER", a.audioDriver, 1);
+        SDL_Quit();
+        if (SDL_Init(a.flags) == 0) {
+            initTrace += std::string(a.label) + ": ok\n";
+            sdlOk = true;
+            break;
+        }
+        initTrace += std::string(a.label) + ": " + sdlErr() + "\n";
+    }
+    if (!sdlOk) {
+        std::string msg = "SDL_Init failed.\n";
+        msg += initTrace;
+        msg += "DISPLAY=" + envOrUnset("DISPLAY") + "\n";
+        msg += "WAYLAND_DISPLAY=" + envOrUnset("WAYLAND_DISPLAY") + "\n";
+        msg += "XDG_RUNTIME_DIR=" + envOrUnset("XDG_RUNTIME_DIR") + "\n";
+        msg += "SDL_VIDEODRIVER=" + envOrUnset("SDL_VIDEODRIVER") + "\n";
+        msg += "SDL_AUDIODRIVER=" + envOrUnset("SDL_AUDIODRIVER");
+        reportStartupError("SDL Init Error", msg, nullptr);
         CrashReporter::stop();
         return 1;
     }
     SDL_Log("SDL_Init completed");
-    if ((IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG) == 0) {
-        reportStartupError("SDL_image Init Error", std::string("IMG_Init failed: ") + IMG_GetError(), nullptr);
-        CrashReporter::stop();
-        SDL_Quit();
-        return 1;
-    }
     InitTextRenderer(ResolveAssetPath("assets/Fonts/Main.ttf"));
     bool audioReady = false;
 #if HAS_SDL_MIXER
@@ -89,26 +129,23 @@ int main(int argc, char** argv) {
 
     SDL_Window* win = SDL_CreateWindow(
         "Dorfplatformer Timetravel",
-        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         kBaseScreenW, kBaseScreenH,
-        SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE
+        SDL_WINDOW_RESIZABLE
     );
     if (!win) {
         reportStartupError("Window Error", std::string("SDL_CreateWindow failed: ") + SDL_GetError(), nullptr);
         ShutdownTextRenderer();
         CrashReporter::stop();
-        IMG_Quit();
         SDL_Quit();
         return 1;
     }
 
-    SDL_Renderer* ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
+    SDL_Renderer* ren = SDL_CreateRenderer(win, nullptr);
     if (!ren) {
         reportStartupError("Renderer Error", std::string("SDL_CreateRenderer failed: ") + SDL_GetError(), win);
         SDL_DestroyWindow(win);
         ShutdownTextRenderer();
         CrashReporter::stop();
-        IMG_Quit();
         SDL_Quit();
         return 1;
     }
@@ -125,7 +162,6 @@ int main(int argc, char** argv) {
         SDL_DestroyWindow(win);
         ShutdownTextRenderer();
         CrashReporter::stop();
-        IMG_Quit();
         SDL_Quit();
         return 1;
     }
@@ -740,11 +776,10 @@ int main(int argc, char** argv) {
             debugRen = ren;
 #else
             debugWin = SDL_CreateWindow("Detailed Debugger",
-                                        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                         560, 760,
-                                        SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
+                                        SDL_WINDOW_RESIZABLE);
             if (debugWin) {
-                debugRen = SDL_CreateRenderer(debugWin, -1, SDL_RENDERER_ACCELERATED);
+                debugRen = SDL_CreateRenderer(debugWin, nullptr);
                 if (!debugRen) {
                     SDL_DestroyWindow(debugWin);
                     debugWin = nullptr;
@@ -933,7 +968,7 @@ int main(int argc, char** argv) {
 
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) { running = false; levelRunning = false; }
-            if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_CLOSE && debugWin &&
+            if (e.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && debugWin &&
                 e.window.windowID == SDL_GetWindowID(debugWin)) {
                 SDL_HideWindow(debugWin);
                 showDetailedDebugger = false;
@@ -960,44 +995,44 @@ int main(int argc, char** argv) {
                     if (SDL_PointInRect(&pt, &nextBtn)) detailedDebugObjectIndex++;
                 }
             }
-            if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
+            if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST) {
                 paused = true;
             }
             if (e.type == SDL_FINGERDOWN) {
-                activeTouches[e.tfinger.fingerId] = SDL_FPoint{e.tfinger.x, e.tfinger.y};
+                activeTouches[e.tfinger.fingerID] = SDL_FPoint{e.tfinger.x, e.tfinger.y};
             }
             if (e.type == SDL_FINGERMOTION) {
-                activeTouches[e.tfinger.fingerId] = SDL_FPoint{e.tfinger.x, e.tfinger.y};
+                activeTouches[e.tfinger.fingerID] = SDL_FPoint{e.tfinger.x, e.tfinger.y};
             }
             if (e.type == SDL_FINGERUP) {
-                activeTouches.erase(e.tfinger.fingerId);
+                activeTouches.erase(e.tfinger.fingerID);
             }
             if (e.type == SDL_KEYDOWN && e.key.repeat == 0) {
-                if (e.key.keysym.sym == SDLK_F11) {
+                if (e.key.key == SDLK_F11) {
 #if !defined(__ANDROID__)
                     fullscreen = !fullscreen;
-                    SDL_SetWindowFullscreen(win, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+                    SDL_SetWindowFullscreen(win, fullscreen);
 #endif
                 }
-                if (e.key.keysym.sym == SDLK_F12) {
+                if (e.key.key == SDLK_F12) {
                     showHitboxes = !showHitboxes;
                 }
-                if (e.key.keysym.sym == SDLK_F8) {
+                if (e.key.key == SDLK_F8) {
                     const bool next = !(showHitboxes && showPlayerHitbox && showDebugView);
                     showHitboxes = next;
                     showPlayerHitbox = next;
                     showDebugView = next;
                 }
-                if (e.key.keysym.sym == SDLK_F7) {
+                if (e.key.key == SDLK_F7) {
                     showDebugView = !showDebugView;
                 }
-                if (e.key.keysym.sym == SDLK_F6) {
+                if (e.key.key == SDLK_F6) {
                     showFpsCounter = !showFpsCounter;
                 }
-                if (e.key.keysym.sym == SDLK_F10) {
+                if (e.key.key == SDLK_F10) {
                     clampCamX = !clampCamX;
                 }
-                if (e.key.keysym.sym == SDLK_F5) {
+                if (e.key.key == SDLK_F5) {
                     showDetailedDebugger = !showDetailedDebugger;
                     if (showDetailedDebugger && !debugWin) {
 #if defined(__ANDROID__)
@@ -1005,11 +1040,10 @@ int main(int argc, char** argv) {
                         debugRen = ren;
 #else
                         debugWin = SDL_CreateWindow("Detailed Debugger",
-                                                    SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                                     560, 760,
-                                                    SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
+                                                    SDL_WINDOW_RESIZABLE);
                         if (debugWin) {
-                            debugRen = SDL_CreateRenderer(debugWin, -1, SDL_RENDERER_ACCELERATED);
+                            debugRen = SDL_CreateRenderer(debugWin, nullptr);
                             if (!debugRen) {
                                 SDL_DestroyWindow(debugWin);
                                 debugWin = nullptr;
@@ -1032,31 +1066,31 @@ int main(int argc, char** argv) {
 #endif
                     }
                 }
-                if (e.key.keysym.sym == SDLK_F4) {
+                if (e.key.key == SDLK_F4) {
                     detailedDebugSubmenu = (detailedDebugSubmenu + 1) % 4;
                 }
                 if (showDetailedDebugger && detailedDebugSubmenu == 1) {
-                    if (e.key.keysym.sym == SDLK_UP) detailedDebugObjectIndex--;
-                    if (e.key.keysym.sym == SDLK_DOWN) detailedDebugObjectIndex++;
+                    if (e.key.key == SDLK_UP) detailedDebugObjectIndex--;
+                    if (e.key.key == SDLK_DOWN) detailedDebugObjectIndex++;
                 }
-                if (e.key.keysym.sym == SDLK_F9) {
+                if (e.key.key == SDLK_F9) {
                     std::string nextPath = levelManager.nextLevelPath();
                     if (!nextPath.empty()) {
                         levelManager.setLevelPath(nextPath);
                         reloadLevel();
                     }
                 }
-                if (!levelCompleteActive && (e.key.keysym.sym == SDLK_ESCAPE || e.key.keysym.sym == SDLK_AC_BACK)) {
+                if (!levelCompleteActive && (e.key.key == SDLK_ESCAPE || e.key.key == SDLK_AC_BACK)) {
                     paused = !paused;
                 }
                 if (paused) {
-                    if (e.key.keysym.sym == SDLK_LEFT || e.key.keysym.sym == SDLK_a) {
+                    if (e.key.key == SDLK_LEFT || e.key.key == SDLK_a) {
                         pauseSelection = std::max(0, pauseSelection - 1);
                     }
-                    if (e.key.keysym.sym == SDLK_RIGHT || e.key.keysym.sym == SDLK_d) {
+                    if (e.key.key == SDLK_RIGHT || e.key.key == SDLK_d) {
                         pauseSelection = std::min(2, pauseSelection + 1);
                     }
-                    if (e.key.keysym.sym == SDLK_RETURN || e.key.keysym.sym == SDLK_KP_ENTER) {
+                    if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) {
                         handlePauseSelect(pauseSelection);
                     }
                 }
@@ -2285,7 +2319,10 @@ RENDER_ONLY:
         }
 
         if (!paused) {
-            bool showMobileUi = (SDL_GetNumTouchDevices() > 0) || !activeTouches.empty();
+            int touchDeviceCount = 0;
+            SDL_TouchID* touchDevices = SDL_GetTouchDevices(&touchDeviceCount);
+            if (touchDevices) SDL_free(touchDevices);
+            bool showMobileUi = (touchDeviceCount > 0) || !activeTouches.empty();
             if (showMobileUi) {
                 auto drawTouchBtn = [&](const SDL_FRect& r, bool active) {
                     SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
@@ -2606,7 +2643,6 @@ RENDER_ONLY:
     SDL_DestroyWindow(win);
     SDL_Log("Shutting down");
     CrashReporter::stop();
-    IMG_Quit();
     SDL_Quit();
     return 0;
 }

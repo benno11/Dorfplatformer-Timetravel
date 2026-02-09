@@ -1,6 +1,6 @@
 #include "TextRenderer.h"
 
-#include <SDL2/SDL_ttf.h>
+#include <sdl3/SDL_ttf.h>
 #include <algorithm>
 #include <deque>
 #include <unordered_map>
@@ -40,9 +40,9 @@ TTF_Font* getFont(int scale) {
 
 bool InitTextRenderer(const std::string& fontPath) {
     gFontPath = fontPath;
-    gTtfInited = (TTF_Init() == 0);
+    gTtfInited = TTF_Init();
     if (!gTtfInited) {
-        SDL_Log("TTF_Init failed: %s", TTF_GetError());
+        SDL_Log("TTF_Init failed: %s", SDL_GetError());
     }
     return gTtfInited;
 }
@@ -76,25 +76,23 @@ void DrawText(SDL_Renderer* ren, int x, int y, int scale, const std::string& tex
     const std::string key = makeTextCacheKey(scale, text);
     auto itCached = rendererCache.entries.find(key);
     if (itCached == rendererCache.entries.end()) {
-        SDL_Surface* fillSurf = TTF_RenderUTF8_Blended(font, text.c_str(), fillColor);
+        SDL_Surface* fillSurf = TTF_RenderText_Blended(font, text.c_str(), text.size(), fillColor);
         if (!fillSurf) return;
-        SDL_Surface* outlineSurf = TTF_RenderUTF8_Blended(font, text.c_str(), outlineColor);
+        SDL_Surface* outlineSurf = TTF_RenderText_Blended(font, text.c_str(), text.size(), outlineColor);
         if (!outlineSurf) {
             SDL_FreeSurface(fillSurf);
             return;
         }
 
-        SDL_Surface* composed = SDL_CreateRGBSurfaceWithFormat(0,
-                                                               fillSurf->w + outlinePx * 2,
-                                                               fillSurf->h + outlinePx * 2,
-                                                               32,
-                                                               SDL_PIXELFORMAT_RGBA32);
+        SDL_Surface* composed = SDL_CreateSurface(fillSurf->w + outlinePx * 2,
+                                                  fillSurf->h + outlinePx * 2,
+                                                  SDL_PIXELFORMAT_RGBA32);
         if (!composed) {
             SDL_FreeSurface(fillSurf);
             SDL_FreeSurface(outlineSurf);
             return;
         }
-        SDL_FillRect(composed, nullptr, SDL_MapRGBA(composed->format, 0, 0, 0, 0));
+        SDL_FillSurfaceRect(composed, nullptr, SDL_MapSurfaceRGBA(composed, 0, 0, 0, 0));
 
         SDL_Rect od{outlinePx - outlinePx, outlinePx, outlineSurf->w, outlineSurf->h};
         SDL_BlitSurface(outlineSurf, nullptr, composed, &od);
@@ -115,7 +113,10 @@ void DrawText(SDL_Renderer* ren, int x, int y, int scale, const std::string& tex
 
         TextCacheEntry entry;
         entry.tex = tex;
-        SDL_QueryTexture(tex, nullptr, nullptr, &entry.w, &entry.h);
+        float tw = 0.0f, th = 0.0f;
+        SDL_GetTextureSize(tex, &tw, &th);
+        entry.w = (int)tw;
+        entry.h = (int)th;
         rendererCache.entries[key] = entry;
         rendererCache.order.push_back(key);
         itCached = rendererCache.entries.find(key);
@@ -131,15 +132,15 @@ void DrawText(SDL_Renderer* ren, int x, int y, int scale, const std::string& tex
         }
     }
 
-    SDL_Rect dst{x, y, itCached->second.w, itCached->second.h};
-    SDL_RenderCopy(ren, itCached->second.tex, nullptr, &dst);
+    SDL_FRect dst{(float)x, (float)y, (float)itCached->second.w, (float)itCached->second.h};
+    SDL_RenderTexture(ren, itCached->second.tex, nullptr, &dst);
 }
 
 int MeasureTextWidth(int scale, const std::string& text) {
     TTF_Font* font = getFont(scale);
     if (!font) return 0;
     int w = 0;
-    if (TTF_SizeUTF8(font, text.c_str(), &w, nullptr) != 0) return 0;
+    if (!TTF_GetStringSize(font, text.c_str(), text.size(), &w, nullptr)) return 0;
     const int outlinePx = std::max(1, scale / 2);
     return w + outlinePx * 2;
 }

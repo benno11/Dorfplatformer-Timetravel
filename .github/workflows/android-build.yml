@@ -45,11 +45,11 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y build-essential cmake ninja-build pkg-config git nlohmann-json3-dev
 
-    - name: Setup Android SDL2 libraries
+    - name: Setup Android sdl3 libraries
       run: |
         export ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}
-                export SDL_REF=release-2.32.x
-                export SDL_REQUIRED_VERSION=2.32.11
+                        export SDL_REF=release-3.4.x
+                        export SDL_REQUIRED_VERSION=3.4.0
         export FORCE_REBUILD_SDL=1
         ./build/FullBuildandroid.sh
 

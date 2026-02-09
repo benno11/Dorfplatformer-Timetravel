@@ -9,52 +9,52 @@ set -euo pipefail
 CXX="${CXX:-clang++}"
 CXXFLAGS="${CXXFLAGS:--std=c++17 -O2 -fPIC}"
 LDFLAGS="${LDFLAGS:-}"
-SDL_REQUIRED_VERSION="${SDL_REQUIRED_VERSION:-2.32.11}"
+SDL_REQUIRED_VERSION="${SDL_REQUIRED_VERSION:-3.4.0}"
 SRC_DIR="src"
 OUT_PLATFORMER="platformer_mobile"
 
 # SDL package names differ across environments.
-pkg_sdl2=""
-for p in sdl2 SDL2; do
-  if pkg-config --exists "$p"; then pkg_sdl2="$p"; break; fi
+pkg_sdl3=""
+for p in sdl3 sdl3; do
+  if pkg-config --exists "$p"; then pkg_sdl3="$p"; break; fi
 done
-if [ -z "$pkg_sdl2" ]; then
-  echo "[ERROR] SDL2 pkg-config package not found (expected 'sdl2' or 'SDL2')."
+if [ -z "$pkg_sdl3" ]; then
+  echo "[ERROR] sdl3 pkg-config package not found (expected 'sdl3' or 'sdl3')."
   exit 1
 fi
-if ! pkg-config --atleast-version="$SDL_REQUIRED_VERSION" "$pkg_sdl2"; then
-  echo "[WARN] SDL2 ${SDL_REQUIRED_VERSION}+ not found. Continuing with installed version: $(pkg-config --modversion "$pkg_sdl2" 2>/dev/null || echo unknown)"
+if ! pkg-config --atleast-version="$SDL_REQUIRED_VERSION" "$pkg_sdl3"; then
+  echo "[WARN] sdl3 ${SDL_REQUIRED_VERSION}+ not found. Continuing with installed version: $(pkg-config --modversion "$pkg_sdl3" 2>/dev/null || echo unknown)"
 fi
 
 pkg_image=""
-for p in SDL2_image sdl2-image; do
+for p in sdl3_image sdl3-image; do
   if pkg-config --exists "$p"; then pkg_image="$p"; break; fi
 done
 if [ -z "$pkg_image" ]; then
-  echo "[ERROR] SDL2_image pkg-config package not found."
+  echo "[ERROR] sdl3_image pkg-config package not found."
   exit 1
 fi
 
 pkg_ttf=""
-for p in SDL2_ttf sdl2-ttf; do
+for p in sdl3_ttf sdl3-ttf; do
   if pkg-config --exists "$p"; then pkg_ttf="$p"; break; fi
 done
 if [ -z "$pkg_ttf" ]; then
-  echo "[ERROR] SDL2_ttf pkg-config package not found."
+  echo "[ERROR] sdl3_ttf pkg-config package not found."
   exit 1
 fi
 
 MIXER_PKG=""
-for p in SDL2_mixer sdl2-mixer; do
+for p in sdl3_mixer sdl3-mixer; do
   if pkg-config --exists "$p"; then MIXER_PKG="$p"; break; fi
 done
 
-PKGS=("$pkg_sdl2" "$pkg_image" "$pkg_ttf")
+PKGS=("$pkg_sdl3" "$pkg_image" "$pkg_ttf")
 if [ -n "$MIXER_PKG" ]; then
   PKGS+=("$MIXER_PKG")
-  echo "[INFO] SDL2_mixer found: enabling music support"
+  echo "[INFO] sdl3_mixer found: enabling music support"
 else
-  echo "[INFO] SDL2_mixer not found: building without mixer linkage"
+  echo "[INFO] sdl3_mixer not found: building without mixer linkage"
 fi
 
 CPPFLAGS_PKG="$(pkg-config --cflags "${PKGS[@]}")"
