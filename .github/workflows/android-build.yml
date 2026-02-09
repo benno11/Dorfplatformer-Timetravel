@@ -49,6 +49,7 @@ jobs:
 
     - name: Setup Android SDL2 libraries
       run: |
+        export ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}
         ./build/FullBuildandroid.sh
 
     - name: Update Android app with native libraries
