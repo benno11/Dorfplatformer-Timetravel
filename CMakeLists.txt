@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 project(platformer LANGUAGES CXX)
+set(PROJECT_SDL_MIN_VERSION "2.32.11")
 
 message(STATUS "Configuring ${PROJECT_NAME}")
 message(STATUS "CMake version: ${CMAKE_VERSION}")
@@ -35,10 +36,17 @@ add_executable(platformer
   src/PlayerController.cpp
   src/AssetPath.cpp
   src/LevelManager.cpp
+  src/GameSupport.cpp
+  src/CrashReporter.cpp
+  src/FrontendMenu.cpp
 )
 message(STATUS "Added target: platformer")
 
-find_package(SDL2 REQUIRED)
+find_package(SDL2 ${PROJECT_SDL_MIN_VERSION} QUIET)
+if (NOT SDL2_FOUND)
+  message(WARNING "SDL2 ${PROJECT_SDL_MIN_VERSION}+ not found; falling back to system SDL2 version.")
+  find_package(SDL2 REQUIRED)
+endif()
 find_package(SDL2_image REQUIRED)
 find_package(SDL2_ttf REQUIRED)
 find_package(SDL2_mixer QUIET)

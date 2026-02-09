@@ -5,6 +5,12 @@
   "clamp_cam_x": true,
   "show_fps_counter": false,
   "show_detailed_debugger": false,
+  "show_hitboxes": false,
+  "show_player_hitbox": false,
+  "show_debug_view": false,
+  "menu_music_enabled": true,
+  "mute_all_audio": false,
+  "fast_travel_delay": 0.09,
   "music_volume": 96,
   "sfx_volume": 96
 }

@@ -4,6 +4,7 @@ set -e
 # ---- CONFIG ----
 CXX=g++
 FAST="${FAST:-0}"
+SDL_REQUIRED_VERSION="${SDL_REQUIRED_VERSION:-2.32.11}"
 if [ "$FAST" = "1" ]; then
   CXXFLAGS="-std=c++17 -O1 -fno-plt"
   echo "[INFO] FAST build enabled"
@@ -20,6 +21,9 @@ if [ -z "$SDL_CFLAGS" ] || [ -z "$SDL_LIBS" ]; then
   echo "[ERROR] Missing pkg-config entries for sdl2/SDL2_image/SDL2_ttf"
   echo "[HINT] Install dev packages (e.g. libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev)"
   exit 1
+fi
+if ! pkg-config --atleast-version="$SDL_REQUIRED_VERSION" sdl2; then
+  echo "[WARN] SDL2 ${SDL_REQUIRED_VERSION}+ not found. Continuing with installed version: $(pkg-config --modversion sdl2 2>/dev/null || echo unknown)"
 fi
 if pkg-config --exists SDL2_mixer; then
   MIXER_LIBS="$(pkg-config --libs SDL2_mixer)"
@@ -41,6 +45,9 @@ $CXX $CXXFLAGS \
   $SRC_DIR/LevelSelect.cpp \
   $SRC_DIR/PlayerController.cpp \
   $SRC_DIR/LevelManager.cpp \
+  $SRC_DIR/GameSupport.cpp \
+  $SRC_DIR/CrashReporter.cpp \
+  $SRC_DIR/FrontendMenu.cpp \
   $SDL_LIBS \
   $MIXER_LIBS \
   -o $OUT_PLATFORMER

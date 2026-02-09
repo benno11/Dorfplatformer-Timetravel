@@ -351,8 +351,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
                                       String.valueOf(SDL_MICRO_VERSION);
             String version = nativeGetVersion();
             if (!version.equals(expected_version)) {
-                mBrokenLibraries = true;
-                errorMsgBrokenLib = "SDL C/Java version mismatch (expected " + expected_version + ", got " + version + ")";
+                Log.w(TAG, "SDL C/Java version mismatch (expected " + expected_version + ", got " + version + "), continuing");
             }
         }
 
@@ -2114,4 +2113,3 @@ class SDLClipboardHandler implements
         SDLActivity.onNativeClipboardChanged();
     }
 }
-

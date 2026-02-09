@@ -35,6 +35,13 @@ NATIVE_BUILD_LIB="$ROOT_DIR/build/android/$ABI/libplatformer.so"
 NATIVE_LIBS_DST="$APP_MAIN_DIR/jniLibs/$ABI"
 
 mkdir -p "$NATIVE_LIBS_DST"
+rm -f \
+  "$NATIVE_LIBS_DST/libplatformer.so" \
+  "$NATIVE_LIBS_DST/libSDL2.so" \
+  "$NATIVE_LIBS_DST/libSDL2_image.so" \
+  "$NATIVE_LIBS_DST/libSDL2_ttf.so" \
+  "$NATIVE_LIBS_DST/libSDL2_mixer.so" \
+  "$NATIVE_LIBS_DST/libc++_shared.so"
 
 if [ ! -f "$NATIVE_BUILD_LIB" ]; then
   echo "[ERROR] Missing native game library: $NATIVE_BUILD_LIB"

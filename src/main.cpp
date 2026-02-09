@@ -43,373 +43,36 @@
 #include "LevelSelect.h"
 #include "AssetPath.h"
 #include "LevelManager.h"
+#include "FrontendMenu.h"
 
 
-static bool playerTouchesTileId(const TileMap& map, const Player& player, int idA, int idB) {
-    int t = map.tileSize;
-    int left = (int)std::floor(player.x / t);
-    int right = (int)std::floor((player.x + player.w - 1) / t);
-    int top = (int)std::floor(player.y / t);
-    int bottom = (int)std::floor((player.y + player.h - 1) / t);
-    for (int ty = top; ty <= bottom; ++ty) {
-        if (ty < 0 || ty >= map.h) continue;
-        for (int tx = left; tx <= right; ++tx) {
-            if (tx < 0 || tx >= map.w) continue;
-            int id = (int)map.tileIds[ty * map.w + tx];
-            if (id == idA || id == idB) return true;
-        }
-    }
-    return false;
-}
-
-static bool pointInRectF(float x, float y, const SDL_FRect& r) {
-    return x >= r.x && y >= r.y && x < (r.x + r.w) && y < (r.y + r.h);
-}
-
-static int parseLevelIdFromLevelPath(const std::string& levelPath) {
-    const std::string name = std::filesystem::path(levelPath).stem().string();
-    std::string digits;
-    for (char ch : name) {
-        if (std::isdigit((unsigned char)ch)) digits.push_back(ch);
-    }
-    if (digits.empty()) return -1;
-    try { return std::stoi(digits); } catch (...) { return -1; }
-}
-
-static bool readProcessMemoryKB(long& rssKB, long& vmKB) {
-    rssKB = -1;
-    vmKB = -1;
-    std::ifstream f("/proc/self/status");
-    if (!f.is_open()) return false;
-    std::string line;
-    while (std::getline(f, line)) {
-        if (line.rfind("VmRSS:", 0) == 0) {
-            std::istringstream iss(line.substr(6));
-            iss >> rssKB;
-        } else if (line.rfind("VmSize:", 0) == 0) {
-            std::istringstream iss(line.substr(7));
-            iss >> vmKB;
-        }
-    }
-    return (rssKB >= 0 || vmKB >= 0);
-}
-
-static std::string makeBuildUuid() {
-    // Build-time seed: changes whenever the binary is rebuilt at a different time.
-    const std::string seed = std::string(__DATE__) + " " + std::string(__TIME__);
-    uint64_t h1 = 1469598103934665603ull;
-    uint64_t h2 = 1099511628211ull;
-    for (unsigned char c : seed) {
-        h1 ^= (uint64_t)c;
-        h1 *= 1099511628211ull;
-        h2 ^= (uint64_t)(c + 31u);
-        h2 *= 1469598103934665603ull;
-    }
-    auto hex4 = [](uint64_t v, int n) {
-        static const char* kHex = "0123456789abcdef";
-        std::string out;
-        out.resize(n);
-        for (int i = n - 1; i >= 0; --i) {
-            out[i] = kHex[(int)(v & 0xF)];
-            v >>= 4;
-        }
-        return out;
-    };
-    // 8-4-4-4-12
-    return hex4(h1, 8) + "-" +
-           hex4(h1 >> 8, 4) + "-" +
-           hex4(h1 >> 24, 4) + "-" +
-           hex4(h2, 4) + "-" +
-           hex4((h2 << 16) ^ h1, 12);
-}
-
-
-struct Frame {
-    SDL_Rect rect{0,0,0,0};
-    bool rotated = false;
-};
-
-struct FrameEntry {
-    std::string name;
-    Frame frame;
-};
-
-static std::string extractBetween(const std::string& s, const std::string& a, const std::string& b) {
-    size_t p = s.find(a);
-    if (p == std::string::npos) return "";
-    p += a.size();
-    size_t q = s.find(b, p);
-    if (q == std::string::npos) return "";
-    return s.substr(p, q - p);
-}
-
-static bool parseTextureRect(const std::string& s, SDL_Rect& out) {
-    int x = 0, y = 0, w = 0, h = 0;
-    if (std::sscanf(s.c_str(), "{{%d,%d},{%d,%d}}", &x, &y, &w, &h) == 4) {
-        out.x = x;
-        out.y = y;
-        out.w = w;
-        out.h = h;
-        return true;
-    }
-    return false;
-}
-
-static std::unordered_map<std::string, Frame> loadPlistFrames(const std::string& plistPath) {
-    std::unordered_map<std::string, Frame> frames;
-    const std::string text = ReadTextFile(plistPath);
-    if (text.empty()) return frames;
-    std::istringstream in(text);
-
-    std::string line;
-    std::string currentName;
-    bool expectTextureRect = false;
-    bool expectRotated = false;
-    Frame pending{};
-
-    while (std::getline(in, line)) {
-        std::string key = extractBetween(line, "<key>", "</key>");
-        if (!key.empty() && key.size() > 4 && key.substr(key.size() - 4) == ".png") {
-            currentName = key.substr(0, key.size() - 4);
-            pending = Frame{};
-        }
-        if (line.find("<key>textureRect</key>") != std::string::npos) {
-            expectTextureRect = true;
-            continue;
-        }
-        if (line.find("<key>textureRotated</key>") != std::string::npos) {
-            expectRotated = true;
-            continue;
-        }
-        if (expectTextureRect) {
-            std::string val = extractBetween(line, "<string>", "</string>");
-            if (!val.empty()) {
-                parseTextureRect(val, pending.rect);
-            }
-            expectTextureRect = false;
-        }
-        if (expectRotated) {
-            if (line.find("<true/>") != std::string::npos) pending.rotated = true;
-            if (line.find("<false/>") != std::string::npos) pending.rotated = false;
-            if (!currentName.empty()) frames[currentName] = pending;
-            expectRotated = false;
-        }
-    }
-
-    return frames;
-}
-
-static std::vector<FrameEntry> loadPlistFrameList(const std::string& plistPath) {
-    std::vector<FrameEntry> frames;
-    const std::string text = ReadTextFile(plistPath);
-    if (text.empty()) return frames;
-    std::istringstream in(text);
-
-    std::string line;
-    std::string currentName;
-    bool expectTextureRect = false;
-    bool expectRotated = false;
-    Frame pending{};
-
-    while (std::getline(in, line)) {
-        std::string key = extractBetween(line, "<key>", "</key>");
-        if (!key.empty() && key.size() > 4 && key.substr(key.size() - 4) == ".png") {
-            currentName = key.substr(0, key.size() - 4);
-            pending = Frame{};
-        }
-        if (line.find("<key>textureRect</key>") != std::string::npos) {
-            expectTextureRect = true;
-            continue;
-        }
-        if (line.find("<key>textureRotated</key>") != std::string::npos) {
-            expectRotated = true;
-            continue;
-        }
-        if (expectTextureRect) {
-            std::string val = extractBetween(line, "<string>", "</string>");
-            if (!val.empty()) {
-                parseTextureRect(val, pending.rect);
-            }
-            expectTextureRect = false;
-        }
-        if (expectRotated) {
-            if (line.find("<true/>") != std::string::npos) pending.rotated = true;
-            if (line.find("<false/>") != std::string::npos) pending.rotated = false;
-            if (!currentName.empty()) frames.push_back(FrameEntry{currentName, pending});
-            expectRotated = false;
-        }
-    }
-
-    return frames;
-}
-
-static void renderFrame(SDL_Renderer* ren, SDL_Texture* tex, const Frame& f, const SDL_Rect& dst) {
-    if (!tex) return;
-    if (!f.rotated) {
-        SDL_RenderCopy(ren, tex, &f.rect, &dst);
-        return;
-    }
-    SDL_Rect src = f.rect;
-    SDL_Rect dstRot = dst;
-    dstRot.w = dst.h;
-    dstRot.h = dst.w;
-    SDL_Point center{dstRot.w / 2, dstRot.h / 2};
-    SDL_RenderCopyEx(ren, tex, &src, &dstRot, -90.0, &center, SDL_FLIP_NONE);
-}
-
-static void renderFrameEx(SDL_Renderer* ren, SDL_Texture* tex, const Frame& f, const SDL_Rect& dst, SDL_RendererFlip flip) {
-    if (!tex) return;
-    if (!f.rotated) {
-        SDL_RenderCopyEx(ren, tex, &f.rect, &dst, 0.0, nullptr, flip);
-        return;
-    }
-    SDL_Rect src = f.rect;
-    SDL_Rect dstRot = dst;
-    dstRot.w = dst.h;
-    dstRot.h = dst.w;
-    SDL_Point center{dstRot.w / 2, dstRot.h / 2};
-    SDL_RenderCopyEx(ren, tex, &src, &dstRot, -90.0, &center, flip);
-}
-
-static SDL_Texture* loadTextureWithColorKey(SDL_Renderer* ren, const std::string& path, Uint8 r, Uint8 g, Uint8 b) {
-    const std::string resolved = ResolveAssetPath(path);
-    SDL_Surface* surf = IMG_Load(resolved.c_str());
-    if (!surf) return nullptr;
-    Uint32 key = SDL_MapRGB(surf->format, r, g, b);
-    SDL_SetColorKey(surf, SDL_TRUE, key);
-    SDL_Texture* tex = SDL_CreateTextureFromSurface(ren, surf);
-    SDL_FreeSurface(surf);
-    if (tex) SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
-    return tex;
-}
-
-static SDL_Rect computePresentRect(int winW, int winH, int baseW, int baseH) {
-    if (winW <= 0 || winH <= 0 || baseW <= 0 || baseH <= 0) return SDL_Rect{0, 0, winW, winH};
-    float sx = (float)winW / (float)baseW;
-    float sy = (float)winH / (float)baseH;
-    float s = std::min(sx, sy);
-    int w = std::max(1, (int)std::floor(baseW * s));
-    int h = std::max(1, (int)std::floor(baseH * s));
-    int x = (winW - w) / 2;
-    int y = (winH - h) / 2;
-    return SDL_Rect{x, y, w, h};
-}
-
-static bool windowToGamePoint(int wx, int wy, int winW, int winH, int baseW, int baseH, int& gx, int& gy) {
-    SDL_Rect dst = computePresentRect(winW, winH, baseW, baseH);
-    if (wx < dst.x || wy < dst.y || wx >= dst.x + dst.w || wy >= dst.y + dst.h) return false;
-    float u = (float)(wx - dst.x) / (float)dst.w;
-    float v = (float)(wy - dst.y) / (float)dst.h;
-    gx = std::clamp((int)std::floor(u * baseW), 0, baseW - 1);
-    gy = std::clamp((int)std::floor(v * baseH), 0, baseH - 1);
-    return true;
-}
-
-namespace CrashReporter {
-static std::atomic<bool> running{false};
-static std::atomic<bool> pending{false};
-static std::atomic<bool> handled{false};
-static std::atomic<int> pendingSignal{0};
-static std::thread worker;
-static std::mutex msgMutex;
-static std::string pendingMessage;
-static std::terminate_handler prevTerminate = nullptr;
-
-static void appendCrashLog(const std::string& msg) {
-    std::FILE* f = std::fopen("build/crash.log", "a");
-    if (!f) return;
-    std::fprintf(f, "%s\n", msg.c_str());
-    std::fclose(f);
-}
-
-static void workerMain() {
-    while (running.load(std::memory_order_relaxed)) {
-        if (!pending.load(std::memory_order_relaxed)) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            continue;
-        }
-        int sig = pendingSignal.exchange(0, std::memory_order_relaxed);
-        std::string msg;
-        {
-            std::lock_guard<std::mutex> lock(msgMutex);
-            msg = pendingMessage;
-            pendingMessage.clear();
-        }
-        if (sig > 0) {
-            msg = std::string("FATAL SIGNAL: ") + std::to_string(sig) + " (" + ::strsignal(sig) + ")";
-        } else if (msg.empty()) {
-            msg = "FATAL: unknown terminate";
-        }
-        SDL_LogCritical(SDL_LOG_CATEGORY_APPLICATION, "%s", msg.c_str());
-        appendCrashLog(msg);
-        handled.store(true, std::memory_order_relaxed);
-        pending.store(false, std::memory_order_relaxed);
-    }
-}
-
-static void signalHandler(int sig) {
-    pendingSignal.store(sig, std::memory_order_relaxed);
-    pending.store(true, std::memory_order_relaxed);
-    const char* prefix = "FATAL SIGNAL captured\n";
-    (void)!write(2, prefix, std::strlen(prefix));
-    for (volatile int i = 0; i < 5000000; ++i) {}
-    std::_Exit(128 + sig);
-}
-
-static void terminateHandler() {
-    std::string msg = "FATAL: std::terminate called";
-    if (auto ep = std::current_exception()) {
-        try {
-            std::rethrow_exception(ep);
-        } catch (const std::exception& e) {
-            msg = std::string("FATAL terminate exception: ") + e.what();
-        } catch (...) {
-            msg = "FATAL terminate with non-std exception";
-        }
-    }
-    {
-        std::lock_guard<std::mutex> lock(msgMutex);
-        pendingMessage = msg;
-    }
-    pending.store(true, std::memory_order_relaxed);
-    for (int i = 0; i < 80 && !handled.load(std::memory_order_relaxed); ++i) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
-    }
-    if (prevTerminate) prevTerminate();
-    std::abort();
-}
-
-static void start() {
-    handled.store(false, std::memory_order_relaxed);
-    pending.store(false, std::memory_order_relaxed);
-    pendingSignal.store(0, std::memory_order_relaxed);
-    running.store(true, std::memory_order_relaxed);
-    worker = std::thread(workerMain);
-    prevTerminate = std::set_terminate(terminateHandler);
-    std::signal(SIGSEGV, signalHandler);
-    std::signal(SIGABRT, signalHandler);
-    std::signal(SIGFPE, signalHandler);
-    std::signal(SIGILL, signalHandler);
-#if defined(SIGBUS)
-    std::signal(SIGBUS, signalHandler);
-#endif
-}
-
-static void stop() {
-    running.store(false, std::memory_order_relaxed);
-    if (worker.joinable()) worker.join();
-}
-}
-
+#include "GameSupport.h"
+#include "CrashReporter.h"
 int main(int argc, char** argv) {
     CrashReporter::start();
     const std::string buildUuid = makeBuildUuid();
+    auto reportStartupError = [](const char* title, const std::string& msg, SDL_Window* parent) {
+#if defined(__ANDROID__)
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "%s: %s", title, msg.c_str());
+#else
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, title, msg.c_str(), parent);
+#endif
+    };
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "2");
     SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
     SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");
-    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) {
+        reportStartupError("SDL Init Error", std::string("SDL_Init failed: ") + SDL_GetError(), nullptr);
+        CrashReporter::stop();
+        return 1;
+    }
     SDL_Log("SDL_Init completed");
-    IMG_Init(IMG_INIT_PNG);
+    if ((IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG) == 0) {
+        reportStartupError("SDL_image Init Error", std::string("IMG_Init failed: ") + IMG_GetError(), nullptr);
+        CrashReporter::stop();
+        SDL_Quit();
+        return 1;
+    }
     InitTextRenderer(ResolveAssetPath("assets/Fonts/Main.ttf"));
     bool audioReady = false;
 #if HAS_SDL_MIXER
@@ -430,8 +93,25 @@ int main(int argc, char** argv) {
         kBaseScreenW, kBaseScreenH,
         SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE
     );
+    if (!win) {
+        reportStartupError("Window Error", std::string("SDL_CreateWindow failed: ") + SDL_GetError(), nullptr);
+        ShutdownTextRenderer();
+        CrashReporter::stop();
+        IMG_Quit();
+        SDL_Quit();
+        return 1;
+    }
 
     SDL_Renderer* ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
+    if (!ren) {
+        reportStartupError("Renderer Error", std::string("SDL_CreateRenderer failed: ") + SDL_GetError(), win);
+        SDL_DestroyWindow(win);
+        ShutdownTextRenderer();
+        CrashReporter::stop();
+        IMG_Quit();
+        SDL_Quit();
+        return 1;
+    }
     SDL_Log("Window and renderer created");
     SDL_Texture* gameTarget = SDL_CreateTexture(
         ren,
@@ -439,6 +119,16 @@ int main(int argc, char** argv) {
         SDL_TEXTUREACCESS_TARGET,
         kBaseScreenW, kBaseScreenH
     );
+    if (!gameTarget) {
+        reportStartupError("Render Target Error", std::string("SDL_CreateTexture failed: ") + SDL_GetError(), win);
+        SDL_DestroyRenderer(ren);
+        SDL_DestroyWindow(win);
+        ShutdownTextRenderer();
+        CrashReporter::stop();
+        IMG_Quit();
+        SDL_Quit();
+        return 1;
+    }
     SDL_Window* debugWin = nullptr;
     SDL_Renderer* debugRen = nullptr;
     bool showDetailedDebugger = false;
@@ -706,7 +396,7 @@ int main(int argc, char** argv) {
         if (blocksFrameList.empty()) msg += "\n- blocks plist";
         if (!playerTex) msg += "\n- player texture";
         if (playerFrameList.empty()) msg += "\n- player plist";
-        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Asset Load Error", msg.c_str(), win);
+        reportStartupError("Asset Load Error", msg, win);
         SDL_DestroyRenderer(ren);
         SDL_DestroyWindow(win);
         if (audioReady) {
@@ -728,7 +418,7 @@ int main(int argc, char** argv) {
         return 1;
     }
     if (!gameTarget) {
-        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Render Target Error", "Failed to create game render target.", win);
+        reportStartupError("Render Target Error", "Failed to create game render target.", win);
         if (playerTex) SDL_DestroyTexture(playerTex);
         if (bgTex) SDL_DestroyTexture(bgTex);
         if (blocksTex) SDL_DestroyTexture(blocksTex);
@@ -746,6 +436,12 @@ int main(int argc, char** argv) {
     bool clampCamX = true;
     bool defaultShowFpsCounter = false;
     bool defaultShowDetailedDebugger = false;
+    bool defaultShowHitboxes = false;
+    bool defaultShowPlayerHitbox = false;
+    bool defaultShowDebugView = false;
+    bool menuMusicEnabled = true;
+    bool muteAllAudio = false;
+    float fastTravelChangeDelay = 0.09f;
     int musicVolume = 96; // 0..128
     int sfxVolume = 96;   // 0..128
     std::string clientSettingsPath = "client_settings.json";
@@ -764,6 +460,12 @@ int main(int argc, char** argv) {
         j["clamp_cam_x"] = clampCamX;
         j["show_fps_counter"] = defaultShowFpsCounter;
         j["show_detailed_debugger"] = defaultShowDetailedDebugger;
+        j["show_hitboxes"] = defaultShowHitboxes;
+        j["show_player_hitbox"] = defaultShowPlayerHitbox;
+        j["show_debug_view"] = defaultShowDebugView;
+        j["menu_music_enabled"] = menuMusicEnabled;
+        j["mute_all_audio"] = muteAllAudio;
+        j["fast_travel_delay"] = fastTravelChangeDelay;
         j["music_volume"] = musicVolume;
         j["sfx_volume"] = sfxVolume;
         std::ofstream out(clientSettingsPath, std::ios::binary | std::ios::trunc);
@@ -779,6 +481,14 @@ int main(int argc, char** argv) {
             if (j.contains("clamp_cam_x") && j["clamp_cam_x"].is_boolean()) clampCamX = j["clamp_cam_x"].get<bool>();
             if (j.contains("show_fps_counter") && j["show_fps_counter"].is_boolean()) defaultShowFpsCounter = j["show_fps_counter"].get<bool>();
             if (j.contains("show_detailed_debugger") && j["show_detailed_debugger"].is_boolean()) defaultShowDetailedDebugger = j["show_detailed_debugger"].get<bool>();
+            if (j.contains("show_hitboxes") && j["show_hitboxes"].is_boolean()) defaultShowHitboxes = j["show_hitboxes"].get<bool>();
+            if (j.contains("show_player_hitbox") && j["show_player_hitbox"].is_boolean()) defaultShowPlayerHitbox = j["show_player_hitbox"].get<bool>();
+            if (j.contains("show_debug_view") && j["show_debug_view"].is_boolean()) defaultShowDebugView = j["show_debug_view"].get<bool>();
+            if (j.contains("menu_music_enabled") && j["menu_music_enabled"].is_boolean()) menuMusicEnabled = j["menu_music_enabled"].get<bool>();
+            if (j.contains("mute_all_audio") && j["mute_all_audio"].is_boolean()) muteAllAudio = j["mute_all_audio"].get<bool>();
+            if (j.contains("fast_travel_delay") && j["fast_travel_delay"].is_number()) {
+                fastTravelChangeDelay = std::clamp((float)j["fast_travel_delay"].get<double>(), 0.0f, 0.5f);
+            }
             if (j.contains("music_volume") && j["music_volume"].is_number_integer()) musicVolume = std::clamp(j["music_volume"].get<int>(), 0, 128);
             if (j.contains("sfx_volume") && j["sfx_volume"].is_number_integer()) sfxVolume = std::clamp(j["sfx_volume"].get<int>(), 0, 128);
         } else {
@@ -794,6 +504,14 @@ int main(int argc, char** argv) {
                     if (j.contains("clamp_cam_x") && j["clamp_cam_x"].is_boolean()) clampCamX = j["clamp_cam_x"].get<bool>();
                     if (j.contains("show_fps_counter") && j["show_fps_counter"].is_boolean()) defaultShowFpsCounter = j["show_fps_counter"].get<bool>();
                     if (j.contains("show_detailed_debugger") && j["show_detailed_debugger"].is_boolean()) defaultShowDetailedDebugger = j["show_detailed_debugger"].get<bool>();
+                    if (j.contains("show_hitboxes") && j["show_hitboxes"].is_boolean()) defaultShowHitboxes = j["show_hitboxes"].get<bool>();
+                    if (j.contains("show_player_hitbox") && j["show_player_hitbox"].is_boolean()) defaultShowPlayerHitbox = j["show_player_hitbox"].get<bool>();
+                    if (j.contains("show_debug_view") && j["show_debug_view"].is_boolean()) defaultShowDebugView = j["show_debug_view"].get<bool>();
+                    if (j.contains("menu_music_enabled") && j["menu_music_enabled"].is_boolean()) menuMusicEnabled = j["menu_music_enabled"].get<bool>();
+                    if (j.contains("mute_all_audio") && j["mute_all_audio"].is_boolean()) muteAllAudio = j["mute_all_audio"].get<bool>();
+                    if (j.contains("fast_travel_delay") && j["fast_travel_delay"].is_number()) {
+                        fastTravelChangeDelay = std::clamp((float)j["fast_travel_delay"].get<double>(), 0.0f, 0.5f);
+                    }
                     if (j.contains("music_volume") && j["music_volume"].is_number_integer()) musicVolume = std::clamp(j["music_volume"].get<int>(), 0, 128);
                     if (j.contains("sfx_volume") && j["sfx_volume"].is_number_integer()) sfxVolume = std::clamp(j["sfx_volume"].get<int>(), 0, 128);
                     usedPlaceholder = true;
@@ -819,17 +537,19 @@ int main(int argc, char** argv) {
 #if HAS_SDL_MIXER
     auto applyAudioVolumes = [&]() {
         if (!audioReady) return;
-        Mix_VolumeMusic(musicVolume);
-        Mix_Volume(-1, sfxVolume);
-        if (coinSfx) Mix_VolumeChunk(coinSfx, sfxVolume);
-        if (loseSfx) Mix_VolumeChunk(loseSfx, sfxVolume);
-        if (victorySfx) Mix_VolumeChunk(victorySfx, sfxVolume);
-        if (messageSfx) Mix_VolumeChunk(messageSfx, sfxVolume);
-        if (bumperSfx) Mix_VolumeChunk(bumperSfx, sfxVolume);
+        const int appliedMusic = muteAllAudio ? 0 : musicVolume;
+        const int appliedSfx = muteAllAudio ? 0 : sfxVolume;
+        Mix_VolumeMusic(appliedMusic);
+        Mix_Volume(-1, appliedSfx);
+        if (coinSfx) Mix_VolumeChunk(coinSfx, appliedSfx);
+        if (loseSfx) Mix_VolumeChunk(loseSfx, appliedSfx);
+        if (victorySfx) Mix_VolumeChunk(victorySfx, appliedSfx);
+        if (messageSfx) Mix_VolumeChunk(messageSfx, appliedSfx);
+        if (bumperSfx) Mix_VolumeChunk(bumperSfx, appliedSfx);
     };
     applyAudioVolumes();
     auto ensureMenuMusic = [&]() {
-        if (!audioReady || !menuMusic) return;
+        if (!audioReady || !menuMusic || !menuMusicEnabled) return;
         if (!menuMusicPlaying || !Mix_PlayingMusic()) {
             Mix_PlayMusic(menuMusic, -1);
             menuMusicPlaying = true;
@@ -846,447 +566,49 @@ int main(int argc, char** argv) {
     LevelManager levelManager;
     bool running = true;
     bool startupNoticeShown = false;
-    enum class FrontendAction {
-        StartGame,
-        Quit
-    };
-    auto runFrontendMenu = [&]() -> FrontendAction {
-        bool inSettings = false;
-        int menuSel = 0;     // 0 Play, 1 Settings, 2 Quit
-#if defined(__ANDROID__)
-        constexpr int kSettingsCount = 7; // VSync, ClampCam, ShowFPS, Debugger, Music, SFX, Back
-#else
-        constexpr int kSettingsCount = 8; // Fullscreen, VSync, ClampCam, ShowFPS, Debugger, Music, SFX, Back
-#endif
-        int settingsSel = 0;
-        enum class SliderDragTarget { None, Music, Sfx };
-        SliderDragTarget sliderDrag = SliderDragTarget::None;
-        SDL_FingerID sliderDragFinger = 0;
-        SDL_Event e;
-        auto sliderValueFromPoint = [&](int x, const SDL_Rect& slider) -> int {
-            int rel = x - slider.x;
-            if (rel < 0) rel = 0;
-            if (rel > slider.w) rel = slider.w;
-            return (int)std::lround((rel / (double)std::max(1, slider.w)) * 128.0);
-        };
-        while (running) {
-            while (SDL_PollEvent(&e)) {
-                if (e.type == SDL_QUIT) {
-                    running = false;
-                    return FrontendAction::Quit;
-                }
-                if (e.type == SDL_KEYDOWN && e.key.repeat == 0) {
-                    if (!inSettings) {
-                        if (e.key.keysym.sym == SDLK_UP || e.key.keysym.sym == SDLK_w) menuSel = (menuSel + 2) % 3;
-                        if (e.key.keysym.sym == SDLK_DOWN || e.key.keysym.sym == SDLK_s) menuSel = (menuSel + 1) % 3;
-                        if (e.key.keysym.sym == SDLK_RETURN || e.key.keysym.sym == SDLK_KP_ENTER) {
-                            if (menuSel == 0) return FrontendAction::StartGame;
-                            if (menuSel == 1) inSettings = true;
-                            if (menuSel == 2) {
-                                running = false;
-                                return FrontendAction::Quit;
-                            }
-                        }
-                    } else {
-                        if (e.key.keysym.sym == SDLK_UP || e.key.keysym.sym == SDLK_w) settingsSel = (settingsSel + kSettingsCount - 1) % kSettingsCount;
-                        if (e.key.keysym.sym == SDLK_DOWN || e.key.keysym.sym == SDLK_s) settingsSel = (settingsSel + 1) % kSettingsCount;
-                        if (e.key.keysym.sym == SDLK_ESCAPE) {
-                            inSettings = false;
-                        }
-                        if (e.key.keysym.sym == SDLK_RETURN || e.key.keysym.sym == SDLK_KP_ENTER ||
-                            e.key.keysym.sym == SDLK_LEFT || e.key.keysym.sym == SDLK_RIGHT) {
-                            const int dir = (e.key.keysym.sym == SDLK_LEFT) ? -1 : (e.key.keysym.sym == SDLK_RIGHT ? 1 : 0);
-#if defined(__ANDROID__)
-                            if (settingsSel == 0) {
-                                vsyncEnabled = !vsyncEnabled;
-                                applyRenderVsync();
-                            } else if (settingsSel == 1) {
-                                clampCamX = !clampCamX;
-                            } else if (settingsSel == 2) {
-                                defaultShowFpsCounter = !defaultShowFpsCounter;
-                            } else if (settingsSel == 3) {
-                                defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
-                            } else if (settingsSel == 4) {
-                                if (dir != 0) musicVolume = std::clamp(musicVolume + dir * 8, 0, 128);
-                            } else if (settingsSel == 5) {
-                                if (dir != 0) sfxVolume = std::clamp(sfxVolume + dir * 8, 0, 128);
-                            } else {
-                                inSettings = false;
-                            }
-#else
-                            if (settingsSel == 0) {
-                                fullscreen = !fullscreen;
-                                SDL_SetWindowFullscreen(win, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
-                            } else if (settingsSel == 1) {
-                                vsyncEnabled = !vsyncEnabled;
-                                applyRenderVsync();
-                            } else if (settingsSel == 2) {
-                                clampCamX = !clampCamX;
-                            } else if (settingsSel == 3) {
-                                defaultShowFpsCounter = !defaultShowFpsCounter;
-                            } else if (settingsSel == 4) {
-                                defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
-                            } else if (settingsSel == 5) {
-                                if (dir != 0) musicVolume = std::clamp(musicVolume + dir * 8, 0, 128);
-                            } else if (settingsSel == 6) {
-                                if (dir != 0) sfxVolume = std::clamp(sfxVolume + dir * 8, 0, 128);
-                            } else {
-                                inSettings = false;
-                            }
-#endif
+    FrontendMenuContext frontendCtx{};
+    frontendCtx.win = win;
+    frontendCtx.ren = ren;
+    frontendCtx.gameTarget = gameTarget;
+    frontendCtx.baseScreenW = kBaseScreenW;
+    frontendCtx.baseScreenH = kBaseScreenH;
+    frontendCtx.buildUuid = buildUuid;
+    frontendCtx.running = &running;
+    frontendCtx.fullscreen = &fullscreen;
+    frontendCtx.vsyncEnabled = &vsyncEnabled;
+    frontendCtx.clampCamX = &clampCamX;
+    frontendCtx.defaultShowFpsCounter = &defaultShowFpsCounter;
+    frontendCtx.defaultShowDetailedDebugger = &defaultShowDetailedDebugger;
+    frontendCtx.defaultShowHitboxes = &defaultShowHitboxes;
+    frontendCtx.defaultShowPlayerHitbox = &defaultShowPlayerHitbox;
+    frontendCtx.defaultShowDebugView = &defaultShowDebugView;
+    frontendCtx.menuMusicEnabled = &menuMusicEnabled;
+    frontendCtx.muteAllAudio = &muteAllAudio;
+    frontendCtx.fastTravelChangeDelay = &fastTravelChangeDelay;
+    frontendCtx.musicVolume = &musicVolume;
+    frontendCtx.sfxVolume = &sfxVolume;
 #if HAS_SDL_MIXER
-                            applyAudioVolumes();
+    frontendCtx.applyAudioVolumes = applyAudioVolumes;
 #endif
-                        }
-                    }
-                }
-                if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_LEFT) {
-                    sliderDrag = SliderDragTarget::None;
-                }
-                if (e.type == SDL_MOUSEMOTION && inSettings && sliderDrag != SliderDragTarget::None) {
-                    int winW = 0, winH = 0, gx = 0, gy = 0;
-                    SDL_GetWindowSize(win, &winW, &winH);
-                    if (!windowToGamePoint(e.motion.x, e.motion.y, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy)) continue;
-                    SDL_Point pt{gx, gy};
-#if defined(__ANDROID__)
-                    SDL_Rect musicSlider{kBaseScreenW / 2 - 70, 366, 200, 10};
-                    SDL_Rect sfxSlider{kBaseScreenW / 2 - 70, 406, 200, 10};
-#else
-                    SDL_Rect musicSlider{kBaseScreenW / 2 - 70, 406, 200, 10};
-                    SDL_Rect sfxSlider{kBaseScreenW / 2 - 70, 446, 200, 10};
-#endif
-                    if (sliderDrag == SliderDragTarget::Music) musicVolume = sliderValueFromPoint(pt.x, musicSlider);
-                    if (sliderDrag == SliderDragTarget::Sfx) sfxVolume = sliderValueFromPoint(pt.x, sfxSlider);
-#if HAS_SDL_MIXER
-                    applyAudioVolumes();
-#endif
-                }
-                if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
-                    int winW = 0, winH = 0, gx = 0, gy = 0;
-                    SDL_GetWindowSize(win, &winW, &winH);
-                    if (!windowToGamePoint(e.button.x, e.button.y, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy)) continue;
-                    SDL_Point pt{gx, gy};
-                    if (!inSettings) {
-                        SDL_Rect playBtn{kBaseScreenW / 2 - 80, 180, 160, 32};
-                        SDL_Rect settingsBtn{kBaseScreenW / 2 - 80, 220, 160, 32};
-                        SDL_Rect quitBtn{kBaseScreenW / 2 - 80, 260, 160, 32};
-                        if (SDL_PointInRect(&pt, &playBtn)) return FrontendAction::StartGame;
-                        if (SDL_PointInRect(&pt, &settingsBtn)) inSettings = true;
-                        if (SDL_PointInRect(&pt, &quitBtn)) {
-                            running = false;
-                            return FrontendAction::Quit;
-                        }
-                    } else {
-#if defined(__ANDROID__)
-                        SDL_Rect vsyncBtn{kBaseScreenW / 2 - 140, 180, 280, 32};
-                        SDL_Rect camBtn{kBaseScreenW / 2 - 140, 220, 280, 32};
-                        SDL_Rect fpsBtn{kBaseScreenW / 2 - 140, 260, 280, 32};
-                        SDL_Rect dbgBtn{kBaseScreenW / 2 - 140, 300, 280, 32};
-                        SDL_Rect backBtn{kBaseScreenW / 2 - 140, 420, 280, 32};
-                        SDL_Rect musicSlider{kBaseScreenW / 2 - 70, 366, 200, 10};
-                        SDL_Rect sfxSlider{kBaseScreenW / 2 - 70, 406, 200, 10};
-                        if (SDL_PointInRect(&pt, &musicSlider)) {
-                            musicVolume = sliderValueFromPoint(pt.x, musicSlider);
-                            sliderDrag = SliderDragTarget::Music;
-                        } else if (SDL_PointInRect(&pt, &sfxSlider)) {
-                            sfxVolume = sliderValueFromPoint(pt.x, sfxSlider);
-                            sliderDrag = SliderDragTarget::Sfx;
-                        } else if (SDL_PointInRect(&pt, &vsyncBtn)) {
-                            sliderDrag = SliderDragTarget::None;
-                            vsyncEnabled = !vsyncEnabled;
-                            applyRenderVsync();
-                        } else if (SDL_PointInRect(&pt, &camBtn)) {
-                            sliderDrag = SliderDragTarget::None;
-                            clampCamX = !clampCamX;
-                        } else if (SDL_PointInRect(&pt, &fpsBtn)) {
-                            sliderDrag = SliderDragTarget::None;
-                            defaultShowFpsCounter = !defaultShowFpsCounter;
-                        } else if (SDL_PointInRect(&pt, &dbgBtn)) {
-                            sliderDrag = SliderDragTarget::None;
-                            defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
-                        } else if (SDL_PointInRect(&pt, &backBtn)) {
-                            sliderDrag = SliderDragTarget::None;
-                            inSettings = false;
-                        } else {
-                            sliderDrag = SliderDragTarget::None;
-                        }
-#else
-                        SDL_Rect fullBtn{kBaseScreenW / 2 - 140, 180, 280, 32};
-                        SDL_Rect vsyncBtn{kBaseScreenW / 2 - 140, 220, 280, 32};
-                        SDL_Rect camBtn{kBaseScreenW / 2 - 140, 260, 280, 32};
-                        SDL_Rect fpsBtn{kBaseScreenW / 2 - 140, 300, 280, 32};
-                        SDL_Rect dbgBtn{kBaseScreenW / 2 - 140, 340, 280, 32};
-                        SDL_Rect backBtn{kBaseScreenW / 2 - 140, 460, 280, 32};
-                        SDL_Rect musicSlider{kBaseScreenW / 2 - 70, 406, 200, 10};
-                        SDL_Rect sfxSlider{kBaseScreenW / 2 - 70, 446, 200, 10};
-                        if (SDL_PointInRect(&pt, &musicSlider)) {
-                            musicVolume = sliderValueFromPoint(pt.x, musicSlider);
-                            sliderDrag = SliderDragTarget::Music;
-                        } else if (SDL_PointInRect(&pt, &sfxSlider)) {
-                            sfxVolume = sliderValueFromPoint(pt.x, sfxSlider);
-                            sliderDrag = SliderDragTarget::Sfx;
-                        } else if (SDL_PointInRect(&pt, &fullBtn)) {
-                            sliderDrag = SliderDragTarget::None;
-#if !defined(__ANDROID__)
-                            fullscreen = !fullscreen;
-                            SDL_SetWindowFullscreen(win, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
-#endif
-                        } else if (SDL_PointInRect(&pt, &vsyncBtn)) {
-                            sliderDrag = SliderDragTarget::None;
-                            vsyncEnabled = !vsyncEnabled;
-                            applyRenderVsync();
-                        } else if (SDL_PointInRect(&pt, &camBtn)) {
-                            sliderDrag = SliderDragTarget::None;
-                            clampCamX = !clampCamX;
-                        } else if (SDL_PointInRect(&pt, &fpsBtn)) {
-                            sliderDrag = SliderDragTarget::None;
-                            defaultShowFpsCounter = !defaultShowFpsCounter;
-                        } else if (SDL_PointInRect(&pt, &dbgBtn)) {
-                            sliderDrag = SliderDragTarget::None;
-                            defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
-                        } else if (SDL_PointInRect(&pt, &backBtn)) {
-                            sliderDrag = SliderDragTarget::None;
-                            inSettings = false;
-                        } else {
-                            sliderDrag = SliderDragTarget::None;
-                        }
-#endif
-#if HAS_SDL_MIXER
-                        applyAudioVolumes();
-#endif
-                    }
-                }
-                if (e.type == SDL_FINGERDOWN) {
-                    int winW = 0, winH = 0, gx = 0, gy = 0;
-                    SDL_GetWindowSize(win, &winW, &winH);
-                    int wx = (int)(e.tfinger.x * winW);
-                    int wy = (int)(e.tfinger.y * winH);
-                    if (!windowToGamePoint(wx, wy, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy)) continue;
-                    SDL_Point pt{gx, gy};
-                    if (!inSettings) {
-                        SDL_Rect playBtn{kBaseScreenW / 2 - 80, 180, 160, 32};
-                        SDL_Rect settingsBtn{kBaseScreenW / 2 - 80, 220, 160, 32};
-                        SDL_Rect quitBtn{kBaseScreenW / 2 - 80, 260, 160, 32};
-                        if (SDL_PointInRect(&pt, &playBtn)) return FrontendAction::StartGame;
-                        if (SDL_PointInRect(&pt, &settingsBtn)) inSettings = true;
-                        if (SDL_PointInRect(&pt, &quitBtn)) {
-                            running = false;
-                            return FrontendAction::Quit;
-                        }
-                    } else {
-#if defined(__ANDROID__)
-                        SDL_Rect vsyncBtn{kBaseScreenW / 2 - 140, 180, 280, 32};
-                        SDL_Rect camBtn{kBaseScreenW / 2 - 140, 220, 280, 32};
-                        SDL_Rect fpsBtn{kBaseScreenW / 2 - 140, 260, 280, 32};
-                        SDL_Rect dbgBtn{kBaseScreenW / 2 - 140, 300, 280, 32};
-                        SDL_Rect backBtn{kBaseScreenW / 2 - 140, 420, 280, 32};
-                        SDL_Rect musicSlider{kBaseScreenW / 2 - 70, 366, 200, 10};
-                        SDL_Rect sfxSlider{kBaseScreenW / 2 - 70, 406, 200, 10};
-                        if (SDL_PointInRect(&pt, &musicSlider)) {
-                            musicVolume = sliderValueFromPoint(pt.x, musicSlider);
-                            sliderDrag = SliderDragTarget::Music;
-                            sliderDragFinger = e.tfinger.fingerId;
-                        } else if (SDL_PointInRect(&pt, &sfxSlider)) {
-                            sfxVolume = sliderValueFromPoint(pt.x, sfxSlider);
-                            sliderDrag = SliderDragTarget::Sfx;
-                            sliderDragFinger = e.tfinger.fingerId;
-                        } else if (SDL_PointInRect(&pt, &vsyncBtn)) {
-                            sliderDrag = SliderDragTarget::None;
-                            vsyncEnabled = !vsyncEnabled;
-                            applyRenderVsync();
-                        } else if (SDL_PointInRect(&pt, &camBtn)) {
-                            sliderDrag = SliderDragTarget::None;
-                            clampCamX = !clampCamX;
-                        } else if (SDL_PointInRect(&pt, &fpsBtn)) {
-                            sliderDrag = SliderDragTarget::None;
-                            defaultShowFpsCounter = !defaultShowFpsCounter;
-                        } else if (SDL_PointInRect(&pt, &dbgBtn)) {
-                            sliderDrag = SliderDragTarget::None;
-                            defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
-                        } else if (SDL_PointInRect(&pt, &backBtn)) {
-                            sliderDrag = SliderDragTarget::None;
-                            inSettings = false;
-                        } else {
-                            sliderDrag = SliderDragTarget::None;
-                        }
-#else
-                        SDL_Rect fullBtn{kBaseScreenW / 2 - 140, 180, 280, 32};
-                        SDL_Rect vsyncBtn{kBaseScreenW / 2 - 140, 220, 280, 32};
-                        SDL_Rect camBtn{kBaseScreenW / 2 - 140, 260, 280, 32};
-                        SDL_Rect fpsBtn{kBaseScreenW / 2 - 140, 300, 280, 32};
-                        SDL_Rect dbgBtn{kBaseScreenW / 2 - 140, 340, 280, 32};
-                        SDL_Rect backBtn{kBaseScreenW / 2 - 140, 460, 280, 32};
-                        SDL_Rect musicSlider{kBaseScreenW / 2 - 70, 406, 200, 10};
-                        SDL_Rect sfxSlider{kBaseScreenW / 2 - 70, 446, 200, 10};
-                        if (SDL_PointInRect(&pt, &musicSlider)) {
-                            musicVolume = sliderValueFromPoint(pt.x, musicSlider);
-                            sliderDrag = SliderDragTarget::Music;
-                            sliderDragFinger = e.tfinger.fingerId;
-                        } else if (SDL_PointInRect(&pt, &sfxSlider)) {
-                            sfxVolume = sliderValueFromPoint(pt.x, sfxSlider);
-                            sliderDrag = SliderDragTarget::Sfx;
-                            sliderDragFinger = e.tfinger.fingerId;
-                        } else if (SDL_PointInRect(&pt, &fullBtn)) {
-                            sliderDrag = SliderDragTarget::None;
-#if !defined(__ANDROID__)
-                            fullscreen = !fullscreen;
-                            SDL_SetWindowFullscreen(win, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
-#endif
-                        } else if (SDL_PointInRect(&pt, &vsyncBtn)) {
-                            sliderDrag = SliderDragTarget::None;
-                            vsyncEnabled = !vsyncEnabled;
-                            applyRenderVsync();
-                        } else if (SDL_PointInRect(&pt, &camBtn)) {
-                            sliderDrag = SliderDragTarget::None;
-                            clampCamX = !clampCamX;
-                        } else if (SDL_PointInRect(&pt, &fpsBtn)) {
-                            sliderDrag = SliderDragTarget::None;
-                            defaultShowFpsCounter = !defaultShowFpsCounter;
-                        } else if (SDL_PointInRect(&pt, &dbgBtn)) {
-                            sliderDrag = SliderDragTarget::None;
-                            defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
-                        } else if (SDL_PointInRect(&pt, &backBtn)) {
-                            sliderDrag = SliderDragTarget::None;
-                            inSettings = false;
-                        } else {
-                            sliderDrag = SliderDragTarget::None;
-                        }
-#endif
-#if HAS_SDL_MIXER
-                        applyAudioVolumes();
-#endif
-                    }
-                }
-                if (e.type == SDL_FINGERMOTION && inSettings &&
-                    sliderDrag != SliderDragTarget::None &&
-                    e.tfinger.fingerId == sliderDragFinger) {
-                    int winW = 0, winH = 0, gx = 0, gy = 0;
-                    SDL_GetWindowSize(win, &winW, &winH);
-                    int wx = (int)(e.tfinger.x * winW);
-                    int wy = (int)(e.tfinger.y * winH);
-                    if (!windowToGamePoint(wx, wy, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy)) continue;
-                    SDL_Point pt{gx, gy};
-#if defined(__ANDROID__)
-                    SDL_Rect musicSlider{kBaseScreenW / 2 - 70, 366, 200, 10};
-                    SDL_Rect sfxSlider{kBaseScreenW / 2 - 70, 406, 200, 10};
-#else
-                    SDL_Rect musicSlider{kBaseScreenW / 2 - 70, 406, 200, 10};
-                    SDL_Rect sfxSlider{kBaseScreenW / 2 - 70, 446, 200, 10};
-#endif
-                    if (sliderDrag == SliderDragTarget::Music) musicVolume = sliderValueFromPoint(pt.x, musicSlider);
-                    if (sliderDrag == SliderDragTarget::Sfx) sfxVolume = sliderValueFromPoint(pt.x, sfxSlider);
-#if HAS_SDL_MIXER
-                    applyAudioVolumes();
-#endif
-                }
-                if (e.type == SDL_FINGERUP && e.tfinger.fingerId == sliderDragFinger) {
-                    sliderDrag = SliderDragTarget::None;
-                }
-            }
-
-            SDL_SetRenderTarget(ren, gameTarget);
-            SDL_SetRenderDrawColor(ren, 12, 14, 18, 255);
-            SDL_RenderClear(ren);
-            if (!inSettings) {
-                const std::string title = "Dorfplatformer Timetravel";
-                DrawText(ren, kBaseScreenW / 2 - MeasureTextWidth(3, title) / 2, 84, 3, title);
-                const char* items[3] = {"PLAY", "SETTINGS", "QUIT"};
-                for (int i = 0; i < 3; ++i) {
-                    int y = 180 + i * 40;
-                    if (i == menuSel) {
-                        SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
-                        SDL_SetRenderDrawColor(ren, 255, 255, 255, 48);
-                        SDL_Rect hl{kBaseScreenW / 2 - 90, y - 4, 180, 34};
-                        SDL_RenderFillRect(ren, &hl);
-                        SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
-                    }
-                    std::string text = items[i];
-                    DrawText(ren, kBaseScreenW / 2 - MeasureTextWidth(2, text) / 2, y, 2, text);
-                }
-            } else {
-                const std::string title = "SETTINGS";
-                DrawText(ren, kBaseScreenW / 2 - MeasureTextWidth(3, title) / 2, 84, 3, title);
-#if defined(__ANDROID__)
-                std::string rows[7] = {
-                    std::string("VSYNC: ") + (vsyncEnabled ? "ON" : "OFF"),
-                    std::string("CAM CLAMP: ") + (clampCamX ? "ON" : "OFF"),
-                    std::string("FPS COUNTER: ") + (defaultShowFpsCounter ? "ON" : "OFF"),
-                    std::string("DETAILED DEBUGGER: ") + (defaultShowDetailedDebugger ? "ON" : "OFF"),
-                    std::string("MUSIC: ") + std::to_string((musicVolume * 100) / 128) + "%",
-                    std::string("SFX: ") + std::to_string((sfxVolume * 100) / 128) + "%",
-                    "BACK"
-                };
-                for (int i = 0; i < 7; ++i) {
-#else
-                std::string rows[8] = {
-                    std::string("FULLSCREEN: ") + (fullscreen ? "ON" : "OFF"),
-                    std::string("VSYNC: ") + (vsyncEnabled ? "ON" : "OFF"),
-                    std::string("CAM CLAMP: ") + (clampCamX ? "ON" : "OFF"),
-                    std::string("FPS COUNTER: ") + (defaultShowFpsCounter ? "ON" : "OFF"),
-                    std::string("DETAILED DEBUGGER: ") + (defaultShowDetailedDebugger ? "ON" : "OFF"),
-                    std::string("MUSIC: ") + std::to_string((musicVolume * 100) / 128) + "%",
-                    std::string("SFX: ") + std::to_string((sfxVolume * 100) / 128) + "%",
-                    "BACK"
-                };
-                for (int i = 0; i < 8; ++i) {
-#endif
-                    int y = 180 + i * 40;
-                    if (i == settingsSel) {
-                        SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
-                        SDL_SetRenderDrawColor(ren, 255, 255, 255, 48);
-                        SDL_Rect hl{kBaseScreenW / 2 - 140, y - 4, 280, 34};
-                        SDL_RenderFillRect(ren, &hl);
-                        SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
-                    }
-                    DrawText(ren, kBaseScreenW / 2 - MeasureTextWidth(2, rows[i]) / 2, y, 2, rows[i]);
-                }
-                auto drawSlider = [&](int x, int y, int w, int h, int value) {
-                    SDL_Rect track{x, y, w, h};
-                    SDL_SetRenderDrawColor(ren, 70, 80, 95, 255);
-                    SDL_RenderFillRect(ren, &track);
-                    SDL_SetRenderDrawColor(ren, 130, 150, 180, 255);
-                    SDL_RenderDrawRect(ren, &track);
-                    int fillW = (int)std::lround((value / 128.0f) * w);
-                    SDL_Rect fill{x, y, std::clamp(fillW, 0, w), h};
-                    SDL_SetRenderDrawColor(ren, 180, 220, 255, 255);
-                    SDL_RenderFillRect(ren, &fill);
-                };
-#if defined(__ANDROID__)
-                drawSlider(kBaseScreenW / 2 - 70, 366, 200, 10, musicVolume);
-                drawSlider(kBaseScreenW / 2 - 70, 406, 200, 10, sfxVolume);
-                DrawText(ren, 12, kBaseScreenH - 24, 1, std::string("BUILD UUID: ") + buildUuid);
-#else
-                drawSlider(kBaseScreenW / 2 - 70, 406, 200, 10, musicVolume);
-                drawSlider(kBaseScreenW / 2 - 70, 446, 200, 10, sfxVolume);
-                DrawText(ren, 12, kBaseScreenH - 24, 1, std::string("BUILD UUID: ") + buildUuid);
-#endif
-            }
-
-            SDL_SetRenderTarget(ren, nullptr);
-            int winW = 0, winH = 0;
-            SDL_GetWindowSize(win, &winW, &winH);
-            SDL_Rect presentDst = computePresentRect(winW, winH, kBaseScreenW, kBaseScreenH);
-            SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
-            SDL_RenderClear(ren);
-            SDL_RenderCopy(ren, gameTarget, nullptr, &presentDst);
-            SDL_RenderPresent(ren);
-        }
-        return FrontendAction::Quit;
-    };
     while (running) {
 #if HAS_SDL_MIXER
         ensureMenuMusic();
 #endif
         if (!startupNoticeShown) {
+#if defined(__ANDROID__)
+            SDL_Log("In Development: This build is in development.");
+            startupNoticeShown = true;
+#else
             SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION,
                                      "In Development",
                                      "This build is in development.",
                                      win);
             startupNoticeShown = true;
             if (!running) break;
+#endif
         }
 
-        FrontendAction action = runFrontendMenu();
+        FrontendAction action = runFrontendMenu(frontendCtx);
         saveClientSettings();
         if (!running || action == FrontendAction::Quit) break;
 
@@ -1325,6 +647,8 @@ int main(int argc, char** argv) {
             FT_EXIT = 4
         };
         int fastTravelActiveDir = -1;
+        int fastTravelPendingDir = -1;
+        float fastTravelPendingTimer = 0.0f;
         bool fastTravelOverlapWasActive = false;
         float fastTravelBlendVx = 0.0f;
         float fastTravelBlendVy = 0.0f;
@@ -1346,6 +670,12 @@ int main(int argc, char** argv) {
                 logFastTravelFlags(reason);
             }
         };
+        auto queueFastTravelDirChange = [&](int dir) {
+            if (dir == fastTravelActiveDir && fastTravelPendingDir < 0) return;
+            if (fastTravelPendingDir == dir) return;
+            fastTravelPendingDir = dir;
+            fastTravelPendingTimer = std::max(0.0f, fastTravelChangeDelay);
+        };
         float timeTravelTriggerCooldown = 0.0f;
 #if HAS_SDL_MIXER
         Mix_Music* levelMusic = nullptr;
@@ -1366,6 +696,8 @@ int main(int argc, char** argv) {
             levelCompleteUiLerp = 0.0f;
             cameraSmoothingSuppressTimer = 0.20f;
             setFastTravelActiveDir(-1, "reload");
+            fastTravelPendingDir = -1;
+            fastTravelPendingTimer = 0.0f;
             fastTravelOverlapWasActive = false;
             fastTravelBlendVx = 0.0f;
             fastTravelBlendVy = 0.0f;
@@ -1397,12 +729,16 @@ int main(int argc, char** argv) {
         bool deathLifeDeducted = false;
         float deathTimer = 0.0f;
         float fastTravelCooldown = 0.0f;
-        bool showHitboxes = false;
-        bool showPlayerHitbox = false;
-        bool showDebugView = false;
+        bool showHitboxes = defaultShowHitboxes;
+        bool showPlayerHitbox = defaultShowPlayerHitbox;
+        bool showDebugView = defaultShowDebugView;
         bool showFpsCounter = defaultShowFpsCounter;
         showDetailedDebugger = defaultShowDetailedDebugger;
         if (showDetailedDebugger && !debugWin) {
+#if defined(__ANDROID__)
+            debugWin = win;
+            debugRen = ren;
+#else
             debugWin = SDL_CreateWindow("Detailed Debugger",
                                         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                         560, 760,
@@ -1417,9 +753,12 @@ int main(int argc, char** argv) {
             } else {
                 showDetailedDebugger = false;
             }
+#endif
         } else if (debugWin) {
+#if !defined(__ANDROID__)
             if (showDetailedDebugger) SDL_ShowWindow(debugWin);
             else SDL_HideWindow(debugWin);
+#endif
         }
         bool verticalWrapActive = false;
         float camXClampBlend = 1.0f; // 1 = fully clamped, 0 = free-follow.
@@ -1462,6 +801,7 @@ int main(int argc, char** argv) {
             float dt = (now - lastTicks) / 1000.0f;
             lastTicks = now;
             const int updateFpsDisplay = std::clamp((dt > 0.0f) ? (int)(1.0f / dt) : 0, 0, 999999);
+            bool temp1TouchedThisFrame = false;
             verticalWrapActive = false;
             activeBumperIndices.clear();
             frameMsHistory[frameMsHistoryHead] = dt * 1000.0f;
@@ -1479,6 +819,13 @@ int main(int argc, char** argv) {
             }
             if (fastTravelCooldown > 0.0f) {
                 fastTravelCooldown = std::max(0.0f, fastTravelCooldown - dt);
+            }
+            if (fastTravelPendingTimer > 0.0f) {
+                fastTravelPendingTimer = std::max(0.0f, fastTravelPendingTimer - dt);
+            }
+            if (fastTravelPendingDir >= 0 && fastTravelPendingTimer <= 0.0f) {
+                setFastTravelActiveDir(fastTravelPendingDir, "set_delayed");
+                fastTravelPendingDir = -1;
             }
             if (timeTravelTriggerCooldown > 0.0f) {
                 timeTravelTriggerCooldown = std::max(0.0f, timeTravelTriggerCooldown - dt);
@@ -1653,6 +1000,10 @@ int main(int argc, char** argv) {
                 if (e.key.keysym.sym == SDLK_F5) {
                     showDetailedDebugger = !showDetailedDebugger;
                     if (showDetailedDebugger && !debugWin) {
+#if defined(__ANDROID__)
+                        debugWin = win;
+                        debugRen = ren;
+#else
                         debugWin = SDL_CreateWindow("Detailed Debugger",
                                                     SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                                     560, 760,
@@ -1667,10 +1018,18 @@ int main(int argc, char** argv) {
                         } else {
                             showDetailedDebugger = false;
                         }
+#endif
+                    } else if (!showDetailedDebugger) {
+#if defined(__ANDROID__)
+                        debugWin = nullptr;
+                        debugRen = nullptr;
+#endif
                     }
                     if (debugWin) {
+#if !defined(__ANDROID__)
                         if (showDetailedDebugger) SDL_ShowWindow(debugWin);
                         else SDL_HideWindow(debugWin);
+#endif
                     }
                 }
                 if (e.key.keysym.sym == SDLK_F4) {
@@ -1760,6 +1119,44 @@ int main(int argc, char** argv) {
             };
             bool fastTravelReload = false;
             bool fastTravelTriggered = false;
+            auto ejectFromFastTravel = [&](int dirHint) {
+                float ex = 0.0f;
+                float ey = 0.0f;
+                const float blendLen = std::sqrt(fastTravelBlendVx * fastTravelBlendVx + fastTravelBlendVy * fastTravelBlendVy);
+                if (blendLen > 0.001f) {
+                    ex = fastTravelBlendVx / blendLen;
+                    ey = fastTravelBlendVy / blendLen;
+                } else {
+                    if (dirHint == FT_UP) ey = -1.0f;
+                    else if (dirHint == FT_DOWN) ey = 1.0f;
+                    else if (dirHint == FT_LEFT) ex = -1.0f;
+                    else if (dirHint == FT_RIGHT) ex = 1.0f;
+                    else ey = -1.0f;
+                }
+
+                player.x += ex * 18.0f;
+                player.y += ey * 18.0f;
+
+                // Try to push player out if the exit lands inside a solid tile.
+                if (RectHitsSolid(map, player.x, player.y, player.w, player.h)) {
+                    for (int i = 0; i < 8; ++i) {
+                        player.x += ex * 4.0f;
+                        player.y += ey * 4.0f;
+                        if (!RectHitsSolid(map, player.x, player.y, player.w, player.h)) break;
+                    }
+                }
+                if (RectHitsSolid(map, player.x, player.y, player.w, player.h)) {
+                    for (int i = 0; i < 12; ++i) {
+                        player.y -= 4.0f;
+                        if (!RectHitsSolid(map, player.x, player.y, player.w, player.h)) break;
+                    }
+                }
+
+                const float ejectSpeed = 520.0f;
+                player.vx = ex * ejectSpeed;
+                player.vy = ey * ejectSpeed;
+                player.onGround = false;
+            };
             if (timeTravelTriggerCooldown <= 0.0f) {
                 int overlapDir = -1;
                 for (const auto& obj : objects) {
@@ -1782,11 +1179,22 @@ int main(int argc, char** argv) {
                     const int dir = fastTravelDirForObjectId(objId);
                     if (dir < 0) continue;
                     if (dir == FT_EXIT && fastTravelActiveDir < 0) continue;
-                    overlapDir = dir;
-                    break;
+                    const bool isHighestPriority = (objId == 61);
+                    if (isHighestPriority) {
+                        temp1TouchedThisFrame = true;
+                        overlapDir = dir;
+                        break;
+                    }
+                    if (overlapDir < 0) {
+                        overlapDir = dir;
+                    }
                 }
                 if (overlapDir >= 0 && !fastTravelOverlapWasActive) {
-                    setFastTravelActiveDir(overlapDir, "set");
+                    queueFastTravelDirChange(overlapDir);
+                }
+                if (overlapDir < 0) {
+                    fastTravelPendingDir = -1;
+                    fastTravelPendingTimer = 0.0f;
                 }
                 fastTravelOverlapWasActive = (overlapDir >= 0);
             }
@@ -1794,6 +1202,7 @@ int main(int argc, char** argv) {
                 const float eps = 0.01f;
                 const float mapW = (float)(map.w * map.tileSize);
                 const float mapH = (float)(map.h * map.tileSize);
+                const bool insideSolid = RectHitsSolid(map, player.x, player.y, player.w, player.h);
                 const float oldX = player.x;
                 const float oldY = player.y;
                 bool positionChanged = false;
@@ -1811,14 +1220,20 @@ int main(int argc, char** argv) {
                 } else if (fastTravelActiveDir == FT_RIGHT) {
                     targetVx = fastTravelSpeed;
                 } else if (fastTravelActiveDir == FT_EXIT && fastTravelCooldown <= 0.0f) {
-                    setFastTravelActiveDir(-1, "exit_mode");
-                    fastTravelOverlapWasActive = false;
-                    fastTravelBlendVx = 0.0f;
-                    fastTravelBlendVy = 0.0f;
-                    fastTravelCooldown = 0.2f;
+                    // Keep fast travel active while embedded in solids.
+                    if (!insideSolid) {
+                        const int previousDir = fastTravelActiveDir;
+                        ejectFromFastTravel(previousDir);
+                        setFastTravelActiveDir(-1, "exit_mode");
+                        fastTravelOverlapWasActive = false;
+                        fastTravelBlendVx = 0.0f;
+                        fastTravelBlendVy = 0.0f;
+                        fastTravelCooldown = 0.2f;
+                    }
                 }
 
-                const float blendT = std::clamp(fastTravelBlendSpeed * dt, 0.0f, 1.0f);
+                // Frame-rate independent smoothing for consistent response.
+                const float blendT = 1.0f - std::exp(-fastTravelBlendSpeed * std::max(0.0f, dt));
                 fastTravelBlendVx += (targetVx - fastTravelBlendVx) * blendT;
                 fastTravelBlendVy += (targetVy - fastTravelBlendVy) * blendT;
 
@@ -1846,6 +1261,16 @@ int main(int argc, char** argv) {
                             player.x, player.y,
                             player.x - oldX, player.y - oldY);
                 }
+            }
+            if (temp1TouchedThisFrame && fastTravelActiveDir >= 0 &&
+                !RectHitsSolid(map, player.x, player.y, player.w, player.h)) {
+                const int previousDir = fastTravelActiveDir;
+                ejectFromFastTravel(previousDir);
+                setFastTravelActiveDir(-1, "temp1_disable");
+                fastTravelOverlapWasActive = false;
+                fastTravelBlendVx = 0.0f;
+                fastTravelBlendVy = 0.0f;
+                fastTravelCooldown = std::max(fastTravelCooldown, 0.2f);
             }
             if (fastTravelReload) {
                 reloadLevel();
@@ -2091,22 +1516,19 @@ RENDER_ONLY:
         const float clampedCamX = std::clamp(freeCamX, (float)map.tileSize, std::max((float)map.tileSize, maxCamX));
         const float clampXTarget = cameraWrapX ? 0.0f : 1.0f;
         const float clampLerpSpeed = 7.5f;
+        const float clampBlendStep = 1.0f - std::exp(-clampLerpSpeed * std::max(0.0f, dt));
         if (cameraSmoothingSuppressTimer > 0.0f) {
             camXClampBlend = clampXTarget;
-        } else if (camXClampBlend < clampXTarget) {
-            camXClampBlend = std::min(clampXTarget, camXClampBlend + clampLerpSpeed * dt);
-        } else if (camXClampBlend > clampXTarget) {
-            camXClampBlend = std::max(clampXTarget, camXClampBlend - clampLerpSpeed * dt);
+        } else {
+            camXClampBlend += (clampXTarget - camXClampBlend) * clampBlendStep;
         }
         camX = freeCamX * (1.0f - camXClampBlend) + clampedCamX * camXClampBlend;
         const float clampedCamY = std::clamp(freeCamY, (float)map.tileSize, std::max((float)map.tileSize, maxCamY));
         const float clampTarget = cameraWrapY ? 0.0f : 1.0f;
         if (cameraSmoothingSuppressTimer > 0.0f) {
             camYClampBlend = clampTarget;
-        } else if (camYClampBlend < clampTarget) {
-            camYClampBlend = std::min(clampTarget, camYClampBlend + clampLerpSpeed * dt);
-        } else if (camYClampBlend > clampTarget) {
-            camYClampBlend = std::max(clampTarget, camYClampBlend - clampLerpSpeed * dt);
+        } else {
+            camYClampBlend += (clampTarget - camYClampBlend) * clampBlendStep;
         }
         camY = freeCamY * (1.0f - camYClampBlend) + clampedCamY * camYClampBlend;
 
@@ -3162,8 +2584,8 @@ RENDER_ONLY:
     if (entitiesTex) SDL_DestroyTexture(entitiesTex);
     if (pauseTex) SDL_DestroyTexture(pauseTex);
     if (gameTarget) SDL_DestroyTexture(gameTarget);
-    if (debugRen) SDL_DestroyRenderer(debugRen);
-    if (debugWin) SDL_DestroyWindow(debugWin);
+    if (debugRen && debugRen != ren) SDL_DestroyRenderer(debugRen);
+    if (debugWin && debugWin != win) SDL_DestroyWindow(debugWin);
     ShutdownTextRenderer();
     if (audioReady) {
 #if HAS_SDL_MIXER

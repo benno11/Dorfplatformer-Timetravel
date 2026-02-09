@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Prevent silent hangs on network operations.
+export GIT_TERMINAL_PROMPT=0
+NETWORK_TIMEOUT_SECONDS="${NETWORK_TIMEOUT_SECONDS:-900}"
+
 # Build and stage SDL2, SDL2_image, SDL2_ttf, SDL2_mixer for Android into deps/android
 #
 # Usage:
@@ -58,6 +62,7 @@ fi
 ABI="${ABI:-arm64-v8a}"
 API="${API:-24}"
 JOBS="${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}"
+FORCE_REBUILD_SDL="${FORCE_REBUILD_SDL:-0}"
 
 case "$ABI" in
   arm64-v8a|armeabi-v7a|x86_64|x86) ;;
@@ -87,19 +92,71 @@ STAGE_ROOT="$ROOT_DIR/deps/android"
 
 mkdir -p "$SRC_ROOT" "$BUILD_ROOT" "$INSTALL_ROOT" "$STAGE_ROOT/lib/$ABI"
 
+if [ "$FORCE_REBUILD_SDL" = "1" ]; then
+  echo "[INFO] FORCE_REBUILD_SDL=1 -> cleaning Android SDL build/install/stage for ABI=$ABI"
+  rm -rf "$BUILD_ROOT/SDL" "$BUILD_ROOT/SDL_image" "$BUILD_ROOT/SDL_ttf" "$BUILD_ROOT/SDL_mixer"
+  rm -rf "$INSTALL_ROOT/SDL" "$INSTALL_ROOT/SDL_image" "$INSTALL_ROOT/SDL_ttf" "$INSTALL_ROOT/SDL_mixer"
+  rm -rf "$STAGE_ROOT/include" "$STAGE_ROOT/lib/$ABI"
+  mkdir -p "$STAGE_ROOT/lib/$ABI"
+fi
+
+run_with_timeout() {
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$NETWORK_TIMEOUT_SECONDS" "$@"
+  else
+    "$@"
+  fi
+}
+
 clone_or_update() {
   local name="$1"
   local url="$2"
   local ref="$3"
+  shift 3
+  local fallbacks=("$@")
   local dir="$SRC_ROOT/$name"
-  if [ ! -d "$dir/.git" ]; then
-    echo "[INFO] Cloning $name ($ref)"
-    git clone --depth 1 --branch "$ref" "$url" "$dir"
+  local chosen_ref="$ref"
+  local remote_ref=""
+
+  resolve_remote_ref() {
+    local candidate="$1"
+    if run_with_timeout git ls-remote --exit-code --heads "$url" "$candidate" >/dev/null 2>&1; then
+      echo "refs/heads/$candidate"
+      return 0
+    fi
+    if run_with_timeout git ls-remote --exit-code --tags "$url" "$candidate" >/dev/null 2>&1; then
+      echo "refs/tags/$candidate"
+      return 0
+    fi
+    return 1
+  }
+
+  if remote_ref="$(resolve_remote_ref "$chosen_ref")"; then
+    :
   else
-    echo "[INFO] Updating $name ($ref)"
-    git -C "$dir" fetch --depth 1 origin "$ref"
-    git -C "$dir" checkout -f "$ref" || git -C "$dir" checkout -f "origin/$ref"
-    git -C "$dir" reset --hard "origin/$ref" || true
+    for alt in "${fallbacks[@]}"; do
+      if remote_ref="$(resolve_remote_ref "$alt")"; then
+        echo "[WARN] $name ref '$chosen_ref' not found, using '$alt'"
+        chosen_ref="$alt"
+        break
+      fi
+    done
+  fi
+
+  if [ -z "$remote_ref" ]; then
+    echo "[ERROR] Could not find a valid ref for $name"
+    echo "        Tried: $ref ${fallbacks[*]}"
+    exit 1
+  fi
+
+  if [ ! -d "$dir/.git" ]; then
+    echo "[INFO] Cloning $name ($chosen_ref)"
+    run_with_timeout git clone --depth 1 --branch "$chosen_ref" "$url" "$dir"
+  else
+    echo "[INFO] Updating $name ($chosen_ref)"
+    run_with_timeout git -C "$dir" fetch --depth 1 origin "$chosen_ref" || run_with_timeout git -C "$dir" fetch --depth 1 origin "$remote_ref"
+    git -C "$dir" checkout -f "$chosen_ref" || git -C "$dir" checkout -f "origin/$chosen_ref" || git -C "$dir" checkout -f FETCH_HEAD
+    git -C "$dir" reset --hard "origin/$chosen_ref" || git -C "$dir" reset --hard FETCH_HEAD || true
   fi
 }
 
@@ -108,7 +165,7 @@ sync_submodules() {
   if [ -d "$dir/.git" ]; then
     echo "[INFO] Syncing submodules in $(basename "$dir")"
     git -C "$dir" submodule sync --recursive
-    git -C "$dir" submodule update --init --recursive --depth 1
+    run_with_timeout git -C "$dir" submodule update --init --recursive --depth 1 --jobs "$JOBS" --progress
   fi
 }
 
@@ -126,14 +183,21 @@ cmake_android() {
     -DCMAKE_INSTALL_PREFIX="$prefix" \
     "$@"
 
+  echo "[INFO] Building $(basename "$src")..."
   cmake --build "$bld" -j"$JOBS"
+  echo "[INFO] Installing $(basename "$src")..."
   cmake --install "$bld"
 }
 
-clone_or_update "SDL" "https://github.com/libsdl-org/SDL.git" "release-2.32.x"
-clone_or_update "SDL_image" "https://github.com/libsdl-org/SDL_image.git" "release-2.8.x"
-clone_or_update "SDL_ttf" "https://github.com/libsdl-org/SDL_ttf.git" "release-2.24.x"
-clone_or_update "SDL_mixer" "https://github.com/libsdl-org/SDL_mixer.git" "release-2.8.x"
+SDL_REF="${SDL_REF:-release-2.32.x}"
+SDL_IMAGE_REF="${SDL_IMAGE_REF:-release-2.8.x}"
+SDL_TTF_REF="${SDL_TTF_REF:-release-2.24.x}"
+SDL_MIXER_REF="${SDL_MIXER_REF:-release-2.8.x}"
+
+clone_or_update "SDL" "https://github.com/libsdl-org/SDL.git" "$SDL_REF" "release-2.32.x" "release-2.32" "release-2.30.x" "main"
+clone_or_update "SDL_image" "https://github.com/libsdl-org/SDL_image.git" "$SDL_IMAGE_REF" "release-2.8" "main"
+clone_or_update "SDL_ttf" "https://github.com/libsdl-org/SDL_ttf.git" "$SDL_TTF_REF" "release-2.24" "main"
+clone_or_update "SDL_mixer" "https://github.com/libsdl-org/SDL_mixer.git" "$SDL_MIXER_REF" "release-2.8" "main"
 sync_submodules "$SRC_ROOT/SDL_image"
 sync_submodules "$SRC_ROOT/SDL_ttf"
 sync_submodules "$SRC_ROOT/SDL_mixer"
@@ -216,6 +280,15 @@ if [ ! -f "$STAGE_ROOT/lib/$ABI/libSDL2.so" ]; then
 fi
 
 echo "[OK] Staged Android SDL deps at: $STAGE_ROOT"
+if [ -f "$STAGE_ROOT/include/SDL2/SDL_version.h" ]; then
+  SDL_MAJOR="$(awk '/#define[[:space:]]+SDL_MAJOR_VERSION[[:space:]]+[0-9]+/{print $3; exit}' "$STAGE_ROOT/include/SDL2/SDL_version.h")"
+  SDL_MINOR="$(awk '/#define[[:space:]]+SDL_MINOR_VERSION[[:space:]]+[0-9]+/{print $3; exit}' "$STAGE_ROOT/include/SDL2/SDL_version.h")"
+  SDL_PATCH="$(awk '/#define[[:space:]]+SDL_MICRO_VERSION[[:space:]]+[0-9]+/{print $3; exit}' "$STAGE_ROOT/include/SDL2/SDL_version.h")"
+  if [ -z "$SDL_PATCH" ]; then
+    SDL_PATCH="$(awk '/#define[[:space:]]+SDL_PATCHLEVEL[[:space:]]+[0-9]+/{print $3; exit}' "$STAGE_ROOT/include/SDL2/SDL_version.h")"
+  fi
+  echo "[INFO] Staged SDL header version: ${SDL_MAJOR:-0}.${SDL_MINOR:-0}.${SDL_PATCH:-0}"
+fi
 cat > "$ROOT_DIR/build/android.env" <<ENV
 export ANDROID_NDK_HOME="$ANDROID_NDK_HOME"
 export SDL2_ANDROID_ROOT="$STAGE_ROOT"

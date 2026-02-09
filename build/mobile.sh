@@ -9,6 +9,7 @@ set -euo pipefail
 CXX="${CXX:-clang++}"
 CXXFLAGS="${CXXFLAGS:--std=c++17 -O2 -fPIC}"
 LDFLAGS="${LDFLAGS:-}"
+SDL_REQUIRED_VERSION="${SDL_REQUIRED_VERSION:-2.32.11}"
 SRC_DIR="src"
 OUT_PLATFORMER="platformer_mobile"
 
@@ -20,6 +21,9 @@ done
 if [ -z "$pkg_sdl2" ]; then
   echo "[ERROR] SDL2 pkg-config package not found (expected 'sdl2' or 'SDL2')."
   exit 1
+fi
+if ! pkg-config --atleast-version="$SDL_REQUIRED_VERSION" "$pkg_sdl2"; then
+  echo "[WARN] SDL2 ${SDL_REQUIRED_VERSION}+ not found. Continuing with installed version: $(pkg-config --modversion "$pkg_sdl2" 2>/dev/null || echo unknown)"
 fi
 
 pkg_image=""
@@ -66,6 +70,9 @@ $CXX $CXXFLAGS $CPPFLAGS_PKG \
   "$SRC_DIR/LevelSelect.cpp" \
   "$SRC_DIR/PlayerController.cpp" \
   "$SRC_DIR/LevelManager.cpp" \
+  "$SRC_DIR/GameSupport.cpp" \
+  "$SRC_DIR/CrashReporter.cpp" \
+  "$SRC_DIR/FrontendMenu.cpp" \
   $LDFLAGS $LIBS_PKG \
   -o "$OUT_PLATFORMER"
 

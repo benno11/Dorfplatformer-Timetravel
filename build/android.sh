@@ -30,6 +30,16 @@ if [ -f "build/android.env" ]; then
   . "build/android.env"
 fi
 
+FORCE_STAGED_SDL_ROOT="${FORCE_STAGED_SDL_ROOT:-1}"
+if [ "$FORCE_STAGED_SDL_ROOT" = "1" ]; then
+  SDL2_ANDROID_ROOT="$PWD/deps/android"
+  SDL2_IMAGE_ROOT="$SDL2_ANDROID_ROOT"
+  SDL2_TTF_ROOT="$SDL2_ANDROID_ROOT"
+  SDL2_MIXER_ROOT="$SDL2_ANDROID_ROOT"
+  export SDL2_ANDROID_ROOT SDL2_IMAGE_ROOT SDL2_TTF_ROOT SDL2_MIXER_ROOT
+  echo "[INFO] FORCE_STAGED_SDL_ROOT=1 -> using staged SDL root: $SDL2_ANDROID_ROOT"
+fi
+
 if [ -z "${ANDROID_NDK_HOME:-}" ]; then
   for c in \
     "$HOME/Android/Sdk/ndk-bundle" \
@@ -121,6 +131,20 @@ fi
 API="${API:-24}"
 ABI="${ABI:-arm64-v8a}"
 FAST="${FAST:-0}"
+SDL_REQUIRED_VERSION="${SDL_REQUIRED_VERSION:-2.32.11}"
+ver_ge() {
+  local a="$1" b="$2"
+  local a1 a2 a3 b1 b2 b3
+  IFS='.' read -r a1 a2 a3 <<<"$a"
+  IFS='.' read -r b1 b2 b3 <<<"$b"
+  a1="${a1:-0}"; a2="${a2:-0}"; a3="${a3:-0}"
+  b1="${b1:-0}"; b2="${b2:-0}"; b3="${b3:-0}"
+  if [ "$a1" -gt "$b1" ]; then return 0; fi
+  if [ "$a1" -lt "$b1" ]; then return 1; fi
+  if [ "$a2" -gt "$b2" ]; then return 0; fi
+  if [ "$a2" -lt "$b2" ]; then return 1; fi
+  [ "$a3" -ge "$b3" ]
+}
 
 case "$ABI" in
   arm64-v8a)
@@ -153,6 +177,12 @@ fi
 
 OUT_DIR="build/android/$ABI"
 mkdir -p "$OUT_DIR"
+rm -f \
+  "$OUT_DIR/libplatformer.so" \
+  "$OUT_DIR/libSDL2.so" \
+  "$OUT_DIR/libSDL2_image.so" \
+  "$OUT_DIR/libSDL2_ttf.so" \
+  "$OUT_DIR/libSDL2_mixer.so"
 
 JSON_INCLUDE_ROOT="${JSON_INCLUDE_ROOT:-}"
 
@@ -186,6 +216,31 @@ CPPFLAGS=(
   -I"$SDL2_TTF_ROOT/include"
   -I"$SDL2_MIXER_ROOT/include"
 )
+
+SDL_VERSION_PROBE='
+#include <SDL2/SDL.h>
+SDL_MAJOR_VERSION SDL_MINOR_VERSION SDL_PATCHLEVEL
+'
+SDL_VERSION_LINE="$("$CXX" -E -P -x c++ - "${CPPFLAGS[@]}" <<<"$SDL_VERSION_PROBE" 2>/dev/null | tail -n1 || true)"
+SDL_MAJOR="$(awk '{print $1}' <<<"$SDL_VERSION_LINE")"
+SDL_MINOR="$(awk '{print $2}' <<<"$SDL_VERSION_LINE")"
+SDL_PATCH="$(awk '{print $3}' <<<"$SDL_VERSION_LINE")"
+if [ -z "$SDL_MAJOR" ] || [ -z "$SDL_MINOR" ] || [ -z "$SDL_PATCH" ]; then
+  echo "[ERROR] Could not detect SDL version from active compile include path."
+  echo "[INFO] SDL2_ANDROID_ROOT=$SDL2_ANDROID_ROOT"
+  echo "[INFO] SDL2_IMAGE_ROOT=$SDL2_IMAGE_ROOT"
+  echo "[INFO] SDL2_TTF_ROOT=$SDL2_TTF_ROOT"
+  echo "[INFO] SDL2_MIXER_ROOT=$SDL2_MIXER_ROOT"
+  exit 1
+fi
+SDL_STAGED_VERSION="${SDL_MAJOR}.${SDL_MINOR}.${SDL_PATCH}"
+if ! ver_ge "$SDL_STAGED_VERSION" "$SDL_REQUIRED_VERSION"; then
+  echo "[ERROR] SDL version too old in compile path: required >= $SDL_REQUIRED_VERSION, found $SDL_STAGED_VERSION"
+  echo "[HINT] Rebuild Android SDL with:"
+  echo "       SDL_REF=release-2.32.x FORCE_REBUILD_SDL=1 ./build/setup-android-sdl.sh"
+  exit 1
+fi
+echo "[INFO] Using SDL in compile path: $SDL_STAGED_VERSION (required >= $SDL_REQUIRED_VERSION)"
 
 LDFLAGS=(
   -L"$SDL2_ANDROID_ROOT/lib/$ABI"
@@ -235,6 +290,9 @@ SRC=(
   src/LevelSelect.cpp
   src/PlayerController.cpp
   src/LevelManager.cpp
+  src/GameSupport.cpp
+  src/CrashReporter.cpp
+  src/FrontendMenu.cpp
 )
 
 OUT_LIB="$OUT_DIR/libplatformer.so"
@@ -243,4 +301,16 @@ echo "[INFO] Building Android ABI=$ABI API=$API"
 "$CXX" "${CXXFLAGS[@]}" "${CPPFLAGS[@]}" "${SRC[@]}" -shared "${LDFLAGS[@]}" -o "$OUT_LIB"
 
 echo "[OK] Built: $OUT_LIB"
+copy_if_exists() {
+  local src="$1"
+  local dst="$2"
+  if [ -f "$src" ]; then
+    cp -f "$src" "$dst"
+    echo "[OK] Synced next to game: $(basename "$src")"
+  fi
+}
+copy_if_exists "$SDL2_ANDROID_ROOT/lib/$ABI/libSDL2.so" "$OUT_DIR/libSDL2.so"
+copy_if_exists "$SDL2_IMAGE_ROOT/lib/$ABI/libSDL2_image.so" "$OUT_DIR/libSDL2_image.so"
+copy_if_exists "$SDL2_TTF_ROOT/lib/$ABI/libSDL2_ttf.so" "$OUT_DIR/libSDL2_ttf.so"
+copy_if_exists "$SDL2_MIXER_ROOT/lib/$ABI/libSDL2_mixer.so" "$OUT_DIR/libSDL2_mixer.so"
 echo "[NEXT] Sync into Android app: ABI=$ABI ./build/update-android-app.sh"

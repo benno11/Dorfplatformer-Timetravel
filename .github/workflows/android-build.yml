@@ -40,16 +40,6 @@ jobs:
       run: |
         echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
 
-    - name: Cache Android dependencies
-      uses: actions/cache@v4
-      with:
-        path: |
-          deps/android
-          deps/android-src
-        key: ${{ runner.os }}-android-deps-${{ hashFiles('build/setup-android-sdl.sh', 'build/dep-android.sh') }}
-        restore-keys: |
-          ${{ runner.os }}-android-deps-
-
     - name: Install dependencies
       run: |
         sudo apt-get update
@@ -58,6 +48,9 @@ jobs:
     - name: Setup Android SDL2 libraries
       run: |
         export ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}
+                export SDL_REF=release-2.32.x
+                export SDL_REQUIRED_VERSION=2.32.11
+        export FORCE_REBUILD_SDL=1
         ./build/FullBuildandroid.sh
 
     - name: Update Android app with native libraries

@@ -106,6 +106,7 @@ PlayerUpdateResult UpdatePlayerMovement(
     bool downHeld = touchDown || keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_DOWN];
     inputMove = move;
     inputDown = downHeld;
+    const bool insideSolid = RectHitsSolid(map, player.x, player.y, player.w, player.h);
 
     bool inWater = rectHitsWater(map, player.x, player.y, player.w, player.h);
     player.inWater = inWater;
@@ -144,6 +145,22 @@ PlayerUpdateResult UpdatePlayerMovement(
         player.jumpBufferTime = jumpBufferMax;
     } else {
         player.jumpBufferTime = std::max(0.0f, player.jumpBufferTime - dt);
+    }
+
+    if (insideSolid) {
+        // Escape-mode controls while embedded in solid tiles: ignore collision locks.
+        player.vx = move * movement.maxSpeedGround;
+        player.vy = 0.0f;
+        player.x += player.vx * dt;
+        if (jumpDown) {
+            player.y -= movement.jumpSpeed * dt;
+        }
+        player.onGround = false;
+        player.jumpHeld = false;
+        player.jumpHoldTime = 0.0f;
+        player.jumpWasDown = jumpDown;
+        player.inWater = false;
+        return PlayerUpdateResult::Normal;
     }
 
     if ((player.onGround || inWater) && player.jumpBufferTime > 0.0f) {

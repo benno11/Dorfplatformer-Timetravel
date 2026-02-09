@@ -167,17 +167,22 @@ if [ "${DOWNLOAD_SDL:-0}" = "1" ]; then
   mkdir -p deps/android-src
   cd deps/android-src
 
+  SDL_REF="${SDL_REF:-release-2.32.x}"
+  SDL_IMAGE_REF="${SDL_IMAGE_REF:-release-2.8.x}"
+  SDL_TTF_REF="${SDL_TTF_REF:-release-2.24.x}"
+  SDL_MIXER_REF="${SDL_MIXER_REF:-release-2.8.x}"
+
   if [ ! -d SDL ]; then
-    git clone --depth 1 https://github.com/libsdl-org/SDL.git
+    git clone --depth 1 --branch "$SDL_REF" https://github.com/libsdl-org/SDL.git
   fi
   if [ ! -d SDL_image ]; then
-    git clone --depth 1 https://github.com/libsdl-org/SDL_image.git
+    git clone --depth 1 --branch "$SDL_IMAGE_REF" https://github.com/libsdl-org/SDL_image.git
   fi
   if [ ! -d SDL_ttf ]; then
-    git clone --depth 1 https://github.com/libsdl-org/SDL_ttf.git
+    git clone --depth 1 --branch "$SDL_TTF_REF" https://github.com/libsdl-org/SDL_ttf.git
   fi
   if [ ! -d SDL_mixer ]; then
-    git clone --depth 1 https://github.com/libsdl-org/SDL_mixer.git || true
+    git clone --depth 1 --branch "$SDL_MIXER_REF" https://github.com/libsdl-org/SDL_mixer.git || true
   fi
 
   cat <<'MSG'
