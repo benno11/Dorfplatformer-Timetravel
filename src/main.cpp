@@ -1290,6 +1290,8 @@ int main(int argc, char** argv) {
         };
         computeTouchButtons();
 
+        const SDL_WindowID mainWindowId = SDL_GetWindowID(win);
+        const bool embeddedDetailedDebugger = (showDetailedDebugger && debugWin == win && debugRen == ren);
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) { running = false; levelRunning = false; }
             if (e.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && debugWin &&
@@ -1297,41 +1299,71 @@ int main(int argc, char** argv) {
                 SDL_HideWindow(debugWin);
                 showDetailedDebugger = false;
             }
-            if (e.type == SDL_MOUSEBUTTONDOWN && debugWin && debugRen &&
-                e.button.windowID == SDL_GetWindowID(debugWin) &&
-                e.button.button == SDL_BUTTON_LEFT) {
-                const int mx = e.button.x;
-                const int my = e.button.y;
-                (void)handleDetailedDebuggerTap(mx, my);
+            if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
+                if (embeddedDetailedDebugger && e.button.windowID == mainWindowId) {
+                    int winW = 0, winH = 0, gx = 0, gy = 0;
+                    SDL_GetWindowSize(win, &winW, &winH);
+                    if (windowToGamePoint(e.button.x, e.button.y, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy)) {
+                        if (handleDetailedDebuggerTap(gx, gy)) continue;
+                    }
+                } else if (debugWin && debugRen &&
+                           e.button.windowID == SDL_GetWindowID(debugWin)) {
+                    const int mx = e.button.x;
+                    const int my = e.button.y;
+                    (void)handleDetailedDebuggerTap(mx, my);
+                }
             }
             if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST) {
                 paused = true;
             }
             if (e.type == SDL_FINGERDOWN) {
                 bool consumedByDebugger = false;
-                if (debugWin && e.tfinger.windowID == SDL_GetWindowID(debugWin)) {
+                if (embeddedDetailedDebugger &&
+                    (e.tfinger.windowID == mainWindowId || e.tfinger.windowID == 0)) {
+                    int winW = 0, winH = 0;
+                    SDL_GetWindowSize(win, &winW, &winH);
+                    int wx = (int)std::lround(e.tfinger.x * winW);
+                    int wy = (int)std::lround(e.tfinger.y * winH);
+                    int gx = 0, gy = 0;
+                    if (windowToGamePoint(wx, wy, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy)) {
+                        consumedByDebugger = handleDetailedDebuggerTap(gx, gy);
+                    }
+                } else if (debugWin && e.tfinger.windowID == SDL_GetWindowID(debugWin)) {
                     int dbgW = 0, dbgH = 0;
                     SDL_GetWindowSize(debugWin, &dbgW, &dbgH);
                     const int mx = (int)std::lround(e.tfinger.x * dbgW);
                     const int my = (int)std::lround(e.tfinger.y * dbgH);
                     consumedByDebugger = handleDetailedDebuggerTap(mx, my);
                 }
-                if (!consumedByDebugger && e.tfinger.windowID == SDL_GetWindowID(win)) {
+                if (!consumedByDebugger && e.tfinger.windowID == mainWindowId) {
                     // Touch hotspot (top-right) to toggle detailed debugger on mobile.
                     if (e.tfinger.x >= 0.92f && e.tfinger.y <= 0.10f) {
                         toggleDetailedDebugger();
                         consumedByDebugger = true;
                     }
                 }
-                if (!consumedByDebugger) {
+                if (!consumedByDebugger &&
+                    (e.tfinger.windowID == mainWindowId || e.tfinger.windowID == 0)) {
                     activeTouches[e.tfinger.fingerID] = SDL_FPoint{e.tfinger.x, e.tfinger.y};
                 }
             }
             if (e.type == SDL_FINGERMOTION) {
-                activeTouches[e.tfinger.fingerID] = SDL_FPoint{e.tfinger.x, e.tfinger.y};
+                if (e.tfinger.windowID == mainWindowId || e.tfinger.windowID == 0 ||
+                    activeTouches.find(e.tfinger.fingerID) != activeTouches.end()) {
+                    activeTouches[e.tfinger.fingerID] = SDL_FPoint{e.tfinger.x, e.tfinger.y};
+                }
             }
             if (e.type == SDL_FINGERUP) {
-                activeTouches.erase(e.tfinger.fingerID);
+                if (e.tfinger.windowID == mainWindowId || e.tfinger.windowID == 0 ||
+                    activeTouches.find(e.tfinger.fingerID) != activeTouches.end()) {
+                    activeTouches.erase(e.tfinger.fingerID);
+                }
+            }
+            if (e.type == SDL_EVENT_FINGER_CANCELED) {
+                if (e.tfinger.windowID == mainWindowId || e.tfinger.windowID == 0 ||
+                    activeTouches.find(e.tfinger.fingerID) != activeTouches.end()) {
+                    activeTouches.erase(e.tfinger.fingerID);
+                }
             }
             if (e.type == SDL_KEYDOWN && e.key.repeat == 0) {
                 if (e.key.key == SDLK_F11) {
@@ -1400,7 +1432,8 @@ int main(int argc, char** argv) {
                     else if (SDL_PointInRect(&pt, &pauseBtnExit)) handlePauseSelect(2);
                 }
             }
-            if (paused && e.type == SDL_FINGERDOWN) {
+            if (paused && e.type == SDL_FINGERDOWN &&
+                (e.tfinger.windowID == mainWindowId || e.tfinger.windowID == 0)) {
                 int winW = 0, winH = 0;
                 SDL_GetWindowSize(win, &winW, &winH);
                 int wx = (int)(e.tfinger.x * winW);
@@ -2654,6 +2687,78 @@ RENDER_ONLY:
             }
         }
 
+        if (embeddedDetailedDebugger) {
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+            SDL_Rect panel{8, 6, kBaseScreenW - 16, std::min(360, kBaseScreenH - 12)};
+            SDL_SetRenderDrawColor(ren, 10, 12, 16, 210);
+            SDL_RenderFillRect(ren, &panel);
+            SDL_SetRenderDrawColor(ren, 180, 200, 230, 220);
+            SDL_RenderDrawRect(ren, &panel);
+
+            DrawText(ren, 12, 10, 2, "DETAILED DEBUGGER (F5)");
+            SDL_Rect tab0{12, 38, 130, 36};
+            SDL_Rect tab1{152, 38, 130, 36};
+            SDL_Rect tab2{292, 38, 130, 36};
+            SDL_Rect tab3{432, 38, 130, 36};
+            SDL_Rect tabs[4] = {tab0, tab1, tab2, tab3};
+            const char* tabNames[4] = {"OVERVIEW", "OBJECT INDEX", "PERF", "PLAYER"};
+            for (int i = 0; i < 4; ++i) {
+                SDL_SetRenderDrawColor(ren, i == detailedDebugSubmenu ? 70 : 45, 85, 120, i == detailedDebugSubmenu ? 180 : 120);
+                SDL_RenderFillRect(ren, &tabs[i]);
+                SDL_SetRenderDrawColor(ren, 180, 200, 230, 255);
+                SDL_RenderDrawRect(ren, &tabs[i]);
+                DrawText(ren, tabs[i].x + 8, tabs[i].y + 8, 2, tabNames[i]);
+            }
+            SDL_Rect closeBtn{500, 8, 52, 24};
+            SDL_SetRenderDrawColor(ren, 85, 55, 55, 210);
+            SDL_RenderFillRect(ren, &closeBtn);
+            SDL_SetRenderDrawColor(ren, 220, 180, 180, 255);
+            SDL_RenderDrawRect(ren, &closeBtn);
+            DrawText(ren, 514, 12, 2, "X");
+
+            int y = 88;
+            if (detailedDebugSubmenu == 0) {
+                DrawText(ren, 12, y, 2, std::string("UFPS/RFPS: ") + std::to_string(updateFpsDisplay) + "/" + std::to_string(renderFpsDisplay)); y += 20;
+                DrawText(ren, 12, y, 2, std::string("Frame ms: ") + std::to_string((int)std::lround(dt * 1000.0f))); y += 20;
+                DrawText(ren, 12, y, 2, std::string("Player X/Y: ") + std::to_string((int)player.x) + ", " + std::to_string((int)player.y)); y += 20;
+                DrawText(ren, 12, y, 2, std::string("Player VX/VY: ") + std::to_string((int)player.vx) + ", " + std::to_string((int)player.vy)); y += 20;
+                DrawText(ren, 12, y, 2, std::string("OnGround/InWater: ") + (player.onGround ? "1" : "0") + "/" + (player.inWater ? "1" : "0")); y += 20;
+                DrawText(ren, 12, y, 2, std::string("Objects: ") + std::to_string((int)objects.size())); y += 20;
+            } else if (detailedDebugSubmenu == 1) {
+                if (objects.empty()) {
+                    detailedDebugObjectIndex = 0;
+                    DrawText(ren, 12, y, 2, "No objects in current level");
+                } else {
+                    detailedDebugObjectIndex = std::clamp(detailedDebugObjectIndex, 0, (int)objects.size() - 1);
+                    SDL_Rect prevBtn{12, 92, 120, 34};
+                    SDL_Rect nextBtn{142, 92, 120, 34};
+                    SDL_SetRenderDrawColor(ren, 55, 70, 95, 180);
+                    SDL_RenderFillRect(ren, &prevBtn);
+                    SDL_RenderFillRect(ren, &nextBtn);
+                    SDL_SetRenderDrawColor(ren, 180, 200, 230, 255);
+                    SDL_RenderDrawRect(ren, &prevBtn);
+                    SDL_RenderDrawRect(ren, &nextBtn);
+                    DrawText(ren, prevBtn.x + 12, prevBtn.y + 7, 2, "PREV");
+                    DrawText(ren, nextBtn.x + 12, nextBtn.y + 7, 2, "NEXT");
+                    y = 134;
+                    const ObjectInstance& sel = objects[detailedDebugObjectIndex];
+                    DrawText(ren, 12, y, 2, std::string("Selected: ") + std::to_string(detailedDebugObjectIndex)); y += 20;
+                    DrawText(ren, 12, y, 2, std::string("ID: ") + sel.id); y += 20;
+                    DrawText(ren, 12, y, 2, std::string("Pos: ") + std::to_string((int)sel.x) + ", " + std::to_string((int)sel.y)); y += 20;
+                }
+            } else if (detailedDebugSubmenu == 2) {
+                DrawText(ren, 12, y, 2, std::string("Frame ms: ") + std::to_string((int)std::lround(dt * 1000.0f))); y += 20;
+                DrawText(ren, 12, y, 2, "Target: <16ms (60 FPS)"); y += 20;
+                DrawText(ren, 12, y, 2, "Use submenu for full perf details on desktop"); y += 20;
+            } else {
+                DrawText(ren, 12, y, 2, std::string("Position: ") + std::to_string((int)player.x) + ", " + std::to_string((int)player.y)); y += 20;
+                DrawText(ren, 12, y, 2, std::string("Velocity: ") + std::to_string((int)player.vx) + ", " + std::to_string((int)player.vy)); y += 20;
+                DrawText(ren, 12, y, 2, std::string("Facing: ") + (player.facing < 0 ? "LEFT" : "RIGHT")); y += 20;
+                DrawText(ren, 12, y, 2, std::string("Anim: ") + std::to_string(player.anim)); y += 20;
+            }
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
+        }
+
         SDL_SetRenderTarget(ren, nullptr);
         int winW = 0, winH = 0;
         SDL_GetWindowSize(win, &winW, &winH);
@@ -2674,7 +2779,7 @@ RENDER_ONLY:
                 nextPresentTicks = presentedAt + 16;
             }
         }
-        if (showDetailedDebugger && debugRen && debugWin) {
+        if (showDetailedDebugger && debugRen && debugWin && !embeddedDetailedDebugger) {
             int dbgW = 0, dbgH = 0;
             SDL_GetWindowSize(debugWin, &dbgW, &dbgH);
             SDL_SetRenderDrawColor(debugRen, 10, 12, 16, 255);
