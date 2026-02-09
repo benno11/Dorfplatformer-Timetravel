@@ -130,7 +130,7 @@ cmake_android() {
   cmake --install "$bld"
 }
 
-clone_or_update "SDL" "https://github.com/libsdl-org/SDL.git" "release-2.32.x"
+clone_or_update "SDL" "https://github.com/libsdl-org/SDL.git" "release-2.30.12"
 clone_or_update "SDL_image" "https://github.com/libsdl-org/SDL_image.git" "release-2.8.x"
 clone_or_update "SDL_ttf" "https://github.com/libsdl-org/SDL_ttf.git" "release-2.24.x"
 clone_or_update "SDL_mixer" "https://github.com/libsdl-org/SDL_mixer.git" "release-2.8.x"
