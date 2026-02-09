@@ -57,6 +57,8 @@ jobs:
 
     - name: Build native C++ library
       env:
+        # Building for arm64-v8a (most common modern Android architecture)
+        # To support additional architectures, add more build steps with different ABI values
         ABI: arm64-v8a
       run: |
         ./build/android.sh
@@ -74,12 +76,12 @@ jobs:
     - name: Build Android APK (Debug)
       working-directory: Android
       run: |
-        ./gradlew assembleDebug --no-daemon --stacktrace
+        ./gradlew assembleDebug --stacktrace
 
     - name: Build Android APK (Release)
       working-directory: Android
       run: |
-        ./gradlew assembleRelease --no-daemon --stacktrace
+        ./gradlew assembleRelease --stacktrace
 
     - name: Upload Debug APK
       uses: actions/upload-artifact@v4
