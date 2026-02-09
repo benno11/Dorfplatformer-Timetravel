@@ -754,7 +754,8 @@ int main(int argc, char** argv) {
     float fastTravelChangeDelay = 0.0f;
     int musicVolume = 96; // 0..128
     int sfxVolume = 96;   // 0..128
-    std::string clientSettingsPath = "client_settings.json";
+    const std::string localClientSettingsPath = "client_settings.json";
+    std::string clientSettingsPath = localClientSettingsPath;
     {
         char* prefPath = SDL_GetPrefPath("Benno111", "DorfplatformerTimetravel");
         if (prefPath) {
@@ -779,11 +780,43 @@ int main(int argc, char** argv) {
         j["fast_travel_delay"] = fastTravelChangeDelay;
         j["music_volume"] = musicVolume;
         j["sfx_volume"] = sfxVolume;
-        std::ofstream out(clientSettingsPath, std::ios::binary | std::ios::trunc);
-        if (out.is_open()) out << j.dump(2);
+        auto tryWriteSettings = [&](const std::string& path) -> bool {
+            try {
+                std::filesystem::path p(path);
+                if (p.has_parent_path()) {
+                    std::error_code ec;
+                    std::filesystem::create_directories(p.parent_path(), ec);
+                }
+                const std::filesystem::path tmp = p.string() + ".tmp";
+                std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+                if (!out.is_open()) return false;
+                out << j.dump(2);
+                out.flush();
+                if (!out.good()) return false;
+                out.close();
+                std::error_code ec;
+                std::filesystem::rename(tmp, p, ec);
+                if (ec) {
+                    // Replace existing target if rename can't overwrite.
+                    std::filesystem::remove(p, ec);
+                    ec.clear();
+                    std::filesystem::rename(tmp, p, ec);
+                    if (ec) return false;
+                }
+                return true;
+            } catch (...) {
+                return false;
+            }
+        };
+        if (!tryWriteSettings(clientSettingsPath)) {
+            (void)tryWriteSettings(localClientSettingsPath);
+        }
     };
     {
-        const std::string text = ReadTextFile(clientSettingsPath);
+        std::string text = ReadTextFile(clientSettingsPath);
+        if (text.empty() && clientSettingsPath != localClientSettingsPath) {
+            text = ReadTextFile(localClientSettingsPath);
+        }
         if (!text.empty()) {
             nlohmann::json j;
             try { j = nlohmann::json::parse(text); } catch (...) { j = nlohmann::json(); }

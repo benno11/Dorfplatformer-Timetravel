@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "AssetPath.h"
@@ -45,7 +46,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     int settingsSelAudio = 0;
     int settingsSelDebug = 0;
     Uint64 inputBlockUntilTicks = 0;
-    constexpr Uint64 kMenuInputBlockMs = 180;
+    constexpr Uint64 kMenuInputBlockMs = 110;
     constexpr int kSettingsTabCount = 4;
     auto blockMenuInput = [&]() {
         inputBlockUntilTicks = SDL_GetTicks() + kMenuInputBlockMs;
@@ -63,7 +64,6 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         closeMenuOpen = value;
     };
     auto setSettingsTab = [&](int value) {
-        if (settingsTab != value) blockMenuInput();
         settingsTab = value;
     };
     auto showAboutPopup = [&]() {
@@ -111,19 +111,22 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     enum class SliderDragTarget { None, Music, Sfx };
     SliderDragTarget sliderDrag = SliderDragTarget::None;
     SDL_FingerID sliderDragFinger = 0;
+    SDL_FingerID pendingMainMenuFinger = 0;
+    int pendingMainMenuButton = -1; // 0 Settings, 1 Play, 2 Editor
     Uint64 lastTouchDownTicks = 0;
     int lastTouchDownWinX = -100000;
     int lastTouchDownWinY = -100000;
+    std::unordered_set<SDL_FingerID> activeTouchFingers;
     SDL_Event e;
     const int settingsStartY = 150;
-    const int settingsRowH = 30;
+    const int settingsRowH = 36;
     const int settingsTabX = 16;
     const int settingsTabY = 118;
     const int settingsTabW = 120;
     const int settingsTabH = 30;
     auto settingsRowY = [&](int idx) -> int { return settingsStartY + idx * settingsRowH; };
     auto settingsRowBtn = [&](int idx) -> SDL_Rect {
-        return SDL_Rect{ctx.baseScreenW / 2 - 140, settingsRowY(idx), 280, 28};
+        return SDL_Rect{ctx.baseScreenW / 2 - 140, settingsRowY(idx), 280, 30};
     };
     auto settingsTabBtn = [&](int idx) -> SDL_Rect {
         return SDL_Rect{settingsTabX, settingsTabY + idx * (settingsTabH + 6), settingsTabW, settingsTabH};
@@ -174,7 +177,6 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         int eventsProcessed = 0;
         while (eventsProcessed < 256 && SDL_PollEvent(&e)) {
             ++eventsProcessed;
-            const SDL_WindowID mainWindowId = SDL_GetWindowID(ctx.win);
             const bool inputBlocked = SDL_GetTicks() < inputBlockUntilTicks;
             if (e.type == SDL_QUIT) {
                 running = false;
@@ -188,10 +190,11 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 continue;
             }
             if (e.type == SDL_KEYDOWN && e.key.repeat == 0) {
+                const bool isBackKey = (e.key.key == SDLK_ESCAPE || e.key.key == SDLK_AC_BACK);
                 if (closeMenuOpen) {
                     if (e.key.key == SDLK_UP || e.key.key == SDLK_w) closeMenuSel = (closeMenuSel + 1) % 2;
                     if (e.key.key == SDLK_DOWN || e.key.key == SDLK_s) closeMenuSel = (closeMenuSel + 1) % 2;
-                    if (e.key.key == SDLK_ESCAPE) setCloseMenuOpen(false);
+                    if (isBackKey) setCloseMenuOpen(false);
                     if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) {
                         if (closeMenuSel == 0) {
                             setCloseMenuOpen(false);
@@ -205,7 +208,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 }
                 if (!inSettings) {
                     if (inComingSoon) {
-                        if (e.key.key == SDLK_ESCAPE || e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) {
+                        if (isBackKey || e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) {
                             setInComingSoon(false);
                         }
                         continue;
@@ -222,7 +225,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         }
                         if (menuSel == 2) setInComingSoon(true);
                     }
-                    if (e.key.key == SDLK_ESCAPE) {
+                    if (isBackKey) {
                         setCloseMenuOpen(true);
                         closeMenuSel = 0;
                     }
@@ -244,7 +247,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     if (e.key.key == SDLK_h) defaultShowHitboxes = !defaultShowHitboxes;
                     if (e.key.key == SDLK_p) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
                     if (e.key.key == SDLK_d) defaultShowDebugView = !defaultShowDebugView;
-                    if (e.key.key == SDLK_ESCAPE) setInSettings(false);
+                    if (isBackKey) setInSettings(false);
 
                     if (settingsTab == 1) {
                         constexpr int kAudioCount = 5;
@@ -279,7 +282,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         continue;
                     }
                     if (settingsTab == 3) {
-                        if (e.key.key == SDLK_ESCAPE || e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) setInSettings(false);
+                        if (isBackKey || e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) setInSettings(false);
                         continue;
                     }
 
@@ -318,13 +321,14 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             }
             if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_LEFT) sliderDrag = SliderDragTarget::None;
             if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
+                if (!activeTouchFingers.empty()) continue;
                 // Some platforms emit a synthetic mouse click for taps.
                 // Ignore those duplicate mouse events right after touch.
                 const Uint64 nowTicks = SDL_GetTicks();
-                if (lastTouchDownTicks != 0 && nowTicks >= lastTouchDownTicks && (nowTicks - lastTouchDownTicks) <= 250) {
+                if (lastTouchDownTicks != 0 && nowTicks >= lastTouchDownTicks && (nowTicks - lastTouchDownTicks) <= 700) {
                     const int dx = e.button.x - lastTouchDownWinX;
                     const int dy = e.button.y - lastTouchDownWinY;
-                    if ((dx * dx + dy * dy) <= (24 * 24)) continue;
+                    if ((dx * dx + dy * dy) <= (40 * 40)) continue;
                 }
                 SDL_Point pt{};
                 if (!mouseToGamePoint(e.button.x, e.button.y, pt)) continue;
@@ -468,8 +472,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
                 }
             }
-            if (e.type == SDL_FINGERDOWN &&
-                (e.tfinger.windowID == mainWindowId || e.tfinger.windowID == 0)) {
+            if (e.type == SDL_FINGERDOWN) {
+                activeTouchFingers.insert(e.tfinger.fingerID);
                 int winW = 0, winH = 0;
                 SDL_GetWindowSize(ctx.win, &winW, &winH);
                 int wx = (int)std::lround(e.tfinger.x * winW);
@@ -505,13 +509,9 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_Rect settingsBtn = mainMenuBtnRect(0);
                     SDL_Rect playBtn = mainMenuBtnRect(1);
                     SDL_Rect editorBtn = mainMenuBtnRect(2);
-                    if (SDL_PointInRect(&pt, &settingsBtn)) { menuSel = 0; setInSettings(true); continue; }
-                    if (SDL_PointInRect(&pt, &playBtn)) {
-                        menuSel = 1;
-                        cleanupMenuAssets();
-                        return FrontendAction::StartGame;
-                    }
-                    if (SDL_PointInRect(&pt, &editorBtn)) { menuSel = 2; setInComingSoon(true); continue; }
+                    if (SDL_PointInRect(&pt, &settingsBtn)) { menuSel = 0; pendingMainMenuFinger = e.tfinger.fingerID; pendingMainMenuButton = 0; continue; }
+                    if (SDL_PointInRect(&pt, &playBtn)) { menuSel = 1; pendingMainMenuFinger = e.tfinger.fingerID; pendingMainMenuButton = 1; continue; }
+                    if (SDL_PointInRect(&pt, &editorBtn)) { menuSel = 2; pendingMainMenuFinger = e.tfinger.fingerID; pendingMainMenuButton = 2; continue; }
                 } else {
                     for (int ti = 0; ti < kSettingsTabCount; ++ti) {
                         SDL_Rect tr = settingsTabBtn(ti);
@@ -622,7 +622,6 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 }
             }
             if (e.type == SDL_FINGERMOTION &&
-                (e.tfinger.windowID == mainWindowId || e.tfinger.windowID == 0) &&
                 inSettings && sliderDrag != SliderDragTarget::None &&
                 e.tfinger.fingerID == sliderDragFinger) {
                 int winW = 0, winH = 0, gx = 0, gy = 0;
@@ -637,15 +636,43 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 if (sliderDrag == SliderDragTarget::Sfx) sfxVolume = sliderValueFromPoint(pt.x, sfxSlider);
                 if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
             }
-            if (e.type == SDL_FINGERUP &&
-                (e.tfinger.windowID == mainWindowId || e.tfinger.windowID == 0) &&
-                e.tfinger.fingerID == sliderDragFinger) {
+            if (e.type == SDL_FINGERUP && e.tfinger.fingerID == sliderDragFinger) {
                 sliderDrag = SliderDragTarget::None;
             }
-            if (e.type == SDL_EVENT_FINGER_CANCELED &&
-                (e.tfinger.windowID == mainWindowId || e.tfinger.windowID == 0) &&
-                e.tfinger.fingerID == sliderDragFinger) {
+            if (e.type == SDL_FINGERUP && e.tfinger.fingerID == pendingMainMenuFinger) {
+                int winW = 0, winH = 0;
+                SDL_GetWindowSize(ctx.win, &winW, &winH);
+                int wx = (int)std::lround(e.tfinger.x * winW);
+                int wy = (int)std::lround(e.tfinger.y * winH);
+                SDL_Point pt{};
+                if (mouseToGamePoint(wx, wy, pt) && pendingMainMenuButton >= 0 && !inSettings && !inComingSoon && !closeMenuOpen) {
+                    SDL_Rect btn = mainMenuBtnRect(pendingMainMenuButton);
+                    if (SDL_PointInRect(&pt, &btn)) {
+                        if (pendingMainMenuButton == 0) {
+                            setInSettings(true);
+                        } else if (pendingMainMenuButton == 1) {
+                            cleanupMenuAssets();
+                            return FrontendAction::StartGame;
+                        } else if (pendingMainMenuButton == 2) {
+                            setInComingSoon(true);
+                        }
+                    }
+                }
+                pendingMainMenuFinger = 0;
+                pendingMainMenuButton = -1;
+            }
+            if (e.type == SDL_FINGERUP) {
+                activeTouchFingers.erase(e.tfinger.fingerID);
+            }
+            if (e.type == SDL_EVENT_FINGER_CANCELED && e.tfinger.fingerID == sliderDragFinger) {
                 sliderDrag = SliderDragTarget::None;
+            }
+            if (e.type == SDL_EVENT_FINGER_CANCELED && e.tfinger.fingerID == pendingMainMenuFinger) {
+                pendingMainMenuFinger = 0;
+                pendingMainMenuButton = -1;
+            }
+            if (e.type == SDL_EVENT_FINGER_CANCELED) {
+                activeTouchFingers.erase(e.tfinger.fingerID);
             }
             if (e.type == SDL_MOUSEMOTION && inSettings && sliderDrag != SliderDragTarget::None) {
                 int winW = 0, winH = 0, gx = 0, gy = 0;
@@ -770,6 +797,15 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         } else {
             const std::string title = "SETTINGS";
             DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(3, title) / 2, 84, 3, title);
+            auto drawToggleHitbox = [&](int rowIdx, bool selected) {
+                SDL_Rect r = settingsRowBtn(rowIdx);
+                SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_BLEND);
+                SDL_SetRenderDrawColor(ctx.ren, selected ? 120 : 70, 95, 85, selected ? 95 : 55);
+                SDL_RenderFillRect(ctx.ren, &r);
+                SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_NONE);
+                SDL_SetRenderDrawColor(ctx.ren, selected ? 210 : 140, 190, 170, 255);
+                SDL_RenderDrawRect(ctx.ren, &r);
+            };
             const char* tabNames[kSettingsTabCount] = {"GENERAL", "AUDIO", "DEBUG", "CONTROLS"};
             for (int ti = 0; ti < kSettingsTabCount; ++ti) {
                 SDL_Rect tr = settingsTabBtn(ti);
@@ -793,6 +829,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     "BACK"
                 };
                 for (int i = 0; i < (int)rows.size(); ++i) {
+                    drawToggleHitbox(i, i == settingsSelAudio);
                     int y = settingsRowY(i);
                     if (i == settingsSelAudio) {
                         SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_BLEND);
@@ -826,6 +863,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     "BACK"
                 };
                 for (int i = 0; i < (int)rows.size(); ++i) {
+                    drawToggleHitbox(i, i == settingsSelDebug);
                     int y = settingsRowY(i);
                     if (i == settingsSelDebug) {
                         SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_BLEND);
@@ -868,6 +906,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 };
 #endif
                 for (int i = 0; i < (int)rows.size(); ++i) {
+                    drawToggleHitbox(i, i == settingsSel);
                     int y = settingsRowY(i);
                     if (i == settingsSel) {
                         SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_BLEND);

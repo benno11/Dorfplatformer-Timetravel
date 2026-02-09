@@ -1,1 +1,1 @@
-/home/benno111/Documents/GitHub/DF-New/deps/android/include/SDL3/SDL_image.h
+/usr/local/include/SDL3_image/SDL_image.h
