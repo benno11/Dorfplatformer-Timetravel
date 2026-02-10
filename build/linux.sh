@@ -21,11 +21,17 @@ OUT_PLATFORMER="$ROOT_DIR/platformer"
 OUT_SHEET="$ROOT_DIR/sheet_config"
 BUILD_INCLUDE_DIR="$ROOT_DIR/.build/include/sdl3"
 
+COMPILER=("$CXX")
+if command -v ccache >/dev/null 2>&1; then
+  COMPILER=("ccache" "$CXX")
+  echo "[INFO] Using ccache compiler launcher"
+fi
+
 if [ "$FAST" = "1" ]; then
-  CXXFLAGS=("-std=c++17" "-O1" "-fno-plt" "-DSDL_ENABLE_OLD_NAMES=1")
+  CXXFLAGS=("-std=c++17" "-O1" "-fno-plt" "-pipe" "-DSDL_ENABLE_OLD_NAMES=1")
   echo "[INFO] FAST build enabled"
 else
-  CXXFLAGS=("-std=c++17" "-O3" "-DNDEBUG" "-flto" "-fno-plt" "-DSDL_ENABLE_OLD_NAMES=1")
+  CXXFLAGS=("-std=c++17" "-O3" "-DNDEBUG" "-flto" "-fno-plt" "-pipe" "-DSDL_ENABLE_OLD_NAMES=1")
 fi
 
 find_header_dir() {
@@ -109,10 +115,19 @@ for p in sdl3_mixer sdl3-mixer; do
     break
   fi
 done
+PKG_CURL=""
+for p in libcurl curl; do
+  if pkg-config --exists "$p"; then
+    PKG_CURL="$p"
+    break
+  fi
+done
 
 SDL_CFLAGS_ARR=()
 SDL_LIBS_ARR=()
 MIXER_LIBS_ARR=()
+CURL_CFLAGS_ARR=()
+CURL_LIBS_ARR=()
 INCLUDE_DIRS_FOR_SHIM=()
 # Always scan common SDL include roots for lowercase shim generation.
 for d in /usr/include/SDL3 /usr/include/SDL3_image /usr/include/SDL3_ttf /usr/include/SDL3_mixer /usr/local/include/SDL3 /usr/local/include/SDL3_image /usr/local/include/SDL3_ttf /usr/local/include/SDL3_mixer; do
@@ -234,6 +249,17 @@ else
   echo "[WARN] SDL3_mixer not found; building without mixer support."
 fi
 
+# Optional libcurl for Firebase Realtime Database REST reads.
+if [ -n "$PKG_CURL" ]; then
+  append_split_flags "$(pkg-config --cflags "$PKG_CURL" 2>/dev/null || true)" CURL_CFLAGS_ARR
+  append_split_flags "$(pkg-config --libs "$PKG_CURL" 2>/dev/null || true)" CURL_LIBS_ARR
+  CXXFLAGS+=("-DHAVE_CURL=1")
+  echo "[INFO] libcurl enabled via pkg-config package: $PKG_CURL"
+else
+  CXXFLAGS+=("-DHAVE_CURL=0")
+  echo "[WARN] libcurl not found; remote Firebase level fetch disabled."
+fi
+
 # Build compatibility include shim for lowercase includes like <sdl3/SDL.h>
 mkdir -p "$BUILD_INCLUDE_DIR"
 for inc in "${INCLUDE_DIRS_FOR_SHIM[@]}"; do
@@ -296,16 +322,18 @@ SHEET_SOURCES=(
   "$SRC_DIR/SheetConfigTool.cpp"
 )
 
-"$CXX" "${CXXFLAGS[@]}" \
+"${COMPILER[@]}" "${CXXFLAGS[@]}" \
   "${SDL_CFLAGS_ARR[@]}" \
+  "${CURL_CFLAGS_ARR[@]}" \
   "${JSON_FLAGS[@]}" \
   "${PLATFORMER_SOURCES[@]}" \
+  "${CURL_LIBS_ARR[@]}" \
   "${MIXER_LIBS_ARR[@]}" \
   "${SDL_LIBS_ARR[@]}" \
   -o "$OUT_PLATFORMER"
 
 if [ "$BUILD_SHEET" = "1" ]; then
-  "$CXX" "${CXXFLAGS[@]}" \
+  "${COMPILER[@]}" "${CXXFLAGS[@]}" \
     "${SDL_CFLAGS_ARR[@]}" \
     "${SHEET_SOURCES[@]}" \
     "${SDL_LIBS_ARR[@]}" \

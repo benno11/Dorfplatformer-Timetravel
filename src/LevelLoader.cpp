@@ -7,6 +7,8 @@
 #include <cctype>
 #include <algorithm>
 #include <sstream>
+#include <filesystem>
+#include <nlohmann/json.hpp>
 
 static constexpr int TILE_SIZE = 32;
 
@@ -14,7 +16,125 @@ static constexpr int TILE_SIZE = 32;
    File helpers
 ------------------------------ */
 static std::string readWholeFile(const std::string& path) {
-    return ReadTextFile(path);
+    std::string text = ReadTextFile(path);
+    if (text.empty()) return text;
+
+    auto decodeNumericalEncodingV2 = [](const std::string& in) -> std::string {
+        if (in.empty()) return {};
+        for (char ch : in) {
+            if (std::isspace((unsigned char)ch)) continue;
+            if (ch < '1' || ch > '8') return {};
+        }
+        std::string compact;
+        compact.reserve(in.size());
+        for (char ch : in) {
+            if (!std::isspace((unsigned char)ch)) compact.push_back(ch);
+        }
+        if (compact.empty()) return {};
+
+        const size_t encodedBytes = (compact.size() * 3) / 8;
+        std::string out;
+        out.resize(encodedBytes);
+        size_t ptr = 0;
+        size_t i = 0;
+        for (; i + 7 < compact.size(); i += 8) {
+            const int a = compact[i] - '1';
+            const int b = compact[i + 1] - '1';
+            const int c = compact[i + 2] - '1';
+            const int d = compact[i + 3] - '1';
+            const int e = compact[i + 4] - '1';
+            const int f = compact[i + 5] - '1';
+            const int g = compact[i + 6] - '1';
+            const int h = compact[i + 7] - '1';
+            out[ptr++] = (char)((a << 5) | (b << 2) | (c >> 1));
+            out[ptr++] = (char)(((c & 0b1) << 7) | (d << 4) | (e << 1) | (f >> 2));
+            out[ptr++] = (char)(((f & 0b11) << 6) | (g << 3) | h);
+        }
+        switch (encodedBytes - ptr) {
+            case 1: {
+                if (i + 2 >= compact.size()) return {};
+                const int a = compact[i] - '1';
+                const int b = compact[i + 1] - '1';
+                const int c = compact[i + 2] - '1';
+                out[ptr] = (char)((a << 5) | (b << 2) | (c >> 1));
+                break;
+            }
+            case 2: {
+                if (i + 5 >= compact.size()) return {};
+                const int a = compact[i] - '1';
+                const int b = compact[i + 1] - '1';
+                const int c = compact[i + 2] - '1';
+                const int d = compact[i + 3] - '1';
+                const int e = compact[i + 4] - '1';
+                const int f = compact[i + 5] - '1';
+                out[ptr++] = (char)((a << 5) | (b << 2) | (c >> 1));
+                out[ptr] = (char)(((c & 0b1) << 7) | (d << 4) | (e << 1) | (f >> 2));
+                break;
+            }
+            default:
+                break;
+        }
+        return out;
+    };
+
+    auto trim = [](std::string s) {
+        size_t a = 0;
+        while (a < s.size() && std::isspace((unsigned char)s[a])) ++a;
+        size_t b = s.size();
+        while (b > a && std::isspace((unsigned char)s[b - 1])) --b;
+        return s.substr(a, b - a);
+    };
+
+    auto maybeDecodeNumerical = [&](const std::string& s) -> std::string {
+        const std::string decoded = decodeNumericalEncodingV2(s);
+        return decoded.empty() ? s : decoded;
+    };
+
+    const std::string t = trim(text);
+    if (t.empty()) return t;
+    if (t[0] != '{' && t[0] != '[' && t[0] != '"') return maybeDecodeNumerical(text);
+
+    nlohmann::json j;
+    try {
+        j = nlohmann::json::parse(t);
+    } catch (...) {
+        return text;
+    }
+
+    auto decodeNumericArray = [](const nlohmann::json& arr) -> std::string {
+        std::string out;
+        if (!arr.is_array()) return out;
+        out.reserve(arr.size());
+        for (const auto& v : arr) {
+            if (!v.is_number_integer()) return {};
+            int c = v.get<int>();
+            if (c < 0 || c > 255) return {};
+            out.push_back((char)c);
+        }
+        return out;
+    };
+
+    auto extractEncoded = [&](const nlohmann::json& node) -> std::string {
+        if (node.is_string()) return node.get<std::string>();
+        if (node.is_array()) return decodeNumericArray(node);
+        if (node.is_object()) {
+            const char* keys[] = {"data", "encoded", "level", "payload", "value"};
+            for (const char* k : keys) {
+                if (!node.contains(k)) continue;
+                const auto& v = node[k];
+                if (v.is_string()) return v.get<std::string>();
+                if (v.is_array()) {
+                    std::string d = decodeNumericArray(v);
+                    if (!d.empty()) return d;
+                }
+            }
+        }
+        return {};
+    };
+
+    std::string decoded = extractEncoded(j);
+    if (decoded.empty()) return maybeDecodeNumerical(text);
+    return maybeDecodeNumerical(decoded);
 }
 
 static std::vector<char> loadBlockDefs(const std::string& path) {
@@ -83,6 +203,13 @@ static void normalizeHorizontalOffset(TileMap& map) {
             }
         }
     }
+}
+
+static bool shouldNormalizeHorizontalOffset(const std::string& path) {
+    namespace fs = std::filesystem;
+    const std::string norm = fs::path(path).lexically_normal().generic_string();
+    if (norm.rfind("assets/levels/", 0) == 0) return true;
+    return norm.find("/assets/levels/") != std::string::npos;
 }
 
 /* -----------------------------
@@ -282,6 +409,41 @@ bool loadLevelBNNLVL(const std::string& path,
     std::string s = readWholeFile(path);
     if (s.empty()) return false;
 
+    auto trim = [](const std::string& in) -> std::string {
+        size_t a = 0;
+        while (a < in.size() && std::isspace((unsigned char)in[a])) ++a;
+        size_t b = in.size();
+        while (b > a && std::isspace((unsigned char)in[b - 1])) --b;
+        return in.substr(a, b - a);
+    };
+    const std::string st = trim(s);
+    if (st.rfind("DFLVL2", 0) == 0) {
+        std::istringstream in(st);
+        std::string magic;
+        int w = 0;
+        int h = 0;
+        in >> magic >> w >> h;
+        if (magic != "DFLVL2" || w <= 0 || h <= 0 || w > 4096 || h > 4096) return false;
+        map.resize(w, h);
+        const int total = w * h;
+        map.tileIds.assign(total, 2);
+        map.bg.assign(total, 0);
+        for (int i = 0; i < total; ++i) {
+            int id = 2;
+            if (!(in >> id)) break;
+            if (id < 0) id = 0;
+            if (id > 65535) id = 65535;
+            map.tileIds[i] = (unsigned short)id;
+        }
+        auto defs = loadBlockDefs("assets/blockdefined.txt");
+        applyBlockDefsToMaps(map, map.tileIds, defs);
+        objects.clear();
+        meta.name = "DFLVL2";
+        meta.entitySpawnPos.clear();
+        meta.entitySpawnType.clear();
+        return true;
+    }
+
     size_t cur = 0;
     LegacyToken t{};
 
@@ -334,7 +496,9 @@ bool loadLevelBNNLVL(const std::string& path,
 
     auto defs = loadBlockDefs("assets/blockdefined.txt");
     applyBlockDefsToMaps(map, map.tileIds, defs);
-    normalizeHorizontalOffset(map);
+    if (shouldNormalizeHorizontalOffset(path)) {
+        normalizeHorizontalOffset(map);
+    }
     applyBlockDefsToMaps(map, map.tileIds, defs);
 
     // Legacy OBJ stream quirk: consume one extra token before object section.

@@ -17,6 +17,8 @@ unset CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH INCLUDE LIBRARY_PATH LD_LIBRARY_PA
 #   SDL3_IMAGE_ROOT    -> root folder for SDL3_image Android build
 #   SDL3_TTF_ROOT      -> root folder for SDL3_ttf Android build
 #   SDL3_MIXER_ROOT    -> root folder for SDL3_mixer Android build
+#   CURL_ANDROID_ROOT  -> root folder for Android libcurl build (optional)
+#   ANDROID_ALLOW_NO_CURL -> 1 to allow building Android without curl (default: 0)
 #
 # Expected folder layout per *_ROOT:
 #   include/
@@ -111,6 +113,8 @@ fi
 SDL3_IMAGE_ROOT="${SDL3_IMAGE_ROOT:-$SDL3_ANDROID_ROOT}"
 SDL3_TTF_ROOT="${SDL3_TTF_ROOT:-$SDL3_ANDROID_ROOT}"
 SDL3_MIXER_ROOT="${SDL3_MIXER_ROOT:-$SDL3_ANDROID_ROOT}"
+CURL_ANDROID_ROOT="${CURL_ANDROID_ROOT:-$PWD/deps/android-curl}"
+ANDROID_ALLOW_NO_CURL="${ANDROID_ALLOW_NO_CURL:-0}"
 
 if [ ! -f "$SDL3_IMAGE_ROOT/include/SDL3/SDL_image.h" ]; then
   echo "[ERROR] Missing staged SDL_image headers: $SDL3_IMAGE_ROOT/include/SDL3/SDL_image.h"
@@ -306,6 +310,29 @@ fi
 LDFLAGS+=( -L"$SDL3_MIXER_ROOT/lib/$ABI" )
 echo "[INFO] SDL3_mixer linked"
 
+CURL_ENABLED=0
+if [ -f "$CURL_ANDROID_ROOT/include/curl/curl.h" ] && [ -f "$CURL_ANDROID_ROOT/lib/$ABI/libcurl.so" ]; then
+  CPPFLAGS+=( -I"$CURL_ANDROID_ROOT/include" -DHAVE_CURL=1 )
+  LDFLAGS+=( -L"$CURL_ANDROID_ROOT/lib/$ABI" -lcurl )
+  CURL_ENABLED=1
+  echo "[INFO] libcurl enabled for Android from: $CURL_ANDROID_ROOT"
+else
+  if [ "$ANDROID_ALLOW_NO_CURL" = "1" ]; then
+    CPPFLAGS+=( -DHAVE_CURL=0 )
+    echo "[WARN] Android libcurl not found at $CURL_ANDROID_ROOT (network fetch disabled in native code)"
+    echo "[HINT] Provide:"
+    echo "       $CURL_ANDROID_ROOT/include/curl/curl.h"
+    echo "       $CURL_ANDROID_ROOT/lib/$ABI/libcurl.so"
+  else
+    echo "[ERROR] Android libcurl is required but missing."
+    echo "[HINT] Provide:"
+    echo "       $CURL_ANDROID_ROOT/include/curl/curl.h"
+    echo "       $CURL_ANDROID_ROOT/lib/$ABI/libcurl.so"
+    echo "[HINT] To bypass (not recommended): ANDROID_ALLOW_NO_CURL=1 ./build/android.sh"
+    exit 1
+  fi
+fi
+
 if [ "$FAST" = "1" ]; then
   CXXFLAGS=(
     -std=c++17
@@ -357,4 +384,7 @@ copy_if_exists "$SDL3_ANDROID_ROOT/lib/$ABI/libSDL3.so" "$OUT_DIR/libSDL3.so"
 copy_if_exists "$SDL3_IMAGE_ROOT/lib/$ABI/libSDL3_image.so" "$OUT_DIR/libSDL3_image.so"
 copy_if_exists "$SDL3_TTF_ROOT/lib/$ABI/libSDL3_ttf.so" "$OUT_DIR/libSDL3_ttf.so"
 copy_if_exists "$SDL3_MIXER_ROOT/lib/$ABI/libSDL3_mixer.so" "$OUT_DIR/libSDL3_mixer.so"
+if [ "$CURL_ENABLED" = "1" ]; then
+  copy_if_exists "$CURL_ANDROID_ROOT/lib/$ABI/libcurl.so" "$OUT_DIR/libcurl.so"
+fi
 echo "[NEXT] Sync into Android app: ABI=$ABI ./build/update-android-app.sh"

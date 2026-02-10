@@ -14,11 +14,53 @@ import android.view.WindowInsetsController;
 
 import org.libsdl.app.SDLActivity;
 
+import java.io.BufferedInputStream;
+import java.io.ByteArrayOutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+
 public class MainActivity extends SDLActivity {
     private static final String TAG = "MainActivity";
     private GestureDetector gestureDetector;
     private final View.OnSystemUiVisibilityChangeListener systemUiListener =
             visibility -> applyImmersiveMode();
+
+    public static String httpGet(String url, int timeoutMs) {
+        HttpURLConnection conn = null;
+        try {
+            URL u = new URL(url);
+            conn = (HttpURLConnection) u.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(Math.max(1000, timeoutMs));
+            conn.setReadTimeout(Math.max(1000, timeoutMs));
+            conn.setInstanceFollowRedirects(true);
+            conn.setRequestProperty("User-Agent", "DF-New/1.0-android");
+            int code = conn.getResponseCode();
+            if (code < 200 || code >= 300) {
+                Log.i(TAG, "NET: Java GET fail code=" + code + " url=" + url);
+                return "";
+            }
+            BufferedInputStream in = new BufferedInputStream(conn.getInputStream());
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) != -1) {
+                out.write(buf, 0, n);
+            }
+            in.close();
+            byte[] bytes = out.toByteArray();
+            Log.i(TAG, "NET: Java GET ok code=" + code + " bytes=" + bytes.length + " url=" + url);
+            return new String(bytes, StandardCharsets.UTF_8);
+        } catch (Throwable t) {
+            Log.i(TAG, "NET: Java GET exception url=" + url, t);
+            return "";
+        } finally {
+            if (conn != null) {
+                try { conn.disconnect(); } catch (Throwable ignored) {}
+            }
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {

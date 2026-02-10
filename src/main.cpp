@@ -388,6 +388,9 @@ int main(int argc, char** argv) {
 
     constexpr int kBaseScreenW = 960;
     constexpr int kBaseScreenH = 540;
+    constexpr float kGameplayZoom = 1.5f;
+    const int kGameplayViewW = std::max(1, (int)std::lround((float)kBaseScreenW / kGameplayZoom));
+    const int kGameplayViewH = std::max(1, (int)std::lround((float)kBaseScreenH / kGameplayZoom));
 
     SDL_Window* win = SDL_CreateWindow("Dorfplatformer Timetravel", kBaseScreenW, kBaseScreenH, SDL_WINDOW_RESIZABLE);
     if (!win) {
@@ -422,8 +425,16 @@ int main(int argc, char** argv) {
         SDL_TEXTUREACCESS_TARGET,
         kBaseScreenW, kBaseScreenH
     );
-    if (!gameTarget) {
+    SDL_Texture* worldTarget = SDL_CreateTexture(
+        ren,
+        SDL_PIXELFORMAT_RGBA8888,
+        SDL_TEXTUREACCESS_TARGET,
+        kGameplayViewW, kGameplayViewH
+    );
+    if (!gameTarget || !worldTarget) {
         reportStartupError("Render Target Error", std::string("SDL_CreateTexture failed: ") + SDL_GetError(), win);
+        if (worldTarget) SDL_DestroyTexture(worldTarget);
+        if (gameTarget) SDL_DestroyTexture(gameTarget);
         SDL_DestroyRenderer(ren);
         SDL_DestroyWindow(win);
         ShutdownTextRenderer();
@@ -604,12 +615,20 @@ int main(int argc, char** argv) {
 
     AnimConfig animCfg = loadAnimConfig("assets/player_anim.json");
     float jumpBufferMax = 0.12f;
+    std::string levelServerUrl;
+    std::string levelServerAuthToken;
     MovementConfig movementCfg{};
     {
         const std::string text = ReadTextFile("assets/config.json");
         if (!text.empty()) {
             nlohmann::json cfg;
             try { cfg = nlohmann::json::parse(text); } catch (...) { cfg = nlohmann::json(); }
+            if (cfg.contains("level_server_url") && cfg["level_server_url"].is_string()) {
+                levelServerUrl = cfg["level_server_url"].get<std::string>();
+            }
+            if (cfg.contains("level_server_auth_token") && cfg["level_server_auth_token"].is_string()) {
+                levelServerAuthToken = cfg["level_server_auth_token"].get<std::string>();
+            }
             if (cfg.contains("jump_buffer_seconds") && cfg["jump_buffer_seconds"].is_number()) {
                 jumpBufferMax = (float)cfg["jump_buffer_seconds"].get<double>();
                 if (jumpBufferMax < 0.0f) jumpBufferMax = 0.0f;
@@ -635,6 +654,14 @@ int main(int argc, char** argv) {
                 readMove("swim_rise", movementCfg.swimRise);
             }
         }
+    }
+    SetLevelServerUrl(levelServerUrl);
+    SetLevelServerAuthToken(levelServerAuthToken);
+    if (!levelServerUrl.empty()) {
+        SDL_Log("Level server: %s", levelServerUrl.c_str());
+    }
+    if (!levelServerAuthToken.empty()) {
+        SDL_Log("Level server auth token configured");
     }
     {
         const std::string text = ReadTextFile("assets/log_settings.json");
@@ -733,6 +760,7 @@ int main(int argc, char** argv) {
         if (blocksTex) SDL_DestroyTexture(blocksTex);
         if (entitiesTex) SDL_DestroyTexture(entitiesTex);
         if (pauseTex) SDL_DestroyTexture(pauseTex);
+        if (worldTarget) SDL_DestroyTexture(worldTarget);
         SDL_DestroyRenderer(ren);
         SDL_DestroyWindow(win);
         ShutdownTextRenderer();
@@ -879,6 +907,14 @@ int main(int argc, char** argv) {
         SDL_Log("Renderer VSync toggle unsupported on this SDL version.");
 #endif
     };
+#if !defined(__ANDROID__)
+    if (fullscreen) {
+        if (!SDL_SetWindowFullscreen(win, true)) {
+            SDL_Log("Could not apply startup fullscreen setting: %s", SDL_GetError());
+            fullscreen = false;
+        }
+    }
+#endif
     applyRenderVsync();
     SDL_Log("Build UUID: %s", buildUuid.c_str());
 #if HAS_SDL_MIXER
@@ -918,6 +954,7 @@ int main(int argc, char** argv) {
     LevelManager levelManager;
     bool running = true;
     bool startupNoticeShown = false;
+    bool reopenUserLevelMenu = false;
     FrontendMenuContext frontendCtx{};
     frontendCtx.win = win;
     frontendCtx.ren = ren;
@@ -939,14 +976,15 @@ int main(int argc, char** argv) {
     frontendCtx.muteAllAudio = &muteAllAudio;
     frontendCtx.musicVolume = &musicVolume;
     frontendCtx.sfxVolume = &sfxVolume;
+    std::string frontendSelectedLevelPath;
+    frontendCtx.selectedLevelPath = &frontendSelectedLevelPath;
 #if HAS_SDL_MIXER
     frontendCtx.applyAudioVolumes = applyAudioVolumes;
     frontendCtx.applyMenuMusicToggle = applyMenuMusicToggle;
+    // Enforce persisted startup audio state immediately.
+    applyMenuMusicToggle();
 #endif
     while (running) {
-#if HAS_SDL_MIXER
-        ensureMenuMusic();
-#endif
         if (!startupNoticeShown) {
 #if defined(__ANDROID__)
             SDL_Log("In Development: This build is in development.");
@@ -961,14 +999,29 @@ int main(int argc, char** argv) {
 #endif
         }
 
-        FrontendAction action = runFrontendMenu(frontendCtx);
-        saveClientSettings();
-        if (!running || action == FrontendAction::Quit) break;
+        std::string selectedLevelPath;
+        bool selectedFromUserMenu = false;
+        if (reopenUserLevelMenu) {
+            selectedLevelPath = RunCustomLevelSelect(win, ren);
+            selectedFromUserMenu = true;
+            reopenUserLevelMenu = false;
+        } else {
+            frontendSelectedLevelPath.clear();
+            FrontendAction action = runFrontendMenu(frontendCtx);
+            saveClientSettings();
+            if (!running || action == FrontendAction::Quit) break;
 
-        std::string selectedLevelPath = RunLevelSelect(win, ren);
+            selectedLevelPath = frontendSelectedLevelPath;
+            if (!selectedLevelPath.empty()) {
+                selectedFromUserMenu = true;
+            } else {
+                selectedLevelPath = RunCampaignLevelSelect(win, ren);
+            }
+        }
         if (selectedLevelPath.empty()) {
             continue;
         }
+        const bool allowNextLevelProgression = !selectedFromUserMenu;
 #if HAS_SDL_MIXER
         stopMenuMusic();
 #endif
@@ -1225,6 +1278,12 @@ int main(int argc, char** argv) {
             if (cameraSmoothingSuppressTimer > 0.0f) {
                 cameraSmoothingSuppressTimer = std::max(0.0f, cameraSmoothingSuppressTimer - dt);
             }
+#if HAS_SDL_MIXER
+            // Keep level music looping even if backend loop handling stops unexpectedly.
+            if (audioReady && levelMusic && !paused && !deathSequenceActive && !levelCompleteActive && !Mix_PlayingMusic()) {
+                Mix_PlayMusic(levelMusic, -1);
+            }
+#endif
             {
                 const float target = levelCompleteActive ? 1.0f : 0.0f;
                 const float speed = 4.5f;
@@ -1434,10 +1493,12 @@ int main(int argc, char** argv) {
                     if (e.key.key == SDLK_DOWN) detailedDebugObjectIndex++;
                 }
                 if (e.key.key == SDLK_F9) {
-                    std::string nextPath = levelManager.nextLevelPath();
-                    if (!nextPath.empty()) {
-                        levelManager.setLevelPath(nextPath);
-                        reloadLevel();
+                    if (allowNextLevelProgression) {
+                        std::string nextPath = levelManager.nextLevelPath();
+                        if (!nextPath.empty()) {
+                            levelManager.setLevelPath(nextPath);
+                            reloadLevel();
+                        }
                     }
                 }
                 if (!levelCompleteActive && (e.key.key == SDLK_ESCAPE || e.key.key == SDLK_AC_BACK)) {
@@ -1519,34 +1580,67 @@ int main(int argc, char** argv) {
             bool fastTravelReload = false;
             bool fastTravelTriggered = false;
             auto ejectFromFastTravel = [&](int dirHint) {
-                // Always eject upward when leaving fast travel to avoid floor trapping.
+                const bool startedInsideSolid = RectHitsSolid(map, player.x, player.y, player.w, player.h);
                 float ex = 0.0f;
-                if (dirHint == FT_LEFT) ex = -0.35f;
-                else if (dirHint == FT_RIGHT) ex = 0.35f;
-                float ey = -1.0f;
+                if (dirHint == FT_LEFT) ex = -1.0f;
+                else if (dirHint == FT_RIGHT) ex = 1.0f;
+                const float horizontalRange = 28.0f;
+                const float upwardRange = startedInsideSolid ? 96.0f : 30.0f;
+                const float stepSize = 2.0f;
+                const float startX = player.x;
+                const float startY = player.y;
 
-                player.x += ex * 10.0f;
-                player.y += ey * 22.0f;
-
-                // First priority: force upward out of solids.
-                if (RectHitsSolid(map, player.x, player.y, player.w, player.h)) {
-                    for (int i = 0; i < 20; ++i) {
-                        player.y -= 5.0f;
-                        if (!RectHitsSolid(map, player.x, player.y, player.w, player.h)) break;
+                auto sweepMoveNoClip = [&](float dx, float dy) {
+                    const float dist = std::sqrt(dx * dx + dy * dy);
+                    const int steps = std::max(1, (int)std::ceil(dist / stepSize));
+                    const float sx = dx / (float)steps;
+                    const float sy = dy / (float)steps;
+                    for (int i = 0; i < steps; ++i) {
+                        const float nx = player.x + sx;
+                        const float ny = player.y + sy;
+                        if (RectHitsSolid(map, nx, ny, player.w, player.h)) break;
+                        player.x = nx;
+                        player.y = ny;
                     }
-                }
-                // Secondary: tiny directional nudge if still stuck.
-                if (RectHitsSolid(map, player.x, player.y, player.w, player.h)) {
-                    for (int i = 0; i < 8; ++i) {
-                        player.x += ex * 4.0f;
-                        player.y -= 3.0f;
-                        if (!RectHitsSolid(map, player.x, player.y, player.w, player.h)) break;
+                };
+
+                if (startedInsideSolid) {
+                    bool foundEscape = false;
+                    for (int up = 4; up <= (int)upwardRange && !foundEscape; up += 4) {
+                        for (int side = 0; side <= (int)horizontalRange; side += 4) {
+                            const float nxA = startX + (ex * side);
+                            const float nyA = startY - (float)up;
+                            if (!RectHitsSolid(map, nxA, nyA, player.w, player.h)) {
+                                player.x = nxA;
+                                player.y = nyA;
+                                foundEscape = true;
+                                break;
+                            }
+                            if (side == 0) continue;
+                            const float nxB = startX - (ex * side);
+                            const float nyB = startY - (float)up;
+                            if (!RectHitsSolid(map, nxB, nyB, player.w, player.h)) {
+                                player.x = nxB;
+                                player.y = nyB;
+                                foundEscape = true;
+                                break;
+                            }
+                        }
                     }
+                    if (!foundEscape) {
+                        player.x = startX;
+                        player.y = startY;
+                    }
+                } else {
+                    // Keep ejection collision-safe when already in free space.
+                    sweepMoveNoClip(ex * horizontalRange, 0.0f);
+                    sweepMoveNoClip(0.0f, -upwardRange);
                 }
 
-                const float ejectSpeed = 520.0f;
+                const float ejectSpeed = 620.0f;
+                const float verticalDir = startedInsideSolid ? -1.0f : -0.55f;
                 player.vx = ex * ejectSpeed;
-                player.vy = ey * ejectSpeed;
+                player.vy = verticalDir * ejectSpeed;
                 player.onGround = false;
             };
             if (timeTravelTriggerCooldown <= 0.0f) {
@@ -1854,7 +1948,7 @@ int main(int argc, char** argv) {
             if (!levelCompleteActive && playerTouchesTileId(map, player, 30, 68)) {
                 levelCompleteActive = true;
                 levelCompleteCounting = false;
-                levelCompleteNextPath = levelManager.nextLevelPath();
+                levelCompleteNextPath = allowNextLevelProgression ? levelManager.nextLevelPath() : "";
                 levelCompleteAreaId = levelManager.levelPartId();
                 levelCompleteSnapshotSeconds = (int)levelTimerSeconds;
                 levelCompleteCoinBonus = levelManager.coinCount() * 10;
@@ -1902,12 +1996,14 @@ RENDER_ONLY:
             cameraWrapY = true;
         }
 
-        const float freeCamX = player.x + player.w * 0.5f - screenW * 0.5f;
+        const int worldViewW = kGameplayViewW;
+        const int worldViewH = kGameplayViewH;
+        const float freeCamX = player.x + player.w * 0.5f - worldViewW * 0.5f;
         float camX = freeCamX;
-        const float freeCamY = player.y + player.h * 0.5f - screenH * 0.5f;
+        const float freeCamY = player.y + player.h * 0.5f - worldViewH * 0.5f;
         float camY = freeCamY;
-        float maxCamX = map.w * map.tileSize - screenW - map.tileSize;
-        float maxCamY = map.h * map.tileSize - screenH;
+        float maxCamX = map.w * map.tileSize - worldViewW - map.tileSize;
+        float maxCamY = map.h * map.tileSize - worldViewH;
         const float clampedCamX = std::clamp(freeCamX, (float)map.tileSize, std::max((float)map.tileSize, maxCamX));
         const float clampXTarget = cameraWrapX ? 0.0f : 1.0f;
         const float clampLerpSpeed = 7.5f;
@@ -1927,7 +2023,7 @@ RENDER_ONLY:
         }
         camY = freeCamY * (1.0f - camYClampBlend) + clampedCamY * camYClampBlend;
 
-        SDL_SetRenderTarget(ren, gameTarget);
+        SDL_SetRenderTarget(ren, worldTarget);
         SDL_SetRenderDrawColor(ren, 12, 14, 18, 255);
         SDL_RenderClear(ren);
 
@@ -1960,14 +2056,14 @@ RENDER_ONLY:
                 int fh = f->rotated ? f->rect.w : f->rect.h;
                 if (fw <= 0 || fh <= 0) continue;
                 float ox = std::fmod(camX * parallaxFactor, (float)fw);
-                float maxCamY = std::max(1.0f, (float)(map.h * map.tileSize - screenH));
+                float maxCamY = std::max(1.0f, (float)(map.h * map.tileSize - worldViewH));
                 float parallaxCamY = maxCamY - camY;
                 float t = std::clamp((parallaxCamY / maxCamY) * parallaxFactor, 0.0f, 1.0f);
                 if (!layer.verticalParallax) t = 0.0f;
                 if (ox < 0) ox += fw;
-                float yF = (float)screenH - (float)fh + t * (float)fh;
+                float yF = (float)worldViewH - (float)fh + t * (float)fh;
                 int y = (int)std::lround(yF);
-                for (int x = -1; x <= screenW / fw + 1; ++x) {
+                for (int x = -1; x <= worldViewW / fw + 1; ++x) {
                     SDL_Rect dst{
                         (int)(x * fw - ox),
                         y,
@@ -1985,14 +2081,14 @@ RENDER_ONLY:
             ? ((int)std::floor(camX / map.tileSize) - 1)
             : std::max(0, (int)std::floor(camX / map.tileSize) - 1);
         const int tileMaxX = renderWrapX
-            ? ((int)std::floor((camX + screenW) / map.tileSize) + 1)
-            : std::min(map.w - 1, (int)std::floor((camX + screenW) / map.tileSize) + 1);
+            ? ((int)std::floor((camX + worldViewW) / map.tileSize) + 1)
+            : std::min(map.w - 1, (int)std::floor((camX + worldViewW) / map.tileSize) + 1);
         const int tileMinY = renderWrapY
             ? ((int)std::floor(camY / map.tileSize) - 1)
             : std::max(0, (int)std::floor(camY / map.tileSize) - 1);
         const int tileMaxY = renderWrapY
-            ? ((int)std::floor((camY + screenH) / map.tileSize) + 1)
-            : std::min(map.h - 1, (int)std::floor((camY + screenH) / map.tileSize) + 1);
+            ? ((int)std::floor((camY + worldViewH) / map.tileSize) + 1)
+            : std::min(map.h - 1, (int)std::floor((camY + worldViewH) / map.tileSize) + 1);
 
         // Tile textures (DF_Blocks)
         if (blocksTex && !blocksFrameList.empty()) {
@@ -2189,6 +2285,7 @@ RENDER_ONLY:
             int objId = 0;
             try { objId = std::stoi(obj.id); } catch (...) { objId = 0; }
             const bool isFastTravelChanger = (objId >= 57 && objId <= 61);
+            const bool isBumper = (obj.id == "46");
             float entityBaseX = obj.x - 16.0f;
             float entityBaseY = obj.y - 16.0f;
             if (renderWrapX) {
@@ -2225,7 +2322,7 @@ RENDER_ONLY:
                 }
             }
             if (!of) of = defaultEntityFrame;
-            if (!isFastTravelChanger && hideUnknownObjectTypes && !objectTypeKnown) {
+            if (!isFastTravelChanger && !isBumper && hideUnknownObjectTypes && !objectTypeKnown) {
                 continue;
             }
 
@@ -2488,6 +2585,10 @@ RENDER_ONLY:
                 }
             }
         }
+
+        SDL_SetRenderTarget(ren, gameTarget);
+        SDL_Rect worldDst{0, 0, screenW, screenH};
+        SDL_RenderTexture(ren, worldTarget, nullptr, &worldDst);
 
         // HUD: coin/timer/score
         int hudSeconds = levelCompleteActive ? levelCompleteSnapshotSeconds : (int)levelTimerSeconds;
@@ -3055,12 +3156,16 @@ RENDER_ONLY:
             }
 #endif
         }
-        if (returnToSelect) continue;
+        if (returnToSelect) {
+            if (selectedFromUserMenu) reopenUserLevelMenu = true;
+            continue;
+        }
     }
 
     if (blocksTex) SDL_DestroyTexture(blocksTex);
     if (entitiesTex) SDL_DestroyTexture(entitiesTex);
     if (pauseTex) SDL_DestroyTexture(pauseTex);
+    if (worldTarget) SDL_DestroyTexture(worldTarget);
     if (gameTarget) SDL_DestroyTexture(gameTarget);
     if (debugRen && debugRen != ren) SDL_DestroyRenderer(debugRen);
     if (debugWin && debugWin != win) SDL_DestroyWindow(debugWin);

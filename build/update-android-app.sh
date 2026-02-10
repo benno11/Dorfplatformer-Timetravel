@@ -14,6 +14,7 @@ ASSETS_SRC="$ROOT_DIR/assets"
 ASSETS_DST="$APP_MAIN_DIR/assets"
 
 ABI="${ABI:-arm64-v8a}"
+ANDROID_ALLOW_NO_CURL="${ANDROID_ALLOW_NO_CURL:-0}"
 
 if [ ! -d "$ANDROID_DIR" ]; then
   echo "[error] android project not found at: $ANDROID_DIR"
@@ -34,6 +35,7 @@ SDL3_ANDROID_ROOT="${SDL3_ANDROID_ROOT:-$ROOT_DIR/deps/android}"
 SDL3_IMAGE_ROOT="${SDL3_IMAGE_ROOT:-$SDL3_ANDROID_ROOT}"
 SDL3_TTF_ROOT="${SDL3_TTF_ROOT:-$SDL3_ANDROID_ROOT}"
 SDL3_MIXER_ROOT="${SDL3_MIXER_ROOT:-$SDL3_ANDROID_ROOT}"
+CURL_ANDROID_ROOT="${CURL_ANDROID_ROOT:-$ROOT_DIR/deps/android-curl}"
 NATIVE_BUILD_LIB="$ROOT_DIR/build/android/$ABI/libplatformer.so"
 NATIVE_BUILD_DIR="$ROOT_DIR/build/android/$ABI"
 NATIVE_LIBS_DST="$APP_MAIN_DIR/jniLibs/$ABI"
@@ -45,6 +47,7 @@ rm -f \
   "$NATIVE_LIBS_DST/libSDL3_image.so" \
   "$NATIVE_LIBS_DST/libSDL3_ttf.so" \
   "$NATIVE_LIBS_DST/libSDL3_mixer.so" \
+  "$NATIVE_LIBS_DST/libcurl.so" \
   "$NATIVE_LIBS_DST/libsdl3.so" \
   "$NATIVE_LIBS_DST/libsdl3_image.so" \
   "$NATIVE_LIBS_DST/libsdl3_ttf.so" \
@@ -94,6 +97,23 @@ copy_lib_prefer_build "libSDL3_image.so" "$SDL3_IMAGE_ROOT"
 copy_lib_prefer_build "libSDL3_ttf.so" "$SDL3_TTF_ROOT"
 copy_lib_prefer_build "libSDL3_mixer.so" "$SDL3_MIXER_ROOT"
 
+# Optional networking stack for Android (curl + common TLS deps).
+curl_enabled=0
+if copy_lib_prefer_build "libcurl.so" "$CURL_ANDROID_ROOT"; then
+  curl_enabled=1
+  copy_lib_prefer_build "libssl.so" "$CURL_ANDROID_ROOT" || true
+  copy_lib_prefer_build "libcrypto.so" "$CURL_ANDROID_ROOT" || true
+else
+  if [ "$ANDROID_ALLOW_NO_CURL" = "1" ]; then
+    echo "[warn] libcurl.so not packaged; native HTTP fetch will be disabled (HAVE_CURL=0 build)."
+  else
+    echo "[error] libcurl.so missing for ABI=$ABI."
+    echo "[hint] Provide $CURL_ANDROID_ROOT/lib/$ABI/libcurl.so or build with curl enabled."
+    echo "[hint] To bypass (not recommended): ANDROID_ALLOW_NO_CURL=1 ./build/update-android-app.sh"
+    exit 1
+  fi
+fi
+
 # Package libc++_shared.so from NDK for runtime linking.
 if [ -z "${ANDROID_NDK_HOME:-}" ]; then
   for c in \
@@ -134,4 +154,9 @@ cp -a "$ASSETS_SRC" "$ASSETS_DST"
 echo "[ok] synced assets -> $ASSETS_DST"
 
 echo "[done] android app content updated."
+if [ "$curl_enabled" = "1" ]; then
+  echo "[info] networking libs packaged: libcurl.so (+ optional libssl/libcrypto)."
+else
+  echo "[info] networking libs not packaged."
+fi
 echo "[next] cd Android && ./gradlew assembleDebug"

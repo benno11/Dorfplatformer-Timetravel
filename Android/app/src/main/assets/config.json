@@ -3,7 +3,7 @@
   "jump_buffer_seconds": 9999.25,
   "movement": {
     "accel_in_water": 700.0,
-    "accel_ground": 1200.0,
+    "accel_ground": 900.0,
     "max_speed_in_water": 400.0,
     "max_speed_ground": 700.0,
     "friction_in_water": 900.0,
@@ -16,5 +16,6 @@
     "jump_cut_speed": 220.0,
     "swim_up_speed": 380.0,
     "swim_rise": 900.0
-  }
+  },
+  "level_server_url": "https://timetravel-server-default-rtdb.europe-west1.firebasedatabase.app/"
 }

@@ -31,10 +31,12 @@ void LevelManager::reloadLevel(TileMap& map, std::vector<ObjectInstance>& object
     timeWarpId_ = 'N';
 
     player = Player{};
+    bool foundSpawn = false;
     for (const auto& o : objects) {
         if (o.id == "player") {
             player.x = o.x;
             player.y = o.y - 12.0f;
+            foundSpawn = true;
             break;
         }
     }
@@ -45,9 +47,15 @@ void LevelManager::reloadLevel(TileMap& map, std::vector<ObjectInstance>& object
         int ty = idx / map.w;
         player.x = tx * map.tileSize;
         player.y = ty * map.tileSize;
+        foundSpawn = true;
         map.tileIds[idx] = 2;
         applyBlockDefAt(map, idx, 2);
         break;
+    }
+
+    if (!foundSpawn) {
+        player.x = 3.0f * map.tileSize;
+        player.y = (float)(map.h * map.tileSize - player.h) - 3.0f * map.tileSize;
     }
 
     if (RectHitsSolid(map, player.x, player.y, player.w, player.h)) {
