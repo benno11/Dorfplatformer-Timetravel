@@ -384,6 +384,7 @@ int main(int argc, char** argv) {
     auto bossesFrames = loadPlistFrames("assets/Sheets/DF_Bosses-uhd.plist");
     const Frame* bossNormalFrame = nullptr;
     const Frame* bossHurtFrame = nullptr;
+    const Frame* bossFinalNormalFrame = nullptr;
     {
         auto it = bossesFrames.find("Normal-1");
         if (it == bossesFrames.end()) it = bossesFrames.find("Normal-1.png");
@@ -391,6 +392,9 @@ int main(int argc, char** argv) {
         it = bossesFrames.find("Hurt-1");
         if (it == bossesFrames.end()) it = bossesFrames.find("Hurt-1.png");
         if (it != bossesFrames.end()) bossHurtFrame = &it->second;
+        it = bossesFrames.find("Final-Normal");
+        if (it == bossesFrames.end()) it = bossesFrames.find("Final-Normal.png");
+        if (it != bossesFrames.end()) bossFinalNormalFrame = &it->second;
     }
 
     const std::string entitiesPlist = "assets/Sheets/DF_Enitys-uhd.plist";
@@ -686,6 +690,7 @@ int main(int argc, char** argv) {
     bool defaultShowPlayerHitbox = false;
     bool defaultShowDebugView = false;
     bool defaultHideUnknownObjectTypes = false;
+    bool powerManagementEnabled = true;
     bool menuMusicEnabled = true;
     bool muteAllAudio = false;
     float fastTravelChangeDelay = 0.0f;
@@ -712,6 +717,7 @@ int main(int argc, char** argv) {
         j["show_player_hitbox"] = defaultShowPlayerHitbox;
         j["show_debug_view"] = defaultShowDebugView;
         j["hide_unknown_object_types"] = defaultHideUnknownObjectTypes;
+        j["power_management"] = powerManagementEnabled;
         j["menu_music_enabled"] = menuMusicEnabled;
         j["mute_all_audio"] = muteAllAudio;
         j["fast_travel_delay"] = fastTravelChangeDelay;
@@ -766,6 +772,7 @@ int main(int argc, char** argv) {
             if (j.contains("show_player_hitbox") && j["show_player_hitbox"].is_boolean()) defaultShowPlayerHitbox = j["show_player_hitbox"].get<bool>();
             if (j.contains("show_debug_view") && j["show_debug_view"].is_boolean()) defaultShowDebugView = j["show_debug_view"].get<bool>();
             if (j.contains("hide_unknown_object_types") && j["hide_unknown_object_types"].is_boolean()) defaultHideUnknownObjectTypes = j["hide_unknown_object_types"].get<bool>();
+            if (j.contains("power_management") && j["power_management"].is_boolean()) powerManagementEnabled = j["power_management"].get<bool>();
             if (j.contains("menu_music_enabled") && j["menu_music_enabled"].is_boolean()) menuMusicEnabled = j["menu_music_enabled"].get<bool>();
             if (j.contains("mute_all_audio") && j["mute_all_audio"].is_boolean()) muteAllAudio = j["mute_all_audio"].get<bool>();
             if (j.contains("fast_travel_delay") && j["fast_travel_delay"].is_number()) {
@@ -791,6 +798,7 @@ int main(int argc, char** argv) {
                     if (j.contains("show_player_hitbox") && j["show_player_hitbox"].is_boolean()) defaultShowPlayerHitbox = j["show_player_hitbox"].get<bool>();
                     if (j.contains("show_debug_view") && j["show_debug_view"].is_boolean()) defaultShowDebugView = j["show_debug_view"].get<bool>();
                     if (j.contains("hide_unknown_object_types") && j["hide_unknown_object_types"].is_boolean()) defaultHideUnknownObjectTypes = j["hide_unknown_object_types"].get<bool>();
+                    if (j.contains("power_management") && j["power_management"].is_boolean()) powerManagementEnabled = j["power_management"].get<bool>();
                     if (j.contains("menu_music_enabled") && j["menu_music_enabled"].is_boolean()) menuMusicEnabled = j["menu_music_enabled"].get<bool>();
                     if (j.contains("mute_all_audio") && j["mute_all_audio"].is_boolean()) muteAllAudio = j["mute_all_audio"].get<bool>();
                     if (j.contains("fast_travel_delay") && j["fast_travel_delay"].is_number()) {
@@ -834,6 +842,27 @@ int main(int argc, char** argv) {
         audio.applyMenuMusicToggle(menuMusicEnabled);
     };
     LevelManager levelManager;
+    Uint64 nextAudioRecoverTick = 0;
+    auto recoverAudioIfNeeded = [&](bool inLevel) {
+        if (audio.isReady()) return;
+        const Uint64 nowTick = SDL_GetTicks();
+        if (nowTick < nextAudioRecoverTick) return;
+        nextAudioRecoverTick = nowTick + 1500;
+        SDL_Log("audio.recover: restarting audio backend (inLevel=%d)", inLevel ? 1 : 0);
+        audio.shutdown();
+        if (!audio.initialize()) {
+            SDL_Log("audio.recover: initialize failed");
+            return;
+        }
+        audio.loadGlobalAssets();
+        applyAudioVolumes();
+        if (inLevel) {
+            audio.loadLevelMusic(levelManager.musicPath());
+        } else {
+            applyMenuMusicToggle();
+        }
+        SDL_Log("audio.recover: restart ok");
+    };
     bool running = true;
     std::string currentFancyLevelName = "LEVEL";
     std::string currentAreaIdText = "1";
@@ -981,6 +1010,7 @@ int main(int argc, char** argv) {
     frontendCtx.defaultShowPlayerHitbox = &defaultShowPlayerHitbox;
     frontendCtx.defaultShowDebugView = &defaultShowDebugView;
     frontendCtx.defaultHideUnknownObjectTypes = &defaultHideUnknownObjectTypes;
+    frontendCtx.powerManagementEnabled = &powerManagementEnabled;
     frontendCtx.menuMusicEnabled = &menuMusicEnabled;
     frontendCtx.muteAllAudio = &muteAllAudio;
     frontendCtx.musicVolume = &musicVolume;
@@ -992,6 +1022,7 @@ int main(int argc, char** argv) {
     // Enforce persisted startup audio state immediately.
     applyMenuMusicToggle();
     while (running) {
+        recoverAudioIfNeeded(false);
         std::string selectedLevelPath;
         bool selectedFromUserMenu = false;
         if (reopenUserLevelMenu) {
@@ -1093,6 +1124,9 @@ int main(int argc, char** argv) {
         float levelReloadTitleTimer = 0.0f;
         float levelTimerSeconds = 0.0f;
         float cameraSmoothingSuppressTimer = 0.0f;
+        bool levelCompleteCameraLocked = false;
+        float levelCompleteCameraX = 0.0f;
+        float levelCompleteCameraY = 0.0f;
         enum FastTravelDir {
             FT_UP = 0,
             FT_DOWN = 1,
@@ -1171,6 +1205,9 @@ int main(int argc, char** argv) {
             levelCompleteAccountedScore = 0;
             levelCompleteSnapshotSeconds = 0;
             levelCompleteUiLerp = 0.0f;
+            levelCompleteCameraLocked = false;
+            levelCompleteCameraX = 0.0f;
+            levelCompleteCameraY = 0.0f;
             endSignState = EndSignRuntimeState{};
             float nearestAheadDist = 1e30f;
             int fallbackSignIndex = -1;
@@ -1200,7 +1237,7 @@ int main(int argc, char** argv) {
             auto loadBossReplayPathPositions = [&](const std::string& replayFile) -> std::vector<SDL_FPoint> {
                 std::vector<SDL_FPoint> out;
                 std::vector<std::string> candidates;
-                candidates.push_back(std::string("build/replays/") + replayFile);
+                candidates.push_back(std::string("save/replays/") + replayFile);
                 candidates.push_back(replayFile);
                 for (const auto& p : candidates) {
                     std::ifstream in(p, std::ios::binary);
@@ -1247,6 +1284,17 @@ int main(int argc, char** argv) {
                 bossState.y = std::clamp(mapH * (0.30f + (1.0f - phase) * 0.28f), 96.0f, std::max(96.0f, mapH - 96.0f));
                 bossState.vx = ((bossProfileWorld % 2) == 0) ? -250.0f : 250.0f;
                 bossState.vy = 220.0f + (float)((bossProfileWorld % 3) * 20);
+            }
+            if (bossState.sourceWorld == 7) {
+                const float world7MinX = 96.0f + 28.0f;
+                const float world7MaxX = 96.0f + (float)kGameplayViewW - 28.0f;
+                const float minX = std::min(world7MinX, world7MaxX);
+                const float maxX = std::max(world7MinX, world7MaxX);
+                const float rx = (float)std::rand() / (float)RAND_MAX;
+                bossState.x = minX + (maxX - minX) * rx;
+                bossState.y = 32.0f + (float)kGameplayViewH + 28.0f;
+                bossState.vx = 0.0f;
+                bossState.vy = -320.0f;
             }
             if (bossState.sourceWorld == 3) {
                 bossState.maxHealth = 8;
@@ -1333,6 +1381,7 @@ int main(int argc, char** argv) {
             float vx = 0.0f;
             float vy = 0.0f;
             float life = 12.0f;
+            float noPickupTimer = 0.0f;
             int value = 1;
         };
         std::vector<DroppedCoin> droppedCoins;
@@ -1449,9 +1498,9 @@ int main(int argc, char** argv) {
             replayRecorder = ReplayRecorder{};
             try {
                 std::error_code ec;
-                std::filesystem::create_directories("build/replays", ec);
+                std::filesystem::create_directories("save/replays", ec);
                 const Uint64 stamp = SDL_GetTicksNS();
-                replayRecorder.path = std::string("build/replays/replay-") + std::to_string((unsigned long long)stamp) + ".jsonl";
+                replayRecorder.path = std::string("save/replays/replay-") + std::to_string((unsigned long long)stamp) + ".jsonl";
                 replayRecorder.out.open(replayRecorder.path, std::ios::binary | std::ios::trunc);
                 if (replayRecorder.out.is_open()) {
                     replayRecorder.enabled = true;
@@ -1470,7 +1519,7 @@ int main(int argc, char** argv) {
                     meta["start_ticks_ns"] = (uint64_t)replayRecorder.startTicksNs;
                     replayRecorder.out << meta.dump() << "\n";
                     replayRecorder.out.flush();
-                    std::ofstream latest("build/replays/latest_replay.txt", std::ios::binary | std::ios::trunc);
+                    std::ofstream latest("save/replays/latest_replay.txt", std::ios::binary | std::ios::trunc);
                     if (latest.is_open()) latest << replayRecorder.path << "\n";
                     SDL_Log("Replay recording: %s", replayRecorder.path.c_str());
                 }
@@ -1537,11 +1586,13 @@ int main(int argc, char** argv) {
             replayPlayback.active = true;
             return true;
         };
-        startReplayRecording();
+        // Replay recording is opt-in; keep disabled until user toggles it.
         SDL_Event e;
         Uint32 lastTicks = SDL_GetTicks();
         Uint32 lastPresentTicks = lastTicks;
         Uint32 nextPresentTicks = lastTicks;
+        bool mainWindowFocused = true;
+        bool mainWindowMinimized = false;
         constexpr int kFpsDisplayMax = 99999999;
         float updateFpsSmoothed = 0.0f;
         float renderFpsSmoothed = 0.0f;
@@ -1636,6 +1687,7 @@ int main(int argc, char** argv) {
                 c.vx = t * 280.0f;
                 c.vy = -430.0f - 90.0f * std::fabs(t);
                 c.life = 12.0f;
+                c.noPickupTimer = 9.0f;
                 droppedCoins.push_back(c);
                 remaining--;
             }
@@ -1646,11 +1698,28 @@ int main(int argc, char** argv) {
                 idx++;
             }
         };
+        auto removeTimewarpObjectsAndExit = [&]() {
+            objects.erase(std::remove_if(objects.begin(), objects.end(), [](const ObjectInstance& obj) {
+                int objId = 0;
+                try { objId = std::stoi(obj.id); } catch (...) { return false; }
+                return objId >= 57 && objId <= 61;
+            }), objects.end());
+            setFastTravelActiveDir(-1, "boss_start_disable_timewarp");
+            fastTravelOverlapWasActive = false;
+            fastTravelBlendVx = 0.0f;
+            fastTravelBlendVy = 0.0f;
+            fastTravelCooldown = std::max(fastTravelCooldown, 0.30f);
+            timeTravelTriggerCooldown = std::max(timeTravelTriggerCooldown, 0.50f);
+        };
 
         while (levelRunning) {
+            recoverAudioIfNeeded(true);
             Uint32 now = SDL_GetTicks();
             float dt = (now - lastTicks) / 1000.0f;
             lastTicks = now;
+            if (levelCompleteActive) {
+                paused = false;
+            }
             const int updateFpsInstant = std::clamp((dt > 0.0f) ? (int)(1.0f / dt) : 0, 0, kFpsDisplayMax);
             if (updateFpsSmoothed <= 0.0f) updateFpsSmoothed = (float)updateFpsInstant;
             else updateFpsSmoothed += ((float)updateFpsInstant - updateFpsSmoothed) * 0.16f;
@@ -1658,6 +1727,7 @@ int main(int argc, char** argv) {
             bool temp1TouchedThisFrame = false;
             verticalWrapActive = false;
             activeBumperIndices.clear();
+            SetHorizontalWrapCollision(currentLevelId == 39 || currentLevelId == 40);
             frameMsHistory[frameMsHistoryHead] = dt * 1000.0f;
             {
                 long rssKB = -1, vmKB = -1;
@@ -1701,6 +1771,7 @@ int main(int argc, char** argv) {
                 const float coinR = 6.0f;
                 for (auto& c : droppedCoins) {
                     c.life -= dt;
+                    c.noPickupTimer = std::max(0.0f, c.noPickupTimer - dt);
                     c.vy += 1900.0f * dt;
                     c.vy = std::min(c.vy, 1300.0f);
                     c.x += c.vx * dt;
@@ -1720,7 +1791,8 @@ int main(int argc, char** argv) {
                 const float py2 = player.y + player.h;
                 droppedCoins.erase(std::remove_if(droppedCoins.begin(), droppedCoins.end(), [&](const DroppedCoin& c) {
                     if (c.life <= 0.0f) return true;
-                    const bool touched = (c.x + coinR > px1 && c.x - coinR < px2 && c.y + coinR > py1 && c.y - coinR < py2);
+                    const bool touched = (c.noPickupTimer <= 0.0f) &&
+                                         (c.x + coinR > px1 && c.x - coinR < px2 && c.y + coinR > py1 && c.y - coinR < py2);
                     if (!touched) return false;
                     levelManager.addCoins(std::max(1, c.value));
                     audio.playCoinSfx();
@@ -1852,7 +1924,25 @@ int main(int argc, char** argv) {
                 }
             }
             if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST) {
-                paused = true;
+                if (e.window.windowID == mainWindowId) {
+                    mainWindowFocused = false;
+                    paused = true;
+                }
+            }
+            if (e.type == SDL_EVENT_WINDOW_FOCUS_GAINED) {
+                if (e.window.windowID == mainWindowId) {
+                    mainWindowFocused = true;
+                }
+            }
+            if (e.type == SDL_EVENT_WINDOW_MINIMIZED) {
+                if (e.window.windowID == mainWindowId) {
+                    mainWindowMinimized = true;
+                }
+            }
+            if (e.type == SDL_EVENT_WINDOW_RESTORED) {
+                if (e.window.windowID == mainWindowId) {
+                    mainWindowMinimized = false;
+                }
             }
             if (e.type == SDL_EVENT_FINGER_DOWN) {
                 bool consumedByDebugger = false;
@@ -1979,7 +2069,7 @@ int main(int argc, char** argv) {
                     } else {
                         std::string replayPath;
                         {
-                            std::ifstream latest("build/replays/latest_replay.txt", std::ios::binary);
+                            std::ifstream latest("save/replays/latest_replay.txt", std::ios::binary);
                             if (latest.is_open()) std::getline(latest, replayPath);
                         }
                         if (!replayPath.empty()) {
@@ -2964,6 +3054,7 @@ int main(int argc, char** argv) {
 
             if (!bossState.active && playerTouchesTileId(map, player, 68, 68)) {
                 bossState.active = true;
+                removeTimewarpObjectsAndExit();
             }
 
             if (bossState.active && !levelCompleteActive) {
@@ -3040,6 +3131,7 @@ int main(int argc, char** argv) {
                             bossState.health = bossState.maxHealth;
                             bossState.vx = 280.0f;
                             bossState.vy = 220.0f;
+                            removeTimewarpObjectsAndExit();
                             SDL_Log("boss.w3: phase 2 -> 3 (fight active)");
                         }
                     }
@@ -3047,14 +3139,28 @@ int main(int argc, char** argv) {
                 const bool hasBossCameraLock =
                     (bossState.sourceWorld == 1 || bossState.sourceWorld == 2) ||
                     (bossState.sourceWorld == 4) ||
+                    (bossState.sourceWorld == 5) ||
+                    (bossState.sourceWorld == 7) ||
                     (bossState.sourceWorld == 3 && bossState.phase == 3);
                 if (hasBossCameraLock) {
-                    const float lockCx = (bossState.sourceWorld == 2) ? 1887.0f :
-                        ((bossState.sourceWorld == 4) ? (1315.0f + kGameplayViewW * 0.5f) :
-                        ((bossState.sourceWorld == 3) ? (2528.0f + kGameplayViewW * 0.5f) : 1170.0f));
-                    const float lockCy = (bossState.sourceWorld == 2) ? 744.0f :
-                        ((bossState.sourceWorld == 4) ? (202.0f + kGameplayViewH * 0.5f) :
-                        ((bossState.sourceWorld == 3) ? (976.0f + kGameplayViewH * 0.5f) : 132.0f));
+                    float lockCx = 1170.0f;
+                    float lockCy = 132.0f;
+                    if (bossState.sourceWorld == 2) {
+                        lockCx = 1887.0f;
+                        lockCy = 744.0f;
+                    } else if (bossState.sourceWorld == 4) {
+                        lockCx = 1315.0f + kGameplayViewW * 0.5f;
+                        lockCy = 202.0f + kGameplayViewH * 0.5f;
+                    } else if (bossState.sourceWorld == 5) {
+                        lockCx = 5728.0f + kGameplayViewW * 0.5f;
+                        lockCy = 2832.0f + kGameplayViewH * 0.5f;
+                    } else if (bossState.sourceWorld == 7) {
+                        lockCx = 96.0f + kGameplayViewW * 0.5f;
+                        lockCy = 32.0f + kGameplayViewH * 0.5f;
+                    } else if (bossState.sourceWorld == 3) {
+                        lockCx = 2528.0f + kGameplayViewW * 0.5f;
+                        lockCy = 976.0f + kGameplayViewH * 0.5f;
+                    }
                     const float lockLeft = lockCx - kGameplayViewW * 0.5f + halfW + 8.0f;
                     const float lockRight = lockCx + kGameplayViewW * 0.5f - halfW - 8.0f;
                     const float lockTop = lockCy - kGameplayViewH * 0.5f + halfH + 8.0f;
@@ -3067,24 +3173,37 @@ int main(int argc, char** argv) {
                 if (arenaLeft > arenaRight) std::swap(arenaLeft, arenaRight);
                 if (arenaTop > arenaBottom) std::swap(arenaTop, arenaBottom);
                 const bool bossCanMoveAndTakeDamage = !(bossState.sourceWorld == 3 && bossState.phase != 3);
-                if (bossCanMoveAndTakeDamage) {
-                    bossState.x += bossState.vx * dt;
-                    bossState.y += bossState.vy * dt;
-                    if (bossState.x - halfW < arenaLeft) {
-                        bossState.x = arenaLeft + halfW;
-                        bossState.vx = std::fabs(bossState.vx);
-                    }
-                    if (bossState.x + halfW > arenaRight) {
-                        bossState.x = arenaRight - halfW;
-                        bossState.vx = -std::fabs(bossState.vx);
-                    }
-                    if (bossState.y - halfH < arenaTop) {
-                        bossState.y = arenaTop + halfH;
-                        bossState.vy = std::fabs(bossState.vy);
-                    }
-                    if (bossState.y + halfH > arenaBottom) {
-                        bossState.y = arenaBottom - halfH;
-                        bossState.vy = -std::fabs(bossState.vy);
+                const bool world4RainbowActive = (bossState.sourceWorld == 4 && bossState.rainbowTimer > 0.0f);
+                if (bossCanMoveAndTakeDamage && !world4RainbowActive) {
+                    if (bossState.sourceWorld == 7) {
+                        bossState.y += bossState.vy * dt;
+                        if (bossState.y + halfH < arenaTop) {
+                            const float minX = arenaLeft + halfW;
+                            const float maxX = std::max(minX, arenaRight - halfW);
+                            const float rx = (float)std::rand() / (float)RAND_MAX;
+                            bossState.x = minX + (maxX - minX) * rx;
+                            bossState.y = arenaBottom + halfH + 24.0f;
+                            bossState.vy = -std::fabs(bossState.vy);
+                        }
+                    } else {
+                        bossState.x += bossState.vx * dt;
+                        bossState.y += bossState.vy * dt;
+                        if (bossState.x - halfW < arenaLeft) {
+                            bossState.x = arenaLeft + halfW;
+                            bossState.vx = std::fabs(bossState.vx);
+                        }
+                        if (bossState.x + halfW > arenaRight) {
+                            bossState.x = arenaRight - halfW;
+                            bossState.vx = -std::fabs(bossState.vx);
+                        }
+                        if (bossState.y - halfH < arenaTop) {
+                            bossState.y = arenaTop + halfH;
+                            bossState.vy = std::fabs(bossState.vy);
+                        }
+                        if (bossState.y + halfH > arenaBottom) {
+                            bossState.y = arenaBottom - halfH;
+                            bossState.vy = -std::fabs(bossState.vy);
+                        }
                     }
                 }
 
@@ -3099,8 +3218,7 @@ int main(int argc, char** argv) {
                     if (!bossCanMoveAndTakeDamage) {
                         if (applyBossContactDamageToPlayer()) continue;
                     } else {
-                        const bool world4Invuln = (bossState.sourceWorld == 4 && bossState.rainbowTimer > 0.0f);
-                        const bool stomp = !world4Invuln && (player.vy > 80.0f) && (py2 <= by + bossH * 0.55f);
+                        const bool stomp = (player.vy > 80.0f) && (py2 <= by + bossH * 0.55f);
                         if (stomp) {
                             player.y = by - (float)player.h;
                             player.vy = -1000.0f;
@@ -3119,6 +3237,13 @@ int main(int argc, char** argv) {
                                 const float ry = (float)std::rand() / (float)RAND_MAX;
                                 bossState.x = minX + (maxX - minX) * rx;
                                 bossState.y = minY + (maxY - minY) * ry;
+                            } else if (bossState.sourceWorld == 7) {
+                                const float minX = arenaLeft + halfW;
+                                const float maxX = std::max(minX, arenaRight - halfW);
+                                const float rx = (float)std::rand() / (float)RAND_MAX;
+                                bossState.x = minX + (maxX - minX) * rx;
+                                bossState.y = arenaBottom + halfH + 24.0f;
+                                bossState.vy = -std::fabs(bossState.vy);
                             }
                             audio.playBumperSfx();
                             if (bossState.health <= 0) {
@@ -3130,6 +3255,42 @@ int main(int argc, char** argv) {
                             }
                         } else {
                             if (applyBossContactDamageToPlayer()) continue;
+                        }
+                    }
+                }
+            }
+
+            if (!paused && !deathSequenceActive && !levelCompleteActive && player.onGround) {
+                const float footX = player.x + player.w * 0.5f;
+                const float footY = player.y + (float)player.h + 1.0f;
+                const int tx = (int)std::floor(footX / (float)map.tileSize);
+                const int ty = (int)std::floor(footY / (float)map.tileSize);
+                if (tx >= 0 && tx < map.w && ty >= 0 && ty < map.h) {
+                    const int idx = ty * map.w + tx;
+                    const int standingTileId = (int)map.tileIds[idx];
+                    if (standingTileId == 20) {
+                        levelManager.setTileAt(map, idx, 21);
+                        levelManager.addCoins(5);
+                        audio.playCoinSfx();
+                    } else if (standingTileId == 13 && playerInvincibleTimer <= 0.0f) {
+                        const bool hasCoins = levelManager.coinCount() > 0;
+                        if (hasCoins) {
+                            dropPlayerCoins(player.x + player.w * 0.5f, player.y + player.h * 0.5f);
+                            playerInvincibleTimer = kPlayerInvincibleDuration;
+                            player.anim = ANIM_HURT;
+                            player.animTime = 0.0f;
+                            player.vx = (player.facing < 0) ? 320.0f : -320.0f;
+                            player.vy = -760.0f;
+                            player.onGround = false;
+                            audio.playLoseSfx();
+                        } else {
+                            deathSequenceActive = true;
+                            deathLifeDeducted = false;
+                            deathTimer = 0.0f;
+                            audio.haltAllChannels();
+                            audio.haltMusic();
+                            audio.playLoseSfx();
+                            continue;
                         }
                     }
                 }
@@ -3257,8 +3418,11 @@ int main(int argc, char** argv) {
             updatePlayerAnimState(inputMove, inputDown, dt);
         }
 
-RENDER_ONLY:
+        RENDER_ONLY:
         {
+            const int targetPresentIntervalMs =
+                (powerManagementEnabled && mainWindowMinimized) ? 250 :
+                (powerManagementEnabled && (!mainWindowFocused || paused)) ? 33 : 16;
             const Uint32 renderNow = SDL_GetTicks();
             if (renderNow < nextPresentTicks) {
                 // Skip rendering on this tick so simulation updates can run independently.
@@ -3294,13 +3458,27 @@ RENDER_ONLY:
             (bossState.sourceWorld == 1 ||
              bossState.sourceWorld == 2 ||
              bossState.sourceWorld == 4 ||
+             bossState.sourceWorld == 5 ||
+             bossState.sourceWorld == 7 ||
              (bossState.sourceWorld == 3 && bossState.phase == 3));
-        const float forcedBossCameraX = (bossState.sourceWorld == 2) ? 1887.0f
-            : ((bossState.sourceWorld == 4) ? (1315.0f + kGameplayViewW * 0.5f)
-            : ((bossState.sourceWorld == 3) ? (2528.0f + kGameplayViewW * 0.5f) : 1170.0f));
-        const float forcedBossCameraY = (bossState.sourceWorld == 2) ? 744.0f
-            : ((bossState.sourceWorld == 4) ? (202.0f + kGameplayViewH * 0.5f)
-            : ((bossState.sourceWorld == 3) ? (976.0f + kGameplayViewH * 0.5f) : 132.0f));
+        float forcedBossCameraX = 1170.0f;
+        float forcedBossCameraY = 132.0f;
+        if (bossState.sourceWorld == 2) {
+            forcedBossCameraX = 1887.0f;
+            forcedBossCameraY = 744.0f;
+        } else if (bossState.sourceWorld == 4) {
+            forcedBossCameraX = 1315.0f + kGameplayViewW * 0.5f;
+            forcedBossCameraY = 202.0f + kGameplayViewH * 0.5f;
+        } else if (bossState.sourceWorld == 5) {
+            forcedBossCameraX = 5728.0f + kGameplayViewW * 0.5f;
+            forcedBossCameraY = 2832.0f + kGameplayViewH * 0.5f;
+        } else if (bossState.sourceWorld == 7) {
+            forcedBossCameraX = 96.0f + kGameplayViewW * 0.5f;
+            forcedBossCameraY = 32.0f + kGameplayViewH * 0.5f;
+        } else if (bossState.sourceWorld == 3) {
+            forcedBossCameraX = 2528.0f + kGameplayViewW * 0.5f;
+            forcedBossCameraY = 976.0f + kGameplayViewH * 0.5f;
+        }
         const float cameraTargetX = forceBossCamera
             ? forcedBossCameraX
             : (lockCameraToEndSign ? endSignState.objectX : (player.x + player.w * 0.5f));
@@ -3331,6 +3509,17 @@ RENDER_ONLY:
             camYClampBlend += (clampTarget - camYClampBlend) * clampBlendStep;
         }
         camY = freeCamY * (1.0f - camYClampBlend) + clampedCamY * camYClampBlend;
+        if (levelCompleteActive) {
+            if (!levelCompleteCameraLocked) {
+                levelCompleteCameraLocked = true;
+                levelCompleteCameraX = camX;
+                levelCompleteCameraY = camY;
+            }
+            camX = levelCompleteCameraX;
+            camY = levelCompleteCameraY;
+        } else {
+            levelCompleteCameraLocked = false;
+        }
 
         SDL_SetRenderTarget(ren, worldTarget);
         SDL_SetRenderDrawColor(ren, 12, 14, 18, 255);
@@ -3799,8 +3988,20 @@ RENDER_ONLY:
 
         if (bossState.active && bossesTex && bossNormalFrame) {
             const Frame* bf = (bossState.hurtFlash > 0.0f && bossHurtFrame) ? bossHurtFrame : bossNormalFrame;
-            const int dstW = 56;
-            const int dstH = 56;
+            if (bossState.sourceWorld == 7 && bossFinalNormalFrame) {
+                bf = bossFinalNormalFrame;
+            }
+            int dstW = 56;
+            int dstH = 56;
+            if (bossState.sourceWorld == 7 && bf) {
+                const int srcW = bf->rotated ? bf->rect.h : bf->rect.w;
+                const int srcH = bf->rotated ? bf->rect.w : bf->rect.h;
+                const double safeW = (double)std::max(1, srcW);
+                const double safeH = (double)std::max(1, srcH);
+                const double scale = std::max(56.0 / safeW, 56.0 / safeH); // cover 56x56 hitbox
+                dstW = std::max(56, (int)std::lround(safeW * scale));
+                dstH = std::max(56, (int)std::lround(safeH * scale));
+            }
             SDL_Rect dst{
                 (int)std::lround((bossState.x - dstW * 0.5f) - camX),
                 (int)std::lround((bossState.y - dstH * 0.5f) - camY),
@@ -3823,6 +4024,32 @@ RENDER_ONLY:
                     SDL_SetRenderDrawColor(ren, 255, 60, 60, 255);
                     SDL_FRect hb{(float)dst.x, (float)dst.y, (float)dst.w, (float)dst.h};
                     SDL_RenderDrawRectF(ren, &hb);
+                    if (renderWrapY) {
+                        const float wrapH = (float)(map.h * map.tileSize);
+                        SDL_FRect top{hb.x, hb.y - wrapH, hb.w, hb.h};
+                        SDL_FRect bottom{hb.x, hb.y + wrapH, hb.w, hb.h};
+                        SDL_RenderDrawRectF(ren, &top);
+                        SDL_RenderDrawRectF(ren, &bottom);
+                    }
+                    if (renderWrapX) {
+                        const float wrapW = (float)(map.w * map.tileSize);
+                        SDL_FRect left{hb.x - wrapW, hb.y, hb.w, hb.h};
+                        SDL_FRect right{hb.x + wrapW, hb.y, hb.w, hb.h};
+                        SDL_RenderDrawRectF(ren, &left);
+                        SDL_RenderDrawRectF(ren, &right);
+                    }
+                    if (renderWrapY && renderWrapX) {
+                        const float wrapW = (float)(map.w * map.tileSize);
+                        const float wrapH = (float)(map.h * map.tileSize);
+                        SDL_FRect tl{hb.x - wrapW, hb.y - wrapH, hb.w, hb.h};
+                        SDL_FRect tr{hb.x + wrapW, hb.y - wrapH, hb.w, hb.h};
+                        SDL_FRect bl{hb.x - wrapW, hb.y + wrapH, hb.w, hb.h};
+                        SDL_FRect br{hb.x + wrapW, hb.y + wrapH, hb.w, hb.h};
+                        SDL_RenderDrawRectF(ren, &tl);
+                        SDL_RenderDrawRectF(ren, &tr);
+                        SDL_RenderDrawRectF(ren, &bl);
+                        SDL_RenderDrawRectF(ren, &br);
+                    }
                 }
                 if (showDebugView) {
                     const std::string hpText = std::string("BOSS HP: ") + std::to_string(bossState.health) + "/" + std::to_string(bossState.maxHealth);
@@ -3910,6 +4137,16 @@ RENDER_ONLY:
         }
 
         SDL_FRect pr{ player.x - camX, player.y - camY, (float)player.w, (float)player.h };
+        if (renderWrapX) {
+            const float wrapW = (float)(map.w * map.tileSize);
+            while (pr.x < -wrapW * 0.5f) pr.x += wrapW;
+            while (pr.x >  wrapW * 0.5f) pr.x -= wrapW;
+        }
+        if (renderWrapY) {
+            const float wrapH = (float)(map.h * map.tileSize);
+            while (pr.y < -wrapH * 0.5f) pr.y += wrapH;
+            while (pr.y >  wrapH * 0.5f) pr.y -= wrapH;
+        }
         {
             const std::vector<const Frame*>* seq = &animIdleFrames;
             switch (player.anim) {
@@ -3985,6 +4222,22 @@ RENDER_ONLY:
                     renderFrameEx(ren, playerTex, *renderFramePtr, dstLeft, flip);
                     renderFrameEx(ren, playerTex, *renderFramePtr, dstRight, flip);
                 }
+                if (renderWrapY && renderWrapX) {
+                    const int wrapW = map.w * map.tileSize;
+                    const int wrapH = map.h * map.tileSize;
+                    SDL_Rect dstTL = dst;
+                    SDL_Rect dstTR = dst;
+                    SDL_Rect dstBL = dst;
+                    SDL_Rect dstBR = dst;
+                    dstTL.x -= wrapW; dstTL.y -= wrapH;
+                    dstTR.x += wrapW; dstTR.y -= wrapH;
+                    dstBL.x -= wrapW; dstBL.y += wrapH;
+                    dstBR.x += wrapW; dstBR.y += wrapH;
+                    renderFrameEx(ren, playerTex, *renderFramePtr, dstTL, flip);
+                    renderFrameEx(ren, playerTex, *renderFramePtr, dstTR, flip);
+                    renderFrameEx(ren, playerTex, *renderFramePtr, dstBL, flip);
+                    renderFrameEx(ren, playerTex, *renderFramePtr, dstBR, flip);
+                }
                 SDL_SetTextureAlphaMod(playerTex, 255);
             } else {
                 SDL_SetRenderDrawColor(ren, 200, 200, 230, 255);
@@ -4010,6 +4263,23 @@ RENDER_ONLY:
                     SDL_SetRenderDrawColor(ren, 255, 80, 80, 255);
                     SDL_RenderDrawRectF(ren, &prLeft);
                     SDL_RenderDrawRectF(ren, &prRight);
+                }
+                if (renderWrapY && renderWrapX) {
+                    const float wrapW = (float)(map.w * map.tileSize);
+                    const float wrapH = (float)(map.h * map.tileSize);
+                    SDL_FRect prTL{ pr.x - wrapW, pr.y - wrapH, pr.w, pr.h };
+                    SDL_FRect prTR{ pr.x + wrapW, pr.y - wrapH, pr.w, pr.h };
+                    SDL_FRect prBL{ pr.x - wrapW, pr.y + wrapH, pr.w, pr.h };
+                    SDL_FRect prBR{ pr.x + wrapW, pr.y + wrapH, pr.w, pr.h };
+                    SDL_RenderFillRectF(ren, &prTL);
+                    SDL_RenderFillRectF(ren, &prTR);
+                    SDL_RenderFillRectF(ren, &prBL);
+                    SDL_RenderFillRectF(ren, &prBR);
+                    SDL_SetRenderDrawColor(ren, 255, 80, 80, 255);
+                    SDL_RenderDrawRectF(ren, &prTL);
+                    SDL_RenderDrawRectF(ren, &prTR);
+                    SDL_RenderDrawRectF(ren, &prBL);
+                    SDL_RenderDrawRectF(ren, &prBR);
                 }
             }
         }
@@ -4420,7 +4690,10 @@ RENDER_ONLY:
             renderFpsDisplay = std::clamp((int)std::lround(renderFpsSmoothed), 0, kFpsDisplayMax);
             lastPresentTicks = presentedAt;
             // Keep render cadence capped while updates remain independent.
-            nextPresentTicks = presentedAt + 16;
+            const int targetPresentIntervalMs =
+                (powerManagementEnabled && mainWindowMinimized) ? 250 :
+                (powerManagementEnabled && (!mainWindowFocused || paused)) ? 33 : 16;
+            nextPresentTicks = presentedAt + (Uint32)targetPresentIntervalMs;
         }
         if (showDetailedDebugger && debugRen && debugWin && !embeddedDetailedDebugger) {
             int dbgW = 0, dbgH = 0;

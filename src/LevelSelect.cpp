@@ -294,6 +294,14 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 continue;
             }
             if (e.type == SDL_KEYDOWN && e.key.repeat == 0) {
+                if (e.key.key == SDLK_F11) {
+#if !defined(__ANDROID__)
+                    const Uint32 flags = SDL_GetWindowFlags(win);
+                    const bool isFullscreen = (flags & SDL_WINDOW_FULLSCREEN) != 0;
+                    SDL_SetWindowFullscreen(win, !isFullscreen);
+#endif
+                    continue;
+                }
                 if (e.key.key == SDLK_ESCAPE || e.key.key == SDLK_AC_BACK) {
                     paused = !paused;
                     continue;
@@ -763,7 +771,9 @@ std::vector<LevelEntry> loadLevelListFromJson(const std::string& jsonPath, const
     for (const auto& v : j["levels"]) {
         if (!v.is_string()) continue;
         std::string name = v.get<std::string>();
-        const std::string label = std::filesystem::path(name).filename().string();
+        const std::filesystem::path labelPath(name);
+        std::string label = labelPath.stem().string();
+        if (label.empty()) label = labelPath.filename().string();
         std::string path = baseDir.empty() ? name : (baseDir + "/" + name);
         // Campaign manifests list .bnnlvl while packed files are .txt; normalize to existing local file.
         if (!isHttpUrl(path) && !FileExists(path)) {
@@ -789,9 +799,9 @@ std::vector<LevelEntry> loadLevelListFromDir(const std::string& dirPath, bool pr
         auto p = entry.path();
         const auto ext = p.extension().string();
         if (!ext.empty() && ext != ".txt" && ext != ".bnnlvl" && ext != ".bin") continue;
-        std::string label = p.filename().string();
+        std::string label = p.stem().string();
+        if (label.empty()) label = p.filename().string();
         if (prettyLabel) {
-            label = p.stem().string();
             for (char& ch : label) {
                 if (ch == '_') ch = ' ';
             }
@@ -879,10 +889,12 @@ std::vector<LevelEntry> loadCustomLevels() {
 
 static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool includeCampaign, bool includeCustom) {
     std::vector<LevelEntry> campaignLevels = loadCampaignLevels();
-    std::vector<LevelEntry> customLevels = loadCustomLevels();
+    std::vector<LevelEntry> customLevels;
+    if (includeCustom) {
+        customLevels = loadCustomLevels();
+    }
     std::vector<LevelEntry> localLevels = loadLevelListFromDir(localLevelsFolderPath(), true);
     if (!includeCampaign) campaignLevels.clear();
-    if (!includeCustom) customLevels.clear();
     if (includeCustom) {
         localLevels.insert(localLevels.begin(), LevelEntry{"CREATE LOCAL LEVEL (EDITOR)", "__local_editor__"});
     } else {
@@ -1168,6 +1180,14 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
                 }
             }
             if (e.type == SDL_KEYDOWN && e.key.repeat == 0) {
+                if (e.key.key == SDLK_F11) {
+#if !defined(__ANDROID__)
+                    const Uint32 flags = SDL_GetWindowFlags(win);
+                    const bool isFullscreen = (flags & SDL_WINDOW_FULLSCREEN) != 0;
+                    SDL_SetWindowFullscreen(win, !isFullscreen);
+#endif
+                    continue;
+                }
                 if (localPageOpen && activeTab == localTabIndex) {
                     if (e.key.key == SDLK_ESCAPE || e.key.key == SDLK_AC_BACK) {
                         localPageOpen = false;

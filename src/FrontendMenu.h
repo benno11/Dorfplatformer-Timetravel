@@ -29,6 +29,7 @@ struct FrontendMenuContext {
     bool* defaultShowPlayerHitbox = nullptr;
     bool* defaultShowDebugView = nullptr;
     bool* defaultHideUnknownObjectTypes = nullptr;
+    bool* powerManagementEnabled = nullptr;
     bool* menuMusicEnabled = nullptr;
     bool* muteAllAudio = nullptr;
     int* musicVolume = nullptr;

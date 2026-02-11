@@ -4,6 +4,21 @@
 #include <algorithm>
 #include <cmath>
 
+namespace {
+bool g_horizontalWrapCollision = false;
+
+inline int wrapTileX(int x, int w) {
+    if (w <= 0) return x;
+    int v = x % w;
+    if (v < 0) v += w;
+    return v;
+}
+}
+
+void SetHorizontalWrapCollision(bool enabled) {
+    g_horizontalWrapCollision = enabled;
+}
+
 bool RectHitsSolid(const TileMap& map, float x, float y, int w, int h) {
     int t = map.tileSize;
     int left = (int)std::floor(x / t);
@@ -12,7 +27,8 @@ bool RectHitsSolid(const TileMap& map, float x, float y, int w, int h) {
     int bottom = (int)std::floor((y + h - 1) / t);
     for (int ty = top; ty <= bottom; ++ty) {
         for (int tx = left; tx <= right; ++tx) {
-            if (map.getSolid(tx, ty)) return true;
+            const int qx = g_horizontalWrapCollision ? wrapTileX(tx, map.w) : tx;
+            if (map.getSolid(qx, ty)) return true;
         }
     }
     return false;
@@ -28,7 +44,8 @@ static bool rectHitsSemiSolidDown(const TileMap& map, float oldY, float newY, fl
 
     int ty = newBottom;
     for (int tx = left; tx <= right; ++tx) {
-        if (!map.getSemiSolid(tx, ty)) continue;
+        const int qx = g_horizontalWrapCollision ? wrapTileX(tx, map.w) : tx;
+        if (!map.getSemiSolid(qx, ty)) continue;
         float tileTop = ty * t;
         float oldBottomY = oldY + h - 1;
         float newBottomY = newY + h - 1;
@@ -45,7 +62,8 @@ static bool rectHitsWater(const TileMap& map, float x, float y, int w, int h) {
     int bottom = (int)std::floor((y + h - 1) / t);
     for (int ty = top; ty <= bottom; ++ty) {
         for (int tx = left; tx <= right; ++tx) {
-            if (map.getWater(tx, ty)) return true;
+            const int qx = g_horizontalWrapCollision ? wrapTileX(tx, map.w) : tx;
+            if (map.getWater(qx, ty)) return true;
         }
     }
     return false;
@@ -57,7 +75,8 @@ static bool rectHasGroundBelow(const TileMap& map, float x, float y, int w, int 
     int right = (int)std::floor((x + w - 1) / t);
     int footTile = (int)std::floor((y + h) / t);
     for (int tx = left; tx <= right; ++tx) {
-        if (map.getSolid(tx, footTile) || map.getSemiSolid(tx, footTile)) return true;
+        const int qx = g_horizontalWrapCollision ? wrapTileX(tx, map.w) : tx;
+        if (map.getSolid(qx, footTile) || map.getSemiSolid(qx, footTile)) return true;
     }
     return false;
 }

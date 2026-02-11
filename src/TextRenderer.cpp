@@ -10,7 +10,7 @@ std::unordered_map<int, TTF_Font*> gFontCache;
 std::string gFontPath;
 bool gTtfInited = false;
 std::unordered_map<std::string, int> gDebugLabelWidthCache;
-constexpr int kFontRenderScale = 4;
+constexpr int kFontRenderScale = 6;
 struct TextCacheEntry {
     SDL_Texture* tex = nullptr;
     int w = 0;
@@ -120,6 +120,8 @@ void DrawTextColored(SDL_Renderer* ren, int x, int y, int scale, const std::stri
         SDL_FreeSurface(outlineSurf);
         SDL_FreeSurface(composed);
         if (!tex) return;
+        SDL_SetTextureScaleMode(tex, SDL_SCALEMODE_LINEAR);
+        SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
 
         TextCacheEntry entry;
         entry.tex = tex;

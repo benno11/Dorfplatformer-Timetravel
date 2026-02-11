@@ -27,6 +27,7 @@ struct MovementConfig {
 };
 
 bool RectHitsSolid(const TileMap& map, float x, float y, int w, int h);
+void SetHorizontalWrapCollision(bool enabled);
 
 PlayerUpdateResult UpdatePlayerMovement(
     Player& player,

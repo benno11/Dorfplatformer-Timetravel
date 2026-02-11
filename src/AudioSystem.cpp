@@ -188,6 +188,18 @@ static void Mix_QuitCompat() {
     MIX_Quit();
     g_mix_initialized = false;
 }
+
+static int musicLoopCount(bool loopingEnabled) {
+    return loopingEnabled ? -1 : 0;
+}
+
+static bool startMusicWithRetry(Mix_Music* music, int loops) {
+    if (!music) return false;
+    if (Mix_PlayMusicCompat(music, loops) == 0) return true;
+    // Recover from stale music track state by halting and retrying once.
+    Mix_HaltMusicCompat();
+    return Mix_PlayMusicCompat(music, loops) == 0;
+}
 } // namespace
 #endif
 
@@ -331,11 +343,9 @@ void AudioSystem::applyVolumes(bool muteAllAudio, int musicVolume, int sfxVolume
 void AudioSystem::applyMenuMusicToggle(bool menuMusicEnabled) {
     if (!isReady() || impl_->shuttingDown) return;
 #if AUDIO_HAS_SDL3_MIXER
-    constexpr int kLoopForever = -1;
     if (menuMusicEnabled && impl_->menuMusic) {
         if (!impl_->menuMusicPlaying || !Mix_PlayingMusicCompat()) {
-            Mix_PlayMusicCompat(impl_->menuMusic, kLoopForever);
-            impl_->menuMusicPlaying = true;
+            impl_->menuMusicPlaying = startMusicWithRetry(impl_->menuMusic, musicLoopCount(impl_->loopingEnabled));
         }
     } else if (impl_->menuMusicPlaying) {
         Mix_HaltMusicCompat();
@@ -347,13 +357,12 @@ void AudioSystem::applyMenuMusicToggle(bool menuMusicEnabled) {
 void AudioSystem::loadLevelMusic(const std::string& musicPath) {
     if (!isReady() || impl_->shuttingDown) return;
 #if AUDIO_HAS_SDL3_MIXER
-    constexpr int kLoopForever = -1;
     unloadLevelMusic();
     if (musicPath.empty()) return;
     impl_->levelMusic = Mix_LoadMUSCompat(ResolveAssetPath(musicPath).c_str());
     if (impl_->levelMusic) {
         impl_->menuMusicPlaying = false;
-        Mix_PlayMusicCompat(impl_->levelMusic, kLoopForever);
+        (void)startMusicWithRetry(impl_->levelMusic, musicLoopCount(impl_->loopingEnabled));
     } else {
         SDL_Log("Could not load music: %s (%s)", musicPath.c_str(), Mix_GetErrorCompat());
     }
@@ -380,13 +389,12 @@ void AudioSystem::unloadLevelMusic() {
 void AudioSystem::ensureLevelMusic(bool paused, bool deathSequenceActive, bool levelCompleteActive) {
     if (!isReady() || impl_->shuttingDown) return;
 #if AUDIO_HAS_SDL3_MIXER
-    constexpr int kLoopForever = -1;
     if (impl_->levelMusic &&
         !paused &&
         !deathSequenceActive &&
         !levelCompleteActive &&
         !Mix_PlayingMusicCompat()) {
-        Mix_PlayMusicCompat(impl_->levelMusic, kLoopForever);
+        (void)startMusicWithRetry(impl_->levelMusic, musicLoopCount(impl_->loopingEnabled));
     }
 #else
     (void)paused;
