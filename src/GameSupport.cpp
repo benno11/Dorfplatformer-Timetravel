@@ -196,11 +196,13 @@ SDL_Texture* loadTextureWithColorKey(SDL_Renderer* ren, const std::string& path,
     return tex;
 }
 
-SDL_Rect computePresentRect(int winW, int winH, int baseW, int baseH) {
+SDL_Rect computePresentRect(int winW, int winH, int baseW, int baseH, float uiScale) {
     if (winW <= 0 || winH <= 0 || baseW <= 0 || baseH <= 0) return SDL_Rect{0, 0, winW, winH};
     float sx = (float)winW / (float)baseW;
     float sy = (float)winH / (float)baseH;
-    float s = std::min(sx, sy);
+    float fitScale = std::min(sx, sy);
+    float clampedUiScale = std::clamp(uiScale, 0.50f, 1.00f);
+    float s = fitScale * clampedUiScale;
     int w = std::max(1, (int)std::floor(baseW * s));
     int h = std::max(1, (int)std::floor(baseH * s));
     int x = (winW - w) / 2;
@@ -208,8 +210,8 @@ SDL_Rect computePresentRect(int winW, int winH, int baseW, int baseH) {
     return SDL_Rect{x, y, w, h};
 }
 
-bool windowToGamePoint(int wx, int wy, int winW, int winH, int baseW, int baseH, int& gx, int& gy) {
-    SDL_Rect dst = computePresentRect(winW, winH, baseW, baseH);
+bool windowToGamePoint(int wx, int wy, int winW, int winH, int baseW, int baseH, int& gx, int& gy, float uiScale) {
+    SDL_Rect dst = computePresentRect(winW, winH, baseW, baseH, uiScale);
     if (wx < dst.x || wy < dst.y || wx >= dst.x + dst.w || wy >= dst.y + dst.h) return false;
     float u = (float)(wx - dst.x) / (float)dst.w;
     float v = (float)(wy - dst.y) / (float)dst.h;

@@ -34,6 +34,7 @@ struct FrontendMenuContext {
     bool* muteAllAudio = nullptr;
     int* musicVolume = nullptr;
     int* sfxVolume = nullptr;
+    int* uiScalePercent = nullptr;
     std::string* selectedLevelPath = nullptr;
 
     std::function<void()> applyAudioVolumes;

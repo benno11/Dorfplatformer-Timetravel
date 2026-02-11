@@ -693,6 +693,7 @@ int main(int argc, char** argv) {
     bool powerManagementEnabled = true;
     bool menuMusicEnabled = true;
     bool muteAllAudio = false;
+    int uiScalePercent = 100; // 50..100
     float fastTravelChangeDelay = 0.0f;
     int musicVolume = 96; // 0..128
     int sfxVolume = 96;   // 0..128
@@ -718,6 +719,7 @@ int main(int argc, char** argv) {
         j["power_management"] = powerManagementEnabled;
         j["menu_music_enabled"] = menuMusicEnabled;
         j["mute_all_audio"] = muteAllAudio;
+        j["ui_scale_percent"] = uiScalePercent;
         j["fast_travel_delay"] = fastTravelChangeDelay;
         j["music_volume"] = musicVolume;
         j["sfx_volume"] = sfxVolume;
@@ -773,6 +775,7 @@ int main(int argc, char** argv) {
             if (j.contains("power_management") && j["power_management"].is_boolean()) powerManagementEnabled = j["power_management"].get<bool>();
             if (j.contains("menu_music_enabled") && j["menu_music_enabled"].is_boolean()) menuMusicEnabled = j["menu_music_enabled"].get<bool>();
             if (j.contains("mute_all_audio") && j["mute_all_audio"].is_boolean()) muteAllAudio = j["mute_all_audio"].get<bool>();
+            if (j.contains("ui_scale_percent") && j["ui_scale_percent"].is_number_integer()) uiScalePercent = std::clamp(j["ui_scale_percent"].get<int>(), 50, 100);
             if (j.contains("fast_travel_delay") && j["fast_travel_delay"].is_number()) {
                 // Deprecated: delay removed in favor of immediate smooth transitions.
                 fastTravelChangeDelay = 0.0f;
@@ -799,6 +802,7 @@ int main(int argc, char** argv) {
                     if (j.contains("power_management") && j["power_management"].is_boolean()) powerManagementEnabled = j["power_management"].get<bool>();
                     if (j.contains("menu_music_enabled") && j["menu_music_enabled"].is_boolean()) menuMusicEnabled = j["menu_music_enabled"].get<bool>();
                     if (j.contains("mute_all_audio") && j["mute_all_audio"].is_boolean()) muteAllAudio = j["mute_all_audio"].get<bool>();
+                    if (j.contains("ui_scale_percent") && j["ui_scale_percent"].is_number_integer()) uiScalePercent = std::clamp(j["ui_scale_percent"].get<int>(), 50, 100);
                     if (j.contains("fast_travel_delay") && j["fast_travel_delay"].is_number()) {
                         fastTravelChangeDelay = 0.0f;
                     }
@@ -979,7 +983,7 @@ int main(int argc, char** argv) {
             SDL_SetRenderTarget(ren, nullptr);
             int ww = 0, wh = 0;
             SDL_GetWindowSize(win, &ww, &wh);
-            SDL_Rect presentRect = computePresentRect(ww, wh, kBaseScreenW, kBaseScreenH);
+            SDL_Rect presentRect = computePresentRect(ww, wh, kBaseScreenW, kBaseScreenH, uiScalePercent / 100.0f);
             SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
             SDL_RenderClear(ren);
             SDL_RenderCopy(ren, gameTarget, nullptr, &presentRect);
@@ -1013,6 +1017,7 @@ int main(int argc, char** argv) {
     frontendCtx.muteAllAudio = &muteAllAudio;
     frontendCtx.musicVolume = &musicVolume;
     frontendCtx.sfxVolume = &sfxVolume;
+    frontendCtx.uiScalePercent = &uiScalePercent;
     std::string frontendSelectedLevelPath;
     frontendCtx.selectedLevelPath = &frontendSelectedLevelPath;
     frontendCtx.applyAudioVolumes = applyAudioVolumes;
@@ -1105,6 +1110,98 @@ int main(int argc, char** argv) {
             float rainbowTimer = 0.0f; // world4: teleport/invuln flash window
         };
         BossRuntimeState bossState;
+        auto resetBossStateForLoadedLevel = [&]() {
+            bossState = BossRuntimeState{};
+            const int world = levelManager.worldId();
+            const int bossProfileWorld = (world == 2 || world == 6) ? 1 : std::max(1, world);
+            bossState.active = false;
+            bossState.world = bossProfileWorld;
+            bossState.sourceWorld = std::max(1, world);
+            bossState.maxHealth = 4;
+            bossState.health = 4;
+
+            auto loadBossReplayPathPositions = [&](const std::string& replayFile) -> std::vector<SDL_FPoint> {
+                std::vector<SDL_FPoint> out;
+                std::vector<std::string> candidates;
+                candidates.push_back((replayDirPath / replayFile).string());
+                candidates.push_back(replayFile);
+                for (const auto& p : candidates) {
+                    std::ifstream in(p, std::ios::binary);
+                    if (!in.is_open()) continue;
+                    std::string line;
+                    while (std::getline(in, line)) {
+                        if (line.empty()) continue;
+                        nlohmann::json j;
+                        try { j = nlohmann::json::parse(line); } catch (...) { continue; }
+                        if (!j.is_object()) continue;
+                        if (j.value("type", std::string()) != "frame") continue;
+                        if (!j.contains("player") || !j["player"].is_object()) continue;
+                        const auto& pstate = j["player"];
+                        SDL_FPoint pt{};
+                        pt.x = pstate.value("x", 0.0f) + pstate.value("w", 32) * 0.5f;
+                        pt.y = pstate.value("y", 0.0f) + pstate.value("h", 32) * 0.5f;
+                        out.push_back(pt);
+                    }
+                    if (!out.empty()) {
+                        SDL_Log("boss.w3: loaded replay positions=%d from %s", (int)out.size(), p.c_str());
+                        break;
+                    }
+                }
+                if (out.empty()) {
+                    SDL_Log("boss.w3: replay load failed for %s", replayFile.c_str());
+                }
+                return out;
+            };
+
+            const float mapW = (float)(map.w * map.tileSize);
+            const float mapH = (float)(map.h * map.tileSize);
+            if (bossProfileWorld == 1) {
+                bossState.x = std::clamp(mapW * 0.72f, 96.0f, std::max(96.0f, mapW - 96.0f));
+                bossState.y = std::clamp(mapH * 0.38f, 96.0f, std::max(96.0f, mapH - 96.0f));
+                bossState.vx = 280.0f;
+                bossState.vy = 220.0f;
+            } else if (bossProfileWorld == 2) {
+                bossState.x = std::clamp(mapW * 0.60f, 96.0f, std::max(96.0f, mapW - 96.0f));
+                bossState.y = std::clamp(mapH * 0.42f, 96.0f, std::max(96.0f, mapH - 96.0f));
+                bossState.vx = -260.0f;
+                bossState.vy = 240.0f;
+            } else {
+                const float phase = (float)(bossProfileWorld % 6) / 6.0f;
+                bossState.x = std::clamp(mapW * (0.32f + phase * 0.36f), 96.0f, std::max(96.0f, mapW - 96.0f));
+                bossState.y = std::clamp(mapH * (0.30f + (1.0f - phase) * 0.28f), 96.0f, std::max(96.0f, mapH - 96.0f));
+                bossState.vx = ((bossProfileWorld % 2) == 0) ? -250.0f : 250.0f;
+                bossState.vy = 220.0f + (float)((bossProfileWorld % 3) * 20);
+            }
+            if (bossState.sourceWorld == 7) {
+                const float world7MinX = 96.0f + 28.0f;
+                const float world7MaxX = 96.0f + (float)kGameplayViewW - 28.0f;
+                const float minX = std::min(world7MinX, world7MaxX);
+                const float maxX = std::max(world7MinX, world7MaxX);
+                const float rx = (float)std::rand() / (float)RAND_MAX;
+                bossState.x = minX + (maxX - minX) * rx;
+                bossState.y = 32.0f + (float)kGameplayViewH + 28.0f;
+                bossState.vx = 0.0f;
+                bossState.vy = -320.0f;
+            }
+            if (bossState.sourceWorld == 3) {
+                bossState.maxHealth = 8;
+                bossState.health = 8;
+                bossState.phase = 0;
+                bossState.replayPath = loadBossReplayPathPositions("replay-56835877829.jsonl");
+                bossState.replayIndex = 0;
+                bossState.replayFrameAcc = 0.0f;
+                if (!bossState.replayPath.empty()) {
+                    bossState.x = bossState.replayPath[0].x;
+                    bossState.y = bossState.replayPath[0].y;
+                }
+                bossState.vx = 280.0f;
+                bossState.vy = 220.0f;
+                bossState.active = true;
+            }
+            if (bossState.sourceWorld == 4) {
+                bossState.rainbowTimer = 0.0f;
+            }
+        };
         struct DemoRuntimeState {
             bool enabled = false;
             float dir = 1.0f;
@@ -1121,6 +1218,15 @@ int main(int argc, char** argv) {
         DemoRuntimeState demoState;
         float levelReloadTitleTimer = 0.0f;
         float levelTimerSeconds = 0.0f;
+        float playerInvincibleTimer = 0.0f;
+        constexpr float kPlayerInvincibleDuration = 5.00f;
+        constexpr float kPlayerSpawnInvincibleDuration = 1.25f;
+        float levelLoadDeathGraceTimer = 0.0f;
+        constexpr float kLevelLoadDeathGraceDuration = 1.0f;
+        constexpr int kPlayerSpawnLockFrames = 6;
+        int playerSpawnLockFrames = 0;
+        float playerSpawnLockX = 0.0f;
+        float playerSpawnLockY = 0.0f;
         float cameraSmoothingSuppressTimer = 0.0f;
         bool levelCompleteCameraLocked = false;
         float levelCompleteCameraX = 0.0f;
@@ -1224,94 +1330,7 @@ int main(int argc, char** argv) {
                 endSignState.objectX = objects[endSignState.objectIndex].x;
                 endSignState.objectY = objects[endSignState.objectIndex].y;
             }
-            bossState = BossRuntimeState{};
-            const int world = levelManager.worldId();
-            const int bossProfileWorld = (world == 2 || world == 6) ? 1 : std::max(1, world);
-            bossState.active = false;
-            bossState.world = bossProfileWorld;
-            bossState.sourceWorld = std::max(1, world);
-            bossState.maxHealth = 4;
-            bossState.health = 4;
-            auto loadBossReplayPathPositions = [&](const std::string& replayFile) -> std::vector<SDL_FPoint> {
-                std::vector<SDL_FPoint> out;
-                std::vector<std::string> candidates;
-                candidates.push_back((replayDirPath / replayFile).string());
-                candidates.push_back(replayFile);
-                for (const auto& p : candidates) {
-                    std::ifstream in(p, std::ios::binary);
-                    if (!in.is_open()) continue;
-                    std::string line;
-                    while (std::getline(in, line)) {
-                        if (line.empty()) continue;
-                        nlohmann::json j;
-                        try { j = nlohmann::json::parse(line); } catch (...) { continue; }
-                        if (!j.is_object()) continue;
-                        if (j.value("type", std::string()) != "frame") continue;
-                        if (!j.contains("player") || !j["player"].is_object()) continue;
-                        const auto& pstate = j["player"];
-                        SDL_FPoint pt{};
-                        pt.x = pstate.value("x", 0.0f) + pstate.value("w", 32) * 0.5f;
-                        pt.y = pstate.value("y", 0.0f) + pstate.value("h", 32) * 0.5f;
-                        out.push_back(pt);
-                    }
-                    if (!out.empty()) {
-                        SDL_Log("boss.w3: loaded replay positions=%d from %s", (int)out.size(), p.c_str());
-                        break;
-                    }
-                }
-                if (out.empty()) {
-                    SDL_Log("boss.w3: replay load failed for %s", replayFile.c_str());
-                }
-                return out;
-            };
-            const float mapW = (float)(map.w * map.tileSize);
-            const float mapH = (float)(map.h * map.tileSize);
-            if (bossProfileWorld == 1) {
-                bossState.x = std::clamp(mapW * 0.72f, 96.0f, std::max(96.0f, mapW - 96.0f));
-                bossState.y = std::clamp(mapH * 0.38f, 96.0f, std::max(96.0f, mapH - 96.0f));
-                bossState.vx = 280.0f;
-                bossState.vy = 220.0f;
-            } else if (bossProfileWorld == 2) {
-                bossState.x = std::clamp(mapW * 0.60f, 96.0f, std::max(96.0f, mapW - 96.0f));
-                bossState.y = std::clamp(mapH * 0.42f, 96.0f, std::max(96.0f, mapH - 96.0f));
-                bossState.vx = -260.0f;
-                bossState.vy = 240.0f;
-            } else {
-                const float phase = (float)(bossProfileWorld % 6) / 6.0f;
-                bossState.x = std::clamp(mapW * (0.32f + phase * 0.36f), 96.0f, std::max(96.0f, mapW - 96.0f));
-                bossState.y = std::clamp(mapH * (0.30f + (1.0f - phase) * 0.28f), 96.0f, std::max(96.0f, mapH - 96.0f));
-                bossState.vx = ((bossProfileWorld % 2) == 0) ? -250.0f : 250.0f;
-                bossState.vy = 220.0f + (float)((bossProfileWorld % 3) * 20);
-            }
-            if (bossState.sourceWorld == 7) {
-                const float world7MinX = 96.0f + 28.0f;
-                const float world7MaxX = 96.0f + (float)kGameplayViewW - 28.0f;
-                const float minX = std::min(world7MinX, world7MaxX);
-                const float maxX = std::max(world7MinX, world7MaxX);
-                const float rx = (float)std::rand() / (float)RAND_MAX;
-                bossState.x = minX + (maxX - minX) * rx;
-                bossState.y = 32.0f + (float)kGameplayViewH + 28.0f;
-                bossState.vx = 0.0f;
-                bossState.vy = -320.0f;
-            }
-            if (bossState.sourceWorld == 3) {
-                bossState.maxHealth = 8;
-                bossState.health = 8;
-                bossState.phase = 0;
-                bossState.replayPath = loadBossReplayPathPositions("replay-56835877829.jsonl");
-                bossState.replayIndex = 0;
-                bossState.replayFrameAcc = 0.0f;
-                if (!bossState.replayPath.empty()) {
-                    bossState.x = bossState.replayPath[0].x;
-                    bossState.y = bossState.replayPath[0].y;
-                }
-                bossState.vx = 280.0f;
-                bossState.vy = 220.0f;
-                bossState.active = true;
-            }
-            if (bossState.sourceWorld == 4) {
-                bossState.rainbowTimer = 0.0f;
-            }
+            resetBossStateForLoadedLevel();
             demoState.jumpCooldown = 0.0f;
             demoState.jumpHoldTimer = 0.0f;
             demoState.stuckTime = 0.0f;
@@ -1333,6 +1352,11 @@ int main(int argc, char** argv) {
             currentAreaIdText = buildAreaIdText();
             levelReloadTitleTimer = 2.0f;
             currentLevelId = parseLevelIdFromLevelPath(levelManager.levelPath());
+            playerInvincibleTimer = std::max(playerInvincibleTimer, kPlayerSpawnInvincibleDuration);
+            levelLoadDeathGraceTimer = kLevelLoadDeathGraceDuration;
+            playerSpawnLockX = player.x;
+            playerSpawnLockY = player.y;
+            playerSpawnLockFrames = kPlayerSpawnLockFrames;
             playSceneIntroCard();
         };
         auto startLevelCompleteSequence = [&]() {
@@ -1371,8 +1395,6 @@ int main(int argc, char** argv) {
         bool deathSequenceActive = false;
         bool deathLifeDeducted = false;
         float deathTimer = 0.0f;
-        float playerInvincibleTimer = 0.0f;
-        constexpr float kPlayerInvincibleDuration = 5.00f;
         struct DroppedCoin {
             float x = 0.0f;
             float y = 0.0f;
@@ -1685,7 +1707,8 @@ int main(int argc, char** argv) {
                 c.vx = t * 280.0f;
                 c.vy = -430.0f - 90.0f * std::fabs(t);
                 c.life = 12.0f;
-                c.noPickupTimer = 9.0f;
+                // Short grace period so freshly dropped coins don't instantly re-collect.
+                c.noPickupTimer = 0.45f;
                 droppedCoins.push_back(c);
                 remaining--;
             }
@@ -1758,6 +1781,9 @@ int main(int argc, char** argv) {
             if (playerInvincibleTimer > 0.0f) {
                 playerInvincibleTimer = std::max(0.0f, playerInvincibleTimer - dt);
             }
+            if (levelLoadDeathGraceTimer > 0.0f) {
+                levelLoadDeathGraceTimer = std::max(0.0f, levelLoadDeathGraceTimer - dt);
+            }
             if (!paused && !deathSequenceActive && !droppedCoins.empty()) {
                 auto tileSolidAt = [&](float wx, float wy) -> bool {
                     const int tx = (int)std::floor(wx / map.tileSize);
@@ -1766,7 +1792,7 @@ int main(int argc, char** argv) {
                     const int tidx = ty * map.w + tx;
                     return map.solid[tidx] != 0 || map.semisolid[tidx] != 0;
                 };
-                const float coinR = 6.0f;
+                const float coinR = 8.0f;
                 for (auto& c : droppedCoins) {
                     c.life -= dt;
                     c.noPickupTimer = std::max(0.0f, c.noPickupTimer - dt);
@@ -1879,7 +1905,7 @@ int main(int argc, char** argv) {
                 int wx = (int)std::lround(kv.second.x * winW);
                 int wy = (int)std::lround(kv.second.y * winH);
                 int gx = 0, gy = 0;
-                if (!windowToGamePoint(wx, wy, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy)) continue;
+                if (!windowToGamePoint(wx, wy, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy, uiScalePercent / 100.0f)) continue;
                 float px = (float)gx;
                 float py = (float)gy;
                 if (pointInRectF(px, py, leftHit)) touchLeft = true;
@@ -1911,7 +1937,7 @@ int main(int argc, char** argv) {
                 if (embeddedDetailedDebugger && e.button.windowID == mainWindowId) {
                     int winW = 0, winH = 0, gx = 0, gy = 0;
                     SDL_GetWindowSize(win, &winW, &winH);
-                    if (windowToGamePoint(e.button.x, e.button.y, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy)) {
+                    if (windowToGamePoint(e.button.x, e.button.y, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy, uiScalePercent / 100.0f)) {
                         if (handleDetailedDebuggerTap(gx, gy)) continue;
                     }
                 } else if (debugWin && debugRen &&
@@ -1951,7 +1977,7 @@ int main(int argc, char** argv) {
                     int wx = (int)std::lround(e.tfinger.x * winW);
                     int wy = (int)std::lround(e.tfinger.y * winH);
                     int gx = 0, gy = 0;
-                    if (windowToGamePoint(wx, wy, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy)) {
+                    if (windowToGamePoint(wx, wy, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy, uiScalePercent / 100.0f)) {
                         consumedByDebugger = handleDetailedDebuggerTap(gx, gy);
                     }
                 } else if (debugWin && e.tfinger.windowID == SDL_GetWindowID(debugWin)) {
@@ -2119,7 +2145,7 @@ int main(int argc, char** argv) {
             if (paused && e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
                 int winW = 0, winH = 0, gx = 0, gy = 0;
                 SDL_GetWindowSize(win, &winW, &winH);
-                if (windowToGamePoint(e.button.x, e.button.y, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy)) {
+                if (windowToGamePoint(e.button.x, e.button.y, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy, uiScalePercent / 100.0f)) {
                     SDL_Point pt{gx, gy};
                     if (SDL_PointInRect(&pt, &pauseBtnContinue)) handlePauseSelect(0);
                     else if (SDL_PointInRect(&pt, &pauseBtnRestart)) handlePauseSelect(1);
@@ -2133,7 +2159,7 @@ int main(int argc, char** argv) {
                 int wx = (int)(e.tfinger.x * winW);
                 int wy = (int)(e.tfinger.y * winH);
                 int gx = 0, gy = 0;
-                if (windowToGamePoint(wx, wy, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy)) {
+                if (windowToGamePoint(wx, wy, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy, uiScalePercent / 100.0f)) {
                     SDL_Point pt{gx, gy};
                     if (SDL_PointInRect(&pt, &pauseBtnContinue)) handlePauseSelect(0);
                     else if (SDL_PointInRect(&pt, &pauseBtnRestart)) handlePauseSelect(1);
@@ -2932,11 +2958,31 @@ int main(int argc, char** argv) {
                 touchJump = demoJump;
             }
             const bool forceRightMovement = endSignState.lockPlayerRight;
-            const float gamepadMove = forceRightMovement ? 1.0f : input.gameplayMoveX();
-            const bool gamepadDown = forceRightMovement ? false : input.gameplayDownHeld();
-            const bool gamepadJump = forceRightMovement ? false : input.gameplayJumpHeld();
-            const bool gamepadFreeMove = input.freeMoveHeld();
+            float gamepadMove = forceRightMovement ? 1.0f : input.gameplayMoveX();
+            bool gamepadDown = forceRightMovement ? false : input.gameplayDownHeld();
+            bool gamepadJump = forceRightMovement ? false : input.gameplayJumpHeld();
+            bool gamepadFreeMove = input.freeMoveHeld();
             const bool fastTravelEnabled = fastTravelTriggered;
+            if (playerSpawnLockFrames > 0) {
+                playerSpawnLockFrames--;
+                player.x = playerSpawnLockX;
+                player.y = playerSpawnLockY;
+                player.vx = 0.0f;
+                player.vy = 0.0f;
+                player.jumpHeld = false;
+                player.jumpWasDown = false;
+                player.jumpHoldTime = 0.0f;
+                player.jumpBufferTime = 0.0f;
+                touchMove = 0.0f;
+                touchDown = false;
+                touchJump = false;
+                inputMove = 0.0f;
+                inputDown = false;
+                gamepadMove = 0.0f;
+                gamepadDown = false;
+                gamepadJump = false;
+                gamepadFreeMove = false;
+            }
             if (forceRightMovement) {
                 touchMove = 1.0f;
                 touchDown = false;
@@ -3003,6 +3049,9 @@ int main(int argc, char** argv) {
                 }
             }
             if (upd == PlayerUpdateResult::Reloaded) {
+                if (levelLoadDeathGraceTimer > 0.0f) {
+                    continue;
+                }
                 const float pitResetY = (float)((map.h + 7) * map.tileSize);
                 const bool bottomlessPit = (player.y >= pitResetY);
                 if (bottomlessPit) {
@@ -3212,7 +3261,7 @@ int main(int argc, char** argv) {
                 const float py1 = player.y;
                 const float py2 = player.y + (float)player.h;
                 const bool overlap = (px2 > bx) && (px1 < bx + bossW) && (py2 > by) && (py1 < by + bossH);
-                if (overlap && playerInvincibleTimer <= 0.0f) {
+                if (overlap && playerInvincibleTimer <= 0.0f && levelLoadDeathGraceTimer <= 0.0f) {
                     if (!bossCanMoveAndTakeDamage) {
                         if (applyBossContactDamageToPlayer()) continue;
                     } else {
@@ -3270,7 +3319,7 @@ int main(int argc, char** argv) {
                         levelManager.setTileAt(map, idx, 21);
                         levelManager.addCoins(5);
                         audio.playCoinSfx();
-                    } else if (standingTileId == 13 && playerInvincibleTimer <= 0.0f) {
+                    } else if (standingTileId == 13 && playerInvincibleTimer <= 0.0f && levelLoadDeathGraceTimer <= 0.0f) {
                         const bool hasCoins = levelManager.coinCount() > 0;
                         if (hasCoins) {
                             dropPlayerCoins(player.x + player.w * 0.5f, player.y + player.h * 0.5f);
@@ -3477,10 +3526,11 @@ int main(int argc, char** argv) {
             forcedBossCameraX = 2528.0f + kGameplayViewW * 0.5f;
             forcedBossCameraY = 976.0f + kGameplayViewH * 0.5f;
         }
-        const float cameraTargetX = forceBossCamera
+        const bool forceBossCameraActive = forceBossCamera && !lockCameraToEndSign;
+        const float cameraTargetX = forceBossCameraActive
             ? forcedBossCameraX
             : (lockCameraToEndSign ? endSignState.objectX : (player.x + player.w * 0.5f));
-        const float cameraTargetY = forceBossCamera
+        const float cameraTargetY = forceBossCameraActive
             ? forcedBossCameraY
             : (lockCameraToEndSign ? endSignState.objectY : (player.y + player.h * 0.5f));
         const float freeCamX = cameraTargetX - worldViewW * 0.5f;
@@ -4559,9 +4609,19 @@ int main(int argc, char** argv) {
                     int id = (int)map.tileIds[idx];
                     int screenX = (int)(x * map.tileSize - camX);
                     int screenY = (int)(y * map.tileSize - camY);
-                    int centerX = screenX + map.tileSize / 2;
-                    int centerY = screenY + map.tileSize / 2;
-                    DrawNumberCentered(ren, centerX, centerY - (5 * 2) / 2, 2, id);
+                    const std::string idText = std::to_string(id);
+                    int idScale = std::clamp(map.tileSize / 14, 1, 3);
+                    const int fitW = std::max(4, map.tileSize - 4);
+                    const int fitH = std::max(4, map.tileSize - 4);
+                    while (idScale > 1 &&
+                           (MeasureTextWidth(idScale, idText) > fitW || (10 * idScale) > fitH)) {
+                        --idScale;
+                    }
+                    const int textW = MeasureTextWidth(idScale, idText);
+                    const int textH = 10 * idScale;
+                    const int textX = screenX + (map.tileSize - textW) / 2;
+                    const int textY = screenY + (map.tileSize - textH) / 2;
+                    DrawText(ren, textX, textY, idScale, idText);
                 }
             }
         }
@@ -4674,7 +4734,7 @@ int main(int argc, char** argv) {
         SDL_SetRenderTarget(ren, nullptr);
         int winW = 0, winH = 0;
         SDL_GetWindowSize(win, &winW, &winH);
-        SDL_Rect presentDst = computePresentRect(winW, winH, kBaseScreenW, kBaseScreenH);
+        SDL_Rect presentDst = computePresentRect(winW, winH, kBaseScreenW, kBaseScreenH, uiScalePercent / 100.0f);
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
         SDL_RenderClear(ren);
         SDL_RenderCopy(ren, gameTarget, nullptr, &presentDst);

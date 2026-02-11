@@ -87,18 +87,34 @@ void LevelManager::reloadLevel(TileMap& map, std::vector<ObjectInstance>& object
         player.y = (float)(map.h * map.tileSize - player.h) - 3.0f * map.tileSize;
     }
 
+    // Defensive spawn sanitization: malformed level spawn coordinates can place
+    // the player outside map bounds and trigger instant death on first update.
+    if (map.w > 0 && map.h > 0 && map.tileSize > 0) {
+        const float mapWidthPx = (float)(map.w * map.tileSize);
+        const float mapHeightPx = (float)(map.h * map.tileSize);
+        const float minSpawnX = -(float)player.w;
+        const float maxSpawnX = std::max(minSpawnX, mapWidthPx - (float)player.w);
+        const float minSpawnY = -(float)map.tileSize * 2.0f;
+        const float maxSpawnY = std::max(minSpawnY, mapHeightPx - (float)player.h);
+        player.x = std::clamp(player.x, minSpawnX, maxSpawnX);
+        player.y = std::clamp(player.y, minSpawnY, maxSpawnY);
+    }
+
     if (RectHitsSolid(map, player.x, player.y, player.w, player.h)) {
         bool resolved = false;
+        const float mapHeightPx = (float)(map.h * map.tileSize);
+        const float minSpawnY = -(float)map.tileSize * 2.0f;
+        const float maxSpawnY = std::max(minSpawnY, mapHeightPx - (float)player.h);
         const int maxSteps = std::max(1, map.h * map.tileSize);
         for (int step = 1; step <= maxSteps; ++step) {
             float upY = player.y - (float)step;
-            if (!RectHitsSolid(map, player.x, upY, player.w, player.h)) {
+            if (upY >= minSpawnY && !RectHitsSolid(map, player.x, upY, player.w, player.h)) {
                 player.y = upY;
                 resolved = true;
                 break;
             }
             float downY = player.y + (float)step;
-            if (!RectHitsSolid(map, player.x, downY, player.w, player.h)) {
+            if (downY <= maxSpawnY && !RectHitsSolid(map, player.x, downY, player.w, player.h)) {
                 player.y = downY;
                 resolved = true;
                 break;
@@ -108,6 +124,8 @@ void LevelManager::reloadLevel(TileMap& map, std::vector<ObjectInstance>& object
             player.vx = 0.0f;
             player.vy = 0.0f;
         }
+        // Keep final spawn valid even if collision resolution couldn't find a free tile.
+        player.y = std::clamp(player.y, minSpawnY, maxSpawnY);
     }
 
     // Metadata already updated at reload start.

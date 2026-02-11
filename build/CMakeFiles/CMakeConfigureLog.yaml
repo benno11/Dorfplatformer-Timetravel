@@ -1685,3 +1685,77 @@ events:
         
       exitCode: 0
 ...
+
+---
+events:
+  -
+    kind: "find-v1"
+    backtrace:
+      - "CMakeLists.txt:27 (find_program)"
+    mode: "program"
+    variable: "CCACHE_PROGRAM"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "ccache"
+    candidate_directories:
+      - "/home/benno111/.cargo/bin/"
+      - "/home/benno111/.local/bin/"
+      - "/home/benno111/.codex/tmp/arg0/codex-arg0i5FmpU/"
+      - "/app/bin/"
+      - "/usr/bin/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.71-linux-x64/bin/linux-x86_64/"
+      - "/usr/local/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/"
+      - "/usr/bin/"
+      - "/usr/sbin/"
+      - "/usr/"
+      - "/bin/"
+      - "/sbin/"
+      - "/usr/X11R6/bin/"
+      - "/usr/X11R6/sbin/"
+      - "/usr/X11R6/"
+      - "/usr/pkg/bin/"
+      - "/usr/pkg/sbin/"
+      - "/usr/pkg/"
+      - "/opt/bin/"
+      - "/opt/sbin/"
+      - "/opt/"
+    searched_directories:
+      - "/home/benno111/.cargo/bin/ccache"
+      - "/home/benno111/.local/bin/ccache"
+      - "/home/benno111/.codex/tmp/arg0/codex-arg0i5FmpU/ccache"
+      - "/app/bin/ccache"
+    found: "/usr/bin/ccache"
+    search_context:
+      ENV{PATH}:
+        - "/home/benno111/.cargo/bin"
+        - "/home/benno111/.local/bin"
+        - "/home/benno111/.codex/tmp/arg0/codex-arg0i5FmpU"
+        - "/app/bin"
+        - "/app/bin"
+        - "/app/bin"
+        - "/usr/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.71-linux-x64/bin/linux-x86_64"
+        - "/home/benno111/.local/bin"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/usr/local"
+        - "/usr"
+        - "/"
+        - "/usr"
+        - "/usr/local"
+        - "/usr/X11R6"
+        - "/usr/pkg"
+        - "/opt"
+...
