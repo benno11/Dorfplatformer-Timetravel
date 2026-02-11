@@ -697,13 +697,11 @@ int main(int argc, char** argv) {
     int musicVolume = 96; // 0..128
     int sfxVolume = 96;   // 0..128
     const std::string localClientSettingsPath = "client_settings.json";
+    const std::string appSaveRootPath = GetAppSaveRootPath();
+    const std::filesystem::path replayDirPath = std::filesystem::path(appSaveRootPath) / "replays";
     std::string clientSettingsPath = localClientSettingsPath;
-    {
-        char* prefPath = SDL_GetPrefPath("Benno111", "DorfplatformerTimetravel");
-        if (prefPath) {
-            clientSettingsPath = std::string(prefPath) + "client_settings.json";
-            SDL_free(prefPath);
-        }
+    if (!appSaveRootPath.empty()) {
+        clientSettingsPath = (std::filesystem::path(appSaveRootPath) / "client_settings.json").string();
     }
     auto saveClientSettings = [&]() {
         nlohmann::json j;
@@ -1237,7 +1235,7 @@ int main(int argc, char** argv) {
             auto loadBossReplayPathPositions = [&](const std::string& replayFile) -> std::vector<SDL_FPoint> {
                 std::vector<SDL_FPoint> out;
                 std::vector<std::string> candidates;
-                candidates.push_back(std::string("save/replays/") + replayFile);
+                candidates.push_back((replayDirPath / replayFile).string());
                 candidates.push_back(replayFile);
                 for (const auto& p : candidates) {
                     std::ifstream in(p, std::ios::binary);
@@ -1498,9 +1496,9 @@ int main(int argc, char** argv) {
             replayRecorder = ReplayRecorder{};
             try {
                 std::error_code ec;
-                std::filesystem::create_directories("save/replays", ec);
+                std::filesystem::create_directories(replayDirPath, ec);
                 const Uint64 stamp = SDL_GetTicksNS();
-                replayRecorder.path = std::string("save/replays/replay-") + std::to_string((unsigned long long)stamp) + ".jsonl";
+                replayRecorder.path = (replayDirPath / ("replay-" + std::to_string((unsigned long long)stamp) + ".jsonl")).string();
                 replayRecorder.out.open(replayRecorder.path, std::ios::binary | std::ios::trunc);
                 if (replayRecorder.out.is_open()) {
                     replayRecorder.enabled = true;
@@ -1519,7 +1517,7 @@ int main(int argc, char** argv) {
                     meta["start_ticks_ns"] = (uint64_t)replayRecorder.startTicksNs;
                     replayRecorder.out << meta.dump() << "\n";
                     replayRecorder.out.flush();
-                    std::ofstream latest("save/replays/latest_replay.txt", std::ios::binary | std::ios::trunc);
+                    std::ofstream latest((replayDirPath / "latest_replay.txt").string(), std::ios::binary | std::ios::trunc);
                     if (latest.is_open()) latest << replayRecorder.path << "\n";
                     SDL_Log("Replay recording: %s", replayRecorder.path.c_str());
                 }
@@ -2069,7 +2067,7 @@ int main(int argc, char** argv) {
                     } else {
                         std::string replayPath;
                         {
-                            std::ifstream latest("save/replays/latest_replay.txt", std::ios::binary);
+                            std::ifstream latest((replayDirPath / "latest_replay.txt").string(), std::ios::binary);
                             if (latest.is_open()) std::getline(latest, replayPath);
                         }
                         if (!replayPath.empty()) {

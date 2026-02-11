@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <filesystem>
 #include <vector>
 #if defined(__ANDROID__)
 #include <jni.h>
@@ -159,6 +160,52 @@ bool FileExists(const std::string& path) {
     if (!io) return false;
     SDL_CloseIO(io);
     return true;
+}
+
+std::string GetAppSaveRootPath() {
+#if defined(__ANDROID__)
+    const char* ext = SDL_GetAndroidExternalStoragePath();
+    if (ext && *ext) {
+        // SDL external path is usually:
+        // /storage/emulated/0/Android/data/<package>/files
+        // For user-visible saves, migrate to:
+        // /storage/emulated/0/Android/media/<package>/DorfplatformerTimetravel
+        std::string base(ext);
+        const std::string marker = "/Android/data/";
+        const std::size_t dataPos = base.find(marker);
+        if (dataPos != std::string::npos) {
+            const std::size_t pkgStart = dataPos + marker.size();
+            const std::size_t pkgEnd = base.find('/', pkgStart);
+            const std::string pkg = (pkgEnd == std::string::npos)
+                ? base.substr(pkgStart)
+                : base.substr(pkgStart, pkgEnd - pkgStart);
+            if (!pkg.empty()) {
+                std::filesystem::path mediaRoot = base.substr(0, dataPos);
+                mediaRoot /= "Android";
+                mediaRoot /= "media";
+                mediaRoot /= pkg;
+                mediaRoot /= "DorfplatformerTimetravel";
+                std::error_code ec;
+                std::filesystem::create_directories(mediaRoot, ec);
+                if (!ec) return mediaRoot.string();
+            }
+        }
+        std::filesystem::path fallback(base);
+        fallback /= "DorfplatformerTimetravel";
+        std::error_code ec;
+        std::filesystem::create_directories(fallback, ec);
+        return fallback.string();
+    }
+#endif
+    std::string base = ".";
+    char* prefPath = SDL_GetPrefPath("Benno111", "DorfplatformerTimetravel");
+    if (prefPath) {
+        base = prefPath;
+        SDL_free(prefPath);
+    }
+    std::error_code ec;
+    std::filesystem::create_directories(base, ec);
+    return base;
 }
 
 void SetLevelServerUrl(const std::string& url) {

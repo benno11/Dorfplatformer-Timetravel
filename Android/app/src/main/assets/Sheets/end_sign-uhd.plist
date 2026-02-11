@@ -4,183 +4,213 @@
 	<dict>
 		<key>frames</key>
 		<dict>
-			<key>Dead-1.png</key>
+			<key>SignPost10.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
 				<key>spriteOffset</key>
 				<string>{0,0}</string>
 				<key>spriteSize</key>
-				<string>{24,33}</string>
+				<string>{512,708}</string>
 				<key>spriteSourceSize</key>
-				<string>{24,33}</string>
+				<string>{512,708}</string>
 				<key>textureRect</key>
-				<string>{{692,488},{24,33}}</string>
+				<string>{{0,0},{512,708}}</string>
 				<key>textureRotated</key>
 				<false/>
 			</dict>
-			<key>Dead-2.png</key>
+			<key>SignPost11.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
 				<key>spriteOffset</key>
 				<string>{0,0}</string>
 				<key>spriteSize</key>
-				<string>{24,33}</string>
+				<string>{442,708}</string>
 				<key>spriteSourceSize</key>
-				<string>{24,33}</string>
+				<string>{442,708}</string>
 				<key>textureRect</key>
-				<string>{{726,488},{24,33}}</string>
+				<string>{{522,0},{442,708}}</string>
 				<key>textureRotated</key>
 				<false/>
 			</dict>
-			<key>Dead-3.png</key>
+			<key>SignPost12.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
 				<key>spriteOffset</key>
 				<string>{0,0}</string>
 				<key>spriteSize</key>
-				<string>{15,33}</string>
+				<string>{442,708}</string>
 				<key>spriteSourceSize</key>
-				<string>{15,33}</string>
+				<string>{442,708}</string>
 				<key>textureRect</key>
-				<string>{{692,531},{15,33}}</string>
+				<string>{{0,718},{442,708}}</string>
 				<key>textureRotated</key>
 				<false/>
 			</dict>
-			<key>Dead-4.png</key>
+			<key>SignPost13.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
 				<key>spriteOffset</key>
 				<string>{0,0}</string>
 				<key>spriteSize</key>
-				<string>{15,33}</string>
+				<string>{368,708}</string>
 				<key>spriteSourceSize</key>
-				<string>{15,33}</string>
+				<string>{368,708}</string>
 				<key>textureRect</key>
-				<string>{{717,531},{15,33}}</string>
+				<string>{{452,718},{368,708}}</string>
 				<key>textureRotated</key>
 				<false/>
 			</dict>
-			<key>Final-Hurt.png</key>
+			<key>SignPost14.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
 				<key>spriteOffset</key>
 				<string>{0,0}</string>
 				<key>spriteSize</key>
-				<string>{73,234}</string>
+				<string>{236,708}</string>
 				<key>spriteSourceSize</key>
-				<string>{73,234}</string>
+				<string>{236,708}</string>
 				<key>textureRect</key>
-				<string>{{692,0},{73,234}}</string>
+				<string>{{830,718},{236,708}}</string>
 				<key>textureRotated</key>
 				<false/>
 			</dict>
-			<key>Final-Normal.png</key>
+			<key>SignPost15.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
 				<key>spriteOffset</key>
 				<string>{0,0}</string>
 				<key>spriteSize</key>
-				<string>{73,234}</string>
+				<string>{188,708}</string>
 				<key>spriteSourceSize</key>
-				<string>{73,234}</string>
+				<string>{188,708}</string>
 				<key>textureRect</key>
-				<string>{{692,244},{73,234}}</string>
+				<string>{{974,0},{188,708}}</string>
 				<key>textureRotated</key>
 				<false/>
 			</dict>
-			<key>fire_ball.png</key>
+			<key>SignPost9.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
 				<key>spriteOffset</key>
 				<string>{0,0}</string>
 				<key>spriteSize</key>
-				<string>{682,682}</string>
+				<string>{588,708}</string>
 				<key>spriteSourceSize</key>
-				<string>{682,682}</string>
+				<string>{588,708}</string>
 				<key>textureRect</key>
-				<string>{{0,0},{682,682}}</string>
+				<string>{{1076,718},{588,708}}</string>
 				<key>textureRotated</key>
 				<false/>
 			</dict>
-			<key>Hurt-1.png</key>
+			<key>SignPostPlayer1.1.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
 				<key>spriteOffset</key>
 				<string>{0,0}</string>
 				<key>spriteSize</key>
-				<string>{24,24}</string>
+				<string>{586,704}</string>
 				<key>spriteSourceSize</key>
-				<string>{24,24}</string>
+				<string>{586,704}</string>
 				<key>textureRect</key>
-				<string>{{692,656},{24,24}}</string>
+				<string>{{1172,0},{586,704}}</string>
 				<key>textureRotated</key>
 				<false/>
 			</dict>
-			<key>Hurt-2.png</key>
+			<key>SignPostPlayer1.2.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
 				<key>spriteOffset</key>
 				<string>{0,0}</string>
 				<key>spriteSize</key>
-				<string>{24,33}</string>
+				<string>{542,704}</string>
 				<key>spriteSourceSize</key>
-				<string>{24,33}</string>
+				<string>{542,704}</string>
 				<key>textureRect</key>
-				<string>{{692,574},{24,33}}</string>
+				<string>{{0,1436},{542,704}}</string>
 				<key>textureRotated</key>
 				<false/>
 			</dict>
-			<key>Normal-1.png</key>
+			<key>SignPostPlayer1.3.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
 				<key>spriteOffset</key>
 				<string>{0,0}</string>
 				<key>spriteSize</key>
-				<string>{24,24}</string>
+				<string>{466,704}</string>
 				<key>spriteSourceSize</key>
-				<string>{24,24}</string>
+				<string>{466,704}</string>
 				<key>textureRect</key>
-				<string>{{726,617},{24,24}}</string>
+				<string>{{552,1436},{466,704}}</string>
 				<key>textureRotated</key>
 				<false/>
 			</dict>
-			<key>Normal-2.png</key>
+			<key>SignPostPlayer1.4.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
 				<key>spriteOffset</key>
 				<string>{0,0}</string>
 				<key>spriteSize</key>
-				<string>{24,29}</string>
+				<string>{398,704}</string>
 				<key>spriteSourceSize</key>
-				<string>{24,29}</string>
+				<string>{398,704}</string>
 				<key>textureRect</key>
-				<string>{{692,617},{24,29}}</string>
+				<string>{{1028,1436},{398,704}}</string>
 				<key>textureRotated</key>
 				<false/>
 			</dict>
-			<key>Normal-3.png</key>
+			<key>SignPostPlayer1.5.png</key>
 			<dict>
 				<key>aliases</key>
 				<array/>
 				<key>spriteOffset</key>
 				<string>{0,0}</string>
 				<key>spriteSize</key>
-				<string>{24,33}</string>
+				<string>{330,704}</string>
 				<key>spriteSourceSize</key>
-				<string>{24,33}</string>
+				<string>{330,704}</string>
 				<key>textureRect</key>
-				<string>{{726,574},{24,33}}</string>
+				<string>{{1436,1436},{330,704}}</string>
+				<key>textureRotated</key>
+				<false/>
+			</dict>
+			<key>SignPostPlayer1.6.png</key>
+			<dict>
+				<key>aliases</key>
+				<array/>
+				<key>spriteOffset</key>
+				<string>{0,0}</string>
+				<key>spriteSize</key>
+				<string>{280,704}</string>
+				<key>spriteSourceSize</key>
+				<string>{280,704}</string>
+				<key>textureRect</key>
+				<string>{{1674,714},{280,704}}</string>
+				<key>textureRotated</key>
+				<false/>
+			</dict>
+			<key>SignPostPlayer1.7.png</key>
+			<dict>
+				<key>aliases</key>
+				<array/>
+				<key>spriteOffset</key>
+				<string>{0,0}</string>
+				<key>spriteSize</key>
+				<string>{228,704}</string>
+				<key>spriteSourceSize</key>
+				<string>{228,704}</string>
+				<key>textureRect</key>
+				<string>{{1768,0},{228,704}}</string>
 				<key>textureRotated</key>
 				<false/>
 			</dict>
@@ -194,11 +224,11 @@
 			<key>premultiplyAlpha</key>
 			<false/>
 			<key>realTextureFileName</key>
-			<string>DF_Bosses-uhd.png</string>
+			<string>end_sign-uhd.png</string>
 			<key>size</key>
-			<string>{765,682}</string>
+			<string>{2098,2140}</string>
 			<key>textureFileName</key>
-			<string>DF_Bosses-uhd.png</string>
+			<string>end_sign-uhd.png</string>
 		</dict>
 	</dict>
 </plist>

@@ -680,12 +680,7 @@ std::string decodeServerLevelPayload(const std::string& payload) {
 }
 
 std::string downloadFolderPath() {
-    std::string base = ".";
-    char* prefPath = SDL_GetPrefPath("Benno111", "DorfplatformerTimetravel");
-    if (prefPath) {
-        base = prefPath;
-        SDL_free(prefPath);
-    }
+    const std::string base = GetAppSaveRootPath();
     std::filesystem::path dir = std::filesystem::path(base) / "user_levels";
     std::error_code ec;
     std::filesystem::create_directories(dir, ec);
@@ -693,12 +688,7 @@ std::string downloadFolderPath() {
 }
 
 std::string localLevelsFolderPath() {
-    std::string base = ".";
-    char* prefPath = SDL_GetPrefPath("Benno111", "DorfplatformerTimetravel");
-    if (prefPath) {
-        base = prefPath;
-        SDL_free(prefPath);
-    }
+    const std::string base = GetAppSaveRootPath();
     std::filesystem::path dir = std::filesystem::path(base) / "local levels";
     std::error_code ec;
     std::filesystem::create_directories(dir, ec);
