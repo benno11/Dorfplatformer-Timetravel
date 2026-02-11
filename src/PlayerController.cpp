@@ -71,11 +71,16 @@ PlayerUpdateResult UpdatePlayerMovement(
     float touchMove,
     bool touchDown,
     bool touchJump,
+    float gamepadMove,
+    bool gamepadDown,
+    bool gamepadJump,
+    bool gamepadFreeMove,
     float& inputMove,
     bool& inputDown
 ) {
     const bool* keys = SDL_GetKeyboardState(nullptr);
     bool shiftDown = keys[SDL_SCANCODE_LSHIFT] || keys[SDL_SCANCODE_RSHIFT];
+    shiftDown = shiftDown || gamepadFreeMove;
     player.freeMove = shiftDown;
 
     if (player.freeMove) {
@@ -99,11 +104,11 @@ PlayerUpdateResult UpdatePlayerMovement(
         return PlayerUpdateResult::RenderOnly;
     }
 
-    float move = touchMove;
+    float move = touchMove + gamepadMove;
     if (keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_LEFT]) move -= 1.0f;
     if (keys[SDL_SCANCODE_D] || keys[SDL_SCANCODE_RIGHT]) move += 1.0f;
     move = std::clamp(move, -1.0f, 1.0f);
-    bool downHeld = touchDown || keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_DOWN];
+    bool downHeld = touchDown || gamepadDown || keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_DOWN];
     inputMove = move;
     inputDown = downHeld;
     const bool insideSolid = RectHitsSolid(map, player.x, player.y, player.w, player.h);
@@ -134,7 +139,7 @@ PlayerUpdateResult UpdatePlayerMovement(
         }
     }
 
-    bool jumpDown = touchJump || keys[SDL_SCANCODE_SPACE] || keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_UP];
+    bool jumpDown = touchJump || gamepadJump || keys[SDL_SCANCODE_SPACE] || keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_UP];
     bool jumpPressed = jumpDown && !player.jumpWasDown;
     bool jumpReleased = !jumpDown && player.jumpWasDown;
     if (jumpDown == false){

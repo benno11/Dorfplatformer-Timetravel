@@ -73,6 +73,7 @@ $CXX $CXXFLAGS $CPPFLAGS_PKG \
   "$SRC_DIR/GameSupport.cpp" \
   "$SRC_DIR/CrashReporter.cpp" \
   "$SRC_DIR/FrontendMenu.cpp" \
+  "$SRC_DIR/AudioSystem.cpp" \
   $LDFLAGS $LIBS_PKG \
   -o "$OUT_PLATFORMER"
 

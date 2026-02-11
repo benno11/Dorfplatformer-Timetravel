@@ -15,8 +15,8 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
 
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -DNDEBUG")
-set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -O3 -g -DNDEBUG")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O2 -DNDEBUG")
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -O2 -g -DNDEBUG")
 
 option(PLATFORMER_ENABLE_UNITY_BUILD "Enable CMake unity build for faster compile times" ON)
 if(PLATFORMER_ENABLE_UNITY_BUILD)
@@ -32,12 +32,18 @@ if(CCACHE_PROGRAM)
 endif()
 
 include(CheckIPOSupported)
-check_ipo_supported(RESULT ipo_supported OUTPUT ipo_error)
-if(ipo_supported)
-  set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
-  set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON)
+option(PLATFORMER_ENABLE_IPO "Enable IPO/LTO (slower builds, smaller/faster binaries)" OFF)
+if(PLATFORMER_ENABLE_IPO)
+  check_ipo_supported(RESULT ipo_supported OUTPUT ipo_error)
+  if(ipo_supported)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON)
+    message(STATUS "IPO/LTO enabled")
+  else()
+    message(STATUS "IPO/LTO not supported: ${ipo_error}")
+  endif()
 else()
-  message(STATUS "IPO/LTO not supported: ${ipo_error}")
+  message(STATUS "IPO/LTO disabled for faster builds")
 endif()
 
 add_executable(platformer
@@ -52,6 +58,7 @@ add_executable(platformer
   src/GameSupport.cpp
   src/CrashReporter.cpp
   src/FrontendMenu.cpp
+  src/AudioSystem.cpp
 )
 message(STATUS "Added target: platformer")
 

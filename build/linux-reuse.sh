@@ -97,6 +97,7 @@ g++ $CXXFLAGS \
   src/GameSupport.cpp \
   src/CrashReporter.cpp \
   src/FrontendMenu.cpp \
+  src/AudioSystem.cpp \
   $SDL_LIBS \
   $MIXER_LIBS \
   -o "$PLATFORMER_BIN"

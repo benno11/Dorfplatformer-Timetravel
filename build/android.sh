@@ -364,6 +364,7 @@ SRC=(
   src/GameSupport.cpp
   src/CrashReporter.cpp
   src/FrontendMenu.cpp
+  src/AudioSystem.cpp
 )
 
 OUT_LIB="$OUT_DIR/libplatformer.so"

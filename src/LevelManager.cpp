@@ -27,8 +27,37 @@ const std::string& LevelManager::levelPath() const {
 
 void LevelManager::reloadLevel(TileMap& map, std::vector<ObjectInstance>& objects, LevelMeta& meta, Player& player) {
     loadLevelBNNLVL(levelPath_, map, objects, meta);
+    updateLevelMetadata(map);
     coinCount_ = 0;
     timeWarpId_ = 'N';
+    const bool disableEndSignsForArea = (worldId_ >= 1 && worldId_ <= 5 && levelPartId_ == 3);
+
+    if (disableEndSignsForArea) {
+        objects.erase(std::remove_if(objects.begin(), objects.end(), [](const ObjectInstance& o) {
+            return o.id == "67";
+        }), objects.end());
+    }
+
+    bool hasEndSignObject = false;
+    for (const auto& o : objects) {
+        if (o.id == "67") {
+            hasEndSignObject = true;
+            break;
+        }
+    }
+    for (int idx = 0; idx < (int)map.tileIds.size(); ++idx) {
+        if (map.tileIds[idx] != 30) continue;
+        const int tx = idx % map.w;
+        const int ty = idx / map.w;
+        setTileAt(map, idx, 2);
+        if (!disableEndSignsForArea && !hasEndSignObject) {
+            ObjectInstance endSign{};
+            endSign.id = "67";
+            endSign.x = tx * map.tileSize + map.tileSize * 0.5f;
+            endSign.y = ty * map.tileSize + map.tileSize * 0.5f;
+            objects.push_back(endSign);
+        }
+    }
 
     player = Player{};
     bool foundSpawn = false;
@@ -81,7 +110,7 @@ void LevelManager::reloadLevel(TileMap& map, std::vector<ObjectInstance>& object
         }
     }
 
-    updateLevelMetadata(map);
+    // Metadata already updated at reload start.
 }
 
 std::string LevelManager::nextLevelPath() const {
@@ -134,6 +163,12 @@ void LevelManager::updateTimeWarpIdAtPlayer(const TileMap& map, const Player& pl
         SDL_Log("timeWarpId changed: %c -> %c (%s)", timeWarpId_, next, levelPath_.c_str());
         timeWarpId_ = next;
     }
+}
+
+void LevelManager::setTileAt(TileMap& map, int idx, unsigned short tileId) const {
+    if (idx < 0 || idx >= (int)map.tileIds.size()) return;
+    map.tileIds[idx] = tileId;
+    applyBlockDefAt(map, idx, tileId);
 }
 
 int LevelManager::coinCount() const {

@@ -1,22 +1,5 @@
 #include <sdl3/SDL.h>
 #include <sdl3/SDL_image.h>
-#if __has_include(<sdl3/SDL_mixer.h>)
-#include <sdl3/SDL_mixer.h>
-// SDL3_mixer v3 uses MIX_* APIs; legacy Mix_* gameplay audio path is not ported yet.
-#define HAS_SDL3_MIXER 1
-#define HAS_SDL_MIXER 1
-#elif __has_include(<SDL3_mixer/SDL_mixer.h>)
-#include <SDL3_mixer/SDL_mixer.h>
-#define HAS_SDL3_MIXER 1
-#define HAS_SDL_MIXER 1
-#elif __has_include(<SDL_mixer.h>)
-#include <SDL_mixer.h>
-#define HAS_SDL3_MIXER 0
-#define HAS_SDL_MIXER 1
-#else
-#define HAS_SDL3_MIXER 0
-#define HAS_SDL_MIXER 0
-#endif
 #include <vector>
 #include <string>
 #include <algorithm>
@@ -35,6 +18,7 @@
 #include <mutex>
 #include <atomic>
 #include <condition_variable>
+#include <limits>
 #include <csignal>
 #include <cstdio>
 #include <cstring>
@@ -55,184 +39,16 @@
 #include "AssetPath.h"
 #include "LevelManager.h"
 #include "FrontendMenu.h"
-
-
 #include "GameSupport.h"
 #include "CrashReporter.h"
-
-#if HAS_SDL3_MIXER
-// SDL3_mixer v3 compatibility layer for existing SDL2-style Mix_* calls.
-struct Mix_Chunk { MIX_Audio* audio = nullptr; };
-using Mix_Music = Mix_Chunk;
-
-static MIX_Mixer* g_mix_mixer = nullptr;
-static std::vector<MIX_Track*> g_mix_channels;
-static MIX_Track* g_mix_music_track = nullptr;
-static bool g_mix_initialized = false;
-
-#ifndef MIX_INIT_MP3
-#define MIX_INIT_MP3 0x00000008
-#endif
-#ifndef MIX_DEFAULT_FORMAT
-#define MIX_DEFAULT_FORMAT SDL_AUDIO_S16
-#endif
-
-static MIX_Track* mix_track_at(int idx) {
-    if (idx < 0) return nullptr;
-    if ((int)g_mix_channels.size() <= idx) g_mix_channels.resize(idx + 1, nullptr);
-    if (!g_mix_channels[idx] && g_mix_mixer) g_mix_channels[idx] = MIX_CreateTrack(g_mix_mixer);
-    return g_mix_channels[idx];
-}
-
-static int mix_find_channel() {
-    for (int i = 0; i < (int)g_mix_channels.size(); ++i) {
-        if (!g_mix_channels[i] || !MIX_TrackPlaying(g_mix_channels[i])) return i;
-    }
-    g_mix_channels.push_back(nullptr);
-    return (int)g_mix_channels.size() - 1;
-}
-
-static int Mix_Init(int flags) {
-    const bool ok = MIX_Init();
-    g_mix_initialized = ok;
-    return ok ? flags : 0;
-}
-
-static int Mix_OpenAudio(int frequency, SDL_AudioFormat format, int channels, int chunksize) {
-    (void)chunksize;
-    if (g_mix_mixer) return 0;
-    SDL_AudioSpec want{};
-    want.freq = frequency;
-    want.format = format;
-    want.channels = (Uint8)((channels <= 0) ? 2 : channels);
-    g_mix_mixer = MIX_CreateMixerDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &want);
-    return g_mix_mixer ? 0 : -1;
-}
-
-static const char* Mix_GetError() { return SDL_GetError(); }
-
-static Mix_Chunk* Mix_LoadWAV(const char* path) {
-    if (!g_mix_mixer || !path) return nullptr;
-    MIX_Audio* a = MIX_LoadAudio(g_mix_mixer, path, false);
-    if (!a) return nullptr;
-    Mix_Chunk* c = new Mix_Chunk();
-    c->audio = a;
-    return c;
-}
-
-static Mix_Music* Mix_LoadMUS(const char* path) {
-    return Mix_LoadWAV(path);
-}
-
-static int Mix_PlayChannel(int channel, Mix_Chunk* chunk, int loops) {
-    if (!g_mix_mixer || !chunk || !chunk->audio) return -1;
-    const int idx = (channel < 0) ? mix_find_channel() : channel;
-    MIX_Track* t = mix_track_at(idx);
-    if (!t) return -1;
-    if (!MIX_SetTrackAudio(t, chunk->audio)) return -1;
-    MIX_SetTrackLoops(t, loops);
-    if (!MIX_PlayTrack(t, 0)) return -1;
-    return idx;
-}
-
-static int Mix_PlayMusic(Mix_Music* music, int loops) {
-    if (!g_mix_mixer || !music || !music->audio) return -1;
-    if (!g_mix_music_track) g_mix_music_track = MIX_CreateTrack(g_mix_mixer);
-    if (!g_mix_music_track) return -1;
-    if (!MIX_SetTrackAudio(g_mix_music_track, music->audio)) return -1;
-    MIX_SetTrackLoops(g_mix_music_track, loops);
-    return MIX_PlayTrack(g_mix_music_track, 0) ? 0 : -1;
-}
-
-static int Mix_Playing(int channel) {
-    if (channel < 0) {
-        for (MIX_Track* t : g_mix_channels) if (t && MIX_TrackPlaying(t)) return 1;
-        return 0;
-    }
-    MIX_Track* t = mix_track_at(channel);
-    return (t && MIX_TrackPlaying(t)) ? 1 : 0;
-}
-
-static int Mix_PlayingMusic() {
-    return (g_mix_music_track && MIX_TrackPlaying(g_mix_music_track)) ? 1 : 0;
-}
-
-static void Mix_HaltMusic() {
-    if (g_mix_music_track) (void)MIX_StopTrack(g_mix_music_track, 0);
-}
-
-static int Mix_HaltChannel(int channel) {
-    if (!g_mix_mixer) return 0;
-    if (channel < 0) return MIX_StopAllTracks(g_mix_mixer, 0) ? 0 : -1;
-    MIX_Track* t = mix_track_at(channel);
-    if (!t) return 0;
-    return MIX_StopTrack(t, 0) ? 0 : -1;
-}
-
-static int Mix_VolumeMusic(int volume) {
-    if (!g_mix_mixer) return volume;
-    const float gain = std::clamp(volume / 128.0f, 0.0f, 1.0f);
-    (void)MIX_SetMixerGain(g_mix_mixer, gain);
-    if (g_mix_music_track) (void)MIX_SetTrackGain(g_mix_music_track, gain);
-    return volume;
-}
-
-static int Mix_Volume(int channel, int volume) {
-    const float gain = std::clamp(volume / 128.0f, 0.0f, 1.0f);
-    if (channel < 0) {
-        for (MIX_Track* t : g_mix_channels) if (t) (void)MIX_SetTrackGain(t, gain);
-        return volume;
-    }
-    MIX_Track* t = mix_track_at(channel);
-    if (t) (void)MIX_SetTrackGain(t, gain);
-    return volume;
-}
-
-static int Mix_VolumeChunk(Mix_Chunk* chunk, int volume) {
-    (void)chunk;
-    return volume;
-}
-
-static void Mix_FreeChunk(Mix_Chunk* chunk) {
-    if (!chunk) return;
-    if (chunk->audio && g_mix_initialized) MIX_DestroyAudio(chunk->audio);
-    chunk->audio = nullptr;
-    delete chunk;
-}
-
-static void Mix_FreeMusic(Mix_Music* music) {
-    Mix_FreeChunk(music);
-}
-
-static void Mix_CloseAudio() {
-    if (g_mix_mixer) {
-        (void)MIX_StopAllTracks(g_mix_mixer, 0);
-    }
-    if (g_mix_music_track) {
-        MIX_DestroyTrack(g_mix_music_track);
-        g_mix_music_track = nullptr;
-    }
-    for (MIX_Track*& t : g_mix_channels) {
-        if (t) {
-            MIX_DestroyTrack(t);
-            t = nullptr;
-        }
-    }
-    g_mix_channels.clear();
-    if (g_mix_mixer) {
-        MIX_DestroyMixer(g_mix_mixer);
-        g_mix_mixer = nullptr;
-    }
-}
-
-static void Mix_Quit() {
-    MIX_Quit();
-    g_mix_initialized = false;
-}
-#endif
+#include "AudioSystem.h"
+#include "InputSystem.h"
 
 int main(int argc, char** argv) {
     CrashReporter::start();
+    // Clear terminal at startup for a clean runtime log view.
+    std::fputs("\033[2J\033[H", stdout);
+    std::fflush(stdout);
     const std::string buildUuid = makeBuildUuid();
     auto reportStartupError = [](const char* title, const std::string& msg, SDL_Window* parent) {
 #if defined(__ANDROID__)
@@ -297,17 +113,41 @@ int main(int argc, char** argv) {
         if (out.empty()) out = "<none>";
         return out;
     };
+    auto listConnectedGamepads = []() -> std::string {
+        int count = 0;
+        SDL_JoystickID* ids = SDL_GetGamepads(&count);
+        if (!ids || count <= 0) {
+            if (ids) SDL_free(ids);
+            return "<none>";
+        }
+        std::string out;
+        for (int i = 0; i < count; ++i) {
+            SDL_Gamepad* pad = SDL_OpenGamepad(ids[i]);
+            const char* name = pad ? SDL_GetGamepadName(pad) : nullptr;
+            if (!out.empty()) out += ", ";
+            out += name ? name : "<unnamed>";
+            if (pad) SDL_CloseGamepad(pad);
+        }
+        SDL_free(ids);
+        return out.empty() ? "<none>" : out;
+    };
     std::vector<InitAttempt> attempts = {
+        {"video+audio+gamepad (env defaults)", nullptr, nullptr, SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD},
+        {"video+gamepad (env defaults)", nullptr, nullptr, SDL_INIT_VIDEO | SDL_INIT_GAMEPAD},
         {"video+audio (env defaults)", nullptr, nullptr, SDL_INIT_VIDEO | SDL_INIT_AUDIO},
         {"video only (env defaults)", nullptr, nullptr, SDL_INIT_VIDEO},
     };
     const bool hasX11 = !envOrUnset("DISPLAY").empty() && envOrUnset("DISPLAY") != "<unset>";
     const bool hasWayland = !envOrUnset("WAYLAND_DISPLAY").empty() && envOrUnset("WAYLAND_DISPLAY") != "<unset>";
     if (hasX11 && hasVideoDriver("x11")) {
+        attempts.push_back({"video+audio+gamepad (x11 + dummy audio)", "x11", "dummy", SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD});
+        attempts.push_back({"video+gamepad (x11)", "x11", nullptr, SDL_INIT_VIDEO | SDL_INIT_GAMEPAD});
         attempts.push_back({"video+audio (x11 + dummy audio)", "x11", "dummy", SDL_INIT_VIDEO | SDL_INIT_AUDIO});
         attempts.push_back({"video only (x11)", "x11", nullptr, SDL_INIT_VIDEO});
     }
     if (hasWayland && hasVideoDriver("wayland")) {
+        attempts.push_back({"video+audio+gamepad (wayland + dummy audio)", "wayland", "dummy", SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD});
+        attempts.push_back({"video+gamepad (wayland)", "wayland", nullptr, SDL_INIT_VIDEO | SDL_INIT_GAMEPAD});
         attempts.push_back({"video+audio (wayland + dummy audio)", "wayland", "dummy", SDL_INIT_VIDEO | SDL_INIT_AUDIO});
         attempts.push_back({"video only (wayland)", "wayland", nullptr, SDL_INIT_VIDEO});
     }
@@ -373,18 +213,33 @@ int main(int argc, char** argv) {
     logStartup(std::string("audio drivers available: ") + listAudioDrivers());
     logStartup(std::string("active audio driver: ") +
                (SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver() : "<none>"));
+    if ((SDL_WasInit(SDL_INIT_GAMEPAD) & SDL_INIT_GAMEPAD) == 0) {
+        if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) {
+            logStartup(std::string("gamepad init attempt failed: ") + sdlErr());
+        } else {
+            logStartup("gamepad init attempt: ok");
+        }
+    }
+    logStartup(std::string("connected gamepads: ") + listConnectedGamepads());
     InitTextRenderer(ResolveAssetPath("assets/Fonts/Main.ttf"));
-    bool audioReady = false;
-#if HAS_SDL_MIXER
-    int mixerFlags = MIX_INIT_MP3;
-    audioReady = (Mix_Init(mixerFlags) & mixerFlags) == mixerFlags &&
-                 Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) == 0;
-    if (!audioReady) SDL_Log("Audio mixer init failed: %s", Mix_GetError());
-#elif HAS_SDL3_MIXER
-    SDL_Log("SDL3_mixer detected at compile time, but legacy Mix_* audio path is disabled (requires MIX_* port).");
-#else
-    SDL_Log("SDL_mixer not found at compile time: music playback disabled.");
-#endif
+    AudioSystem audio;
+    audio.setLoopingEnabled(true);
+    (void)audio.initialize();
+    InputSystem input;
+    input.scanConnected();
+    {
+        InputSystem::DetectionEvent ev;
+        while (input.pollDetectionEvent(ev)) {
+            const char* typeStr = (ev.type == InputSystem::DetectionEvent::Type::Connected) ? "connected" : "disconnected";
+            SDL_Log("controller %s: id=%d name=\"%s\" connected=%d", typeStr, (int)ev.id, ev.name.c_str(), ev.connectedCount);
+        }
+        if (input.hasGamepad()) {
+            const char* name = input.activeGamepadName();
+            SDL_Log("active controller: %s", name ? name : "<unnamed>");
+        } else {
+            SDL_Log("active controller: <none>");
+        }
+    }
 
     constexpr int kBaseScreenW = 960;
     constexpr int kBaseScreenH = 540;
@@ -502,6 +357,41 @@ int main(int argc, char** argv) {
     std::unordered_map<std::string, Frame> bgFrameByName;
     bgFrameByName.reserve(bgFrameList.size());
     for (const auto& e : bgFrameList) bgFrameByName[e.name] = e.frame;
+    auto findBgFrame = [&](const char* name) -> const Frame* {
+        auto it = bgFrameByName.find(name);
+        if (it != bgFrameByName.end()) return &it->second;
+        const std::string s(name ? name : "");
+        if (s.size() > 4 && s.substr(s.size() - 4) == ".png") {
+            auto itNoExt = bgFrameByName.find(s.substr(0, s.size() - 4));
+            if (itNoExt != bgFrameByName.end()) return &itNoExt->second;
+        }
+        return nullptr;
+    };
+    const Frame* parallaxLayer0 = findBgFrame("w1b.png");
+    const Frame* parallaxLayer1 = findBgFrame("w1f.png");
+    const Frame* parallaxLayer2 = findBgFrame("w1f.png");
+    SDL_Texture* introCardTex = IMG_LoadTexture(ren, ResolveAssetPath("assets/Sheets/Introcard-uhd.png").c_str());
+    auto introCardFrames = loadPlistFrames("assets/Sheets/Introcard-uhd.plist");
+    SDL_Texture* endSignTex = IMG_LoadTexture(ren, ResolveAssetPath("assets/Sheets/end_sign-uhd.png").c_str());
+    auto endSignFrames = loadPlistFrames("assets/Sheets/end_sign-uhd.plist");
+    const Frame* defaultEndSignFrame = nullptr;
+    {
+        auto it = endSignFrames.find("SignPost9");
+        if (it == endSignFrames.end()) it = endSignFrames.find("SignPost9.png");
+        if (it != endSignFrames.end()) defaultEndSignFrame = &it->second;
+    }
+    SDL_Texture* bossesTex = IMG_LoadTexture(ren, ResolveAssetPath("assets/Sheets/DF_Bosses-uhd.png").c_str());
+    auto bossesFrames = loadPlistFrames("assets/Sheets/DF_Bosses-uhd.plist");
+    const Frame* bossNormalFrame = nullptr;
+    const Frame* bossHurtFrame = nullptr;
+    {
+        auto it = bossesFrames.find("Normal-1");
+        if (it == bossesFrames.end()) it = bossesFrames.find("Normal-1.png");
+        if (it != bossesFrames.end()) bossNormalFrame = &it->second;
+        it = bossesFrames.find("Hurt-1");
+        if (it == bossesFrames.end()) it = bossesFrames.find("Hurt-1.png");
+        if (it != bossesFrames.end()) bossHurtFrame = &it->second;
+    }
 
     const std::string entitiesPlist = "assets/Sheets/DF_Enitys-uhd.plist";
     SDL_Texture* entitiesTex = IMG_LoadTexture(ren, ResolveAssetPath("assets/Sheets/DF_Enitys-uhd.png").c_str());
@@ -541,30 +431,47 @@ int main(int argc, char** argv) {
     playerFramesByName.reserve(playerFrameList.size());
     for (const auto& e : playerFrameList) playerFramesByName[e.name] = e.frame;
     const Frame* fallbackPlayerFrame = !playerFrameList.empty() ? &playerFrameList[0].frame : nullptr;
-#if HAS_SDL_MIXER
-    Mix_Chunk* coinSfx = nullptr;
-    Mix_Chunk* loseSfx = nullptr;
-    Mix_Chunk* victorySfx = nullptr;
-    Mix_Chunk* messageSfx = nullptr;
-    Mix_Chunk* bumperSfx = nullptr;
-    Mix_Music* menuMusic = nullptr;
-    bool menuMusicPlaying = false;
-    if (audioReady) {
-        coinSfx = Mix_LoadWAV(ResolveAssetPath("assets/Audio/sfx/Coin.mp3").c_str());
-        if (!coinSfx) SDL_Log("Could not load coin sfx: %s", Mix_GetError());
-        loseSfx = Mix_LoadWAV(ResolveAssetPath("assets/Audio/sfx/Lose.mp3").c_str());
-        if (!loseSfx) SDL_Log("Could not load lose sfx: %s", Mix_GetError());
-        victorySfx = Mix_LoadWAV(ResolveAssetPath("assets/Audio/sfx/Victory.mp3").c_str());
-        if (!victorySfx) SDL_Log("Could not load victory sfx: %s", Mix_GetError());
-        messageSfx = Mix_LoadWAV(ResolveAssetPath("assets/Audio/sfx/Message.mp3").c_str());
-        if (!messageSfx) SDL_Log("Could not load message sfx: %s", Mix_GetError());
-        bumperSfx = Mix_LoadWAV(ResolveAssetPath("assets/Audio/sfx/Bumper.mp3").c_str());
-        if (!bumperSfx) SDL_Log("Could not load bumper sfx: %s", Mix_GetError());
-        menuMusic = Mix_LoadMUS(ResolveAssetPath("assets/Audio/Music/menu.mp3").c_str());
-        if (!menuMusic) menuMusic = Mix_LoadMUS(ResolveAssetPath("assets/Audio/Music/Menu.mp3").c_str());
-        if (!menuMusic) SDL_Log("Could not load menu music: %s", Mix_GetError());
+    audio.loadGlobalAssets();
+    std::unordered_map<int, std::string> worldNamesById;
+    struct IntroTextStyle {
+        int x = 150;
+        int y = 332;
+        int scale = 4;
+    };
+    IntroTextStyle introWorldNameStyle;
+    IntroTextStyle introAreaIdStyle{545, 322, 8};
+    {
+        const std::string worldNameText = ReadTextFile("assets/world_names.json");
+        if (!worldNameText.empty()) {
+            try {
+                const nlohmann::json j = nlohmann::json::parse(worldNameText);
+                auto parseIntMap = [](const nlohmann::json& obj, std::unordered_map<int, std::string>& out) {
+                    if (!obj.is_object()) return;
+                    for (auto it = obj.begin(); it != obj.end(); ++it) {
+                        if (!it.value().is_string()) continue;
+                        try {
+                            out[std::stoi(it.key())] = it.value().get<std::string>();
+                        } catch (...) {}
+                    }
+                };
+                auto parseStyle = [](const nlohmann::json& obj, IntroTextStyle& style) {
+                    if (!obj.is_object()) return;
+                    if (obj.contains("x") && obj["x"].is_number_integer()) style.x = obj["x"].get<int>();
+                    if (obj.contains("y") && obj["y"].is_number_integer()) style.y = obj["y"].get<int>();
+                    if (obj.contains("scale") && obj["scale"].is_number_integer()) style.scale = std::max(1, obj["scale"].get<int>());
+                };
+                if (j.is_object()) {
+                    if (j.contains("world_names")) parseIntMap(j["world_names"], worldNamesById);
+                    if (worldNamesById.empty()) parseIntMap(j, worldNamesById);
+                    if (j.contains("intro_layout") && j["intro_layout"].is_object()) {
+                        const auto& layout = j["intro_layout"];
+                        if (layout.contains("world_name")) parseStyle(layout["world_name"], introWorldNameStyle);
+                        if (layout.contains("area_id")) parseStyle(layout["area_id"], introAreaIdStyle);
+                    }
+                }
+            } catch (...) {}
+        }
     }
-#endif
 
     auto getPlayerFrame = [&](const std::string& name) -> const Frame* {
         auto it = playerFramesByName.find(name);
@@ -573,7 +480,7 @@ int main(int argc, char** argv) {
     };
 
     struct AnimConfig {
-        float fps = 15.0f;
+        float fps = 20.0f;
         std::vector<std::string> idle;
         std::vector<std::string> walk;
         std::vector<std::string> jump;
@@ -614,15 +521,33 @@ int main(int argc, char** argv) {
     };
 
     AnimConfig animCfg = loadAnimConfig("assets/player_anim.json");
+    auto framesFromNames = [&](const std::vector<std::string>& names) {
+        std::vector<const Frame*> out;
+        out.reserve(names.size());
+        for (const auto& n : names) out.push_back(getPlayerFrame(n));
+        return out;
+    };
+    const std::vector<const Frame*> animIdleFrames = framesFromNames(animCfg.idle);
+    const std::vector<const Frame*> animWalkFrames = framesFromNames(animCfg.walk);
+    const std::vector<const Frame*> animJumpFrames = framesFromNames(animCfg.jump);
+    const std::vector<const Frame*> animFallFrames = framesFromNames(animCfg.fall);
+    const std::vector<const Frame*> animCrouchFrames = framesFromNames(animCfg.crouch);
+    const std::vector<const Frame*> animSkidFrames = framesFromNames(animCfg.skid);
+    const std::vector<const Frame*> animHurtFrames = framesFromNames(animCfg.hurt);
+    const std::vector<const Frame*> animDeathFrames = framesFromNames(animCfg.death);
     float jumpBufferMax = 0.12f;
     std::string levelServerUrl;
     std::string levelServerAuthToken;
+    std::string appVersion = "dev";
     MovementConfig movementCfg{};
     {
         const std::string text = ReadTextFile("assets/config.json");
         if (!text.empty()) {
             nlohmann::json cfg;
             try { cfg = nlohmann::json::parse(text); } catch (...) { cfg = nlohmann::json(); }
+            if (cfg.contains("version") && cfg["version"].is_string()) {
+                appVersion = cfg["version"].get<std::string>();
+            }
             if (cfg.contains("level_server_url") && cfg["level_server_url"].is_string()) {
                 levelServerUrl = cfg["level_server_url"].get<std::string>();
             }
@@ -728,27 +653,7 @@ int main(int argc, char** argv) {
         reportStartupError("Asset Load Error", msg, win);
         SDL_DestroyRenderer(ren);
         SDL_DestroyWindow(win);
-        if (audioReady) {
-#if HAS_SDL_MIXER
-            Mix_HaltMusic();
-            Mix_HaltChannel(-1);
-#endif
-        }
-#if HAS_SDL_MIXER
-        if (coinSfx) { Mix_FreeChunk(coinSfx); coinSfx = nullptr; }
-        if (loseSfx) { Mix_FreeChunk(loseSfx); loseSfx = nullptr; }
-        if (victorySfx) { Mix_FreeChunk(victorySfx); victorySfx = nullptr; }
-        if (messageSfx) { Mix_FreeChunk(messageSfx); messageSfx = nullptr; }
-        if (bumperSfx) { Mix_FreeChunk(bumperSfx); bumperSfx = nullptr; }
-        if (menuMusic) { Mix_FreeMusic(menuMusic); menuMusic = nullptr; }
-#endif
-        if (audioReady) {
-#if HAS_SDL_MIXER
-            Mix_CloseAudio();
-            Mix_Quit();
-#endif
-            audioReady = false;
-        }
+        audio.shutdown();
         ShutdownTextRenderer();
         SDL_Quit();
         return 1;
@@ -757,12 +662,16 @@ int main(int argc, char** argv) {
         reportStartupError("Render Target Error", "Failed to create game render target.", win);
         if (playerTex) SDL_DestroyTexture(playerTex);
         if (bgTex) SDL_DestroyTexture(bgTex);
+        if (introCardTex) SDL_DestroyTexture(introCardTex);
         if (blocksTex) SDL_DestroyTexture(blocksTex);
         if (entitiesTex) SDL_DestroyTexture(entitiesTex);
+        if (bossesTex) SDL_DestroyTexture(bossesTex);
+        if (endSignTex) SDL_DestroyTexture(endSignTex);
         if (pauseTex) SDL_DestroyTexture(pauseTex);
         if (worldTarget) SDL_DestroyTexture(worldTarget);
         SDL_DestroyRenderer(ren);
         SDL_DestroyWindow(win);
+        audio.shutdown();
         ShutdownTextRenderer();
         SDL_Quit();
         return 1;
@@ -917,43 +826,142 @@ int main(int argc, char** argv) {
 #endif
     applyRenderVsync();
     SDL_Log("Build UUID: %s", buildUuid.c_str());
-#if HAS_SDL_MIXER
     auto applyAudioVolumes = [&]() {
-        if (!audioReady) return;
-        const int appliedMusic = muteAllAudio ? 0 : musicVolume;
-        const int appliedSfx = muteAllAudio ? 0 : sfxVolume;
-        Mix_VolumeMusic(appliedMusic);
-        Mix_Volume(-1, appliedSfx);
-        if (coinSfx) Mix_VolumeChunk(coinSfx, appliedSfx);
-        if (loseSfx) Mix_VolumeChunk(loseSfx, appliedSfx);
-        if (victorySfx) Mix_VolumeChunk(victorySfx, appliedSfx);
-        if (messageSfx) Mix_VolumeChunk(messageSfx, appliedSfx);
-        if (bumperSfx) Mix_VolumeChunk(bumperSfx, appliedSfx);
+        audio.applyVolumes(muteAllAudio, musicVolume, sfxVolume);
     };
     applyAudioVolumes();
-    auto ensureMenuMusic = [&]() {
-        if (!audioReady || !menuMusic || !menuMusicEnabled) return;
-        if (!menuMusicPlaying || !Mix_PlayingMusic()) {
-            Mix_PlayMusic(menuMusic, -1);
-            menuMusicPlaying = true;
-        }
-    };
-    auto stopMenuMusic = [&]() {
-        if (!audioReady) return;
-        if (menuMusicPlaying) {
-            Mix_HaltMusic();
-            menuMusicPlaying = false;
-        }
-    };
     auto applyMenuMusicToggle = [&]() {
-        if (!audioReady) return;
-        if (menuMusicEnabled) ensureMenuMusic();
-        else stopMenuMusic();
+        audio.applyMenuMusicToggle(menuMusicEnabled);
     };
-#endif
     LevelManager levelManager;
     bool running = true;
-    bool startupNoticeShown = false;
+    std::string currentFancyLevelName = "LEVEL";
+    std::string currentAreaIdText = "1";
+    auto buildFancyLevelName = [&]() -> std::string {
+        const int worldId = levelManager.worldId();
+        if (worldId <= 0) {
+            return "LEVEL";
+        }
+        auto worldIt = worldNamesById.find(worldId);
+        std::string worldName = (worldIt != worldNamesById.end()) ? worldIt->second : (std::string("WORLD ") + std::to_string(worldId));
+        return worldName;
+    };
+    auto buildAreaIdText = [&]() -> std::string {
+        const int areaId = levelManager.levelPartId();
+        return std::to_string(std::max(1, areaId));
+    };
+    auto playSceneIntroCard = [&]() {
+        if (!introCardTex) return;
+        auto bgIt = introCardFrames.find("background");
+        auto leftIt = introCardFrames.find("leftbar");
+        auto topIt = introCardFrames.find("topsecion");
+        if (bgIt == introCardFrames.end() || leftIt == introCardFrames.end() || topIt == introCardFrames.end()) return;
+
+        const Frame& bgFrame = bgIt->second;
+        const Frame& leftFrame = leftIt->second;
+        const Frame& topFrame = topIt->second;
+        const Uint64 introStartNs = SDL_GetTicksNS();
+        const double introDurationSec = 0.78;
+        auto lerp = [](double a, double b, double t) {
+            return a + (b - a) * t;
+        };
+        auto stage = [&](double t, double start, double span) { return std::clamp((t - start) / span, 0.0, 1.0); };
+
+        while (running) {
+            SDL_Event ev;
+            while (SDL_PollEvent(&ev)) {
+                if (ev.type == SDL_EVENT_QUIT) {
+                    running = false;
+                    return;
+                }
+                if (ev.type == SDL_EVENT_GAMEPAD_ADDED || ev.type == SDL_EVENT_GAMEPAD_REMOVED) {
+                    input.handleEvent(ev);
+                    InputSystem::DetectionEvent det;
+                    while (input.pollDetectionEvent(det)) {
+                        const char* typeStr = (det.type == InputSystem::DetectionEvent::Type::Connected) ? "connected" : "disconnected";
+                        SDL_Log("controller %s: id=%d name=\"%s\" connected=%d", typeStr, (int)det.id, det.name.c_str(), det.connectedCount);
+                    }
+                }
+            }
+
+            const double elapsedSec = (double)(SDL_GetTicksNS() - introStartNs) / 1000000000.0;
+            const double t = std::clamp(elapsedSec / introDurationSec, 0.0, 1.0);
+            const double leftIn = stage(t, 0.00, 0.60);
+            const double topIn = stage(t, 0.08, 0.60);
+            const double bgIn = stage(t, 0.16, 0.68);
+            const int fadeAlpha = (int)std::lround(255.0 * (1.0 - stage(t, 0.0, 0.42)));
+
+            SDL_SetRenderTarget(ren, gameTarget);
+            SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+            SDL_RenderClear(ren);
+
+            auto frameW = [](const Frame& f) { return f.rotated ? f.rect.h : f.rect.w; };
+            auto frameH = [](const Frame& f) { return f.rotated ? f.rect.w : f.rect.h; };
+            const int bgSrcW = std::max(1, frameW(bgFrame));
+            const int bgSrcH = std::max(1, frameH(bgFrame));
+            const int leftSrcW = std::max(1, frameW(leftFrame));
+            const int leftSrcH = std::max(1, frameH(leftFrame));
+            const int topSrcW = std::max(1, frameW(topFrame));
+            const int topSrcH = std::max(1, frameH(topFrame));
+
+            const int bgH = kBaseScreenH;
+            const int bgW = (int)std::lround((double)bgSrcW * ((double)bgH / (double)bgSrcH));
+            const int leftH = kBaseScreenH;
+            const int leftW = (int)std::lround((double)leftSrcW * ((double)leftH / (double)leftSrcH));
+            const int topW = kBaseScreenW;
+            const int topH = (int)std::lround((double)topSrcH * ((double)topW / (double)topSrcW));
+            const int bgTargetX = std::max(0, kBaseScreenW - bgW);
+
+            SDL_Rect bgDst{
+                (int)std::lround(lerp((double)kBaseScreenW, (double)bgTargetX, bgIn)),
+                0,
+                bgW,
+                bgH
+            };
+            SDL_Rect leftDst{
+                (int)std::lround(lerp(-(double)leftW, 0.0, leftIn)),
+                0,
+                leftW,
+                leftH
+            };
+            SDL_Rect topDst{
+                0,
+                (int)std::lround(lerp(-(double)topH, 0.0, topIn)),
+                topW,
+                topH
+            };
+
+            renderFrame(ren, introCardTex, bgFrame, bgDst);
+            renderFrame(ren, introCardTex, leftFrame, leftDst);
+            renderFrame(ren, introCardTex, topFrame, topDst);
+            if (t > 0.30) {
+                const int worldW = MeasureTextWidth(introWorldNameStyle.scale, currentFancyLevelName);
+                const int worldX = introWorldNameStyle.x - worldW / 2;
+                const int areaW = MeasureTextWidth(introAreaIdStyle.scale, currentAreaIdText);
+                const int areaX = introAreaIdStyle.x - areaW / 2;
+                DrawText(ren, worldX, introWorldNameStyle.y, introWorldNameStyle.scale, currentFancyLevelName);
+                DrawTextColored(ren, areaX, introAreaIdStyle.y, introAreaIdStyle.scale, currentAreaIdText, SDL_Color{50, 210, 70, 255});
+            }
+            if (fadeAlpha > 0) {
+                SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+                SDL_SetRenderDrawColor(ren, 0, 0, 0, (Uint8)std::clamp(fadeAlpha, 0, 255));
+                SDL_FRect fadeRect{0.0f, 0.0f, (float)kBaseScreenW, (float)kBaseScreenH};
+                SDL_RenderFillRect(ren, &fadeRect);
+            }
+
+            SDL_SetRenderTarget(ren, nullptr);
+            int ww = 0, wh = 0;
+            SDL_GetWindowSize(win, &ww, &wh);
+            SDL_Rect presentRect = computePresentRect(ww, wh, kBaseScreenW, kBaseScreenH);
+            SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+            SDL_RenderClear(ren);
+            SDL_RenderCopy(ren, gameTarget, nullptr, &presentRect);
+            SDL_RenderPresent(ren);
+
+            if (t >= 1.0) break;
+            SDL_Delay(1);
+        }
+    };
     bool reopenUserLevelMenu = false;
     FrontendMenuContext frontendCtx{};
     frontendCtx.win = win;
@@ -962,6 +970,7 @@ int main(int argc, char** argv) {
     frontendCtx.baseScreenW = kBaseScreenW;
     frontendCtx.baseScreenH = kBaseScreenH;
     frontendCtx.buildUuid = buildUuid;
+    frontendCtx.versionString = appVersion;
     frontendCtx.running = &running;
     frontendCtx.fullscreen = &fullscreen;
     frontendCtx.vsyncEnabled = &vsyncEnabled;
@@ -978,27 +987,11 @@ int main(int argc, char** argv) {
     frontendCtx.sfxVolume = &sfxVolume;
     std::string frontendSelectedLevelPath;
     frontendCtx.selectedLevelPath = &frontendSelectedLevelPath;
-#if HAS_SDL_MIXER
     frontendCtx.applyAudioVolumes = applyAudioVolumes;
     frontendCtx.applyMenuMusicToggle = applyMenuMusicToggle;
     // Enforce persisted startup audio state immediately.
     applyMenuMusicToggle();
-#endif
     while (running) {
-        if (!startupNoticeShown) {
-#if defined(__ANDROID__)
-            SDL_Log("In Development: This build is in development.");
-            startupNoticeShown = true;
-#else
-            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION,
-                                     "In Development",
-                                     "This build is in development.",
-                                     win);
-            startupNoticeShown = true;
-            if (!running) break;
-#endif
-        }
-
         std::string selectedLevelPath;
         bool selectedFromUserMenu = false;
         if (reopenUserLevelMenu) {
@@ -1022,9 +1015,7 @@ int main(int argc, char** argv) {
             continue;
         }
         const bool allowNextLevelProgression = !selectedFromUserMenu;
-#if HAS_SDL_MIXER
-        stopMenuMusic();
-#endif
+        audio.haltMusic();
         levelManager.setLevelPath(selectedLevelPath);
 
         TileMap map;
@@ -1043,6 +1034,63 @@ int main(int argc, char** argv) {
         int levelCompleteAccountedScore = 0;
         int levelCompleteSnapshotSeconds = 0;
         float levelCompleteUiLerp = 0.0f;
+        enum class EndSignPhase {
+            Idle,
+            SignForward,
+            SignBackward,
+            PlayerForward,
+            PlayerBackward,
+            TriggerComplete,
+            Done
+        };
+        struct EndSignRuntimeState {
+            bool present = false;
+            bool triggered = false;
+            int objectIndex = -1;
+            float objectX = 0.0f;
+            float objectY = 0.0f;
+            EndSignPhase phase = EndSignPhase::Idle;
+            float frameTimer = 0.0f;
+            int signFrame = 9;
+            int signLoopCount = 0;
+            int playerFrame = 1;
+            int playerLoopCount = 0;
+            bool lockPlayerRight = false;
+        };
+        EndSignRuntimeState endSignState;
+        struct BossRuntimeState {
+            bool active = false;
+            int world = 0;
+            int sourceWorld = 0;
+            int health = 0;
+            int maxHealth = 0;
+            float x = 0.0f;
+            float y = 0.0f;
+            float vx = 0.0f;
+            float vy = 0.0f;
+            float hurtFlash = 0.0f;
+            int phase = 0; // world3: 0 wait_near_start, 1 replay_playback, 2 wait_near_fight, 3 fight
+            std::vector<SDL_FPoint> replayPath;
+            size_t replayIndex = 0;
+            float replayFrameAcc = 0.0f;
+            float rainbowTimer = 0.0f; // world4: teleport/invuln flash window
+        };
+        BossRuntimeState bossState;
+        struct DemoRuntimeState {
+            bool enabled = false;
+            float dir = 1.0f;
+            float jumpCooldown = 0.0f;
+            float jumpHoldTimer = 0.0f;
+            float stuckTime = 0.0f;
+            float lastX = 0.0f;
+            float repathTimer = 0.0f;
+            size_t waypointIndex = 0;
+            std::vector<SDL_Point> pathTiles;
+            bool startTileSet = false;
+            SDL_Point startTile{0, 0};
+        };
+        DemoRuntimeState demoState;
+        float levelReloadTitleTimer = 0.0f;
         float levelTimerSeconds = 0.0f;
         float cameraSmoothingSuppressTimer = 0.0f;
         enum FastTravelDir {
@@ -1070,14 +1118,45 @@ int main(int argc, char** argv) {
         auto setFastTravelActiveDir = [&](int dir, const char* reason) {
             if (dir == fastTravelActiveDir) return;
             fastTravelActiveDir = dir;
-            if (!(reason && std::string(reason) == "noop")) {
+            if (!(reason && std::strcmp(reason, "noop") == 0)) {
                 logFastTravelFlags(reason);
             }
         };
         float timeTravelTriggerCooldown = 0.0f;
-#if HAS_SDL_MIXER
-        Mix_Music* levelMusic = nullptr;
-#endif
+        int currentLevelId = parseLevelIdFromLevelPath(levelManager.levelPath());
+        enum PlayerAnim {
+            ANIM_IDLE,
+            ANIM_WALK,
+            ANIM_JUMP,
+            ANIM_FALL,
+            ANIM_CROUCH,
+            ANIM_SKID,
+            ANIM_HURT,
+            ANIM_DEATH
+        };
+        auto updatePlayerAnimState = [&](float moveInput, bool downHeld, float stepDt) {
+            int newAnim = ANIM_IDLE;
+            const float vxAbs = std::abs(player.vx);
+            if (player.freeMove) {
+                newAnim = ANIM_IDLE;
+            } else if (!player.onGround) {
+                newAnim = (player.vy < 0.0f) ? ANIM_JUMP : ANIM_FALL;
+            } else if (downHeld) {
+                newAnim = ANIM_CROUCH;
+            } else if (vxAbs > 8.0f) {
+                const bool opposing = (player.vx > 20.0f && moveInput < -0.1f) || (player.vx < -20.0f && moveInput > 0.1f);
+                newAnim = opposing ? ANIM_SKID : ANIM_WALK;
+            }
+            if (moveInput < -0.1f) player.facing = -1;
+            if (moveInput > 0.1f) player.facing = 1;
+            if (newAnim != player.anim) {
+                player.anim = newAnim;
+                player.animTime = 0.0f;
+            } else {
+                const float animStepDt = std::clamp(stepDt, 0.0f, 0.05f);
+                player.animTime += animStepDt;
+            }
+        };
 
         auto reloadLevel = [&]() {
             levelManager.reloadLevel(map, objects, meta, player);
@@ -1092,6 +1171,110 @@ int main(int argc, char** argv) {
             levelCompleteAccountedScore = 0;
             levelCompleteSnapshotSeconds = 0;
             levelCompleteUiLerp = 0.0f;
+            endSignState = EndSignRuntimeState{};
+            float nearestAheadDist = 1e30f;
+            int fallbackSignIndex = -1;
+            for (int i = 0; i < (int)objects.size(); ++i) {
+                if (objects[i].id != "67") continue;
+                if (fallbackSignIndex < 0) fallbackSignIndex = i;
+                const float dx = objects[i].x - player.x;
+                if (dx >= 0.0f && dx < nearestAheadDist) {
+                    nearestAheadDist = dx;
+                    endSignState.objectIndex = i;
+                }
+            }
+            if (endSignState.objectIndex < 0) endSignState.objectIndex = fallbackSignIndex;
+            if (endSignState.objectIndex >= 0 && endSignState.objectIndex < (int)objects.size()) {
+                endSignState.present = true;
+                endSignState.objectX = objects[endSignState.objectIndex].x;
+                endSignState.objectY = objects[endSignState.objectIndex].y;
+            }
+            bossState = BossRuntimeState{};
+            const int world = levelManager.worldId();
+            const int bossProfileWorld = (world == 2 || world == 6) ? 1 : std::max(1, world);
+            bossState.active = false;
+            bossState.world = bossProfileWorld;
+            bossState.sourceWorld = std::max(1, world);
+            bossState.maxHealth = 4;
+            bossState.health = 4;
+            auto loadBossReplayPathPositions = [&](const std::string& replayFile) -> std::vector<SDL_FPoint> {
+                std::vector<SDL_FPoint> out;
+                std::vector<std::string> candidates;
+                candidates.push_back(std::string("build/replays/") + replayFile);
+                candidates.push_back(replayFile);
+                for (const auto& p : candidates) {
+                    std::ifstream in(p, std::ios::binary);
+                    if (!in.is_open()) continue;
+                    std::string line;
+                    while (std::getline(in, line)) {
+                        if (line.empty()) continue;
+                        nlohmann::json j;
+                        try { j = nlohmann::json::parse(line); } catch (...) { continue; }
+                        if (!j.is_object()) continue;
+                        if (j.value("type", std::string()) != "frame") continue;
+                        if (!j.contains("player") || !j["player"].is_object()) continue;
+                        const auto& pstate = j["player"];
+                        SDL_FPoint pt{};
+                        pt.x = pstate.value("x", 0.0f) + pstate.value("w", 32) * 0.5f;
+                        pt.y = pstate.value("y", 0.0f) + pstate.value("h", 32) * 0.5f;
+                        out.push_back(pt);
+                    }
+                    if (!out.empty()) {
+                        SDL_Log("boss.w3: loaded replay positions=%d from %s", (int)out.size(), p.c_str());
+                        break;
+                    }
+                }
+                if (out.empty()) {
+                    SDL_Log("boss.w3: replay load failed for %s", replayFile.c_str());
+                }
+                return out;
+            };
+            const float mapW = (float)(map.w * map.tileSize);
+            const float mapH = (float)(map.h * map.tileSize);
+            if (bossProfileWorld == 1) {
+                bossState.x = std::clamp(mapW * 0.72f, 96.0f, std::max(96.0f, mapW - 96.0f));
+                bossState.y = std::clamp(mapH * 0.38f, 96.0f, std::max(96.0f, mapH - 96.0f));
+                bossState.vx = 280.0f;
+                bossState.vy = 220.0f;
+            } else if (bossProfileWorld == 2) {
+                bossState.x = std::clamp(mapW * 0.60f, 96.0f, std::max(96.0f, mapW - 96.0f));
+                bossState.y = std::clamp(mapH * 0.42f, 96.0f, std::max(96.0f, mapH - 96.0f));
+                bossState.vx = -260.0f;
+                bossState.vy = 240.0f;
+            } else {
+                const float phase = (float)(bossProfileWorld % 6) / 6.0f;
+                bossState.x = std::clamp(mapW * (0.32f + phase * 0.36f), 96.0f, std::max(96.0f, mapW - 96.0f));
+                bossState.y = std::clamp(mapH * (0.30f + (1.0f - phase) * 0.28f), 96.0f, std::max(96.0f, mapH - 96.0f));
+                bossState.vx = ((bossProfileWorld % 2) == 0) ? -250.0f : 250.0f;
+                bossState.vy = 220.0f + (float)((bossProfileWorld % 3) * 20);
+            }
+            if (bossState.sourceWorld == 3) {
+                bossState.maxHealth = 8;
+                bossState.health = 8;
+                bossState.phase = 0;
+                bossState.replayPath = loadBossReplayPathPositions("replay-56835877829.jsonl");
+                bossState.replayIndex = 0;
+                bossState.replayFrameAcc = 0.0f;
+                if (!bossState.replayPath.empty()) {
+                    bossState.x = bossState.replayPath[0].x;
+                    bossState.y = bossState.replayPath[0].y;
+                }
+                bossState.vx = 280.0f;
+                bossState.vy = 220.0f;
+                bossState.active = true;
+            }
+            if (bossState.sourceWorld == 4) {
+                bossState.rainbowTimer = 0.0f;
+            }
+            demoState.jumpCooldown = 0.0f;
+            demoState.jumpHoldTimer = 0.0f;
+            demoState.stuckTime = 0.0f;
+            demoState.lastX = player.x;
+            demoState.repathTimer = 0.0f;
+            demoState.waypointIndex = 0;
+            demoState.pathTiles.clear();
+            demoState.startTileSet = false;
+            demoState.startTile = SDL_Point{0, 0};
             cameraSmoothingSuppressTimer = 0.20f;
             setFastTravelActiveDir(-1, "reload");
             fastTravelOverlapWasActive = false;
@@ -1099,35 +1282,65 @@ int main(int argc, char** argv) {
             fastTravelBlendVy = 0.0f;
             timeTravelTriggerCooldown = 0.35f;
 
-            if (audioReady) {
-#if HAS_SDL_MIXER
-                std::string musicPath = levelManager.musicPath();
-                if (levelMusic) {
-                    Mix_FreeMusic(levelMusic);
-                    levelMusic = nullptr;
+            audio.loadLevelMusic(levelManager.musicPath());
+            currentFancyLevelName = buildFancyLevelName();
+            currentAreaIdText = buildAreaIdText();
+            levelReloadTitleTimer = 2.0f;
+            currentLevelId = parseLevelIdFromLevelPath(levelManager.levelPath());
+            playSceneIntroCard();
+        };
+        auto startLevelCompleteSequence = [&]() {
+            if (levelCompleteActive) return;
+            levelCompleteActive = true;
+            levelCompleteCounting = false;
+            levelCompleteNextPath = allowNextLevelProgression ? levelManager.nextLevelPath() : "";
+            levelCompleteAreaId = levelManager.levelPartId();
+            levelCompleteSnapshotSeconds = (int)levelTimerSeconds;
+            levelCompleteCoinBonus = levelManager.coinCount() * 10;
+            const int elapsedMinutes = (int)std::floor(levelTimerSeconds / 60.0f);
+            if (elapsedMinutes > 3) {
+                levelCompleteTimeScore = 0;
+            } else {
+                int denom = 1;
+                for (int i = 0; i < elapsedMinutes; ++i) denom *= 5;
+                levelCompleteTimeScore = 10000 / std::max(1, denom);
+            }
+            levelCompleteAccountedScore = 0;
+            if (audio.isReady()) {
+                audio.haltMusic();
+                levelCompleteAudioChannel = audio.playVictorySfx();
+                if (levelCompleteAudioChannel < 0) {
+                    levelCompleteCounting = true;
                 }
-                levelMusic = musicPath.empty() ? nullptr : Mix_LoadMUS(ResolveAssetPath(musicPath).c_str());
-                if (levelMusic) {
-                    menuMusicPlaying = false;
-                    Mix_PlayMusic(levelMusic, -1);
-                } else if (!musicPath.empty()) {
-                    SDL_Log("Could not load music: %s (%s)", musicPath.c_str(), Mix_GetError());
-                }
-#endif
+            } else {
+                levelCompleteCounting = true;
             }
         };
 
         reloadLevel();
+        if (!running) break;
 
         bool levelRunning = true;
         bool paused = false;
         bool deathSequenceActive = false;
         bool deathLifeDeducted = false;
         float deathTimer = 0.0f;
+        float playerInvincibleTimer = 0.0f;
+        constexpr float kPlayerInvincibleDuration = 5.00f;
+        struct DroppedCoin {
+            float x = 0.0f;
+            float y = 0.0f;
+            float vx = 0.0f;
+            float vy = 0.0f;
+            float life = 12.0f;
+            int value = 1;
+        };
+        std::vector<DroppedCoin> droppedCoins;
         float fastTravelCooldown = 0.0f;
         bool showHitboxes = defaultShowHitboxes;
         bool showPlayerHitbox = defaultShowPlayerHitbox;
         bool showDebugView = defaultShowDebugView;
+        bool showDemoPath = false;
         bool hideUnknownObjectTypes = defaultHideUnknownObjectTypes;
         bool showFpsCounter = defaultShowFpsCounter;
         showDetailedDebugger = defaultShowDetailedDebugger;
@@ -1169,10 +1382,170 @@ int main(int argc, char** argv) {
         int pauseSelection = 0; // 0 = Resume, 1 = Restart, 2 = Quit
         bool returnToSelect = false;
         std::unordered_map<SDL_FingerID, SDL_FPoint> activeTouches;
+        struct ReplayInputSnapshot {
+            float touchMove = 0.0f;
+            bool touchDown = false;
+            bool touchJump = false;
+            float gamepadMove = 0.0f;
+            bool gamepadDown = false;
+            bool gamepadJump = false;
+            bool gamepadFreeMove = false;
+            float inputMove = 0.0f;
+            bool inputDown = false;
+            bool forceRightMovement = false;
+            bool fastTravelEnabled = false;
+            bool demoEnabled = false;
+        };
+        ReplayInputSnapshot replayInput{};
+        struct ReplayRecorder {
+            bool enabled = false;
+            uint64_t frameIndex = 0;
+            Uint64 startTicksNs = 0;
+            std::string path;
+            std::ofstream out;
+        };
+        struct ReplayFrameSample {
+            float x = 0.0f;
+            float y = 0.0f;
+            float vx = 0.0f;
+            float vy = 0.0f;
+            int w = 0;
+            int h = 0;
+            bool onGround = false;
+            bool inWater = false;
+            int facing = 1;
+            bool freeMove = false;
+            int anim = 0;
+            float animTime = 0.0f;
+            bool jumpHeld = false;
+            float jumpHoldTime = 0.0f;
+            bool jumpWasDown = false;
+            float jumpBufferTime = 0.0f;
+            float inputMove = 0.0f;
+            bool inputDown = false;
+        };
+        struct ReplayPlaybackState {
+            bool active = false;
+            std::string sourcePath;
+            std::vector<ReplayFrameSample> frames;
+            size_t nextFrame = 0;
+        };
+        ReplayRecorder replayRecorder{};
+        ReplayPlaybackState replayPlayback{};
+        auto stopReplayRecording = [&](const char* reason) {
+            if (!replayRecorder.enabled || !replayRecorder.out.is_open()) return;
+            nlohmann::json end;
+            end["type"] = "end";
+            end["reason"] = reason ? reason : "stop";
+            end["frames"] = replayRecorder.frameIndex;
+            end["level_timer"] = levelTimerSeconds;
+            replayRecorder.out << end.dump() << "\n";
+            replayRecorder.out.flush();
+            replayRecorder.out.close();
+            replayRecorder.enabled = false;
+        };
+        auto startReplayRecording = [&]() {
+            stopReplayRecording("restart");
+            replayRecorder = ReplayRecorder{};
+            try {
+                std::error_code ec;
+                std::filesystem::create_directories("build/replays", ec);
+                const Uint64 stamp = SDL_GetTicksNS();
+                replayRecorder.path = std::string("build/replays/replay-") + std::to_string((unsigned long long)stamp) + ".jsonl";
+                replayRecorder.out.open(replayRecorder.path, std::ios::binary | std::ios::trunc);
+                if (replayRecorder.out.is_open()) {
+                    replayRecorder.enabled = true;
+                    replayRecorder.startTicksNs = stamp;
+                    nlohmann::json meta;
+                    meta["type"] = "meta";
+                    meta["build_uuid"] = buildUuid;
+                    meta["version"] = appVersion;
+                    meta["level_path"] = levelManager.levelPath();
+                    meta["world"] = levelManager.worldId();
+                    meta["area"] = levelManager.levelPartId();
+                    meta["time_id"] = levelManager.timeId();
+                    meta["tile_size"] = map.tileSize;
+                    meta["map_w"] = map.w;
+                    meta["map_h"] = map.h;
+                    meta["start_ticks_ns"] = (uint64_t)replayRecorder.startTicksNs;
+                    replayRecorder.out << meta.dump() << "\n";
+                    replayRecorder.out.flush();
+                    std::ofstream latest("build/replays/latest_replay.txt", std::ios::binary | std::ios::trunc);
+                    if (latest.is_open()) latest << replayRecorder.path << "\n";
+                    SDL_Log("Replay recording: %s", replayRecorder.path.c_str());
+                }
+            } catch (...) {
+                replayRecorder.enabled = false;
+            }
+        };
+        auto stopReplayPlayback = [&]() {
+            replayPlayback.active = false;
+            replayPlayback.nextFrame = 0;
+            replayPlayback.frames.clear();
+            replayPlayback.sourcePath.clear();
+        };
+        auto loadReplayForPlayback = [&](const std::string& path, std::string& outLevelPath) -> bool {
+            std::ifstream in(path, std::ios::binary);
+            if (!in.is_open()) return false;
+            std::vector<ReplayFrameSample> loaded;
+            loaded.reserve(8192);
+            outLevelPath.clear();
+            std::string line;
+            while (std::getline(in, line)) {
+                if (line.empty()) continue;
+                nlohmann::json j;
+                try { j = nlohmann::json::parse(line); } catch (...) { continue; }
+                if (!j.is_object()) continue;
+                const std::string type = j.value("type", std::string());
+                if (type == "meta") {
+                    if (j.contains("level_path") && j["level_path"].is_string()) {
+                        outLevelPath = j["level_path"].get<std::string>();
+                    }
+                    continue;
+                }
+                if (type != "frame") continue;
+                if (!j.contains("player") || !j["player"].is_object()) continue;
+                const auto& p = j["player"];
+                ReplayFrameSample s{};
+                s.x = p.value("x", 0.0f);
+                s.y = p.value("y", 0.0f);
+                s.vx = p.value("vx", 0.0f);
+                s.vy = p.value("vy", 0.0f);
+                s.w = p.value("w", 32);
+                s.h = p.value("h", 32);
+                s.onGround = p.value("on_ground", false);
+                s.inWater = p.value("in_water", false);
+                s.facing = p.value("facing", 1);
+                s.freeMove = p.value("free_move", false);
+                s.anim = p.value("anim", 0);
+                s.animTime = p.value("anim_time", 0.0f);
+                s.jumpHeld = p.value("jump_held", false);
+                s.jumpHoldTime = p.value("jump_hold_time", 0.0f);
+                s.jumpWasDown = p.value("jump_was_down", false);
+                s.jumpBufferTime = p.value("jump_buffer_time", 0.0f);
+                if (j.contains("input_map") && j["input_map"].is_object()) {
+                    const auto& im = j["input_map"];
+                    s.inputMove = im.value("input_move", 0.0f);
+                    s.inputDown = im.value("input_down", false);
+                }
+                loaded.push_back(s);
+            }
+            if (loaded.empty()) return false;
+            replayPlayback.frames = std::move(loaded);
+            replayPlayback.nextFrame = 0;
+            replayPlayback.sourcePath = path;
+            replayPlayback.active = true;
+            return true;
+        };
+        startReplayRecording();
         SDL_Event e;
         Uint32 lastTicks = SDL_GetTicks();
         Uint32 lastPresentTicks = lastTicks;
         Uint32 nextPresentTicks = lastTicks;
+        constexpr int kFpsDisplayMax = 99999999;
+        float updateFpsSmoothed = 0.0f;
+        float renderFpsSmoothed = 0.0f;
+        int updateFpsDisplay = 0;
         int renderFpsDisplay = 0;
 
         SDL_Rect pauseBtnContinue{0,0,0,0};
@@ -1184,6 +1557,7 @@ int main(int argc, char** argv) {
             if (pauseSelection == 0) {
                 paused = false;
             } else if (pauseSelection == 1) {
+                droppedCoins.clear();
                 reloadLevel();
                 paused = false;
             } else {
@@ -1247,12 +1621,40 @@ int main(int argc, char** argv) {
             }
             return handled;
         };
+        auto dropPlayerCoins = [&](float originX, float originY) {
+            const int owned = levelManager.coinCount();
+            if (owned <= 0) return;
+            levelManager.resetCoinCount();
+            const int spawnCount = std::min(owned, 120);
+            droppedCoins.reserve(droppedCoins.size() + spawnCount);
+            int remaining = owned;
+            for (int i = 0; i < spawnCount; ++i) {
+                DroppedCoin c{};
+                const float t = (spawnCount <= 1) ? 0.0f : (i / (float)(spawnCount - 1)) * 2.0f - 1.0f;
+                c.x = originX + t * 12.0f;
+                c.y = originY - 8.0f;
+                c.vx = t * 280.0f;
+                c.vy = -430.0f - 90.0f * std::fabs(t);
+                c.life = 12.0f;
+                droppedCoins.push_back(c);
+                remaining--;
+            }
+            int idx = 0;
+            while (remaining > 0 && !droppedCoins.empty()) {
+                droppedCoins[idx % droppedCoins.size()].value++;
+                remaining--;
+                idx++;
+            }
+        };
 
         while (levelRunning) {
             Uint32 now = SDL_GetTicks();
             float dt = (now - lastTicks) / 1000.0f;
             lastTicks = now;
-            const int updateFpsDisplay = std::clamp((dt > 0.0f) ? (int)(1.0f / dt) : 0, 0, 999999);
+            const int updateFpsInstant = std::clamp((dt > 0.0f) ? (int)(1.0f / dt) : 0, 0, kFpsDisplayMax);
+            if (updateFpsSmoothed <= 0.0f) updateFpsSmoothed = (float)updateFpsInstant;
+            else updateFpsSmoothed += ((float)updateFpsInstant - updateFpsSmoothed) * 0.16f;
+            updateFpsDisplay = std::clamp((int)std::lround(updateFpsSmoothed), 0, kFpsDisplayMax);
             bool temp1TouchedThisFrame = false;
             verticalWrapActive = false;
             activeBumperIndices.clear();
@@ -1268,6 +1670,7 @@ int main(int argc, char** argv) {
             frameMsHistoryHead = (frameMsHistoryHead + 1) % (int)frameMsHistory.size();
             if (!paused && !deathSequenceActive) {
                 levelTimerSeconds += dt;
+                levelReloadTitleTimer = std::max(0.0f, levelReloadTitleTimer - dt);
             }
             if (fastTravelCooldown > 0.0f) {
                 fastTravelCooldown = std::max(0.0f, fastTravelCooldown - dt);
@@ -1278,12 +1681,54 @@ int main(int argc, char** argv) {
             if (cameraSmoothingSuppressTimer > 0.0f) {
                 cameraSmoothingSuppressTimer = std::max(0.0f, cameraSmoothingSuppressTimer - dt);
             }
-#if HAS_SDL_MIXER
-            // Keep level music looping even if backend loop handling stops unexpectedly.
-            if (audioReady && levelMusic && !paused && !deathSequenceActive && !levelCompleteActive && !Mix_PlayingMusic()) {
-                Mix_PlayMusic(levelMusic, -1);
+            if (bossState.hurtFlash > 0.0f) {
+                bossState.hurtFlash = std::max(0.0f, bossState.hurtFlash - dt);
             }
-#endif
+            if (bossState.rainbowTimer > 0.0f) {
+                bossState.rainbowTimer = std::max(0.0f, bossState.rainbowTimer - dt);
+            }
+            if (playerInvincibleTimer > 0.0f) {
+                playerInvincibleTimer = std::max(0.0f, playerInvincibleTimer - dt);
+            }
+            if (!paused && !deathSequenceActive && !droppedCoins.empty()) {
+                auto tileSolidAt = [&](float wx, float wy) -> bool {
+                    const int tx = (int)std::floor(wx / map.tileSize);
+                    const int ty = (int)std::floor(wy / map.tileSize);
+                    if (tx < 0 || ty < 0 || tx >= map.w || ty >= map.h) return true;
+                    const int tidx = ty * map.w + tx;
+                    return map.solid[tidx] != 0 || map.semisolid[tidx] != 0;
+                };
+                const float coinR = 6.0f;
+                for (auto& c : droppedCoins) {
+                    c.life -= dt;
+                    c.vy += 1900.0f * dt;
+                    c.vy = std::min(c.vy, 1300.0f);
+                    c.x += c.vx * dt;
+                    c.y += c.vy * dt;
+                    if (tileSolidAt(c.x, c.y + coinR)) {
+                        int gy = (int)std::floor((c.y + coinR) / map.tileSize);
+                        c.y = gy * map.tileSize - coinR;
+                        c.vy *= -0.28f;
+                        if (std::fabs(c.vy) < 28.0f) c.vy = 0.0f;
+                        c.vx *= 0.78f;
+                    }
+                    c.vx *= std::exp(-2.0f * dt);
+                }
+                const float px1 = player.x;
+                const float px2 = player.x + player.w;
+                const float py1 = player.y;
+                const float py2 = player.y + player.h;
+                droppedCoins.erase(std::remove_if(droppedCoins.begin(), droppedCoins.end(), [&](const DroppedCoin& c) {
+                    if (c.life <= 0.0f) return true;
+                    const bool touched = (c.x + coinR > px1 && c.x - coinR < px2 && c.y + coinR > py1 && c.y - coinR < py2);
+                    if (!touched) return false;
+                    levelManager.addCoins(std::max(1, c.value));
+                    audio.playCoinSfx();
+                    return true;
+                }), droppedCoins.end());
+            }
+            // Keep level music looping even if backend loop handling stops unexpectedly.
+            audio.ensureLevelMusic(paused, deathSequenceActive, levelCompleteActive);
             {
                 const float target = levelCompleteActive ? 1.0f : 0.0f;
                 const float speed = 4.5f;
@@ -1294,13 +1739,9 @@ int main(int argc, char** argv) {
                 }
             }
             if (levelCompleteActive && !levelCompleteCounting) {
-#if HAS_SDL_MIXER
-                if (!audioReady || levelCompleteAudioChannel < 0 || !Mix_Playing(levelCompleteAudioChannel)) {
+                if (!audio.isReady() || levelCompleteAudioChannel < 0 || !audio.isChannelPlaying(levelCompleteAudioChannel)) {
                     levelCompleteCounting = true;
                 }
-#else
-                levelCompleteCounting = true;
-#endif
             }
             if (levelCompleteActive && levelCompleteCounting && !paused) {
                 // Uncapped payout during level complete: process full remaining bonus immediately.
@@ -1310,22 +1751,19 @@ int main(int argc, char** argv) {
                     levelCompleteCoinBonus -= coinStep;
                     scoreCount += coinStep;
                     levelCompleteAccountedScore += coinStep;
-#if HAS_SDL_MIXER
-                    if (audioReady && messageSfx) Mix_PlayChannel(-1, messageSfx, 0);
-#endif
+                    audio.playMessageSfx();
                 }
                 int timeStep = std::min(levelCompleteTimeScore, payoutPerFrame);
                 if (timeStep > 0) {
                     levelCompleteTimeScore -= timeStep;
                     scoreCount += timeStep;
                     levelCompleteAccountedScore += timeStep;
-#if HAS_SDL_MIXER
-                    if (audioReady && messageSfx) Mix_PlayChannel(-1, messageSfx, 0);
-#endif
+                    audio.playMessageSfx();
                 }
                 if (levelCompleteCoinBonus <= 0 && levelCompleteTimeScore <= 0) {
                     if (!levelCompleteNextPath.empty()) {
                         levelManager.setLevelPath(levelCompleteNextPath);
+                        droppedCoins.clear();
                         reloadLevel();
                         continue;
                     }
@@ -1385,6 +1823,14 @@ int main(int argc, char** argv) {
         const SDL_WindowID mainWindowId = SDL_GetWindowID(win);
         const bool embeddedDetailedDebugger = (showDetailedDebugger && debugWin == win && debugRen == ren);
         while (SDL_PollEvent(&e)) {
+            input.handleEvent(e);
+            {
+                InputSystem::DetectionEvent ev;
+                while (input.pollDetectionEvent(ev)) {
+                    const char* typeStr = (ev.type == InputSystem::DetectionEvent::Type::Connected) ? "connected" : "disconnected";
+                    SDL_Log("controller %s: id=%d name=\"%s\" connected=%d", typeStr, (int)ev.id, ev.name.c_str(), ev.connectedCount);
+                }
+            }
             if (e.type == SDL_QUIT) { running = false; levelRunning = false; }
             if (e.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && debugWin &&
                 e.window.windowID == SDL_GetWindowID(debugWin)) {
@@ -1408,7 +1854,7 @@ int main(int argc, char** argv) {
             if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST) {
                 paused = true;
             }
-            if (e.type == SDL_FINGERDOWN) {
+            if (e.type == SDL_EVENT_FINGER_DOWN) {
                 bool consumedByDebugger = false;
                 if (embeddedDetailedDebugger &&
                     (e.tfinger.windowID == mainWindowId || e.tfinger.windowID == 0)) {
@@ -1439,13 +1885,13 @@ int main(int argc, char** argv) {
                     activeTouches[e.tfinger.fingerID] = SDL_FPoint{e.tfinger.x, e.tfinger.y};
                 }
             }
-            if (e.type == SDL_FINGERMOTION) {
+            if (e.type == SDL_EVENT_FINGER_MOTION) {
                 if (e.tfinger.windowID == mainWindowId || e.tfinger.windowID == 0 ||
                     activeTouches.find(e.tfinger.fingerID) != activeTouches.end()) {
                     activeTouches[e.tfinger.fingerID] = SDL_FPoint{e.tfinger.x, e.tfinger.y};
                 }
             }
-            if (e.type == SDL_FINGERUP) {
+            if (e.type == SDL_EVENT_FINGER_UP) {
                 if (e.tfinger.windowID == mainWindowId || e.tfinger.windowID == 0 ||
                     activeTouches.find(e.tfinger.fingerID) != activeTouches.end()) {
                     activeTouches.erase(e.tfinger.fingerID);
@@ -1476,6 +1922,9 @@ int main(int argc, char** argv) {
                 if (e.key.key == SDLK_F7) {
                     showDebugView = !showDebugView;
                 }
+                if (e.key.key == SDLK_p) {
+                    showDemoPath = !showDemoPath;
+                }
                 if (e.key.key == SDLK_F6) {
                     showFpsCounter = !showFpsCounter;
                 }
@@ -1497,7 +1946,58 @@ int main(int argc, char** argv) {
                         std::string nextPath = levelManager.nextLevelPath();
                         if (!nextPath.empty()) {
                             levelManager.setLevelPath(nextPath);
+                            droppedCoins.clear();
                             reloadLevel();
+                        }
+                    }
+                }
+                if (e.key.key == SDLK_F3) {
+                    demoState.enabled = !demoState.enabled;
+                    demoState.jumpCooldown = 0.0f;
+                    demoState.jumpHoldTimer = 0.0f;
+                    demoState.stuckTime = 0.0f;
+                    demoState.lastX = player.x;
+                    demoState.repathTimer = 0.0f;
+                    demoState.waypointIndex = 0;
+                    demoState.pathTiles.clear();
+                    demoState.startTileSet = false;
+                    SDL_Log("demo autoplay: %s", demoState.enabled ? "enabled" : "disabled");
+                }
+                if (e.key.key == SDLK_F2) {
+                    if (replayRecorder.enabled) {
+                        stopReplayRecording("user_toggle_off");
+                        SDL_Log("replay recording: disabled");
+                    } else {
+                        startReplayRecording();
+                        SDL_Log("replay recording: enabled (%s)", replayRecorder.path.c_str());
+                    }
+                }
+                if (e.key.key == SDLK_F1) {
+                    if (replayPlayback.active) {
+                        stopReplayPlayback();
+                        SDL_Log("replay playback: disabled");
+                    } else {
+                        std::string replayPath;
+                        {
+                            std::ifstream latest("build/replays/latest_replay.txt", std::ios::binary);
+                            if (latest.is_open()) std::getline(latest, replayPath);
+                        }
+                        if (!replayPath.empty()) {
+                            std::string replayLevelPath;
+                            if (loadReplayForPlayback(replayPath, replayLevelPath)) {
+                                stopReplayRecording("playback_started");
+                                if (!replayLevelPath.empty() && replayLevelPath != levelManager.levelPath()) {
+                                    levelManager.setLevelPath(replayLevelPath);
+                                    droppedCoins.clear();
+                                    reloadLevel();
+                                }
+                                SDL_Log("replay playback: enabled (%s, frames=%d)",
+                                        replayPath.c_str(), (int)replayPlayback.frames.size());
+                            } else {
+                                SDL_Log("replay playback: failed to load %s", replayPath.c_str());
+                            }
+                        } else {
+                            SDL_Log("replay playback: latest replay path not found");
                         }
                     }
                 }
@@ -1516,6 +2016,18 @@ int main(int argc, char** argv) {
                     }
                 }
             }
+            if (!levelCompleteActive && InputSystem::isPauseToggleEvent(e)) {
+                paused = !paused;
+            }
+            if (paused && InputSystem::isLeftEvent(e)) {
+                pauseSelection = std::max(0, pauseSelection - 1);
+            }
+            if (paused && InputSystem::isRightEvent(e)) {
+                pauseSelection = std::min(2, pauseSelection + 1);
+            }
+            if (paused && InputSystem::isAcceptEvent(e)) {
+                handlePauseSelect(pauseSelection);
+            }
             if (paused && e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
                 int winW = 0, winH = 0, gx = 0, gy = 0;
                 SDL_GetWindowSize(win, &winW, &winH);
@@ -1526,7 +2038,7 @@ int main(int argc, char** argv) {
                     else if (SDL_PointInRect(&pt, &pauseBtnExit)) handlePauseSelect(2);
                 }
             }
-            if (paused && e.type == SDL_FINGERDOWN &&
+            if (paused && e.type == SDL_EVENT_FINGER_DOWN &&
                 (e.tfinger.windowID == mainWindowId || e.tfinger.windowID == 0)) {
                 int winW = 0, winH = 0;
                 SDL_GetWindowSize(win, &winW, &winH);
@@ -1553,6 +2065,7 @@ int main(int argc, char** argv) {
                 deathSequenceActive = false;
                 deathTimer = 0.0f;
                 if (livesCount > 0) {
+                    droppedCoins.clear();
                     reloadLevel();
                     continue;
                 } else {
@@ -1563,7 +2076,35 @@ int main(int argc, char** argv) {
             }
         }
 
-        if (!paused && !deathSequenceActive) {
+            bool replayPlaybackDrivingThisFrame = false;
+            if (replayPlayback.active && !paused && !deathSequenceActive && !levelCompleteActive) {
+                if (replayPlayback.nextFrame < replayPlayback.frames.size()) {
+                    const ReplayFrameSample& s = replayPlayback.frames[replayPlayback.nextFrame++];
+                    player.x = s.x;
+                    player.y = s.y;
+                    player.vx = s.vx;
+                    player.vy = s.vy;
+                    player.w = s.w;
+                    player.h = s.h;
+                    player.onGround = s.onGround;
+                    player.inWater = s.inWater;
+                    player.facing = s.facing;
+                    player.freeMove = s.freeMove;
+                    player.anim = s.anim;
+                    player.animTime = s.animTime;
+                    player.jumpHeld = s.jumpHeld;
+                    player.jumpHoldTime = s.jumpHoldTime;
+                    player.jumpWasDown = s.jumpWasDown;
+                    player.jumpBufferTime = s.jumpBufferTime;
+                    inputMove = s.inputMove;
+                    inputDown = s.inputDown;
+                    replayPlaybackDrivingThisFrame = true;
+                } else {
+                    stopReplayPlayback();
+                }
+            }
+
+            if (!paused && !deathSequenceActive && !replayPlaybackDrivingThisFrame) {
             const float frameStartX = player.x;
             const float frameStartY = player.y;
             enum MovementReasonMask : unsigned int {
@@ -1579,6 +2120,56 @@ int main(int argc, char** argv) {
             };
             bool fastTravelReload = false;
             bool fastTravelTriggered = false;
+            auto updateEndSignState = [&]() {
+                if (!endSignState.present || levelCompleteActive) return;
+                const float kFrameTime = 0.0166667f;
+                if (endSignState.phase == EndSignPhase::Idle) return;
+                const float animStepDt = std::clamp(dt, 0.0f, 0.05f);
+                endSignState.frameTimer += animStepDt;
+                while (endSignState.frameTimer >= kFrameTime) {
+                    endSignState.frameTimer -= kFrameTime;
+                    if (endSignState.phase == EndSignPhase::SignForward) {
+                        if (endSignState.signFrame < 15) {
+                            endSignState.signFrame++;
+                        } else {
+                            endSignState.phase = EndSignPhase::SignBackward;
+                        }
+                    } else if (endSignState.phase == EndSignPhase::SignBackward) {
+                        if (endSignState.signFrame > 9) {
+                            endSignState.signFrame--;
+                        } else {
+                            endSignState.signLoopCount++;
+                            if (endSignState.signLoopCount >= 3) {
+                                endSignState.phase = EndSignPhase::PlayerForward;
+                                endSignState.lockPlayerRight = true;
+                            } else {
+                                endSignState.phase = EndSignPhase::SignForward;
+                            }
+                        }
+                    } else if (endSignState.phase == EndSignPhase::PlayerForward) {
+                        if (endSignState.playerFrame < 7) {
+                            endSignState.playerFrame++;
+                        } else {
+                            endSignState.phase = EndSignPhase::PlayerBackward;
+                        }
+                    } else if (endSignState.phase == EndSignPhase::PlayerBackward) {
+                        if (endSignState.playerFrame > 1) {
+                            endSignState.playerFrame--;
+                        } else {
+                            endSignState.playerLoopCount++;
+                            if (endSignState.playerLoopCount >= 3) {
+                                endSignState.phase = EndSignPhase::TriggerComplete;
+                            } else {
+                                endSignState.phase = EndSignPhase::PlayerForward;
+                            }
+                        }
+                    } else if (endSignState.phase == EndSignPhase::TriggerComplete) {
+                        endSignState.phase = EndSignPhase::Done;
+                        startLevelCompleteSequence();
+                    }
+                }
+            };
+            updateEndSignState();
             auto ejectFromFastTravel = [&](int dirHint) {
                 const bool startedInsideSolid = RectHitsSolid(map, player.x, player.y, player.w, player.h);
                 float ex = 0.0f;
@@ -1756,6 +2347,7 @@ int main(int argc, char** argv) {
                 fastTravelCooldown = std::max(fastTravelCooldown, 0.2f);
             }
             if (fastTravelReload) {
+                droppedCoins.clear();
                 reloadLevel();
                 continue;
             }
@@ -1763,27 +2355,540 @@ int main(int argc, char** argv) {
             float touchMove = 0.0f;
             if (touchLeft) touchMove -= 1.0f;
             if (touchRight) touchMove += 1.0f;
+            const bool demoControlsActive = demoState.enabled && !paused && !deathSequenceActive && !levelCompleteActive;
+            bool demoDown = false;
+            bool demoJump = false;
+            if (demoControlsActive) {
+                demoState.jumpCooldown = std::max(0.0f, demoState.jumpCooldown - dt);
+                demoState.jumpHoldTimer = std::max(0.0f, demoState.jumpHoldTimer - dt);
+                demoState.repathTimer = std::max(0.0f, demoState.repathTimer - dt);
+                const float mapWidthPx = (float)(map.w * map.tileSize);
+                const float edgePad = (float)map.tileSize * 1.5f;
+                const int t = map.tileSize;
+                const int playerTilesH = std::max(1, (player.h + t - 1) / t);
+                if (player.x <= edgePad) demoState.dir = 1.0f;
+                if (player.x + player.w >= mapWidthPx - edgePad) demoState.dir = -1.0f;
+
+                auto passableTile = [&](int tx, int ty) -> bool {
+                    if (tx < 0 || ty < 0 || tx >= map.w || ty >= map.h) return false;
+                    return !map.getSolid(tx, ty) && !map.getSemiSolid(tx, ty);
+                };
+                auto standableTile = [&](int tx, int footTy) -> bool {
+                    if (tx < 0 || tx >= map.w) return false;
+                    if (footTy + 1 < 0 || footTy + 1 >= map.h) return false;
+                    const int headTy = footTy - (playerTilesH - 1);
+                    if (headTy < 0) return false;
+                    for (int ty = headTy; ty <= footTy; ++ty) {
+                        if (!passableTile(tx, ty)) return false;
+                    }
+                    return map.getSolid(tx, footTy + 1) || map.getSemiSolid(tx, footTy + 1);
+                };
+                auto findNearestStandable = [&](int cx, int cy, int radius) -> SDL_Point {
+                    SDL_Point best{-1, -1};
+                    int bestDist = 1e9;
+                    for (int r = 0; r <= radius; ++r) {
+                        for (int dy = -r; dy <= r; ++dy) {
+                            for (int dx = -r; dx <= r; ++dx) {
+                                if (std::abs(dx) != r && std::abs(dy) != r) continue;
+                                const int tx = cx + dx;
+                                const int ty = cy + dy;
+                                if (!standableTile(tx, ty)) continue;
+                                const int dist = std::abs(dx) + std::abs(dy);
+                                if (dist < bestDist) {
+                                    bestDist = dist;
+                                    best = SDL_Point{tx, ty};
+                                }
+                            }
+                        }
+                        if (best.x >= 0) break;
+                    }
+                    return best;
+                };
+                auto rebuildDemoPath = [&]() {
+                    SDL_Log("demo.path: rebuild start");
+                    if (!demoState.startTileSet) {
+                        const int startTx = (int)std::floor((player.x + player.w * 0.5f) / (float)t);
+                        const int startTy = (int)std::floor((player.y + player.h - 1.0f) / (float)t);
+                        SDL_Point seeded = findNearestStandable(startTx, startTy, 24);
+                        if (seeded.x >= 0) {
+                            demoState.startTile = seeded;
+                            demoState.startTileSet = true;
+                        }
+                    }
+                    SDL_Point start = demoState.startTileSet ? demoState.startTile : SDL_Point{-1, -1};
+                    if (start.x < 0 || !standableTile(start.x, start.y)) {
+                        const int startTx = (int)std::floor((player.x + player.w * 0.5f) / (float)t);
+                        const int startTy = (int)std::floor((player.y + player.h - 1.0f) / (float)t);
+                        start = findNearestStandable(startTx, startTy, 24);
+                        if (start.x >= 0) {
+                            demoState.startTile = start;
+                            demoState.startTileSet = true;
+                        }
+                    }
+                    if (start.x < 0) {
+                        SDL_Log("demo.path: rebuild failed (no valid start)");
+                        demoState.pathTiles.clear();
+                        demoState.waypointIndex = 0;
+                        return;
+                    }
+
+                    SDL_Point target{-1, -1};
+                    int bestTargetX = std::numeric_limits<int>::min();
+                    for (const auto& obj : objects) {
+                        if (obj.id != "67") continue;
+                        const int ex = (int)std::floor(obj.x / (float)t);
+                        const int ey = (int)std::floor((obj.y + 12.0f) / (float)t);
+                        SDL_Point candidate = findNearestStandable(ex, ey, 10);
+                        if (candidate.x < 0) continue;
+                        if (candidate.x > bestTargetX) {
+                            bestTargetX = candidate.x;
+                            target = candidate;
+                        }
+                    }
+                    if (target.x < 0) {
+                        for (int x = map.w - 2; x >= 1 && target.x < 0; --x) {
+                            for (int y = 1; y < map.h - 2; ++y) {
+                                if (standableTile(x, y)) {
+                                    target = SDL_Point{x, y};
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (target.x < 0) {
+                        SDL_Log("demo.path: rebuild failed (no valid target)");
+                        demoState.pathTiles.clear();
+                        demoState.waypointIndex = 0;
+                        return;
+                    }
+                    SDL_Log("demo.path: start=(%d,%d) target=(%d,%d)", start.x, start.y, target.x, target.y);
+
+                    struct Node {
+                        int g = std::numeric_limits<int>::max();
+                        int f = std::numeric_limits<int>::max();
+                        int parent = -1;
+                        bool closed = false;
+                    };
+                    auto indexOf = [&](int tx, int ty) { return ty * map.w + tx; };
+                    int foundIdx = -1;
+                    int expanded = 0;
+                    int guard = 0;
+                    int usedAttempt = -1;
+                    const int attemptCount = 3;
+                    for (int attempt = 0; attempt < attemptCount && foundIdx < 0; ++attempt) {
+                        const int heuristicXWeight = (attempt == 0) ? 3 : ((attempt == 1) ? 2 : 1);
+                        const int forwardCost = (attempt == 0) ? 6 : ((attempt == 1) ? 8 : 10);
+                        const int backCost = (attempt == 0) ? 14 : ((attempt == 1) ? 11 : 9);
+                        const int downMax = (attempt == 0) ? 3 : ((attempt == 1) ? 4 : 5);
+                        const int jumpMax = (attempt == 0) ? 3 : ((attempt == 1) ? 4 : 5);
+                        const int jumpForwardBase = (attempt == 0) ? 20 : ((attempt == 1) ? 17 : 14);
+                        const int jumpBackBase = (attempt == 0) ? 36 : ((attempt == 1) ? 26 : 20);
+                        const int guardLimit = (attempt == 0) ? 30000 : 60000;
+                        const float runMul = (attempt == 0) ? 0.78f : ((attempt == 1) ? 0.92f : 1.0f);
+                        SDL_Log("demo.path: attempt %d (hX=%d jumpMax=%d downMax=%d)", attempt, heuristicXWeight, jumpMax, downMax);
+
+                        const int total = map.w * map.h;
+                        std::vector<Node> nodes(total);
+                        std::vector<int> open;
+                        open.reserve(4096);
+                        auto heuristic = [&](int tx, int ty) {
+                            return std::abs(tx - target.x) * heuristicXWeight + std::abs(ty - target.y);
+                        };
+                        auto simulateJumpReachable = [&](int fromX, int fromY, int toX, int toY) -> bool {
+                        const float tile = (float)t;
+                        const float startFootX = (fromX + 0.5f) * tile;
+                        const float startFootY = (fromY + 1.0f) * tile;
+                        const float targetFootX = (toX + 0.5f) * tile;
+                        const float targetFootY = (toY + 1.0f) * tile;
+                        const float dir = (targetFootX >= startFootX) ? 1.0f : -1.0f;
+                        const float runSpeed = std::max(220.0f, movementCfg.maxSpeedGround * runMul);
+                        float px = startFootX - (float)player.w * 0.5f;
+                        float py = startFootY - (float)player.h;
+                        float vx = dir * runSpeed;
+                        float vy = -movementCfg.jumpSpeed;
+                        const float g = movementCfg.gravityGround;
+                        const float dtSim = 1.0f / 90.0f;
+                        const float maxSimT = 1.35f;
+
+                        auto rectHitsSolidOnly = [&](float x, float y, int w, int h) -> bool {
+                            int left = (int)std::floor(x / tile);
+                            int right = (int)std::floor((x + w - 1) / tile);
+                            int top = (int)std::floor(y / tile);
+                            int bottom = (int)std::floor((y + h - 1) / tile);
+                            for (int ty = top; ty <= bottom; ++ty) {
+                                for (int tx = left; tx <= right; ++tx) {
+                                    if (tx < 0 || ty < 0 || tx >= map.w || ty >= map.h) return true;
+                                    if (map.getSolid(tx, ty)) return true;
+                                }
+                            }
+                            return false;
+                        };
+
+                        for (float simT = 0.0f; simT <= maxSimT; simT += dtSim) {
+                            float nx = px + vx * dtSim;
+                            float ny = py + vy * dtSim;
+                            vy += g * dtSim;
+
+                            if (!rectHitsSolidOnly(nx, py, player.w, player.h)) px = nx;
+                            else vx = 0.0f;
+                            if (!rectHitsSolidOnly(px, ny, player.w, player.h)) py = ny;
+                            else {
+                                if (vy > 0.0f) {
+                                    const float footY = py + (float)player.h;
+                                    const float dX = (px + player.w * 0.5f) - targetFootX;
+                                    const float dY = footY - targetFootY;
+                                    if (std::fabs(dX) <= tile * 0.70f && std::fabs(dY) <= tile * 0.60f &&
+                                        standableTile(toX, toY)) {
+                                        return true;
+                                    }
+                                }
+                                break;
+                            }
+
+                            if (vy > 0.0f) {
+                                const float footY = py + (float)player.h;
+                                const float dX = (px + player.w * 0.5f) - targetFootX;
+                                const float dY = footY - targetFootY;
+                                if (std::fabs(dX) <= tile * 0.65f && std::fabs(dY) <= tile * 0.55f &&
+                                    standableTile(toX, toY)) {
+                                    return true;
+                                }
+                            }
+                        }
+                        return false;
+                        };
+                        auto tryRelax = [&](int fromIdx, int nx, int ny, int stepCost) {
+                        if (nx < 0 || ny < 0 || nx >= map.w || ny >= map.h) return;
+                        if (!standableTile(nx, ny)) return;
+                        const int ni = indexOf(nx, ny);
+                        if (nodes[ni].closed) return;
+                        const int ng = nodes[fromIdx].g + stepCost;
+                        if (ng >= nodes[ni].g) return;
+                        nodes[ni].g = ng;
+                        nodes[ni].f = ng + heuristic(nx, ny);
+                        nodes[ni].parent = fromIdx;
+                        open.push_back(ni);
+                        };
+
+                        const int startIdx = indexOf(start.x, start.y);
+                        nodes[startIdx].g = 0;
+                        nodes[startIdx].f = heuristic(start.x, start.y);
+                        open.push_back(startIdx);
+                        int expandedAttempt = 0;
+                        int guardAttempt = 0;
+                        while (!open.empty() && guardAttempt++ < guardLimit) {
+                        int bestOpenPos = 0;
+                        int bestNode = open[0];
+                        for (int i = 1; i < (int)open.size(); ++i) {
+                            if (nodes[open[i]].f < nodes[bestNode].f) {
+                                bestOpenPos = i;
+                                bestNode = open[i];
+                            }
+                        }
+                        open[bestOpenPos] = open.back();
+                        open.pop_back();
+                        if (nodes[bestNode].closed) continue;
+                        nodes[bestNode].closed = true;
+                        expandedAttempt++;
+                        const int cx = bestNode % map.w;
+                        const int cy = bestNode / map.w;
+                        if (cx == target.x && cy == target.y) {
+                            foundIdx = bestNode;
+                            expanded = expandedAttempt;
+                            guard = guardAttempt;
+                            usedAttempt = attempt;
+                            break;
+                        }
+
+                        tryRelax(bestNode, cx + 1, cy, forwardCost);
+                        tryRelax(bestNode, cx - 1, cy, backCost);
+                        for (int dy = 1; dy <= downMax; ++dy) {
+                            // Descents are allowed but carry slight risk cost.
+                            tryRelax(bestNode, cx + 1, cy + dy, forwardCost + 4 + dy * 3);
+                            tryRelax(bestNode, cx - 1, cy + dy, backCost + 8 + dy * 4);
+                        }
+                        for (int jx = 1; jx <= jumpMax; ++jx) {
+                            for (int jy = 1; jy <= jumpMax; ++jy) {
+                                int nx = cx + jx;
+                                int ny = cy - jy;
+                                if (simulateJumpReachable(cx, cy, nx, ny)) tryRelax(bestNode, nx, ny, jumpForwardBase + jx * 2 + jy * 4);
+                                nx = cx - jx;
+                                if (simulateJumpReachable(cx, cy, nx, ny)) tryRelax(bestNode, nx, ny, jumpBackBase + jx * 4 + jy * 6);
+                            }
+                        }
+                    }
+                        if (foundIdx < 0) {
+                            SDL_Log("demo.path: attempt %d failed (expanded=%d guard=%d)", attempt, expandedAttempt, guardAttempt);
+                        } else {
+                            // Reconstruct using nodes from successful attempt.
+                            demoState.pathTiles.clear();
+                            demoState.waypointIndex = 0;
+                            std::vector<SDL_Point> reversePath;
+                            for (int at = foundIdx; at >= 0; at = nodes[at].parent) {
+                                reversePath.push_back(SDL_Point{at % map.w, at / map.w});
+                                if (at == startIdx) break;
+                            }
+                            for (int i = (int)reversePath.size() - 1; i >= 0; --i) {
+                                demoState.pathTiles.push_back(reversePath[(size_t)i]);
+                            }
+                        }
+                    }
+
+                    if (foundIdx < 0) {
+                        SDL_Log("demo.path: rebuild failed (unreachable target, expanded=%d, guard=%d)", expanded, guard);
+                        demoState.pathTiles.clear();
+                        demoState.waypointIndex = 0;
+                        return;
+                    }
+                    SDL_Log("demo.path: rebuild ok (attempt=%d expanded=%d, guard=%d, path_len=%d)", usedAttempt, expanded, guard, (int)demoState.pathTiles.size());
+                };
+
+                if (demoState.repathTimer <= 0.0f || demoState.pathTiles.empty() || demoState.waypointIndex >= demoState.pathTiles.size()) {
+                    rebuildDemoPath();
+                    demoState.repathTimer = 0.85f;
+                }
+
+                const float probeNearX = (demoState.dir > 0.0f) ? (player.x + player.w + 6.0f) : (player.x - 6.0f);
+                const float probeFarX = (demoState.dir > 0.0f) ? (player.x + player.w + t * 1.3f) : (player.x - t * 1.3f);
+                const int txNear = (int)std::floor(probeNearX / (float)t);
+                const int txFar = (int)std::floor(probeFarX / (float)t);
+                const int topTy = (int)std::floor((player.y + 2.0f) / (float)t);
+                const int footTy = (int)std::floor((player.y + player.h + 1.0f) / (float)t);
+                bool wallAhead = false;
+                for (int ty = topTy; ty <= footTy - 1; ++ty) {
+                    if (map.getSolid(txNear, ty) || map.getSolid(txFar, ty)) {
+                        wallAhead = true;
+                        break;
+                    }
+                }
+                const bool groundAheadNear = map.getSolid(txNear, footTy) || map.getSemiSolid(txNear, footTy);
+                const bool groundAheadFar = map.getSolid(txFar, footTy) || map.getSemiSolid(txFar, footTy);
+                const bool gapAhead = (!groundAheadNear || !groundAheadFar);
+                const int txFar2 = (int)std::floor(((demoState.dir > 0.0f) ? (player.x + player.w + t * 2.1f) : (player.x - t * 2.1f)) / (float)t);
+                const bool groundAheadFar2 = map.getSolid(txFar2, footTy) || map.getSemiSolid(txFar2, footTy);
+                const bool safeLandingAhead = groundAheadFar || groundAheadFar2;
+
+                if (!demoState.pathTiles.empty() && demoState.waypointIndex < demoState.pathTiles.size()) {
+                    // Track progress on a fixed start->finish path by snapping to nearest upcoming node.
+                    const float playerCenterX = player.x + player.w * 0.5f;
+                    const float playerCenterY = player.y + player.h * 0.5f;
+                    const size_t prevWaypointIndex = demoState.waypointIndex;
+                    size_t nearestIdx = demoState.waypointIndex;
+                    float nearestD2 = std::numeric_limits<float>::max();
+                    const size_t lookEnd = std::min(demoState.pathTiles.size(), demoState.waypointIndex + 28);
+                    for (size_t i = demoState.waypointIndex; i < lookEnd; ++i) {
+                        const SDL_Point p = demoState.pathTiles[i];
+                        const float px = (p.x + 0.5f) * (float)t;
+                        const float py = (p.y + 0.5f) * (float)t;
+                        const float dx = px - playerCenterX;
+                        const float dy = py - playerCenterY;
+                        const float d2 = dx * dx + dy * dy;
+                        if (d2 < nearestD2) {
+                            nearestD2 = d2;
+                            nearestIdx = i;
+                        }
+                    }
+                    demoState.waypointIndex = nearestIdx;
+                    if (demoState.waypointIndex != prevWaypointIndex) {
+                        SDL_Log("demo.path: waypoint %d -> %d", (int)prevWaypointIndex, (int)demoState.waypointIndex);
+                    }
+                }
+                if (!demoState.pathTiles.empty() && demoState.waypointIndex < demoState.pathTiles.size()) {
+                    while (demoState.waypointIndex < demoState.pathTiles.size() &&
+                           !standableTile(demoState.pathTiles[demoState.waypointIndex].x,
+                                          demoState.pathTiles[demoState.waypointIndex].y)) {
+                        demoState.waypointIndex++;
+                    }
+                    if (demoState.waypointIndex >= demoState.pathTiles.size()) {
+                        demoState.repathTimer = 0.0f;
+                    }
+                }
+                if (!demoState.pathTiles.empty() && demoState.waypointIndex < demoState.pathTiles.size()) {
+                    const SDL_Point wp = demoState.pathTiles[demoState.waypointIndex];
+                    const float waypointX = (wp.x + 0.5f) * (float)t;
+                    const float waypointY = (wp.y + 0.5f) * (float)t;
+                    const float playerCenterX = player.x + player.w * 0.5f;
+                    const float playerCenterY = player.y + player.h * 0.5f;
+                    const float dxWp = waypointX - playerCenterX;
+                    const float dyWp = waypointY - playerCenterY;
+                    if (std::fabs(dxWp) < 8.0f && std::fabs(dyWp) < (float)t * 0.55f) {
+                        if (demoState.waypointIndex + 1 < demoState.pathTiles.size()) {
+                            demoState.waypointIndex++;
+                        }
+                    }
+                    const float steer = (dxWp > 4.0f) ? 1.0f : ((dxWp < -10.0f) ? -1.0f : 1.0f);
+                    demoState.dir = steer;
+                    touchMove = steer;
+                    if (player.onGround && demoState.jumpCooldown <= 0.0f && dyWp < -10.0f) {
+                        demoState.jumpCooldown = 0.18f;
+                        demoState.jumpHoldTimer = 0.11f;
+                    }
+                }
+
+                bool bumperAhead = false;
+                bool springAhead = false;
+                bool fastTravelAhead = false;
+                int fastTravelAheadId = -1;
+                float nearestFastTravelDist = std::numeric_limits<float>::max();
+                float nearestFastTravelCenterX = 0.0f;
+                float nearestSpringDist = std::numeric_limits<float>::max();
+                float nearestSpringCenterX = 0.0f;
+                const float playerCenterX = player.x + player.w * 0.5f;
+                const float playerCenterY = player.y + player.h * 0.5f;
+                for (const auto& obj : objects) {
+                    int objId = 0;
+                    try { objId = std::stoi(obj.id); } catch (...) { continue; }
+                    const float objCenterX = obj.x;
+                    const float objCenterY = obj.y;
+                    const float dx = objCenterX - playerCenterX;
+                    const float dy = objCenterY - playerCenterY;
+                    const float aheadDist = dx * ((demoState.dir > 0.0f) ? 1.0f : -1.0f);
+                    if (objId == 46) {
+                        if (aheadDist >= -8.0f && aheadDist <= (float)t * 3.0f && std::fabs(dy) <= (float)t * 1.5f) {
+                            bumperAhead = true;
+                        }
+                        continue;
+                    }
+                    if (objId == 31) {
+                        if (aheadDist >= -10.0f && aheadDist <= (float)t * 4.0f && std::fabs(dy) <= (float)t * 1.8f) {
+                            if (aheadDist < nearestSpringDist) {
+                                nearestSpringDist = aheadDist;
+                                nearestSpringCenterX = objCenterX;
+                                springAhead = true;
+                            }
+                        }
+                        continue;
+                    }
+                    if (objId < 57 || objId > 61) continue;
+                    if (aheadDist < -20.0f || aheadDist > (float)t * 7.0f) continue;
+                    if (std::fabs(dy) > (float)t * 2.5f) continue;
+                    if (aheadDist < nearestFastTravelDist) {
+                        nearestFastTravelDist = aheadDist;
+                        nearestFastTravelCenterX = objCenterX;
+                        fastTravelAheadId = objId;
+                        fastTravelAhead = true;
+                    }
+                }
+
+                bool shouldJump = false;
+                if (player.onGround && demoState.jumpCooldown <= 0.0f) {
+                    shouldJump = wallAhead || (gapAhead && safeLandingAhead) || bumperAhead;
+                }
+
+                if (springAhead) {
+                    // Line up with spring and let spring impulse handle the vertical movement.
+                    const float springDeltaX = nearestSpringCenterX - playerCenterX;
+                    if (std::fabs(springDeltaX) > 4.0f) {
+                        touchMove = (springDeltaX > 0.0f) ? 1.0f : -1.0f;
+                        demoState.dir = touchMove;
+                    }
+                    if (nearestSpringDist <= (float)t * 1.6f) {
+                        shouldJump = false;
+                        demoState.jumpHoldTimer = 0.0f;
+                    }
+                    // If terrain demands vertical gain and a spring is nearby, trust spring pathing.
+                    if (wallAhead || gapAhead) {
+                        shouldJump = false;
+                    }
+                }
+
+                if (fastTravelAhead) {
+                    touchMove = demoState.dir;
+                    const float targetXDelta = nearestFastTravelCenterX - playerCenterX;
+                    if (std::fabs(targetXDelta) > 6.0f) {
+                        touchMove = (targetXDelta > 0.0f) ? 1.0f : -1.0f;
+                        demoState.dir = touchMove;
+                    }
+                    if (fastTravelAheadId == 58) {
+                        demoDown = true;
+                    }
+                    if (fastTravelAheadId == 57 || fastTravelAheadId == 61) {
+                        shouldJump = false;
+                    }
+                    // Safety: avoid entering nearby fast-travel if already close to route end-sign zone.
+                    if (endSignState.present && std::fabs(endSignState.objectX - playerCenterX) < (float)t * 10.0f) {
+                        fastTravelAhead = false;
+                        demoDown = false;
+                        touchMove = demoState.dir;
+                    }
+                }
+
+                if (bumperAhead && !wallAhead && player.onGround) {
+                    // Prefer avoiding bumper collisions when there is space to sidestep/back off.
+                    shouldJump = false;
+                    if (!gapAhead) touchMove = -demoState.dir;
+                }
+
+                if (shouldJump) {
+                    demoState.jumpCooldown = bumperAhead ? 0.14f : 0.22f;
+                    demoState.jumpHoldTimer = bumperAhead ? 0.14f : 0.10f;
+                }
+                demoJump = (demoState.jumpHoldTimer > 0.0f);
+                const float dx = player.x - demoState.lastX;
+                if (std::fabs(dx) < 2.0f) demoState.stuckTime += dt;
+                else demoState.stuckTime = 0.0f;
+                if (player.onGround && demoState.stuckTime > 0.9f) {
+                    demoState.dir = -demoState.dir;
+                    demoState.stuckTime = 0.0f;
+                    demoState.jumpCooldown = 0.0f;
+                    demoState.jumpHoldTimer = 0.12f;
+                    demoJump = true;
+                }
+                demoState.lastX = player.x;
+                if (!fastTravelAhead) {
+                    touchMove = demoState.dir;
+                } else {
+                    touchMove = std::clamp(touchMove, -1.0f, 1.0f);
+                }
+                touchDown = demoDown;
+                touchJump = demoJump;
+            }
+            const bool forceRightMovement = endSignState.lockPlayerRight;
+            const float gamepadMove = forceRightMovement ? 1.0f : input.gameplayMoveX();
+            const bool gamepadDown = forceRightMovement ? false : input.gameplayDownHeld();
+            const bool gamepadJump = forceRightMovement ? false : input.gameplayJumpHeld();
+            const bool gamepadFreeMove = input.freeMoveHeld();
             const bool fastTravelEnabled = fastTravelTriggered;
+            if (forceRightMovement) {
+                touchMove = 1.0f;
+                touchDown = false;
+                touchJump = false;
+                inputMove = 1.0f;
+                inputDown = false;
+            }
             PlayerUpdateResult upd = PlayerUpdateResult::RenderOnly;
             const float beforeNormalX = player.x;
             const float beforeNormalY = player.y;
                 if (!fastTravelEnabled) {
                     upd = UpdatePlayerMovement(
                         player, map, dt, jumpBufferMax, movementCfg,
-                        touchMove, touchDown, touchJump, inputMove, inputDown
+                        touchMove, touchDown, touchJump,
+                        gamepadMove, gamepadDown, gamepadJump, gamepadFreeMove,
+                        inputMove, inputDown
                     );
                     if (std::fabs(player.x - beforeNormalX) > 0.01f || std::fabs(player.y - beforeNormalY) > 0.01f) {
                         addMovementReason(MR_NORMAL_MOVEMENT);
                     }
-                } else {
+            } else {
                 // Fast-travel mode disables normal movement/physics.
                 inputMove = 0.0f;
                 inputDown = false;
             }
+            replayInput.touchMove = touchMove;
+            replayInput.touchDown = touchDown;
+            replayInput.touchJump = touchJump;
+            replayInput.gamepadMove = gamepadMove;
+            replayInput.gamepadDown = gamepadDown;
+            replayInput.gamepadJump = gamepadJump;
+            replayInput.gamepadFreeMove = gamepadFreeMove;
+            replayInput.inputMove = inputMove;
+            replayInput.inputDown = inputDown;
+            replayInput.forceRightMovement = forceRightMovement;
+            replayInput.fastTravelEnabled = fastTravelEnabled;
+            replayInput.demoEnabled = demoState.enabled;
             {
                 const float beforeWrapX = player.x;
                 const float beforeWrapY = player.y;
-                const int currentLevelId = parseLevelIdFromLevelPath(levelManager.levelPath());
                 const bool horizontalWrapActive = (currentLevelId == 39 || currentLevelId == 40);
                 if (((currentLevelId == 29 &&
                     player.x > 1250.0f) || (currentLevelId == 30 &&
@@ -1836,6 +2941,7 @@ int main(int argc, char** argv) {
                             std::string pitPath = levelManager.levelPathByCode(world * 100 + area * 10 + targetTime);
                             if (!pitPath.empty()) {
                                     levelManager.setLevelPath(pitPath);
+                                    droppedCoins.clear();
                                     reloadLevel();
                                     continue;
                             }
@@ -1845,25 +2951,193 @@ int main(int argc, char** argv) {
                 deathSequenceActive = true;
                 deathLifeDeducted = false;
                 deathTimer = 0.0f;
-#if HAS_SDL_MIXER
-                if (audioReady) {
-                    Mix_HaltChannel(-1);
-                    Mix_HaltMusic();
-                    if (loseSfx) Mix_PlayChannel(-1, loseSfx, 0);
-                }
-#endif
+                audio.haltAllChannels();
+                audio.haltMusic();
+                audio.playLoseSfx();
                 continue;
             }
 
             if (upd == PlayerUpdateResult::RenderOnly) {
+                updatePlayerAnimState(inputMove, inputDown, dt);
                 goto RENDER_ONLY;
+            }
+
+            if (!bossState.active && playerTouchesTileId(map, player, 68, 68)) {
+                bossState.active = true;
+            }
+
+            if (bossState.active && !levelCompleteActive) {
+                auto applyBossContactDamageToPlayer = [&]() -> bool {
+                    const bool hasCoins = levelManager.coinCount() > 0;
+                    if (hasCoins) {
+                        dropPlayerCoins(player.x + player.w * 0.5f, player.y + player.h * 0.5f);
+                        playerInvincibleTimer = kPlayerInvincibleDuration;
+                        player.anim = ANIM_HURT;
+                        player.animTime = 0.0f;
+                        const float playerCenterX = player.x + player.w * 0.5f;
+                        const float pushDir = (playerCenterX < bossState.x) ? -1.0f : 1.0f;
+                        player.vx = pushDir * 520.0f;
+                        player.vy = -760.0f;
+                        player.onGround = false;
+                        audio.playLoseSfx();
+                        return false;
+                    }
+                    deathSequenceActive = true;
+                    deathLifeDeducted = false;
+                    deathTimer = 0.0f;
+                    audio.haltAllChannels();
+                    audio.haltMusic();
+                    audio.playLoseSfx();
+                    return true;
+                };
+
+                const float bossW = 56.0f;
+                const float bossH = 56.0f;
+                const float halfW = bossW * 0.5f;
+                const float halfH = bossH * 0.5f;
+                float arenaLeft = (float)map.tileSize * 2.0f;
+                float arenaTop = (float)map.tileSize * 2.0f;
+                float arenaRight = (float)(map.w * map.tileSize) - (float)map.tileSize * 2.0f;
+                float arenaBottom = (float)(map.h * map.tileSize) - (float)map.tileSize * 2.0f;
+                if (bossState.sourceWorld == 3) {
+                    const float playerCenterX = player.x + player.w * 0.5f;
+                    const float playerCenterY = player.y + player.h * 0.5f;
+                    if (bossState.phase == 0) {
+                        if (!bossState.replayPath.empty()) {
+                            bossState.x = bossState.replayPath[0].x;
+                            bossState.y = bossState.replayPath[0].y;
+                        }
+                        const float dx = playerCenterX - bossState.x;
+                        const float dy = playerCenterY - bossState.y;
+                        if (dx * dx + dy * dy <= 260.0f * 260.0f) {
+                            bossState.phase = 1;
+                            bossState.replayIndex = 0;
+                            bossState.replayFrameAcc = 0.0f;
+                            SDL_Log("boss.w3: phase 0 -> 1 (start replay)");
+                        }
+                    } else if (bossState.phase == 1) {
+                        if (!bossState.replayPath.empty()) {
+                            bossState.replayFrameAcc += dt * 24.0f;
+                            while (bossState.replayFrameAcc >= 1.0f && bossState.replayIndex + 1 < bossState.replayPath.size()) {
+                                bossState.replayFrameAcc -= 1.0f;
+                                bossState.replayIndex++;
+                            }
+                            const SDL_FPoint& p = bossState.replayPath[std::min(bossState.replayIndex, bossState.replayPath.size() - 1)];
+                            bossState.x = p.x;
+                            bossState.y = p.y;
+                            if (bossState.replayIndex + 1 >= bossState.replayPath.size()) {
+                                bossState.phase = 2;
+                                SDL_Log("boss.w3: phase 1 -> 2 (replay done)");
+                            }
+                        } else {
+                            bossState.phase = 2;
+                        }
+                    } else if (bossState.phase == 2) {
+                        const float dx = playerCenterX - bossState.x;
+                        const float dy = playerCenterY - bossState.y;
+                        if (dx * dx + dy * dy <= 300.0f * 300.0f) {
+                            bossState.phase = 3;
+                            bossState.health = bossState.maxHealth;
+                            bossState.vx = 280.0f;
+                            bossState.vy = 220.0f;
+                            SDL_Log("boss.w3: phase 2 -> 3 (fight active)");
+                        }
+                    }
+                }
+                const bool hasBossCameraLock =
+                    (bossState.sourceWorld == 1 || bossState.sourceWorld == 2) ||
+                    (bossState.sourceWorld == 4) ||
+                    (bossState.sourceWorld == 3 && bossState.phase == 3);
+                if (hasBossCameraLock) {
+                    const float lockCx = (bossState.sourceWorld == 2) ? 1887.0f :
+                        ((bossState.sourceWorld == 4) ? (1315.0f + kGameplayViewW * 0.5f) :
+                        ((bossState.sourceWorld == 3) ? (2528.0f + kGameplayViewW * 0.5f) : 1170.0f));
+                    const float lockCy = (bossState.sourceWorld == 2) ? 744.0f :
+                        ((bossState.sourceWorld == 4) ? (202.0f + kGameplayViewH * 0.5f) :
+                        ((bossState.sourceWorld == 3) ? (976.0f + kGameplayViewH * 0.5f) : 132.0f));
+                    const float lockLeft = lockCx - kGameplayViewW * 0.5f + halfW + 8.0f;
+                    const float lockRight = lockCx + kGameplayViewW * 0.5f - halfW - 8.0f;
+                    const float lockTop = lockCy - kGameplayViewH * 0.5f + halfH + 8.0f;
+                    const float lockBottom = lockCy + kGameplayViewH * 0.5f - halfH - 8.0f;
+                    arenaLeft = std::max(arenaLeft, lockLeft);
+                    arenaRight = std::min(arenaRight, lockRight);
+                    arenaTop = std::max(arenaTop, lockTop);
+                    arenaBottom = std::min(arenaBottom, lockBottom);
+                }
+                if (arenaLeft > arenaRight) std::swap(arenaLeft, arenaRight);
+                if (arenaTop > arenaBottom) std::swap(arenaTop, arenaBottom);
+                const bool bossCanMoveAndTakeDamage = !(bossState.sourceWorld == 3 && bossState.phase != 3);
+                if (bossCanMoveAndTakeDamage) {
+                    bossState.x += bossState.vx * dt;
+                    bossState.y += bossState.vy * dt;
+                    if (bossState.x - halfW < arenaLeft) {
+                        bossState.x = arenaLeft + halfW;
+                        bossState.vx = std::fabs(bossState.vx);
+                    }
+                    if (bossState.x + halfW > arenaRight) {
+                        bossState.x = arenaRight - halfW;
+                        bossState.vx = -std::fabs(bossState.vx);
+                    }
+                    if (bossState.y - halfH < arenaTop) {
+                        bossState.y = arenaTop + halfH;
+                        bossState.vy = std::fabs(bossState.vy);
+                    }
+                    if (bossState.y + halfH > arenaBottom) {
+                        bossState.y = arenaBottom - halfH;
+                        bossState.vy = -std::fabs(bossState.vy);
+                    }
+                }
+
+                const float bx = bossState.x - halfW;
+                const float by = bossState.y - halfH;
+                const float px1 = player.x;
+                const float px2 = player.x + (float)player.w;
+                const float py1 = player.y;
+                const float py2 = player.y + (float)player.h;
+                const bool overlap = (px2 > bx) && (px1 < bx + bossW) && (py2 > by) && (py1 < by + bossH);
+                if (overlap && playerInvincibleTimer <= 0.0f) {
+                    if (!bossCanMoveAndTakeDamage) {
+                        if (applyBossContactDamageToPlayer()) continue;
+                    } else {
+                        const bool world4Invuln = (bossState.sourceWorld == 4 && bossState.rainbowTimer > 0.0f);
+                        const bool stomp = !world4Invuln && (player.vy > 80.0f) && (py2 <= by + bossH * 0.55f);
+                        if (stomp) {
+                            player.y = by - (float)player.h;
+                            player.vy = -1000.0f;
+                            player.onGround = false;
+                            playerInvincibleTimer = 0.12f;
+                            bossState.health = std::max(0, bossState.health - 1);
+                            bossState.hurtFlash = 0.18f;
+                            if (bossState.sourceWorld == 4) {
+                                bossState.rainbowTimer = 3.0f;
+                                const float pad = 20.0f;
+                                const float minX = std::min(arenaLeft + halfW + pad, arenaRight - halfW - pad);
+                                const float maxX = std::max(arenaLeft + halfW + pad, arenaRight - halfW - pad);
+                                const float minY = std::min(arenaTop + halfH + pad, arenaBottom - halfH - pad);
+                                const float maxY = std::max(arenaTop + halfH + pad, arenaBottom - halfH - pad);
+                                const float rx = (float)std::rand() / (float)RAND_MAX;
+                                const float ry = (float)std::rand() / (float)RAND_MAX;
+                                bossState.x = minX + (maxX - minX) * rx;
+                                bossState.y = minY + (maxY - minY) * ry;
+                            }
+                            audio.playBumperSfx();
+                            if (bossState.health <= 0) {
+                                bossState.active = false;
+                                if (bossState.world == 1) {
+                                    clampCamX = false;
+                                }
+                                startLevelCompleteSequence();
+                            }
+                        } else {
+                            if (applyBossContactDamageToPlayer()) continue;
+                        }
+                    }
+                }
             }
 
             int collectedNow = levelManager.collectCoinsAtPlayer(map, player);
             if (collectedNow > 0) {
-#if HAS_SDL_MIXER
-                if (audioReady && coinSfx) Mix_PlayChannel(-1, coinSfx, 0);
-#endif
+                audio.playCoinSfx();
             }
             if (timeTravelTriggerCooldown <= 0.0f) {
                 levelManager.updateTimeWarpIdAtPlayer(map, player);
@@ -1913,9 +3187,7 @@ int main(int argc, char** argv) {
                     player.onGround = false;
                     addMovementReason(MR_BUMPER);
                     activeBumperIndices.insert(objIdx);
-#if HAS_SDL_MIXER
-                    if (audioReady && bumperSfx) Mix_PlayChannel(-1, bumperSfx, 0);
-#endif
+                    audio.playBumperSfx();
                     break;
                 }
                 if (playerCY > bumperCY && player.vy <= 0.0f) {
@@ -1924,9 +3196,7 @@ int main(int argc, char** argv) {
                     player.onGround = false;
                     addMovementReason(MR_BUMPER);
                     activeBumperIndices.insert(objIdx);
-#if HAS_SDL_MIXER
-                    if (audioReady && bumperSfx) Mix_PlayChannel(-1, bumperSfx, 0);
-#endif
+                    audio.playBumperSfx();
                     break;
                 }
             }
@@ -1945,44 +3215,61 @@ int main(int argc, char** argv) {
                         reasonText.c_str());
             }
 
-            if (!levelCompleteActive && playerTouchesTileId(map, player, 30, 68)) {
-                levelCompleteActive = true;
-                levelCompleteCounting = false;
-                levelCompleteNextPath = allowNextLevelProgression ? levelManager.nextLevelPath() : "";
-                levelCompleteAreaId = levelManager.levelPartId();
-                levelCompleteSnapshotSeconds = (int)levelTimerSeconds;
-                levelCompleteCoinBonus = levelManager.coinCount() * 10;
-                const int elapsedMinutes = (int)std::floor(levelTimerSeconds / 60.0f);
-                if (elapsedMinutes > 3) {
-                    levelCompleteTimeScore = 0;
-                } else {
-                    int denom = 1;
-                    for (int i = 0; i < elapsedMinutes; ++i) denom *= 5;
-                    levelCompleteTimeScore = 10000 / std::max(1, denom);
-                }
-                levelCompleteAccountedScore = 0;
-#if HAS_SDL_MIXER
-                if (audioReady) {
-                    Mix_HaltMusic();
-                    if (victorySfx) {
-                        levelCompleteAudioChannel = Mix_PlayChannel(-1, victorySfx, 0);
-                    } else {
-                        levelCompleteCounting = true;
+            if (!levelCompleteActive && endSignState.present && !endSignState.triggered) {
+                const float playerCenterX = player.x + player.w * 0.5f;
+                const float prevPlayerCenterX = frameStartX + player.w * 0.5f;
+                int triggerIdx = -1;
+                float triggerX = 0.0f;
+                float triggerY = 0.0f;
+                float bestDxNow = 1e30f;
+                for (int i = 0; i < (int)objects.size(); ++i) {
+                    if (objects[i].id != "67") continue;
+                    const float signX = objects[i].x;
+                    const float signY = objects[i].y;
+                    const float dxNow = signX - playerCenterX;
+                    const float aboveDelta = player.y - signY;
+                    const bool crossedSignX = prevPlayerCenterX < signX && playerCenterX >= signX;
+                    const bool signNotFarLeft = signX >= prevPlayerCenterX - 8.0f;
+                    const bool signNotFarAbove = aboveDelta <= 220.0f;
+                    const bool signLikelyVisible = dxNow <= (float)kGameplayViewW * 0.95f;
+                    if (!crossedSignX || !signNotFarLeft || !signNotFarAbove || !signLikelyVisible) continue;
+                    if (dxNow < bestDxNow) {
+                        bestDxNow = dxNow;
+                        triggerIdx = i;
+                        triggerX = signX;
+                        triggerY = signY;
                     }
-                } else {
-                    levelCompleteCounting = true;
                 }
-#else
-                levelCompleteCounting = true;
-#endif
+                if (triggerIdx >= 0) {
+                    endSignState.objectIndex = triggerIdx;
+                    endSignState.objectX = triggerX;
+                    endSignState.objectY = triggerY;
+                    endSignState.triggered = true;
+                    endSignState.phase = EndSignPhase::SignForward;
+                    endSignState.frameTimer = 0.0f;
+                }
             }
+
+            // Fallback for levels without end_sign object.
+            if (!levelCompleteActive && !endSignState.present && playerTouchesTileId(map, player, 30, 30)) {
+                startLevelCompleteSequence();
+            }
+            updatePlayerAnimState(inputMove, inputDown, dt);
         }
 
 RENDER_ONLY:
+        {
+            const Uint32 renderNow = SDL_GetTicks();
+            if (renderNow < nextPresentTicks) {
+                // Skip rendering on this tick so simulation updates can run independently.
+                SDL_Delay(1);
+                continue;
+            }
+        }
 
         const bool renderWrapX = true;
         const bool renderWrapY = true;
-        const int renderLevelId = parseLevelIdFromLevelPath(levelManager.levelPath());
+        const int renderLevelId = currentLevelId;
         const bool cameraWrapX = (renderLevelId == 39 || renderLevelId == 40);
         bool cameraWrapY = false;
         if (((renderLevelId == 29 &&
@@ -1998,9 +3285,31 @@ RENDER_ONLY:
 
         const int worldViewW = kGameplayViewW;
         const int worldViewH = kGameplayViewH;
-        const float freeCamX = player.x + player.w * 0.5f - worldViewW * 0.5f;
+        const bool lockCameraToEndSign =
+            endSignState.triggered &&
+            endSignState.objectIndex >= 0 &&
+            endSignState.phase != EndSignPhase::Done;
+        const bool forceBossCamera =
+            bossState.active &&
+            (bossState.sourceWorld == 1 ||
+             bossState.sourceWorld == 2 ||
+             bossState.sourceWorld == 4 ||
+             (bossState.sourceWorld == 3 && bossState.phase == 3));
+        const float forcedBossCameraX = (bossState.sourceWorld == 2) ? 1887.0f
+            : ((bossState.sourceWorld == 4) ? (1315.0f + kGameplayViewW * 0.5f)
+            : ((bossState.sourceWorld == 3) ? (2528.0f + kGameplayViewW * 0.5f) : 1170.0f));
+        const float forcedBossCameraY = (bossState.sourceWorld == 2) ? 744.0f
+            : ((bossState.sourceWorld == 4) ? (202.0f + kGameplayViewH * 0.5f)
+            : ((bossState.sourceWorld == 3) ? (976.0f + kGameplayViewH * 0.5f) : 132.0f));
+        const float cameraTargetX = forceBossCamera
+            ? forcedBossCameraX
+            : (lockCameraToEndSign ? endSignState.objectX : (player.x + player.w * 0.5f));
+        const float cameraTargetY = forceBossCamera
+            ? forcedBossCameraY
+            : (lockCameraToEndSign ? endSignState.objectY : (player.y + player.h * 0.5f));
+        const float freeCamX = cameraTargetX - worldViewW * 0.5f;
         float camX = freeCamX;
-        const float freeCamY = player.y + player.h * 0.5f - worldViewH * 0.5f;
+        const float freeCamY = cameraTargetY - worldViewH * 0.5f;
         float camY = freeCamY;
         float maxCamX = map.w * map.tileSize - worldViewW - map.tileSize;
         float maxCamY = map.h * map.tileSize - worldViewH;
@@ -2028,29 +3337,19 @@ RENDER_ONLY:
         SDL_RenderClear(ren);
 
         // Parallax background (3 layers)
-        if (bgTex && !bgFrameByName.empty()) {
-            auto getBg = [&](const std::string& name) -> const Frame* {
-                auto it = bgFrameByName.find(name);
-                if (it != bgFrameByName.end()) return &it->second;
-                if (name.size() > 4 && name.substr(name.size() - 4) == ".png") {
-                    std::string noExt = name.substr(0, name.size() - 4);
-                    it = bgFrameByName.find(noExt);
-                    if (it != bgFrameByName.end()) return &it->second;
-                }
-                return nullptr;
-            };
+        if (bgTex && (parallaxLayer0 || parallaxLayer1 || parallaxLayer2)) {
             struct Layer {
-                const char* frame;
+                const Frame* frame;
                 bool verticalParallax;
             };
             Layer layers[3] = {
-                {"w1b.png", false},
-                {"w1f.png", true},
-                {"w1f.png", true}
+                {parallaxLayer0, false},
+                {parallaxLayer1, true},
+                {parallaxLayer2, true}
             };
             const float parallaxFactor = 0.5f;
             for (const auto& layer : layers) {
-                const Frame* f = getBg(layer.frame);
+                const Frame* f = layer.frame;
                 if (!f) continue;
                 int fw = f->rotated ? f->rect.h : f->rect.w;
                 int fh = f->rotated ? f->rect.w : f->rect.h;
@@ -2092,6 +3391,13 @@ RENDER_ONLY:
 
         // Tile textures (DF_Blocks)
         if (blocksTex && !blocksFrameList.empty()) {
+            auto frameByName = [&](const std::string& key) -> const Frame* {
+                auto it = blocksFrameByName.find(key);
+                if (it != blocksFrameByName.end()) return &it->second;
+                auto itPng = blocksFrameByName.find(key + ".png");
+                if (itPng != blocksFrameByName.end()) return &itPng->second;
+                return nullptr;
+            };
             const float tileSizeF = (float)map.tileSize;
             const int cycleIndex = (int)((SDL_GetTicks() / 300) % 8);
             const int tileStartY = renderWrapY ? tileMinY : std::max(1, tileMinY);
@@ -2115,21 +3421,21 @@ RENDER_ONLY:
                     const Frame* frame = nullptr;
                     if (id == 24) {
                         frame = cycleFrames[cycleIndex];
-                    } else if (levelManager.worldId() == 3 && id >= 3 && id <= 11) {
+                    } else {
+                        auto tileIt = tileFrameById.find((int)id);
+                        if (tileIt != tileFrameById.end()) {
+                            frame = frameByName(tileIt->second);
+                        }
+                    }
+                    if (!frame && levelManager.worldId() == 3 && id >= 3 && id <= 11) {
                         const unsigned int h = (unsigned int)mapX * 73856093u ^
                                                (unsigned int)mapY * 19349663u ^
                                                (unsigned int)id * 83492791u;
                         const int v = (int)(h % 10u) + 1; // 1..10
                         const std::string key = std::string("3.") + std::to_string(v);
-                        auto it = blocksFrameByName.find(key);
-                        if (it != blocksFrameByName.end()) {
-                            frame = &it->second;
-                        } else {
-                            auto itPng = blocksFrameByName.find(key + ".png");
-                            if (itPng != blocksFrameByName.end()) frame = &itPng->second;
-                        }
-                        if (!frame) frame = blocksFrameById[id];
-                    } else {
+                        frame = frameByName(key);
+                    }
+                    if (!frame) {
                         frame = blocksFrameById[id];
                     }
                     if (!frame) continue;
@@ -2146,6 +3452,7 @@ RENDER_ONLY:
 
         std::string debugAnimName = "IDLE";
         std::string renderFrameName;
+        int renderAnimFrameIndex = -1;
         switch (player.anim) {
             case 1: debugAnimName = "WALK"; break;
             case 2: debugAnimName = "JUMP"; break;
@@ -2286,6 +3593,7 @@ RENDER_ONLY:
             try { objId = std::stoi(obj.id); } catch (...) { objId = 0; }
             const bool isFastTravelChanger = (objId >= 57 && objId <= 61);
             const bool isBumper = (obj.id == "46");
+            const bool isEndSign = (obj.id == "67");
             float entityBaseX = obj.x - 16.0f;
             float entityBaseY = obj.y - 16.0f;
             if (renderWrapX) {
@@ -2301,60 +3609,107 @@ RENDER_ONLY:
                 while ((entityBaseY - camY) >  wrapH * 0.5f) entityBaseY -= wrapH;
             }
             const Frame* of = nullptr;
-            std::string frameKey = obj.id;
-            if (obj.id == "46" && activeBumperIndices.find(objIdx) != activeBumperIndices.end()) {
-                frameKey = "Bumper";
-            }
-            auto mapIt = entityFrameKeyByObjectId.find(obj.id);
-            if (mapIt != entityFrameKeyByObjectId.end()) frameKey = mapIt->second;
-
-            auto it = entitiesFrameByName.find(frameKey);
+            SDL_Texture* objectTex = entitiesTex;
             bool objectTypeKnown = false;
-            if (it != entitiesFrameByName.end()) {
-                of = &it->second;
-                objectTypeKnown = true;
+            if (isEndSign) {
+                objectTex = endSignTex;
+                std::string key = "SignPost9";
+                if (endSignState.present && endSignState.triggered) {
+                    if (endSignState.phase == EndSignPhase::PlayerForward ||
+                        endSignState.phase == EndSignPhase::PlayerBackward ||
+                        endSignState.phase == EndSignPhase::TriggerComplete ||
+                        endSignState.phase == EndSignPhase::Done) {
+                        key = std::string("SignPostPlayer1.") + std::to_string(std::clamp(endSignState.playerFrame, 1, 7));
+                    } else {
+                        key = std::string("SignPost") + std::to_string(std::clamp(endSignState.signFrame, 9, 15));
+                    }
+                }
+                auto sit = endSignFrames.find(key);
+                if (sit == endSignFrames.end()) sit = endSignFrames.find(key + ".png");
+                if (sit != endSignFrames.end()) {
+                    of = &sit->second;
+                    objectTypeKnown = true;
+                }
             } else {
-                std::string pngKey = frameKey + ".png";
-                it = entitiesFrameByName.find(pngKey);
+                std::string frameKey = obj.id;
+                if (obj.id == "46" && activeBumperIndices.find(objIdx) != activeBumperIndices.end()) {
+                    frameKey = "Bumper";
+                }
+                auto mapIt = entityFrameKeyByObjectId.find(obj.id);
+                if (mapIt != entityFrameKeyByObjectId.end()) frameKey = mapIt->second;
+
+                auto it = entitiesFrameByName.find(frameKey);
                 if (it != entitiesFrameByName.end()) {
                     of = &it->second;
                     objectTypeKnown = true;
+                } else {
+                    std::string pngKey = frameKey + ".png";
+                    it = entitiesFrameByName.find(pngKey);
+                    if (it != entitiesFrameByName.end()) {
+                        of = &it->second;
+                        objectTypeKnown = true;
+                    }
                 }
             }
+            if (!of && isEndSign) of = defaultEndSignFrame;
             if (!of) of = defaultEntityFrame;
-            if (!isFastTravelChanger && !isBumper && hideUnknownObjectTypes && !objectTypeKnown) {
+            if (!isFastTravelChanger && !isBumper && !isEndSign && hideUnknownObjectTypes && !objectTypeKnown) {
                 continue;
             }
 
-            if (!isFastTravelChanger && entitiesTex && of) {
-                const int fw = 32;
-                const int fh = 32;
+            if (!isFastTravelChanger && objectTex && of) {
+                int fw = 32;
+                int fh = 32;
+                int dstX = (int)std::lround(entityBaseX - camX);
+                int dstY = (int)std::lround(entityBaseY - camY);
+                if (isEndSign) {
+                    const int srcW = of->rotated ? of->rect.h : of->rect.w;
+                    const int srcH = of->rotated ? of->rect.w : of->rect.h;
+                    // Use a stable world-scale size for signpost frames.
+                    const int targetH = 70;
+                    fh = targetH;
+                    fw = std::max(18, (int)std::lround((srcW / (double)std::max(1, srcH)) * targetH));
+                    // Anchor end_sign to object center X and tile-bottom Y for consistent visibility.
+                    const float objectCenterScreenX = obj.x - camX;
+                    const float objectBottomScreenY = (obj.y - 16.0f) - camY + 32.0f;
+                    dstX = (int)std::lround(objectCenterScreenX - fw * 0.5f);
+                    dstY = (int)std::lround(objectBottomScreenY - fh);
+                }
                 SDL_Rect dst{
-                    (int)std::lround(entityBaseX - camX),
-                    (int)std::lround(entityBaseY - camY),
+                    dstX,
+                    dstY,
                     fw,
                     fh
                 };
-                renderFrame(ren, entitiesTex, *of, dst);
-                if (renderWrapY) {
+                auto isOnscreen = [&](const SDL_Rect& r) -> bool {
+                    if (r.x + r.w <= 0 || r.y + r.h <= 0) return false;
+                    if (r.x >= worldViewW || r.y >= worldViewH) return false;
+                    return true;
+                };
+                auto renderObjFrame = [&](const SDL_Rect& outDst) {
+                    if (isEndSign && !isOnscreen(outDst)) return;
+                    renderFrame(ren, objectTex, *of, outDst);
+                };
+                renderObjFrame(dst);
+                if (renderWrapY && !isEndSign) {
                     const int wrapH = map.h * map.tileSize;
                     SDL_Rect dstTop = dst;
                     SDL_Rect dstBottom = dst;
                     dstTop.y -= wrapH;
                     dstBottom.y += wrapH;
-                    renderFrame(ren, entitiesTex, *of, dstTop);
-                    renderFrame(ren, entitiesTex, *of, dstBottom);
+                    renderObjFrame(dstTop);
+                    renderObjFrame(dstBottom);
                 }
-                if (renderWrapX) {
+                if (renderWrapX && !isEndSign) {
                     const int wrapW = map.w * map.tileSize;
                     SDL_Rect dstLeft = dst;
                     SDL_Rect dstRight = dst;
                     dstLeft.x -= wrapW;
                     dstRight.x += wrapW;
-                    renderFrame(ren, entitiesTex, *of, dstLeft);
-                    renderFrame(ren, entitiesTex, *of, dstRight);
+                    renderObjFrame(dstLeft);
+                    renderObjFrame(dstRight);
                 }
-                if (renderWrapY && renderWrapX) {
+                if (renderWrapY && renderWrapX && !isEndSign) {
                     const int wrapW = map.w * map.tileSize;
                     const int wrapH = map.h * map.tileSize;
                     SDL_Rect dstTL = dst;
@@ -2365,10 +3720,10 @@ RENDER_ONLY:
                     dstTR.x += wrapW; dstTR.y -= wrapH;
                     dstBL.x -= wrapW; dstBL.y += wrapH;
                     dstBR.x += wrapW; dstBR.y += wrapH;
-                    renderFrame(ren, entitiesTex, *of, dstTL);
-                    renderFrame(ren, entitiesTex, *of, dstTR);
-                    renderFrame(ren, entitiesTex, *of, dstBL);
-                    renderFrame(ren, entitiesTex, *of, dstBR);
+                    renderObjFrame(dstTL);
+                    renderObjFrame(dstTR);
+                    renderObjFrame(dstBL);
+                    renderObjFrame(dstBR);
                 }
             } else if (!isFastTravelChanger) {
                 SDL_SetRenderDrawColor(ren, 120, 220, 120, 255);
@@ -2442,75 +3797,139 @@ RENDER_ONLY:
             }
         }
 
+        if (bossState.active && bossesTex && bossNormalFrame) {
+            const Frame* bf = (bossState.hurtFlash > 0.0f && bossHurtFrame) ? bossHurtFrame : bossNormalFrame;
+            const int dstW = 56;
+            const int dstH = 56;
+            SDL_Rect dst{
+                (int)std::lround((bossState.x - dstW * 0.5f) - camX),
+                (int)std::lround((bossState.y - dstH * 0.5f) - camY),
+                dstW,
+                dstH
+            };
+            if (!(dst.x + dst.w <= 0 || dst.y + dst.h <= 0 || dst.x >= worldViewW || dst.y >= worldViewH)) {
+                if (bossState.sourceWorld == 4 && bossState.rainbowTimer > 0.0f) {
+                    const float t = (float)((double)SDL_GetTicksNS() / 1000000000.0 * 6.5);
+                    const int r = (int)std::lround(127.0 + 128.0 * std::sin(t));
+                    const int g = (int)std::lround(127.0 + 128.0 * std::sin(t + 2.0943951f));
+                    const int b = (int)std::lround(127.0 + 128.0 * std::sin(t + 4.1887902f));
+                    SDL_SetTextureColorMod(bossesTex, (Uint8)std::clamp(r, 0, 255), (Uint8)std::clamp(g, 0, 255), (Uint8)std::clamp(b, 0, 255));
+                } else {
+                    SDL_SetTextureColorMod(bossesTex, 255, 255, 255);
+                }
+                renderFrame(ren, bossesTex, *bf, dst);
+                SDL_SetTextureColorMod(bossesTex, 255, 255, 255);
+                if (showHitboxes) {
+                    SDL_SetRenderDrawColor(ren, 255, 60, 60, 255);
+                    SDL_FRect hb{(float)dst.x, (float)dst.y, (float)dst.w, (float)dst.h};
+                    SDL_RenderDrawRectF(ren, &hb);
+                }
+                if (showDebugView) {
+                    const std::string hpText = std::string("BOSS HP: ") + std::to_string(bossState.health) + "/" + std::to_string(bossState.maxHealth);
+                    DrawText(ren, std::max(8, dst.x - 8), std::max(8, dst.y - 18), 1, hpText);
+                }
+            }
+        }
+
+        if (!droppedCoins.empty()) {
+            const int cycleIndex = (int)((SDL_GetTicks() / 300) % 8);
+            const Frame* coinFrame = cycleFrames[cycleIndex];
+            for (const auto& c : droppedCoins) {
+                SDL_Rect dst{
+                    (int)std::lround(c.x - 8.0f - camX),
+                    (int)std::lround(c.y - 8.0f - camY),
+                    16, 16
+                };
+                if (dst.x + dst.w <= 0 || dst.y + dst.h <= 0 || dst.x >= worldViewW || dst.y >= worldViewH) continue;
+                if (blocksTex && coinFrame) {
+                    renderFrame(ren, blocksTex, *coinFrame, dst);
+                } else {
+                    SDL_SetRenderDrawColor(ren, 255, 220, 40, 255);
+                    SDL_RenderFillRect(ren, &dst);
+                }
+            }
+        }
+
+        if (showDemoPath && !demoState.pathTiles.empty()) {
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+            for (size_t i = 0; i < demoState.pathTiles.size(); ++i) {
+                const SDL_Point p = demoState.pathTiles[i];
+                const bool completed = i < demoState.waypointIndex;
+                SDL_SetRenderDrawColor(ren, completed ? 70 : 80, completed ? 80 : 240, completed ? 95 : 120, completed ? 110 : 190);
+                SDL_FRect tileRect{
+                    p.x * (float)map.tileSize - camX + 4.0f,
+                    p.y * (float)map.tileSize - camY + 4.0f,
+                    (float)map.tileSize - 8.0f,
+                    (float)map.tileSize - 8.0f
+                };
+                SDL_RenderDrawRectF(ren, &tileRect);
+                if (i > 0) {
+                    const SDL_Point prev = demoState.pathTiles[i - 1];
+                    const bool segmentCompleted = (i - 1) < demoState.waypointIndex;
+                    SDL_SetRenderDrawColor(ren, segmentCompleted ? 70 : 80, segmentCompleted ? 80 : 240, segmentCompleted ? 95 : 120, segmentCompleted ? 95 : 180);
+                    const float x1 = prev.x * (float)map.tileSize + map.tileSize * 0.5f - camX;
+                    const float y1 = prev.y * (float)map.tileSize + map.tileSize * 0.5f - camY;
+                    const float x2 = p.x * (float)map.tileSize + map.tileSize * 0.5f - camX;
+                    const float y2 = p.y * (float)map.tileSize + map.tileSize * 0.5f - camY;
+                    SDL_RenderLine(ren, x1, y1, x2, y2);
+                }
+            }
+            if (!demoState.pathTiles.empty()) {
+                const SDL_Point start = demoState.pathTiles.front();
+                const SDL_Point finish = demoState.pathTiles.back();
+                SDL_SetRenderDrawColor(ren, 90, 180, 255, 220);
+                SDL_FRect sRect{
+                    start.x * (float)map.tileSize - camX + 1.0f,
+                    start.y * (float)map.tileSize - camY + 1.0f,
+                    (float)map.tileSize - 2.0f,
+                    (float)map.tileSize - 2.0f
+                };
+                SDL_RenderDrawRectF(ren, &sRect);
+                SDL_SetRenderDrawColor(ren, 255, 120, 90, 220);
+                SDL_FRect fRect{
+                    finish.x * (float)map.tileSize - camX + 1.0f,
+                    finish.y * (float)map.tileSize - camY + 1.0f,
+                    (float)map.tileSize - 2.0f,
+                    (float)map.tileSize - 2.0f
+                };
+                SDL_RenderDrawRectF(ren, &fRect);
+            }
+            if (demoState.waypointIndex < demoState.pathTiles.size()) {
+                const SDL_Point wp = demoState.pathTiles[demoState.waypointIndex];
+                SDL_SetRenderDrawColor(ren, 255, 240, 80, 220);
+                SDL_FRect wpRect{
+                    wp.x * (float)map.tileSize - camX + 2.0f,
+                    wp.y * (float)map.tileSize - camY + 2.0f,
+                    (float)map.tileSize - 4.0f,
+                    (float)map.tileSize - 4.0f
+                };
+                SDL_RenderDrawRectF(ren, &wpRect);
+            }
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
+            DrawText(ren, 12, 82, 2, "PATH S->F");
+        }
+
         SDL_FRect pr{ player.x - camX, player.y - camY, (float)player.w, (float)player.h };
         {
-            enum PlayerAnim {
-                ANIM_IDLE,
-                ANIM_WALK,
-                ANIM_JUMP,
-                ANIM_FALL,
-                ANIM_CROUCH,
-                ANIM_SKID,
-                ANIM_HURT,
-                ANIM_DEATH
-            };
-
-            auto framesFromNames = [&](const std::vector<std::string>& names) {
-                std::vector<const Frame*> out;
-                out.reserve(names.size());
-                for (const auto& n : names) out.push_back(getPlayerFrame(n));
-                return out;
-            };
-
-            const std::vector<const Frame*> idle = framesFromNames(animCfg.idle);
-            const std::vector<const Frame*> walk = framesFromNames(animCfg.walk);
-            const std::vector<const Frame*> jump = framesFromNames(animCfg.jump);
-            const std::vector<const Frame*> fall = framesFromNames(animCfg.fall);
-            const std::vector<const Frame*> crouch = framesFromNames(animCfg.crouch);
-            const std::vector<const Frame*> skid = framesFromNames(animCfg.skid);
-            const std::vector<const Frame*> hurt = framesFromNames(animCfg.hurt);
-            const std::vector<const Frame*> death = framesFromNames(animCfg.death);
-
-            int newAnim = ANIM_IDLE;
-            float vxAbs = std::abs(player.vx);
-            if (player.freeMove) {
-                newAnim = ANIM_IDLE;
-            } else if (!player.onGround) {
-                newAnim = (player.vy < 0.0f) ? ANIM_JUMP : ANIM_FALL;
-            } else if (inputDown) {
-                newAnim = ANIM_CROUCH;
-            } else if (vxAbs > 8.0f) {
-                bool opposing = (player.vx > 20.0f && inputMove < -0.1f) || (player.vx < -20.0f && inputMove > 0.1f);
-                newAnim = opposing ? ANIM_SKID : ANIM_WALK;
-            }
-
-            if (inputMove < -0.1f) player.facing = -1;
-            if (inputMove > 0.1f) player.facing = 1;
-
-            if (newAnim != player.anim) {
-                player.anim = newAnim;
-                player.animTime = 0.0f;
-            } else {
-                player.animTime += dt;
-            }
-
-            const std::vector<const Frame*>* seq = &idle;
+            const std::vector<const Frame*>* seq = &animIdleFrames;
             switch (player.anim) {
-                case ANIM_WALK: seq = &walk; break;
-                case ANIM_JUMP: seq = &jump; break;
-                case ANIM_FALL: seq = &fall; break;
-                case ANIM_CROUCH: seq = &crouch; break;
-                case ANIM_SKID: seq = &skid; break;
-                case ANIM_HURT: seq = &hurt; break;
-                case ANIM_DEATH: seq = &death; break;
-                default: seq = &idle; break;
+                case ANIM_WALK: seq = &animWalkFrames; break;
+                case ANIM_JUMP: seq = &animJumpFrames; break;
+                case ANIM_FALL: seq = &animFallFrames; break;
+                case ANIM_CROUCH: seq = &animCrouchFrames; break;
+                case ANIM_SKID: seq = &animSkidFrames; break;
+                case ANIM_HURT: seq = &animHurtFrames; break;
+                case ANIM_DEATH: seq = &animDeathFrames; break;
+                default: seq = &animIdleFrames; break;
             }
 
             const Frame* renderFramePtr = nullptr;
             int frameCount = (int)seq->size();
             if (frameCount > 0) {
-                float fps = animCfg.fps > 0.0f ? animCfg.fps : 15.0f;
+                float fps = animCfg.fps > 0.0f ? animCfg.fps : 20.0f;
+                fps = std::max(20.0f, fps);
                 int idx = (int)(player.animTime * fps) % frameCount;
+                renderAnimFrameIndex = idx;
                 renderFramePtr = (*seq)[idx];
                 if (player.anim == ANIM_IDLE && idx < (int)animCfg.idle.size()) {
                     renderFrameName = animCfg.idle[idx];
@@ -2532,6 +3951,14 @@ RENDER_ONLY:
             }
 
             if (playerTex && renderFramePtr) {
+                if (playerInvincibleTimer > 0.0f) {
+                    const float phase = (float)(SDL_GetTicksNS() / 1000000000.0) * 14.0f;
+                    const float wave = 0.5f + 0.5f * std::sin(phase);
+                    const Uint8 alpha = (Uint8)std::clamp((int)std::lround(95.0f + 160.0f * wave), 70, 255);
+                    SDL_SetTextureAlphaMod(playerTex, alpha);
+                } else {
+                    SDL_SetTextureAlphaMod(playerTex, 255);
+                }
                 SDL_Rect dst{
                     (int)pr.x,
                     (int)(pr.y + pr.h - pr.h),
@@ -2558,6 +3985,7 @@ RENDER_ONLY:
                     renderFrameEx(ren, playerTex, *renderFramePtr, dstLeft, flip);
                     renderFrameEx(ren, playerTex, *renderFramePtr, dstRight, flip);
                 }
+                SDL_SetTextureAlphaMod(playerTex, 255);
             } else {
                 SDL_SetRenderDrawColor(ren, 200, 200, 230, 255);
                 SDL_RenderFillRectF(ren, &pr);
@@ -2607,6 +4035,18 @@ RENDER_ONLY:
         // HUD: lives counter (bottom-left).
         DrawText(ren, 16 + hudSlideOutX, screenH - 32, 2, "LIVES");
         DrawText(ren, 94 + hudSlideOutX, screenH - 32, 2, std::to_string(livesCount));
+        if (levelReloadTitleTimer > 0.0f) {
+            const float showT = std::clamp(levelReloadTitleTimer / 2.0f, 0.0f, 1.0f);
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+            SDL_SetRenderDrawColor(ren, 8, 10, 14, (Uint8)std::lround(140.0f * showT));
+            SDL_FRect titleBackdrop{(float)(screenW / 2 - 300), 18.0f, 600.0f, 52.0f};
+            SDL_RenderFillRect(ren, &titleBackdrop);
+            SDL_SetRenderDrawColor(ren, 255, 255, 255, (Uint8)std::lround(255.0f * std::min(1.0f, showT * 2.0f)));
+            const int titleScale = 2;
+            const int titleW = MeasureTextWidth(titleScale, currentFancyLevelName);
+            DrawText(ren, screenW / 2 - titleW / 2, 32, titleScale, currentFancyLevelName);
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
+        }
 
         if (paused) {
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
@@ -2719,11 +4159,81 @@ RENDER_ONLY:
             DrawText(ren, screenW / 2 - MeasureTextWidth(bonusScale, bonusLine3) / 2 + completeSlideInXForY(bonusStartY + bonusLineGap * 2), bonusStartY + bonusLineGap * 2, bonusScale, bonusLine3);
         }
         if (showFpsCounter) {
-            const std::string fpsText = std::string("UFPS: ") + std::to_string(updateFpsDisplay) +
-                                        " RFPS: " + std::to_string(renderFpsDisplay);
+            const std::string ufpsText = std::string("UFPS: ") + std::to_string(updateFpsDisplay);
+            const std::string rfpsText = std::string("RFPS: ") + std::to_string(renderFpsDisplay);
             const int fpsScale = 2;
-            const int fpsX = screenW - 10 - MeasureTextWidth(fpsScale, fpsText);
-            DrawText(ren, fpsX, 10, fpsScale, fpsText);
+            const int fpsX = screenW - 10 - std::max(MeasureTextWidth(fpsScale, ufpsText), MeasureTextWidth(fpsScale, rfpsText));
+            DrawText(ren, fpsX, 10, fpsScale, ufpsText);
+            DrawText(ren, fpsX, 34, fpsScale, rfpsText);
+        }
+        if (demoState.enabled) {
+            DrawText(ren, 12, 10, 2, "DEMO");
+        }
+        if (replayRecorder.enabled) {
+            DrawText(ren, 12, 34, 2, "REC");
+        }
+        if (replayPlayback.active) {
+            DrawText(ren, 12, 58, 2, "PBK");
+        }
+        if (replayRecorder.enabled && replayRecorder.out.is_open()) {
+            try {
+                const bool* keys = SDL_GetKeyboardState(nullptr);
+                nlohmann::json frame;
+                frame["type"] = "frame";
+                frame["i"] = replayRecorder.frameIndex++;
+                frame["ticks_ns"] = (uint64_t)SDL_GetTicksNS();
+                frame["dt"] = dt;
+                frame["paused"] = paused;
+                frame["level_timer"] = levelTimerSeconds;
+                frame["level_path"] = levelManager.levelPath();
+                frame["world"] = levelManager.worldId();
+                frame["area"] = levelManager.levelPartId();
+                frame["cam"] = {{"x", camX}, {"y", camY}};
+                frame["player"] = {
+                    {"x", player.x}, {"y", player.y},
+                    {"w", player.w}, {"h", player.h},
+                    {"vx", player.vx}, {"vy", player.vy},
+                    {"on_ground", player.onGround},
+                    {"in_water", player.inWater},
+                    {"facing", player.facing},
+                    {"free_move", player.freeMove},
+                    {"anim", player.anim},
+                    {"anim_name", debugAnimName},
+                    {"anim_time", player.animTime},
+                    {"frame_index", renderAnimFrameIndex},
+                    {"frame_name", renderFrameName},
+                    {"jump_held", player.jumpHeld},
+                    {"jump_hold_time", player.jumpHoldTime},
+                    {"jump_was_down", player.jumpWasDown},
+                    {"jump_buffer_time", player.jumpBufferTime}
+                };
+                frame["input_map"] = {
+                    {"touch_move", replayInput.touchMove},
+                    {"touch_down", replayInput.touchDown},
+                    {"touch_jump", replayInput.touchJump},
+                    {"gamepad_move", replayInput.gamepadMove},
+                    {"gamepad_down", replayInput.gamepadDown},
+                    {"gamepad_jump", replayInput.gamepadJump},
+                    {"gamepad_free_move", replayInput.gamepadFreeMove},
+                    {"input_move", replayInput.inputMove},
+                    {"input_down", replayInput.inputDown},
+                    {"force_right_movement", replayInput.forceRightMovement},
+                    {"fast_travel_enabled", replayInput.fastTravelEnabled},
+                    {"demo_enabled", replayInput.demoEnabled},
+                    {"keyboard", {
+                        {"left", keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_LEFT]},
+                        {"right", keys[SDL_SCANCODE_D] || keys[SDL_SCANCODE_RIGHT]},
+                        {"up", keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_UP]},
+                        {"down", keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_DOWN]},
+                        {"jump", keys[SDL_SCANCODE_SPACE]},
+                        {"shift", keys[SDL_SCANCODE_LSHIFT] || keys[SDL_SCANCODE_RSHIFT]}
+                    }}
+                };
+                replayRecorder.out << frame.dump() << "\n";
+                if ((replayRecorder.frameIndex % 120) == 0) replayRecorder.out.flush();
+            } catch (...) {
+                replayRecorder.enabled = false;
+            }
         }
 
         if (showDebugView) {
@@ -2900,18 +4410,17 @@ RENDER_ONLY:
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
         SDL_RenderClear(ren);
         SDL_RenderCopy(ren, gameTarget, nullptr, &presentDst);
+        SDL_RenderPresent(ren);
         {
-            const Uint32 presentNow = SDL_GetTicks();
-            const bool shouldPresent = !vsyncEnabled || presentNow >= nextPresentTicks;
-            if (shouldPresent) {
-                SDL_RenderPresent(ren);
-                const Uint32 presentedAt = SDL_GetTicks();
-                const Uint32 presentDelta = presentedAt - lastPresentTicks;
-                renderFpsDisplay = std::clamp((presentDelta > 0) ? (int)(1000u / presentDelta) : 0, 0, 999999);
-                lastPresentTicks = presentedAt;
-                // Render cadence limiter only; update loop remains uncapped.
-                nextPresentTicks = presentedAt + 16;
-            }
+            const Uint32 presentedAt = SDL_GetTicks();
+            const Uint32 presentDelta = presentedAt - lastPresentTicks;
+            const int renderFpsInstant = std::clamp((presentDelta > 0) ? (int)(1000u / presentDelta) : 0, 0, kFpsDisplayMax);
+            if (renderFpsSmoothed <= 0.0f) renderFpsSmoothed = (float)renderFpsInstant;
+            else renderFpsSmoothed += ((float)renderFpsInstant - renderFpsSmoothed) * 0.20f;
+            renderFpsDisplay = std::clamp((int)std::lround(renderFpsSmoothed), 0, kFpsDisplayMax);
+            lastPresentTicks = presentedAt;
+            // Keep render cadence capped while updates remain independent.
+            nextPresentTicks = presentedAt + 16;
         }
         if (showDetailedDebugger && debugRen && debugWin && !embeddedDetailedDebugger) {
             int dbgW = 0, dbgH = 0;
@@ -3147,15 +4656,8 @@ RENDER_ONLY:
         }
         }
         if (!running) break;
-        if (audioReady) {
-#if HAS_SDL_MIXER
-            if (levelMusic) {
-            Mix_HaltMusic();
-            Mix_FreeMusic(levelMusic);
-            levelMusic = nullptr;
-            }
-#endif
-        }
+        stopReplayRecording(returnToSelect ? "return_to_select" : "level_end");
+        audio.unloadLevelMusic();
         if (returnToSelect) {
             if (selectedFromUserMenu) reopenUserLevelMenu = true;
             continue;
@@ -3164,33 +4666,16 @@ RENDER_ONLY:
 
     if (blocksTex) SDL_DestroyTexture(blocksTex);
     if (entitiesTex) SDL_DestroyTexture(entitiesTex);
+    if (bossesTex) SDL_DestroyTexture(bossesTex);
+    if (endSignTex) SDL_DestroyTexture(endSignTex);
     if (pauseTex) SDL_DestroyTexture(pauseTex);
+    if (introCardTex) SDL_DestroyTexture(introCardTex);
     if (worldTarget) SDL_DestroyTexture(worldTarget);
     if (gameTarget) SDL_DestroyTexture(gameTarget);
     if (debugRen && debugRen != ren) SDL_DestroyRenderer(debugRen);
     if (debugWin && debugWin != win) SDL_DestroyWindow(debugWin);
     ShutdownTextRenderer();
-    if (audioReady) {
-#if HAS_SDL_MIXER
-        Mix_HaltMusic();
-        Mix_HaltChannel(-1);
-#endif
-    }
-#if HAS_SDL_MIXER
-    if (coinSfx) { Mix_FreeChunk(coinSfx); coinSfx = nullptr; }
-    if (loseSfx) { Mix_FreeChunk(loseSfx); loseSfx = nullptr; }
-    if (victorySfx) { Mix_FreeChunk(victorySfx); victorySfx = nullptr; }
-    if (messageSfx) { Mix_FreeChunk(messageSfx); messageSfx = nullptr; }
-    if (bumperSfx) { Mix_FreeChunk(bumperSfx); bumperSfx = nullptr; }
-    if (menuMusic) { Mix_FreeMusic(menuMusic); menuMusic = nullptr; }
-#endif
-    if (audioReady) {
-#if HAS_SDL_MIXER
-        Mix_CloseAudio();
-        Mix_Quit();
-#endif
-        audioReady = false;
-    }
+    audio.shutdown();
     SDL_DestroyRenderer(ren);
     SDL_DestroyWindow(win);
     SDL_Log("Shutting down");

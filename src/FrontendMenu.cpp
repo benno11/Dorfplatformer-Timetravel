@@ -11,6 +11,7 @@
 
 #include "AssetPath.h"
 #include "GameSupport.h"
+#include "InputSystem.h"
 #include "LevelSelect.h"
 #include "TextRenderer.h"
 
@@ -45,6 +46,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     int settingsTab = 0; // 0 General, 1 Audio, 2 Debug, 3 Controls
     int settingsSelAudio = 0;
     int settingsSelDebug = 0;
+    bool pendingSettingsExitCleanup = false;
     Uint64 inputBlockUntilTicks = 0;
     constexpr Uint64 kMenuInputBlockMs = 110;
     constexpr int kSettingsTabCount = 4;
@@ -52,7 +54,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         inputBlockUntilTicks = SDL_GetTicks() + kMenuInputBlockMs;
     };
     auto setInSettings = [&](bool value) {
-        if (inSettings != value) blockMenuInput();
+        if (inSettings != value) {
+            blockMenuInput();
+            if (!value) pendingSettingsExitCleanup = true;
+        }
         inSettings = value;
     };
     auto setCloseMenuOpen = [&](bool value) {
@@ -115,9 +120,19 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     enum class SliderDragTarget { None, Music, Sfx };
     SliderDragTarget sliderDrag = SliderDragTarget::None;
     SDL_FingerID sliderDragFinger = 0;
+    auto applySettingsExitCleanup = [&]() {
+        if (!pendingSettingsExitCleanup) return;
+        pendingSettingsExitCleanup = false;
+        // Ensure main menu resumes in an interactive state after leaving settings.
+        if (menuSel < 0 || menuSel > 2) menuSel = 1;
+        sliderDrag = SliderDragTarget::None;
+        sliderDragFinger = 0;
+    };
     Uint64 lastTouchDownTicks = 0;
     int lastTouchDownWinX = -100000;
     int lastTouchDownWinY = -100000;
+    constexpr Uint64 kSyntheticMouseSuppressMs = 220;
+    constexpr int kSyntheticMouseSuppressDistPx = 36;
     std::unordered_set<SDL_FingerID> activeTouchFingers;
     SDL_Event e;
     const int settingsStartY = 150;
@@ -152,6 +167,16 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         pt.x = gx;
         pt.y = gy;
         return true;
+    };
+    auto isLikelySyntheticMouseFromTouch = [&](int mx, int my) -> bool {
+        if (lastTouchDownTicks == 0) return false;
+        const Uint64 nowTicks = SDL_GetTicks();
+        if (nowTicks < lastTouchDownTicks || (nowTicks - lastTouchDownTicks) > kSyntheticMouseSuppressMs) {
+            return false;
+        }
+        const int dx = mx - lastTouchDownWinX;
+        const int dy = my - lastTouchDownWinY;
+        return (dx * dx + dy * dy) <= (kSyntheticMouseSuppressDistPx * kSyntheticMouseSuppressDistPx);
     };
     auto mainMenuBtnRect = [&](int idx) -> SDL_Rect {
         const int btnW = 112;
@@ -276,11 +301,15 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     // Apply persisted audio state before entering the menu loop.
     if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
     if (ctx.applyMenuMusicToggle) ctx.applyMenuMusicToggle();
+    InputSystem menuInput;
+    menuInput.scanConnected();
 
     while (running) {
+        applySettingsExitCleanup();
         int eventsProcessed = 0;
         while (eventsProcessed < 256 && SDL_PollEvent(&e)) {
             ++eventsProcessed;
+            menuInput.handleEvent(e);
             const bool inputBlocked = SDL_GetTicks() < inputBlockUntilTicks;
             if (e.type == SDL_QUIT) {
                 running = false;
@@ -290,10 +319,66 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             if (inputBlocked &&
                 e.type != SDL_MOUSEBUTTONDOWN &&
                 e.type != SDL_MOUSEBUTTONUP &&
-                e.type != SDL_FINGERDOWN &&
-                e.type != SDL_FINGERUP &&
+                e.type != SDL_EVENT_FINGER_DOWN &&
+                e.type != SDL_EVENT_FINGER_UP &&
                 e.type != SDL_EVENT_FINGER_CANCELED) {
                 continue;
+            }
+            if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
+                const bool isBackBtn =
+                    e.gbutton.button == SDL_GAMEPAD_BUTTON_BACK ||
+                    e.gbutton.button == SDL_GAMEPAD_BUTTON_EAST;
+                const bool isAcceptBtn =
+                    e.gbutton.button == SDL_GAMEPAD_BUTTON_SOUTH ||
+                    e.gbutton.button == SDL_GAMEPAD_BUTTON_START;
+                if (closeMenuOpen) {
+                    if (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_UP ||
+                        e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_DOWN) closeMenuSel = (closeMenuSel + 1) % 2;
+                    if (isBackBtn) setCloseMenuOpen(false);
+                    if (isAcceptBtn) {
+                        if (closeMenuSel == 0) {
+                            setCloseMenuOpen(false);
+                        } else {
+                            running = false;
+                            cleanupMenuAssets();
+                            return FrontendAction::Quit;
+                        }
+                    }
+                    continue;
+                }
+                if (!inSettings) {
+                    if (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_LEFT ||
+                        e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_UP) menuSel = (menuSel + 2) % 3;
+                    if (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_RIGHT ||
+                        e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_DOWN) menuSel = (menuSel + 1) % 3;
+                    if (isAcceptBtn) {
+                        if (menuSel == 0) setInSettings(true);
+                        if (menuSel == 1) {
+                            cleanupMenuAssets();
+                            return FrontendAction::StartGame;
+                        }
+                        if (menuSel == 2) {
+                            if (tryStartCustomLevel()) return FrontendAction::StartGame;
+                        }
+                    }
+                    if (isBackBtn) {
+                        setCloseMenuOpen(true);
+                        closeMenuSel = 0;
+                    }
+                    continue;
+                }
+                if (isBackBtn) {
+                    setInSettings(false);
+                    continue;
+                }
+                if (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_UP) {
+                    settingsSel = (settingsSel + kSettingsCount - 1) % kSettingsCount;
+                    continue;
+                }
+                if (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_DOWN) {
+                    settingsSel = (settingsSel + 1) % kSettingsCount;
+                    continue;
+                }
             }
             if (e.type == SDL_KEYDOWN && e.key.repeat == 0) {
                 const bool isBackKey = (e.key.key == SDLK_ESCAPE || e.key.key == SDLK_AC_BACK);
@@ -424,10 +509,9 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_LEFT) sliderDrag = SliderDragTarget::None;
             if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
                 if (!activeTouchFingers.empty()) continue;
-                // Some platforms emit a synthetic mouse click for taps.
-                // Ignore those duplicate mouse events right after touch.
-                const Uint64 nowTicks = SDL_GetTicks();
-                if (lastTouchDownTicks != 0 && nowTicks >= lastTouchDownTicks && (nowTicks - lastTouchDownTicks) <= 700) continue;
+                // Some platforms emit synthetic mouse clicks for taps; ignore only near-immediate
+                // events that occur at the same touch location to avoid dropping real mouse input.
+                if (isLikelySyntheticMouseFromTouch(e.button.x, e.button.y)) continue;
                 SDL_Point pt{};
                 if (!mouseToGamePoint(e.button.x, e.button.y, pt)) continue;
                 if (closeMenuOpen) {
@@ -570,7 +654,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
                 }
             }
-            if (e.type == SDL_FINGERDOWN) {
+            if (e.type == SDL_EVENT_FINGER_DOWN) {
                 activeTouchFingers.insert(e.tfinger.fingerID);
                 int winW = 0, winH = 0;
                 SDL_GetWindowSize(ctx.win, &winW, &winH);
@@ -726,7 +810,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
                 }
             }
-            if (e.type == SDL_FINGERMOTION &&
+            if (e.type == SDL_EVENT_FINGER_MOTION &&
                 inSettings && sliderDrag != SliderDragTarget::None &&
                 e.tfinger.fingerID == sliderDragFinger) {
                 int winW = 0, winH = 0, gx = 0, gy = 0;
@@ -741,10 +825,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 if (sliderDrag == SliderDragTarget::Sfx) sfxVolume = sliderValueFromPoint(pt.x, sfxSlider);
                 if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
             }
-            if (e.type == SDL_FINGERUP && e.tfinger.fingerID == sliderDragFinger) {
+            if (e.type == SDL_EVENT_FINGER_UP && e.tfinger.fingerID == sliderDragFinger) {
                 sliderDrag = SliderDragTarget::None;
             }
-            if (e.type == SDL_FINGERUP) {
+            if (e.type == SDL_EVENT_FINGER_UP) {
                 activeTouchFingers.erase(e.tfinger.fingerID);
             }
             if (e.type == SDL_EVENT_FINGER_CANCELED && e.tfinger.fingerID == sliderDragFinger) {
@@ -869,6 +953,12 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             if (!mainLogoTex || !mainLogo) {
                 const std::string title = "Dorfplatformer Timetravel";
                 DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(3, title) / 2, 84, 3, title);
+            }
+            if (!closeMenuOpen) {
+                const std::string versionText = std::string("v") + (ctx.versionString.empty() ? "dev" : ctx.versionString);
+                const std::string copyrightText = "Copyright (c) Benno111 2024 - 2026";
+                DrawText(ctx.ren, 12, ctx.baseScreenH - 28, 1, versionText);
+                DrawText(ctx.ren, ctx.baseScreenW - 12 - MeasureTextWidth(1, copyrightText), ctx.baseScreenH - 28, 1, copyrightText);
             }
             if (closeMenuOpen) {
                 SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_NONE);

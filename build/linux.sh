@@ -8,10 +8,17 @@ set -euo pipefail
 #   ./build/linux.sh check     -> dependency check only
 #   ./build/linux.sh run       -> build then run platformer
 #   ./build/linux.sh clean     -> remove built binaries
+#
+# Env toggles:
+#   FAST=1 (default unless RELEASE=1)  -> very fast dev build flags
+#   RELEASE=1                          -> optimized release flags
+#   LTO=1                              -> enable link-time optimization (slow)
 
 MODE="${1:-build}"
 CXX="${CXX:-g++}"
 FAST="${FAST:-0}"
+RELEASE="${RELEASE:-0}"
+LTO="${LTO:-0}"
 SDL_REQUIRED_VERSION="${SDL_REQUIRED_VERSION:-3.4.0}"
 BUILD_SHEET="${BUILD_SHEET:-0}"
 
@@ -27,11 +34,21 @@ if command -v ccache >/dev/null 2>&1; then
   echo "[INFO] Using ccache compiler launcher"
 fi
 
+# Default to fast dev builds unless RELEASE=1 is set.
+if [ "$FAST" = "0" ] && [ "$RELEASE" != "1" ]; then
+  FAST="1"
+fi
+
 if [ "$FAST" = "1" ]; then
-  CXXFLAGS=("-std=c++17" "-O1" "-fno-plt" "-pipe" "-DSDL_ENABLE_OLD_NAMES=1")
-  echo "[INFO] FAST build enabled"
+  CXXFLAGS=("-std=c++17" "-O1" "-g0" "-fno-plt" "-pipe" "-DSDL_ENABLE_OLD_NAMES=1")
+  echo "[INFO] FAST build enabled (default)"
 else
-  CXXFLAGS=("-std=c++17" "-O3" "-DNDEBUG" "-flto" "-fno-plt" "-pipe" "-DSDL_ENABLE_OLD_NAMES=1")
+  CXXFLAGS=("-std=c++17" "-O3" "-DNDEBUG" "-fno-plt" "-pipe" "-DSDL_ENABLE_OLD_NAMES=1")
+fi
+
+if [ "$LTO" = "1" ]; then
+  CXXFLAGS+=("-flto")
+  echo "[INFO] LTO enabled"
 fi
 
 find_header_dir() {
@@ -299,6 +316,11 @@ if [ "$MODE" = "check" ]; then
   exit 0
 fi
 
+# Ensure clean runtime output file before each build.
+if [ "$MODE" = "build" ] || [ "$MODE" = "run" ]; then
+  rm -f "$ROOT_DIR/bin"
+fi
+
 JSON_FLAGS=()
 if [ -f "$ROOT_DIR/third_party/nlohmann/json.hpp" ]; then
   JSON_FLAGS+=("-I$ROOT_DIR/third_party")
@@ -316,6 +338,7 @@ PLATFORMER_SOURCES=(
   "$SRC_DIR/GameSupport.cpp"
   "$SRC_DIR/CrashReporter.cpp"
   "$SRC_DIR/FrontendMenu.cpp"
+  "$SRC_DIR/AudioSystem.cpp"
 )
 
 SHEET_SOURCES=(

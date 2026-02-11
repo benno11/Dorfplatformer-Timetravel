@@ -37,6 +37,10 @@ PlayerUpdateResult UpdatePlayerMovement(
     float touchMove,
     bool touchDown,
     bool touchJump,
+    float gamepadMove,
+    bool gamepadDown,
+    bool gamepadJump,
+    bool gamepadFreeMove,
     float& inputMove,
     bool& inputDown
 );

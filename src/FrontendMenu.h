@@ -17,6 +17,7 @@ struct FrontendMenuContext {
     int baseScreenW = 0;
     int baseScreenH = 0;
     std::string buildUuid;
+    std::string versionString;
 
     bool* running = nullptr;
     bool* fullscreen = nullptr;

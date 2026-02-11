@@ -150,6 +150,7 @@ fi
   "$SRC_DIR/GameSupport.cpp" \
   "$SRC_DIR/CrashReporter.cpp" \
   "$SRC_DIR/FrontendMenu.cpp" \
+  "$SRC_DIR/AudioSystem.cpp" \
   $SDL_LIBS \
   $MIXER_LIBS \
   -o "$OUT_PLATFORMER"

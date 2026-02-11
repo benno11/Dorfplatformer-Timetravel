@@ -17,6 +17,7 @@
 #include "TextRenderer.h"
 #include "GameSupport.h"
 #include "LevelLoader.h"
+#include "InputSystem.h"
 
 namespace {
 struct LevelEntry {
@@ -160,6 +161,8 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
     Uint64 statusUntil = 0;
     SDL_FingerID activeEditorFinger = 0;
     bool fingerPainting = false;
+    InputSystem editorInput;
+    editorInput.scanConnected();
 
     SDL_Texture* blocksTex = IMG_LoadTexture(ren, ResolveAssetPath("assets/Sheets/DF_Blocks-uhd.png").c_str());
     auto blocksFrameList = loadPlistFrameList("assets/Sheets/DF_Blocks-uhd.plist");
@@ -213,6 +216,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
 
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
+            editorInput.handleEvent(e);
             if (e.type == SDL_QUIT) { running = false; break; }
             if (e.type == SDL_FINGERDOWN && activeEditorFinger == 0) {
                 activeEditorFinger = e.tfinger.fingerID;
@@ -334,6 +338,47 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                     }
                     statusText = "SAVE FAILED";
                     statusUntil = SDL_GetTicks() + 1800;
+                }
+            }
+            if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
+                const bool isBackBtn =
+                    e.gbutton.button == SDL_GAMEPAD_BUTTON_BACK ||
+                    e.gbutton.button == SDL_GAMEPAD_BUTTON_EAST;
+                const bool isAcceptBtn =
+                    e.gbutton.button == SDL_GAMEPAD_BUTTON_SOUTH ||
+                    e.gbutton.button == SDL_GAMEPAD_BUTTON_START;
+                if (isBackBtn) {
+                    paused = !paused;
+                    continue;
+                }
+                if (paused) {
+                    if (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_LEFT) pauseSel = std::max(0, pauseSel - 1);
+                    if (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_RIGHT) pauseSel = std::min(2, pauseSel + 1);
+                    if (isAcceptBtn) {
+                        if (pauseSel == 0) {
+                            paused = false;
+                        } else if (pauseSel == 1) {
+                            savedPath = writeLocalLevelFile(grid, gridW, gridH, saveTargetPath);
+                            if (!savedPath.empty()) {
+                                running = false;
+                                break;
+                            }
+                            statusText = "SAVE FAILED";
+                            statusUntil = SDL_GetTicks() + 1800;
+                        } else {
+                            running = false;
+                            break;
+                        }
+                    }
+                    continue;
+                }
+                if (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_UP) {
+                    selectedPalette = (selectedPalette + (int)palette.size() - 1) % (int)palette.size();
+                    continue;
+                }
+                if (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_DOWN) {
+                    selectedPalette = (selectedPalette + 1) % (int)palette.size();
+                    continue;
                 }
             }
             if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT && paused) {
@@ -958,9 +1003,12 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
             if (localPageIndex < 0 || localPageIndex >= (int)localLevels.size()) return {};
             return resolveSelectedPath(localLevels[localPageIndex]);
         };
+        InputSystem selectInput;
+        selectInput.scanConnected();
 
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
+            selectInput.handleEvent(e);
             if (e.type == SDL_QUIT) {
                 running = false;
                 break;
@@ -1192,6 +1240,91 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
                 }
                 if (currentTabAllowsDownload && (e.key.key == SDLK_d || e.key.key == SDLK_D)) {
                     tryDownloadSelected();
+                }
+            }
+            if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
+                const bool isBackBtn =
+                    e.gbutton.button == SDL_GAMEPAD_BUTTON_BACK ||
+                    e.gbutton.button == SDL_GAMEPAD_BUTTON_EAST;
+                const bool isAcceptBtn =
+                    e.gbutton.button == SDL_GAMEPAD_BUTTON_SOUTH ||
+                    e.gbutton.button == SDL_GAMEPAD_BUTTON_START;
+                if (localPageOpen && activeTab == localTabIndex) {
+                    if (isBackBtn) {
+                        localPageOpen = false;
+                        localPageIndex = -1;
+                        continue;
+                    }
+                    if (isAcceptBtn) {
+                        chosenPath = resolveLocalPageSelection();
+                        if (!chosenPath.empty()) {
+                            chosen = true;
+                            running = false;
+                        }
+                        continue;
+                    }
+                    if (e.gbutton.button == SDL_GAMEPAD_BUTTON_WEST) {
+                        if (localPageIndex >= 0 && localPageIndex < (int)localLevels.size()) {
+                            std::filesystem::remove(localLevels[localPageIndex].path);
+                            localLevels.erase(localLevels.begin() + localPageIndex);
+                            localPageOpen = false;
+                            localPageIndex = -1;
+                            selected[activeTab] = std::clamp(selected[activeTab], 0, std::max(0, (int)localLevels.size() - 1));
+                        }
+                        continue;
+                    }
+                    if (e.gbutton.button == SDL_GAMEPAD_BUTTON_NORTH) {
+                        std::string loadPath = (localPageIndex >= 0 && localPageIndex < (int)localLevels.size())
+                            ? localLevels[localPageIndex].path : std::string();
+                        std::string p = RunLocalLevelEditor(win, ren, loadPath);
+                        if (!p.empty()) {
+                            chosenPath = p;
+                            chosen = true;
+                            running = false;
+                        }
+                        continue;
+                    }
+                }
+                if (isBackBtn) {
+                    running = false;
+                    break;
+                }
+                if (showTabs && (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_LEFT || e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_RIGHT)) {
+                    int dir = (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_LEFT) ? -1 : 1;
+                    switchTab((activeTab + dir + (int)tabs.size()) % (int)tabs.size());
+                    continue;
+                }
+                if (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_DOWN) {
+                    selectedIndex = std::min(selectedIndex + 1, (int)levels.size() - 1);
+                    int rowTop = selectedIndex * rowH;
+                    int rowBottom = rowTop + rowH;
+                    if (rowBottom - scroll > viewportH) scroll = rowBottom - viewportH;
+                    continue;
+                }
+                if (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_UP) {
+                    selectedIndex = std::max(selectedIndex - 1, 0);
+                    int rowTop = selectedIndex * rowH;
+                    if (rowTop < scroll) scroll = rowTop;
+                    continue;
+                }
+                if (isAcceptBtn) {
+                    if (!levels.empty()) {
+                        if (activeTab == localTabIndex && levels[selectedIndex].path != "__local_editor__") {
+                            localPageOpen = true;
+                            localPageIndex = selectedIndex;
+                        } else {
+                            chosenPath = resolveSelectedPath(levels[selectedIndex]);
+                            if (!chosenPath.empty()) {
+                                chosen = true;
+                                running = false;
+                            }
+                        }
+                    }
+                    continue;
+                }
+                if (currentTabAllowsDownload && e.gbutton.button == SDL_GAMEPAD_BUTTON_WEST) {
+                    tryDownloadSelected();
+                    continue;
                 }
             }
         }

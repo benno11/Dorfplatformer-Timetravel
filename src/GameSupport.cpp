@@ -166,24 +166,22 @@ std::vector<FrameEntry> loadPlistFrameList(const std::string& plistPath) {
 
 void renderFrame(SDL_Renderer* ren, SDL_Texture* tex, const Frame& f, const SDL_Rect& dst) {
     if (!tex) return;
-    if (!f.rotated) { SDL_RenderCopy(ren, tex, &f.rect, &dst); return; }
-    SDL_Rect src = f.rect;
-    SDL_Rect dstRot = dst;
-    dstRot.w = dst.h;
-    dstRot.h = dst.w;
-    SDL_Point center{dstRot.w / 2, dstRot.h / 2};
-    SDL_RenderCopyEx(ren, tex, &src, &dstRot, -90.0, &center, SDL_FLIP_NONE);
+    if (!f.rotated) {
+        SDL_RenderCopy(ren, tex, &f.rect, &dst);
+        return;
+    }
+    SDL_Point center{dst.w / 2, dst.h / 2};
+    SDL_RenderCopyEx(ren, tex, &f.rect, &dst, -90.0, &center, SDL_FLIP_NONE);
 }
 
 void renderFrameEx(SDL_Renderer* ren, SDL_Texture* tex, const Frame& f, const SDL_Rect& dst, SDL_RendererFlip flip) {
     if (!tex) return;
-    if (!f.rotated) { SDL_RenderCopyEx(ren, tex, &f.rect, &dst, 0.0, nullptr, flip); return; }
-    SDL_Rect src = f.rect;
-    SDL_Rect dstRot = dst;
-    dstRot.w = dst.h;
-    dstRot.h = dst.w;
-    SDL_Point center{dstRot.w / 2, dstRot.h / 2};
-    SDL_RenderCopyEx(ren, tex, &src, &dstRot, -90.0, &center, flip);
+    if (!f.rotated) {
+        SDL_RenderCopyEx(ren, tex, &f.rect, &dst, 0.0, nullptr, flip);
+        return;
+    }
+    SDL_Point center{dst.w / 2, dst.h / 2};
+    SDL_RenderCopyEx(ren, tex, &f.rect, &dst, -90.0, &center, flip);
 }
 
 SDL_Texture* loadTextureWithColorKey(SDL_Renderer* ren, const std::string& path, Uint8 r, Uint8 g, Uint8 b) {

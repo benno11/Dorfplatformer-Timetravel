@@ -19,6 +19,7 @@ public:
 
     int collectCoinsAtPlayer(TileMap& map, const Player& player);
     void updateTimeWarpIdAtPlayer(const TileMap& map, const Player& player);
+    void setTileAt(TileMap& map, int idx, unsigned short tileId) const;
 
     int coinCount() const;
     void resetCoinCount();
