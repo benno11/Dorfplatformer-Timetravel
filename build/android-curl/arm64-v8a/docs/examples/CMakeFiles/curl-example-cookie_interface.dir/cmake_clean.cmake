@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-cookie_interface.dir/link.d"
   "CMakeFiles/curl-example-cookie_interface.dir/cookie_interface.c.o"
   "CMakeFiles/curl-example-cookie_interface.dir/cookie_interface.c.o.d"
   "cookie_interface"

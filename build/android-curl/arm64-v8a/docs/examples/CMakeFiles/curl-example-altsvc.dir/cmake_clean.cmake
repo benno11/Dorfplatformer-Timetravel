@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-altsvc.dir/link.d"
   "CMakeFiles/curl-example-altsvc.dir/altsvc.c.o"
   "CMakeFiles/curl-example-altsvc.dir/altsvc.c.o.d"
   "altsvc"

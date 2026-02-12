@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-imap-multi.dir/link.d"
   "CMakeFiles/curl-example-imap-multi.dir/imap-multi.c.o"
   "CMakeFiles/curl-example-imap-multi.dir/imap-multi.c.o.d"
   "imap-multi"

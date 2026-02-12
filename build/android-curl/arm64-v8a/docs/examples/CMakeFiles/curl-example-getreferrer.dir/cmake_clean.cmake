@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-getreferrer.dir/link.d"
   "CMakeFiles/curl-example-getreferrer.dir/getreferrer.c.o"
   "CMakeFiles/curl-example-getreferrer.dir/getreferrer.c.o.d"
   "getreferrer"

@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-externalsocket.dir/link.d"
   "CMakeFiles/curl-example-externalsocket.dir/externalsocket.c.o"
   "CMakeFiles/curl-example-externalsocket.dir/externalsocket.c.o.d"
   "externalsocket"

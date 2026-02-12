@@ -180,6 +180,7 @@ set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "/home/benno111/Documents/GitHub/DF-New/deps/android-curl-src/lib/vtls/x509asn1.c" "lib/CMakeFiles/libcurl_shared.dir/vtls/x509asn1.c.o" "gcc" "lib/CMakeFiles/libcurl_shared.dir/vtls/x509asn1.c.o.d"
   "/home/benno111/Documents/GitHub/DF-New/deps/android-curl-src/lib/warnless.c" "lib/CMakeFiles/libcurl_shared.dir/warnless.c.o" "gcc" "lib/CMakeFiles/libcurl_shared.dir/warnless.c.o.d"
   "/home/benno111/Documents/GitHub/DF-New/deps/android-curl-src/lib/ws.c" "lib/CMakeFiles/libcurl_shared.dir/ws.c.o" "gcc" "lib/CMakeFiles/libcurl_shared.dir/ws.c.o.d"
+  "" "lib/libcurl.so" "gcc" "lib/CMakeFiles/libcurl_shared.dir/link.d"
   )
 
 # Targets to which this target links which contain Fortran sources.

@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-anyauthput.dir/link.d"
   "CMakeFiles/curl-example-anyauthput.dir/anyauthput.c.o"
   "CMakeFiles/curl-example-anyauthput.dir/anyauthput.c.o.d"
   "anyauthput"

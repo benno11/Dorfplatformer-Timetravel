@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 if command -v sudo >/dev/null 2>&1; then
   SUDO="sudo"
@@ -16,6 +16,10 @@ AUTO_BUILD_SDL3_FROM_SOURCE="${AUTO_BUILD_SDL3_FROM_SOURCE:-1}"
 
 need_install() {
   ! dpkg -s "$1" >/dev/null 2>&1
+}
+
+apt_pkg_available() {
+  apt-cache show "$1" >/dev/null 2>&1
 }
 
 current_sdl_version() {
@@ -40,6 +44,21 @@ check_sdl_version() {
   else
     echo "[WARN] sdl3 ${SDL3_REQUIRED_VERSION}+ not found. Installed version: $(current_sdl_version)"
   fi
+}
+
+resolve_sdl3_cmake_dir() {
+  local candidate=""
+  for candidate in \
+    "deps/linux-sdl3-src/build" \
+    "/usr/local/lib/cmake/SDL3" \
+    "/usr/lib/x86_64-linux-gnu/cmake/SDL3" \
+    "/lib/x86_64-linux-gnu/cmake/SDL3"; do
+    if [ -f "$candidate/SDL3Config.cmake" ]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  return 1
 }
 
 build_sdl3_from_source() {
@@ -94,12 +113,20 @@ build_sdl3_from_source() {
   cmake -S "$workdir" -B "$builddir" \
     -DCMAKE_BUILD_TYPE=Release \
     -DSDL_SHARED=ON \
-    -DSDL_STATIC=OFF \
+    -DSDL_STATIC=ON \
     -DSDL_TESTS=OFF \
-    -DCMAKE_INSTALL_PREFIX=/usr/local
-  cmake --build "$builddir" -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)"
-  $SUDO cmake --install "$builddir"
+    -DSDL_WAYLAND=ON \
+    -DSDL_X11=ON \
+    -DSDL_X11_XTEST=OFF \
+    -DCMAKE_INSTALL_PREFIX=/usr/local || return 1
+  cmake --build "$builddir" -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" || return 1
+  $SUDO cmake --install "$builddir" || return 1
   $SUDO ldconfig || true
+
+  if ! [ -f "$builddir/SDL3Config.cmake" ] && ! [ -f "$builddir/sdl3.pc" ]; then
+    echo "[ERROR] SDL3 build did not produce expected config artifacts."
+    return 1
+  fi
 }
 
 build_sdl3_image_from_source() {
@@ -151,14 +178,22 @@ build_sdl3_image_from_source() {
     git -C "$workdir" checkout -f FETCH_HEAD
     git -C "$workdir" reset --hard FETCH_HEAD
   fi
+  local sdl3_dir=""
+  sdl3_dir="$(resolve_sdl3_cmake_dir)" || {
+    echo "[ERROR] Could not resolve SDL3 CMake config directory for SDL_image."
+    return 1
+  }
+
   cmake -S "$workdir" -B "$builddir" \
     -DCMAKE_BUILD_TYPE=Release \
     -DSDL3IMAGE_SAMPLES=OFF \
     -DSDL3IMAGE_VENDORED=ON \
+    -DSDL3IMAGE_SHARED=ON \
+    -DSDL3IMAGE_STATIC=ON \
     -DCMAKE_INSTALL_PREFIX=/usr/local \
-    -DSDL3_DIR=/usr/local/lib/cmake/SDL3
-  cmake --build "$builddir" -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)"
-  $SUDO cmake --install "$builddir"
+    -DSDL3_DIR="$sdl3_dir" || return 1
+  cmake --build "$builddir" -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" || return 1
+  $SUDO cmake --install "$builddir" || return 1
   $SUDO ldconfig || true
 }
 
@@ -211,15 +246,23 @@ build_sdl3_ttf_from_source() {
     git -C "$workdir" checkout -f FETCH_HEAD
     git -C "$workdir" reset --hard FETCH_HEAD
   fi
+  local sdl3_dir=""
+  sdl3_dir="$(resolve_sdl3_cmake_dir)" || {
+    echo "[ERROR] Could not resolve SDL3 CMake config directory for SDL_ttf."
+    return 1
+  }
+
   cmake -S "$workdir" -B "$builddir" \
     -DCMAKE_BUILD_TYPE=Release \
     -DSDL3TTF_SAMPLES=OFF \
     -DSDL3TTF_VENDORED=ON \
     -DSDL3TTF_HARFBUZZ=OFF \
+    -DSDL3TTF_SHARED=ON \
+    -DSDL3TTF_STATIC=ON \
     -DCMAKE_INSTALL_PREFIX=/usr/local \
-    -DSDL3_DIR=/usr/local/lib/cmake/SDL3
-  cmake --build "$builddir" -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)"
-  $SUDO cmake --install "$builddir"
+    -DSDL3_DIR="$sdl3_dir" || return 1
+  cmake --build "$builddir" -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" || return 1
+  $SUDO cmake --install "$builddir" || return 1
   $SUDO ldconfig || true
 }
 
@@ -272,8 +315,14 @@ build_sdl3_mixer_from_source() {
     git -C "$workdir" checkout -f FETCH_HEAD
     git -C "$workdir" reset --hard FETCH_HEAD
   fi
-  git -C "$workdir" submodule sync --recursive
-  git -C "$workdir" submodule update --init --recursive --depth 1 --jobs "$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)"
+  git -C "$workdir" submodule sync --recursive || return 1
+  git -C "$workdir" submodule update --init --recursive --depth 1 --jobs "$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" || return 1
+  local sdl3_dir=""
+  sdl3_dir="$(resolve_sdl3_cmake_dir)" || {
+    echo "[ERROR] Could not resolve SDL3 CMake config directory for SDL_mixer."
+    return 1
+  }
+
   cmake -S "$workdir" -B "$builddir" \
     -DCMAKE_BUILD_TYPE=Release \
     -DSDLMIXER_VENDORED=ON \
@@ -282,10 +331,12 @@ build_sdl3_mixer_from_source() {
     -DSDLMIXER_TESTS=OFF \
     -DSDLMIXER_MOD=OFF \
     -DSDLMIXER_MIDI=OFF \
+    -DSDLMIXER_SHARED=ON \
+    -DSDLMIXER_STATIC=ON \
     -DCMAKE_INSTALL_PREFIX=/usr/local \
-    -DSDL3_DIR=/usr/local/lib/cmake/SDL3
-  cmake --build "$builddir" -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)"
-  $SUDO cmake --install "$builddir"
+    -DSDL3_DIR="$sdl3_dir" || return 1
+  cmake --build "$builddir" -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" || return 1
+  $SUDO cmake --install "$builddir" || return 1
   $SUDO ldconfig || true
 }
 
@@ -298,12 +349,18 @@ build_all_sdl_from_source() {
 
 PACKAGES=(
   build-essential
+  git
   cmake
   pkg-config
   libsdl3-dev
   libsdl3-ttf-dev
   libsdl3-image-dev
   libsdl3-mixer-dev
+  libwayland-dev
+  wayland-protocols
+  libxkbcommon-dev
+  libdecor-0-dev
+  libxtst-dev
   nlohmann-json3-dev
 )
 
@@ -321,11 +378,23 @@ if [ ${#MISSING[@]} -eq 0 ]; then
   if ! needs_sdl_upgrade; then
     echo "[INFO] Attempting to upgrade sdl3 dev packages..."
     $SUDO apt update || true
-    $SUDO apt install -y --only-upgrade \
-      libsdl3-dev \
-      libsdl3-ttf-dev \
-      libsdl3-image-dev \
-      libsdl3-mixer-dev || true
+    SDL_UPGRADE_CANDIDATES=(
+      libsdl3-dev
+      libsdl3-ttf-dev
+      libsdl3-image-dev
+      libsdl3-mixer-dev
+    )
+    SDL_UPGRADE_PACKAGES=()
+    for pkg in "${SDL_UPGRADE_CANDIDATES[@]}"; do
+      if apt_pkg_available "$pkg"; then
+        SDL_UPGRADE_PACKAGES+=("$pkg")
+      else
+        echo "[WARN] Package not available in apt repositories: $pkg"
+      fi
+    done
+    if [ ${#SDL_UPGRADE_PACKAGES[@]} -gt 0 ]; then
+      $SUDO apt install -y --only-upgrade "${SDL_UPGRADE_PACKAGES[@]}" || true
+    fi
     if ! needs_sdl_upgrade && [ "$AUTO_BUILD_SDL3_FROM_SOURCE" = "1" ]; then
       build_all_sdl_from_source || true
     fi
@@ -337,8 +406,22 @@ fi
 echo "[INFO] Updating package lists..."
 $SUDO apt update
 
+INSTALLABLE_MISSING=()
+UNAVAILABLE_MISSING=()
+for pkg in "${MISSING[@]}"; do
+  if apt_pkg_available "$pkg"; then
+    INSTALLABLE_MISSING+=("$pkg")
+  else
+    UNAVAILABLE_MISSING+=("$pkg")
+  fi
+done
+
+for pkg in "${UNAVAILABLE_MISSING[@]}"; do
+  echo "[WARN] Package not available in apt repositories: $pkg"
+done
+
 echo "[INFO] Installing missing dependencies..."
-if ! $SUDO apt install -y "${MISSING[@]}"; then
+if [ ${#INSTALLABLE_MISSING[@]} -gt 0 ] && ! $SUDO apt install -y "${INSTALLABLE_MISSING[@]}"; then
   echo "[WARN] apt could not install one or more packages."
   if [ "$AUTO_BUILD_SDL3_FROM_SOURCE" = "1" ]; then
     echo "[INFO] Continuing with SDL3 source build fallback."
@@ -352,11 +435,21 @@ fi
 echo "[OK] All dependencies installed."
 if ! needs_sdl_upgrade; then
   echo "[INFO] Attempting to upgrade sdl3 dev packages..."
-  $SUDO apt install -y --only-upgrade \
-    libsdl3-dev \
-    libsdl3-ttf-dev \
-    libsdl3-image-dev \
-    libsdl3-mixer-dev || true
+  SDL_UPGRADE_CANDIDATES=(
+    libsdl3-dev
+    libsdl3-ttf-dev
+    libsdl3-image-dev
+    libsdl3-mixer-dev
+  )
+  SDL_UPGRADE_PACKAGES=()
+  for pkg in "${SDL_UPGRADE_CANDIDATES[@]}"; do
+    if apt_pkg_available "$pkg"; then
+      SDL_UPGRADE_PACKAGES+=("$pkg")
+    fi
+  done
+  if [ ${#SDL_UPGRADE_PACKAGES[@]} -gt 0 ]; then
+    $SUDO apt install -y --only-upgrade "${SDL_UPGRADE_PACKAGES[@]}" || true
+  fi
   if ! needs_sdl_upgrade && [ "$AUTO_BUILD_SDL3_FROM_SOURCE" = "1" ]; then
     build_all_sdl_from_source || true
   fi

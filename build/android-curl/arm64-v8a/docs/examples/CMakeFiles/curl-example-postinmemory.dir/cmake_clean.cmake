@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-postinmemory.dir/link.d"
   "CMakeFiles/curl-example-postinmemory.dir/postinmemory.c.o"
   "CMakeFiles/curl-example-postinmemory.dir/postinmemory.c.o.d"
   "postinmemory"

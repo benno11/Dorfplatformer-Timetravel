@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-maxconnects.dir/link.d"
   "CMakeFiles/curl-example-maxconnects.dir/maxconnects.c.o"
   "CMakeFiles/curl-example-maxconnects.dir/maxconnects.c.o.d"
   "maxconnects"

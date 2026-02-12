@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-httpput.dir/link.d"
   "CMakeFiles/curl-example-httpput.dir/httpput.c.o"
   "CMakeFiles/curl-example-httpput.dir/httpput.c.o.d"
   "httpput"

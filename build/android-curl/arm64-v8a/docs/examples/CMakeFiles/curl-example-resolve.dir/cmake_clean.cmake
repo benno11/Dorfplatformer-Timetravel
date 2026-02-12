@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-resolve.dir/link.d"
   "CMakeFiles/curl-example-resolve.dir/resolve.c.o"
   "CMakeFiles/curl-example-resolve.dir/resolve.c.o.d"
   "resolve"

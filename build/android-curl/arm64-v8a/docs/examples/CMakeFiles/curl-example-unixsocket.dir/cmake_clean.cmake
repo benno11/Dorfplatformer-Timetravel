@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-unixsocket.dir/link.d"
   "CMakeFiles/curl-example-unixsocket.dir/unixsocket.c.o"
   "CMakeFiles/curl-example-unixsocket.dir/unixsocket.c.o.d"
   "unixsocket"

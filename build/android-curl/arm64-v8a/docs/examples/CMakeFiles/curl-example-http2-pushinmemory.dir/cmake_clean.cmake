@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-http2-pushinmemory.dir/link.d"
   "CMakeFiles/curl-example-http2-pushinmemory.dir/http2-pushinmemory.c.o"
   "CMakeFiles/curl-example-http2-pushinmemory.dir/http2-pushinmemory.c.o.d"
   "http2-pushinmemory"

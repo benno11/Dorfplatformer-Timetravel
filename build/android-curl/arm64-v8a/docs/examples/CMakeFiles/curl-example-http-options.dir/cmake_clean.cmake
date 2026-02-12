@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-http-options.dir/link.d"
   "CMakeFiles/curl-example-http-options.dir/http-options.c.o"
   "CMakeFiles/curl-example-http-options.dir/http-options.c.o.d"
   "http-options"

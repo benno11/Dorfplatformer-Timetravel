@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-localport.dir/link.d"
   "CMakeFiles/curl-example-localport.dir/localport.c.o"
   "CMakeFiles/curl-example-localport.dir/localport.c.o.d"
   "localport"

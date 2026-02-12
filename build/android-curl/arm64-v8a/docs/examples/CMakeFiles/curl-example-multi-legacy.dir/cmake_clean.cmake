@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-multi-legacy.dir/link.d"
   "CMakeFiles/curl-example-multi-legacy.dir/multi-legacy.c.o"
   "CMakeFiles/curl-example-multi-legacy.dir/multi-legacy.c.o.d"
   "multi-legacy"

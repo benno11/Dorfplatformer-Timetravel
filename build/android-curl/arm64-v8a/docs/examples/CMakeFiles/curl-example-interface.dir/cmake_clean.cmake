@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-interface.dir/link.d"
   "CMakeFiles/curl-example-interface.dir/interface.c.o"
   "CMakeFiles/curl-example-interface.dir/interface.c.o.d"
   "interface"

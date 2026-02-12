@@ -1759,3 +1759,3413 @@ events:
         - "/usr/pkg"
         - "/opt"
 ...
+
+---
+events:
+  -
+    kind: "find_package-v1"
+    backtrace:
+      - "CMakeLists.txt:66 (find_package)"
+    name: "SDL3"
+    configs:
+      -
+        filename: "SDL3Config.cmake"
+        kind: "cmake"
+      -
+        filename: "sdl3-config.cmake"
+        kind: "cmake"
+    version_request:
+      version: "3.4.0"
+      version_complete: "3.4.0"
+      exact: false
+    settings:
+      required: "optional"
+      quiet: true
+      global: false
+      policy_scope: true
+      bypass_provider: false
+      names:
+        - "SDL3"
+      path_suffixes:
+        - ""
+      paths:
+        CMAKE_FIND_USE_CMAKE_PATH: true
+        CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+        CMAKE_FIND_USE_INSTALL_PREFIX: true
+        CMAKE_FIND_USE_PACKAGE_ROOT_PATH: true
+        CMAKE_FIND_USE_CMAKE_PACKAGE_REGISTRY: true
+        CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: true
+        CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
+    candidates:
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_ttf/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_ttf/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_image/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_image/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "config"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_ttf/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_ttf/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_image/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_image/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "config"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/opt/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/opt/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+    found: null
+    search_context:
+      ENV{PATH}:
+        - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8"
+        - "/app/bin"
+        - "/app/bin"
+        - "/app/bin"
+        - "/usr/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/usr/local"
+        - "/usr"
+        - "/"
+        - "/usr"
+        - "/usr/local"
+        - "/usr/X11R6"
+        - "/usr/pkg"
+        - "/opt"
+  -
+    kind: "find_package-v1"
+    backtrace:
+      - "CMakeLists.txt:71 (find_package)"
+    name: "SDL3_image"
+    configs:
+      -
+        filename: "SDL3_imageConfig.cmake"
+        kind: "cmake"
+      -
+        filename: "sdl3_image-config.cmake"
+        kind: "cmake"
+    version_request:
+      exact: false
+    settings:
+      required: "required_explicit"
+      quiet: false
+      global: false
+      policy_scope: true
+      bypass_provider: false
+      names:
+        - "SDL3_image"
+      path_suffixes:
+        - ""
+      paths:
+        CMAKE_FIND_USE_CMAKE_PATH: true
+        CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+        CMAKE_FIND_USE_INSTALL_PREFIX: true
+        CMAKE_FIND_USE_PACKAGE_ROOT_PATH: true
+        CMAKE_FIND_USE_CMAKE_PACKAGE_REGISTRY: true
+        CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: true
+        CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
+    candidates:
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/SDL3_imageConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/sdl3_image-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/SDL3_imageConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/sdl3_image-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/SDL3_imageConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/sdl3_image-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/SDL3_imageConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/sdl3_image-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+    found:
+      path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_image/SDL3_imageConfig.cmake"
+      mode: "config"
+      version: "3.2.6"
+    search_context:
+      ENV{PATH}:
+        - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8"
+        - "/app/bin"
+        - "/app/bin"
+        - "/app/bin"
+        - "/usr/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/usr/local"
+        - "/usr"
+        - "/"
+        - "/usr"
+        - "/usr/local"
+        - "/usr/X11R6"
+        - "/usr/pkg"
+        - "/opt"
+  -
+    kind: "find_package-v1"
+    backtrace:
+      - "CMakeLists.txt:72 (find_package)"
+    name: "SDL3_ttf"
+    configs:
+      -
+        filename: "SDL3_ttfConfig.cmake"
+        kind: "cmake"
+      -
+        filename: "sdl3_ttf-config.cmake"
+        kind: "cmake"
+    version_request:
+      exact: false
+    settings:
+      required: "required_explicit"
+      quiet: false
+      global: false
+      policy_scope: true
+      bypass_provider: false
+      names:
+        - "SDL3_ttf"
+      path_suffixes:
+        - ""
+      paths:
+        CMAKE_FIND_USE_CMAKE_PATH: true
+        CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+        CMAKE_FIND_USE_INSTALL_PREFIX: true
+        CMAKE_FIND_USE_PACKAGE_ROOT_PATH: true
+        CMAKE_FIND_USE_CMAKE_PACKAGE_REGISTRY: true
+        CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: true
+        CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
+    candidates:
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/SDL3_ttfConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/sdl3_ttf-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/SDL3_ttfConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/sdl3_ttf-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/SDL3_ttfConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/sdl3_ttf-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/SDL3_ttfConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/sdl3_ttf-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+    found:
+      path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_ttf/SDL3_ttfConfig.cmake"
+      mode: "config"
+      version: "3.2.2"
+    search_context:
+      ENV{PATH}:
+        - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8"
+        - "/app/bin"
+        - "/app/bin"
+        - "/app/bin"
+        - "/usr/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/usr/local"
+        - "/usr"
+        - "/"
+        - "/usr"
+        - "/usr/local"
+        - "/usr/X11R6"
+        - "/usr/pkg"
+        - "/opt"
+  -
+    kind: "find_package-v1"
+    backtrace:
+      - "CMakeLists.txt:73 (find_package)"
+    name: "SDL3_mixer"
+    configs:
+      -
+        filename: "SDL3_mixerConfig.cmake"
+        kind: "cmake"
+      -
+        filename: "sdl3_mixer-config.cmake"
+        kind: "cmake"
+    version_request:
+      exact: false
+    settings:
+      required: "optional"
+      quiet: true
+      global: false
+      policy_scope: true
+      bypass_provider: false
+      names:
+        - "SDL3_mixer"
+      path_suffixes:
+        - ""
+      paths:
+        CMAKE_FIND_USE_CMAKE_PATH: true
+        CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+        CMAKE_FIND_USE_INSTALL_PREFIX: true
+        CMAKE_FIND_USE_PACKAGE_ROOT_PATH: true
+        CMAKE_FIND_USE_CMAKE_PACKAGE_REGISTRY: true
+        CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: true
+        CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
+    candidates:
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/SDL3_mixerConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/sdl3_mixer-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/SDL3_mixerConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/sdl3_mixer-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/SDL3_mixerConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/sdl3_mixer-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/SDL3_mixerConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/sdl3_mixer-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/SDL3_mixerConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/sdl3_mixer-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/SDL3_mixerConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/sdl3_mixer-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/opt/SDL3_mixerConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/opt/sdl3_mixer-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+    found: null
+    search_context:
+      ENV{PATH}:
+        - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8"
+        - "/app/bin"
+        - "/app/bin"
+        - "/app/bin"
+        - "/usr/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/usr/local"
+        - "/usr"
+        - "/"
+        - "/usr"
+        - "/usr/local"
+        - "/usr/X11R6"
+        - "/usr/pkg"
+        - "/opt"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/usr/share/cmake-4.2/Modules/FindPkgConfig.cmake:517 (find_program)"
+      - "/usr/share/cmake-4.2/Modules/FindOpenSSL.cmake:295 (find_package)"
+      - "/usr/share/cmake-4.2/Modules/CMakeFindDependencyMacro.cmake:93 (find_package)"
+      - "/usr/share/cmake-4.2/Modules/CMakeFindDependencyMacro.cmake:125 (__find_dependency_common)"
+      - "/usr/lib/x86_64-linux-gnu/cmake/CURL/CURLConfig.cmake:63 (find_dependency)"
+      - "/usr/share/cmake-4.2/Modules/FindCURL.cmake:174 (find_package)"
+      - "CMakeLists.txt:74 (find_package)"
+    mode: "program"
+    variable: "PKG_CONFIG_EXECUTABLE"
+    description: "pkg-config executable"
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "pkg-config"
+      - "pkgconf"
+    candidate_directories:
+      - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/"
+      - "/app/bin/"
+      - "/usr/bin/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/"
+      - "/usr/local/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/"
+      - "/usr/bin/"
+      - "/usr/sbin/"
+      - "/usr/"
+      - "/bin/"
+      - "/sbin/"
+      - "/usr/X11R6/bin/"
+      - "/usr/X11R6/sbin/"
+      - "/usr/X11R6/"
+      - "/usr/pkg/bin/"
+      - "/usr/pkg/sbin/"
+      - "/usr/pkg/"
+      - "/opt/bin/"
+      - "/opt/sbin/"
+      - "/opt/"
+    searched_directories:
+      - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/pkg-config"
+      - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/pkgconf"
+      - "/app/bin/pkg-config"
+      - "/app/bin/pkgconf"
+    found: "/usr/bin/pkg-config"
+    search_context:
+      ENV{PATH}:
+        - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8"
+        - "/app/bin"
+        - "/app/bin"
+        - "/app/bin"
+        - "/usr/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/usr/local"
+        - "/usr"
+        - "/"
+        - "/usr"
+        - "/usr/local"
+        - "/usr/X11R6"
+        - "/usr/pkg"
+        - "/opt"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/usr/share/cmake-4.2/Modules/FindPkgConfig.cmake:761 (find_library)"
+      - "/usr/share/cmake-4.2/Modules/FindPkgConfig.cmake:811 (_pkg_find_libs)"
+      - "/usr/share/cmake-4.2/Modules/FindPkgConfig.cmake:1149 (_pkg_recalculate)"
+      - "/usr/share/cmake-4.2/Modules/FindPkgConfig.cmake:1166 (_pkg_check_modules_internal)"
+      - "/usr/share/cmake-4.2/Modules/FindOpenSSL.cmake:297 (pkg_check_modules)"
+      - "/usr/share/cmake-4.2/Modules/CMakeFindDependencyMacro.cmake:93 (find_package)"
+      - "/usr/share/cmake-4.2/Modules/CMakeFindDependencyMacro.cmake:125 (__find_dependency_common)"
+      - "/usr/lib/x86_64-linux-gnu/cmake/CURL/CURLConfig.cmake:63 (find_dependency)"
+      - "/usr/share/cmake-4.2/Modules/FindCURL.cmake:174 (find_package)"
+      - "CMakeLists.txt:74 (find_package)"
+    mode: "library"
+    variable: "pkgcfg_lib__OPENSSL_ssl"
+    description: "Path to a library."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "ssl"
+    candidate_directories:
+      - "/usr/lib/x86_64-linux-gnu/"
+    found: "/usr/lib/x86_64-linux-gnu/libssl.so"
+    search_context:
+      ENV{PATH}:
+        - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8"
+        - "/app/bin"
+        - "/app/bin"
+        - "/app/bin"
+        - "/usr/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/usr/local"
+        - "/usr"
+        - "/"
+        - "/usr"
+        - "/usr/local"
+        - "/usr/X11R6"
+        - "/usr/pkg"
+        - "/opt"
+      CMAKE_SYSTEM_LIBRARY_PATH:
+        - "/usr/lib/x86_64-linux-gnu"
+        - "/usr/lib/X11"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/usr/share/cmake-4.2/Modules/FindPkgConfig.cmake:761 (find_library)"
+      - "/usr/share/cmake-4.2/Modules/FindPkgConfig.cmake:811 (_pkg_find_libs)"
+      - "/usr/share/cmake-4.2/Modules/FindPkgConfig.cmake:1149 (_pkg_recalculate)"
+      - "/usr/share/cmake-4.2/Modules/FindPkgConfig.cmake:1166 (_pkg_check_modules_internal)"
+      - "/usr/share/cmake-4.2/Modules/FindOpenSSL.cmake:297 (pkg_check_modules)"
+      - "/usr/share/cmake-4.2/Modules/CMakeFindDependencyMacro.cmake:93 (find_package)"
+      - "/usr/share/cmake-4.2/Modules/CMakeFindDependencyMacro.cmake:125 (__find_dependency_common)"
+      - "/usr/lib/x86_64-linux-gnu/cmake/CURL/CURLConfig.cmake:63 (find_dependency)"
+      - "/usr/share/cmake-4.2/Modules/FindCURL.cmake:174 (find_package)"
+      - "CMakeLists.txt:74 (find_package)"
+    mode: "library"
+    variable: "pkgcfg_lib__OPENSSL_crypto"
+    description: "Path to a library."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "crypto"
+    candidate_directories:
+      - "/usr/lib/x86_64-linux-gnu/"
+    found: "/usr/lib/x86_64-linux-gnu/libcrypto.so"
+    search_context:
+      ENV{PATH}:
+        - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8"
+        - "/app/bin"
+        - "/app/bin"
+        - "/app/bin"
+        - "/usr/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/usr/local"
+        - "/usr"
+        - "/"
+        - "/usr"
+        - "/usr/local"
+        - "/usr/X11R6"
+        - "/usr/pkg"
+        - "/opt"
+      CMAKE_SYSTEM_LIBRARY_PATH:
+        - "/usr/lib/x86_64-linux-gnu"
+        - "/usr/lib/X11"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/usr/share/cmake-4.2/Modules/FindOpenSSL.cmake:370 (find_path)"
+      - "/usr/share/cmake-4.2/Modules/CMakeFindDependencyMacro.cmake:93 (find_package)"
+      - "/usr/share/cmake-4.2/Modules/CMakeFindDependencyMacro.cmake:125 (__find_dependency_common)"
+      - "/usr/lib/x86_64-linux-gnu/cmake/CURL/CURLConfig.cmake:63 (find_dependency)"
+      - "/usr/share/cmake-4.2/Modules/FindCURL.cmake:174 (find_package)"
+      - "CMakeLists.txt:74 (find_package)"
+    mode: "path"
+    variable: "OPENSSL_INCLUDE_DIR"
+    description: "Path to a file."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "openssl/ssl.h"
+    candidate_directories:
+      - "/usr/include/include/"
+      - "/usr/include/"
+      - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/include/"
+      - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/"
+      - "/app/bin/include/"
+      - "/app/bin/"
+      - "/usr/bin/include/"
+      - "/usr/bin/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin/include/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/include/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/"
+      - "/usr/local/include/x86_64-linux-gnu/include/"
+      - "/usr/local/include/x86_64-linux-gnu/"
+      - "/usr/local/include/include/"
+      - "/usr/local/include/"
+      - "/usr/local/include/"
+      - "/usr/local/"
+      - "/usr/include/x86_64-linux-gnu/include/"
+      - "/usr/include/x86_64-linux-gnu/"
+      - "/usr/include/include/"
+      - "/usr/include/"
+      - "/usr/include/"
+      - "/usr/"
+      - "/include/x86_64-linux-gnu/include/"
+      - "/include/x86_64-linux-gnu/"
+      - "/include/include/"
+      - "/include/"
+      - "/usr/X11R6/include/x86_64-linux-gnu/include/"
+      - "/usr/X11R6/include/x86_64-linux-gnu/"
+      - "/usr/X11R6/include/include/"
+      - "/usr/X11R6/include/"
+      - "/usr/X11R6/include/"
+      - "/usr/X11R6/"
+      - "/usr/pkg/include/x86_64-linux-gnu/include/"
+      - "/usr/pkg/include/x86_64-linux-gnu/"
+      - "/usr/pkg/include/include/"
+      - "/usr/pkg/include/"
+      - "/usr/pkg/include/"
+      - "/usr/pkg/"
+      - "/opt/include/x86_64-linux-gnu/include/"
+      - "/opt/include/x86_64-linux-gnu/"
+      - "/opt/include/include/"
+      - "/opt/include/"
+      - "/opt/include/"
+      - "/opt/"
+      - "/usr/include/X11/include/"
+      - "/usr/include/X11/"
+    searched_directories:
+      - "/usr/include/include/openssl/ssl.h"
+    found: "/usr/include/"
+    search_context:
+      ENV{PATH}:
+        - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8"
+        - "/app/bin"
+        - "/app/bin"
+        - "/app/bin"
+        - "/usr/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/usr/local"
+        - "/usr"
+        - "/"
+        - "/usr"
+        - "/usr/local"
+        - "/usr/X11R6"
+        - "/usr/pkg"
+        - "/opt"
+      CMAKE_SYSTEM_INCLUDE_PATH:
+        - "/usr/include/X11"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/usr/share/cmake-4.2/Modules/FindOpenSSL.cmake:628 (find_library)"
+      - "/usr/share/cmake-4.2/Modules/CMakeFindDependencyMacro.cmake:93 (find_package)"
+      - "/usr/share/cmake-4.2/Modules/CMakeFindDependencyMacro.cmake:125 (__find_dependency_common)"
+      - "/usr/lib/x86_64-linux-gnu/cmake/CURL/CURLConfig.cmake:63 (find_dependency)"
+      - "/usr/share/cmake-4.2/Modules/FindCURL.cmake:174 (find_package)"
+      - "CMakeLists.txt:74 (find_package)"
+    mode: "library"
+    variable: "OPENSSL_SSL_LIBRARY"
+    description: "Path to a library."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "ssl"
+      - "ssleay32"
+      - "ssleay32MD"
+    candidate_directories:
+      - "/usr/lib/x86_64-linux-gnu/"
+      - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/"
+      - "/app/bin/"
+      - "/usr/bin/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/"
+      - "/usr/lib/x86_64-linux-gnu/"
+      - "/usr/lib64/"
+      - "/usr/lib/"
+      - "/usr/lib64/"
+      - "/usr/lib/"
+      - "/usr/lib64/"
+      - "/usr/"
+      - "/lib/x86_64-linux-gnu/"
+      - "/lib64/"
+      - "/lib/"
+      - "/opt/"
+    found: "/usr/lib/x86_64-linux-gnu/libssl.so"
+    search_context:
+      ENV{PATH}:
+        - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8"
+        - "/app/bin"
+        - "/app/bin"
+        - "/app/bin"
+        - "/usr/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/usr/local"
+        - "/usr"
+        - "/"
+        - "/usr"
+        - "/usr/local"
+        - "/usr/X11R6"
+        - "/usr/pkg"
+        - "/opt"
+      CMAKE_SYSTEM_LIBRARY_PATH:
+        - "/usr/lib/x86_64-linux-gnu"
+        - "/usr/lib/X11"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/usr/share/cmake-4.2/Modules/FindOpenSSL.cmake:642 (find_library)"
+      - "/usr/share/cmake-4.2/Modules/CMakeFindDependencyMacro.cmake:93 (find_package)"
+      - "/usr/share/cmake-4.2/Modules/CMakeFindDependencyMacro.cmake:125 (__find_dependency_common)"
+      - "/usr/lib/x86_64-linux-gnu/cmake/CURL/CURLConfig.cmake:63 (find_dependency)"
+      - "/usr/share/cmake-4.2/Modules/FindCURL.cmake:174 (find_package)"
+      - "CMakeLists.txt:74 (find_package)"
+    mode: "library"
+    variable: "OPENSSL_CRYPTO_LIBRARY"
+    description: "Path to a library."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "crypto"
+    candidate_directories:
+      - "/usr/lib/x86_64-linux-gnu/"
+      - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/"
+      - "/app/bin/"
+      - "/usr/bin/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/"
+      - "/usr/lib/x86_64-linux-gnu/"
+      - "/usr/lib64/"
+      - "/usr/lib/"
+      - "/usr/lib64/"
+      - "/usr/lib/"
+      - "/usr/lib64/"
+      - "/usr/"
+      - "/lib/x86_64-linux-gnu/"
+      - "/lib64/"
+      - "/lib/"
+      - "/opt/"
+    found: "/usr/lib/x86_64-linux-gnu/libcrypto.so"
+    search_context:
+      ENV{PATH}:
+        - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8"
+        - "/app/bin"
+        - "/app/bin"
+        - "/app/bin"
+        - "/usr/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/usr/local"
+        - "/usr"
+        - "/"
+        - "/usr"
+        - "/usr/local"
+        - "/usr/X11R6"
+        - "/usr/pkg"
+        - "/opt"
+      CMAKE_SYSTEM_LIBRARY_PATH:
+        - "/usr/lib/x86_64-linux-gnu"
+        - "/usr/lib/X11"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/usr/share/cmake-4.2/Modules/FindZLIB.cmake:165 (find_path)"
+      - "/usr/share/cmake-4.2/Modules/CMakeFindDependencyMacro.cmake:93 (find_package)"
+      - "/usr/share/cmake-4.2/Modules/CMakeFindDependencyMacro.cmake:125 (__find_dependency_common)"
+      - "/usr/lib/x86_64-linux-gnu/cmake/CURL/CURLConfig.cmake:69 (find_dependency)"
+      - "/usr/share/cmake-4.2/Modules/FindCURL.cmake:174 (find_package)"
+      - "CMakeLists.txt:74 (find_package)"
+    mode: "path"
+    variable: "ZLIB_INCLUDE_DIR"
+    description: "Path to a file."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "zlib.h"
+    candidate_directories:
+      - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/include/"
+      - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/"
+      - "/app/bin/include/"
+      - "/app/bin/"
+      - "/usr/bin/include/"
+      - "/usr/bin/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin/include/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/include/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/"
+      - "/usr/local/include/x86_64-linux-gnu/include/"
+      - "/usr/local/include/x86_64-linux-gnu/"
+      - "/usr/local/include/include/"
+      - "/usr/local/include/"
+      - "/usr/local/include/"
+      - "/usr/local/"
+      - "/usr/include/x86_64-linux-gnu/include/"
+      - "/usr/include/x86_64-linux-gnu/"
+      - "/usr/include/include/"
+      - "/usr/include/"
+      - "/usr/include/"
+      - "/usr/"
+      - "/include/x86_64-linux-gnu/include/"
+      - "/include/x86_64-linux-gnu/"
+      - "/include/include/"
+      - "/include/"
+      - "/usr/X11R6/include/x86_64-linux-gnu/include/"
+      - "/usr/X11R6/include/x86_64-linux-gnu/"
+      - "/usr/X11R6/include/include/"
+      - "/usr/X11R6/include/"
+      - "/usr/X11R6/include/"
+      - "/usr/X11R6/"
+      - "/usr/pkg/include/x86_64-linux-gnu/include/"
+      - "/usr/pkg/include/x86_64-linux-gnu/"
+      - "/usr/pkg/include/include/"
+      - "/usr/pkg/include/"
+      - "/usr/pkg/include/"
+      - "/usr/pkg/"
+      - "/opt/include/x86_64-linux-gnu/include/"
+      - "/opt/include/x86_64-linux-gnu/"
+      - "/opt/include/include/"
+      - "/opt/include/"
+      - "/opt/include/"
+      - "/opt/"
+      - "/usr/include/X11/include/"
+      - "/usr/include/X11/"
+      - "/zlib/include/"
+      - "/zlib/"
+    searched_directories:
+      - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/include/zlib.h"
+      - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/zlib.h"
+      - "/app/bin/include/zlib.h"
+      - "/app/bin/zlib.h"
+      - "/usr/bin/include/zlib.h"
+      - "/usr/bin/zlib.h"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin/include/zlib.h"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin/zlib.h"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/include/zlib.h"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/zlib.h"
+      - "/usr/local/include/x86_64-linux-gnu/include/zlib.h"
+      - "/usr/local/include/x86_64-linux-gnu/zlib.h"
+      - "/usr/local/include/include/zlib.h"
+      - "/usr/local/include/zlib.h"
+      - "/usr/local/include/zlib.h"
+      - "/usr/local/zlib.h"
+      - "/usr/include/x86_64-linux-gnu/include/zlib.h"
+      - "/usr/include/x86_64-linux-gnu/zlib.h"
+      - "/usr/include/include/zlib.h"
+    found: "/usr/include/"
+    search_context:
+      ENV{PATH}:
+        - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8"
+        - "/app/bin"
+        - "/app/bin"
+        - "/app/bin"
+        - "/usr/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/usr/local"
+        - "/usr"
+        - "/"
+        - "/usr"
+        - "/usr/local"
+        - "/usr/X11R6"
+        - "/usr/pkg"
+        - "/opt"
+      CMAKE_SYSTEM_INCLUDE_PATH:
+        - "/usr/include/X11"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/usr/share/cmake-4.2/Modules/FindZLIB.cmake:195 (find_library)"
+      - "/usr/share/cmake-4.2/Modules/CMakeFindDependencyMacro.cmake:93 (find_package)"
+      - "/usr/share/cmake-4.2/Modules/CMakeFindDependencyMacro.cmake:125 (__find_dependency_common)"
+      - "/usr/lib/x86_64-linux-gnu/cmake/CURL/CURLConfig.cmake:69 (find_dependency)"
+      - "/usr/share/cmake-4.2/Modules/FindCURL.cmake:174 (find_package)"
+      - "CMakeLists.txt:74 (find_package)"
+    mode: "library"
+    variable: "ZLIB_LIBRARY_RELEASE"
+    description: "Path to a library."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "z"
+      - "zlib"
+      - "zdll"
+      - "zlib1"
+      - "zlibstatic"
+      - "zlibwapi"
+      - "zlibvc"
+      - "zlibstat"
+    candidate_directories:
+      - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/"
+      - "/app/bin/"
+      - "/usr/bin/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/"
+      - "/usr/lib/x86_64-linux-gnu/"
+      - "/usr/lib64/"
+      - "/usr/lib/"
+      - "/usr/lib64/"
+      - "/usr/lib/"
+      - "/usr/"
+      - "/lib/x86_64-linux-gnu/"
+      - "/lib64/"
+      - "/lib/"
+      - "/opt/"
+      - "/usr/lib/x86_64-linux-gnu/"
+    searched_directories:
+      - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/"
+      - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/"
+      - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/"
+      - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/"
+      - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/"
+      - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/"
+      - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/"
+      - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/"
+      - "/app/bin/"
+      - "/app/bin/"
+      - "/app/bin/"
+      - "/app/bin/"
+      - "/app/bin/"
+      - "/app/bin/"
+      - "/app/bin/"
+      - "/app/bin/"
+      - "/usr/bin/"
+      - "/usr/bin/"
+      - "/usr/bin/"
+      - "/usr/bin/"
+      - "/usr/bin/"
+      - "/usr/bin/"
+      - "/usr/bin/"
+      - "/usr/bin/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/"
+    found: "/usr/lib/x86_64-linux-gnu/libz.so"
+    search_context:
+      ENV{PATH}:
+        - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8"
+        - "/app/bin"
+        - "/app/bin"
+        - "/app/bin"
+        - "/usr/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/usr/local"
+        - "/usr"
+        - "/"
+        - "/usr"
+        - "/usr/local"
+        - "/usr/X11R6"
+        - "/usr/pkg"
+        - "/opt"
+      CMAKE_SYSTEM_LIBRARY_PATH:
+        - "/usr/lib/x86_64-linux-gnu"
+        - "/usr/lib/X11"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/usr/share/cmake-4.2/Modules/FindZLIB.cmake:196 (find_library)"
+      - "/usr/share/cmake-4.2/Modules/CMakeFindDependencyMacro.cmake:93 (find_package)"
+      - "/usr/share/cmake-4.2/Modules/CMakeFindDependencyMacro.cmake:125 (__find_dependency_common)"
+      - "/usr/lib/x86_64-linux-gnu/cmake/CURL/CURLConfig.cmake:69 (find_dependency)"
+      - "/usr/share/cmake-4.2/Modules/FindCURL.cmake:174 (find_package)"
+      - "CMakeLists.txt:74 (find_package)"
+    mode: "library"
+    variable: "ZLIB_LIBRARY_DEBUG"
+    description: "Path to a library."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "zd"
+      - "zlibd"
+      - "zdlld"
+      - "zlibd1"
+      - "zlib1d"
+      - "zlibstaticd"
+      - "zlibwapid"
+      - "zlibvcd"
+      - "zlibstatd"
+    candidate_directories:
+      - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/"
+      - "/app/bin/"
+      - "/usr/bin/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/"
+      - "/usr/lib/x86_64-linux-gnu/"
+      - "/usr/lib64/"
+      - "/usr/lib/"
+      - "/usr/lib64/"
+      - "/usr/lib/"
+      - "/usr/"
+      - "/lib/x86_64-linux-gnu/"
+      - "/lib64/"
+      - "/lib/"
+      - "/opt/"
+      - "/usr/lib/x86_64-linux-gnu/"
+    searched_directories:
+      - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/"
+      - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/"
+      - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/"
+      - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/"
+      - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/"
+      - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/"
+      - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/"
+      - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/"
+      - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/"
+      - "/app/bin/"
+      - "/app/bin/"
+      - "/app/bin/"
+      - "/app/bin/"
+      - "/app/bin/"
+      - "/app/bin/"
+      - "/app/bin/"
+      - "/app/bin/"
+      - "/app/bin/"
+      - "/usr/bin/"
+      - "/usr/bin/"
+      - "/usr/bin/"
+      - "/usr/bin/"
+      - "/usr/bin/"
+      - "/usr/bin/"
+      - "/usr/bin/"
+      - "/usr/bin/"
+      - "/usr/bin/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/"
+      - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/"
+      - "/usr/lib/x86_64-linux-gnu/"
+      - "/usr/lib/x86_64-linux-gnu/"
+      - "/usr/lib/x86_64-linux-gnu/"
+      - "/usr/lib/x86_64-linux-gnu/"
+      - "/usr/lib/x86_64-linux-gnu/"
+      - "/usr/lib/x86_64-linux-gnu/"
+      - "/usr/lib/x86_64-linux-gnu/"
+      - "/usr/lib/x86_64-linux-gnu/"
+      - "/usr/lib/x86_64-linux-gnu/"
+      - "/usr/lib64/"
+      - "/usr/lib64/"
+      - "/usr/lib64/"
+      - "/usr/lib64/"
+      - "/usr/lib64/"
+      - "/usr/lib64/"
+      - "/usr/lib64/"
+      - "/usr/lib64/"
+      - "/usr/lib64/"
+      - "/usr/lib/"
+      - "/usr/lib/"
+      - "/usr/lib/"
+      - "/usr/lib/"
+      - "/usr/lib/"
+      - "/usr/lib/"
+      - "/usr/lib/"
+      - "/usr/lib/"
+      - "/usr/lib/"
+      - "/usr/lib64/"
+      - "/usr/lib64/"
+      - "/usr/lib64/"
+      - "/usr/lib64/"
+      - "/usr/lib64/"
+      - "/usr/lib64/"
+      - "/usr/lib64/"
+      - "/usr/lib64/"
+      - "/usr/lib64/"
+      - "/usr/lib/"
+      - "/usr/lib/"
+      - "/usr/lib/"
+      - "/usr/lib/"
+      - "/usr/lib/"
+      - "/usr/lib/"
+      - "/usr/lib/"
+      - "/usr/lib/"
+      - "/usr/lib/"
+      - "/usr/"
+      - "/usr/"
+      - "/usr/"
+      - "/usr/"
+      - "/usr/"
+      - "/usr/"
+      - "/usr/"
+      - "/usr/"
+      - "/usr/"
+      - "/lib/x86_64-linux-gnu/"
+      - "/lib/x86_64-linux-gnu/"
+      - "/lib/x86_64-linux-gnu/"
+      - "/lib/x86_64-linux-gnu/"
+      - "/lib/x86_64-linux-gnu/"
+      - "/lib/x86_64-linux-gnu/"
+      - "/lib/x86_64-linux-gnu/"
+      - "/lib/x86_64-linux-gnu/"
+      - "/lib/x86_64-linux-gnu/"
+      - "/lib64/"
+      - "/lib64/"
+      - "/lib64/"
+      - "/lib64/"
+      - "/lib64/"
+      - "/lib64/"
+      - "/lib64/"
+      - "/lib64/"
+      - "/lib64/"
+      - "/lib/"
+      - "/lib/"
+      - "/lib/"
+      - "/lib/"
+      - "/lib/"
+      - "/lib/"
+      - "/lib/"
+      - "/lib/"
+      - "/lib/"
+      - "/opt/"
+      - "/opt/"
+      - "/opt/"
+      - "/opt/"
+      - "/opt/"
+      - "/opt/"
+      - "/opt/"
+      - "/opt/"
+      - "/opt/"
+      - "/usr/lib/x86_64-linux-gnu/"
+      - "/usr/lib/x86_64-linux-gnu/"
+      - "/usr/lib/x86_64-linux-gnu/"
+      - "/usr/lib/x86_64-linux-gnu/"
+      - "/usr/lib/x86_64-linux-gnu/"
+      - "/usr/lib/x86_64-linux-gnu/"
+      - "/usr/lib/x86_64-linux-gnu/"
+      - "/usr/lib/x86_64-linux-gnu/"
+      - "/usr/lib/x86_64-linux-gnu/"
+    found: false
+    search_context:
+      ENV{PATH}:
+        - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8"
+        - "/app/bin"
+        - "/app/bin"
+        - "/app/bin"
+        - "/usr/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/usr/local"
+        - "/usr"
+        - "/"
+        - "/usr"
+        - "/usr/local"
+        - "/usr/X11R6"
+        - "/usr/pkg"
+        - "/opt"
+      CMAKE_SYSTEM_LIBRARY_PATH:
+        - "/usr/lib/x86_64-linux-gnu"
+        - "/usr/lib/X11"
+  -
+    kind: "find_package-v1"
+    backtrace:
+      - "/usr/share/cmake-4.2/Modules/FindCURL.cmake:174 (find_package)"
+      - "CMakeLists.txt:74 (find_package)"
+    name: "CURL"
+    configs:
+      -
+        filename: "CURLConfig.cmake"
+        kind: "cmake"
+      -
+        filename: "curl-config.cmake"
+        kind: "cmake"
+    version_request:
+      exact: false
+    settings:
+      required: "optional"
+      quiet: true
+      global: false
+      policy_scope: true
+      bypass_provider: false
+      names:
+        - "CURL"
+      path_suffixes:
+        - ""
+      paths:
+        CMAKE_FIND_USE_CMAKE_PATH: true
+        CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+        CMAKE_FIND_USE_INSTALL_PREFIX: true
+        CMAKE_FIND_USE_PACKAGE_ROOT_PATH: true
+        CMAKE_FIND_USE_CMAKE_PACKAGE_REGISTRY: true
+        CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: true
+        CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
+    candidates:
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/CURLConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/curl-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/CURLConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/curl-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/CURLConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/curl-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/CURLConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/curl-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+    found:
+      path: "/usr/lib/x86_64-linux-gnu/cmake/CURL/CURLConfig.cmake"
+      mode: "config"
+      version: "8.15.0"
+    search_context:
+      ENV{PATH}:
+        - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8"
+        - "/app/bin"
+        - "/app/bin"
+        - "/app/bin"
+        - "/usr/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/usr/local"
+        - "/usr"
+        - "/"
+        - "/usr"
+        - "/usr/local"
+        - "/usr/X11R6"
+        - "/usr/pkg"
+        - "/opt"
+  -
+    kind: "find_package-v1"
+    backtrace:
+      - "CMakeLists.txt:75 (find_package)"
+    name: "nlohmann_json"
+    configs:
+      -
+        filename: "nlohmann_jsonConfig.cmake"
+        kind: "cmake"
+      -
+        filename: "nlohmann_json-config.cmake"
+        kind: "cmake"
+    version_request:
+      exact: false
+    settings:
+      required: "required_explicit"
+      quiet: false
+      global: false
+      policy_scope: true
+      bypass_provider: false
+      names:
+        - "nlohmann_json"
+      path_suffixes:
+        - ""
+      paths:
+        CMAKE_FIND_USE_CMAKE_PATH: true
+        CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+        CMAKE_FIND_USE_INSTALL_PREFIX: true
+        CMAKE_FIND_USE_PACKAGE_ROOT_PATH: true
+        CMAKE_FIND_USE_CMAKE_PACKAGE_REGISTRY: true
+        CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: true
+        CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
+    candidates:
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/nlohmann_jsonConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/nlohmann_json-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/nlohmann_jsonConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/nlohmann_json-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/nlohmann_jsonConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/nlohmann_json-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/nlohmann_jsonConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/nlohmann_json-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/nlohmann_jsonConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/nlohmann_json-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/nlohmann_jsonConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/nlohmann_json-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/opt/nlohmann_jsonConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/opt/nlohmann_json-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+    found: null
+    search_context:
+      ENV{PATH}:
+        - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8"
+        - "/app/bin"
+        - "/app/bin"
+        - "/app/bin"
+        - "/usr/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/usr/local"
+        - "/usr"
+        - "/"
+        - "/usr"
+        - "/usr/local"
+        - "/usr/X11R6"
+        - "/usr/pkg"
+        - "/opt"
+...
+
+---
+events:
+  -
+    kind: "find_package-v1"
+    backtrace:
+      - "CMakeLists.txt:66 (find_package)"
+    name: "SDL3"
+    configs:
+      -
+        filename: "SDL3Config.cmake"
+        kind: "cmake"
+      -
+        filename: "sdl3-config.cmake"
+        kind: "cmake"
+    version_request:
+      version: "3.4.0"
+      version_complete: "3.4.0"
+      exact: false
+    settings:
+      required: "optional"
+      quiet: true
+      global: false
+      policy_scope: true
+      bypass_provider: false
+      names:
+        - "SDL3"
+      path_suffixes:
+        - ""
+      paths:
+        CMAKE_FIND_USE_CMAKE_PATH: true
+        CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+        CMAKE_FIND_USE_INSTALL_PREFIX: true
+        CMAKE_FIND_USE_PACKAGE_ROOT_PATH: true
+        CMAKE_FIND_USE_CMAKE_PACKAGE_REGISTRY: true
+        CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: true
+        CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
+    candidates:
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "none?"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "none?"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_ttf/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_ttf/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_image/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_image/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "config"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_ttf/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_ttf/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_image/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_image/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "config"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/opt/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/opt/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+    found: null
+    search_context:
+      ENV{PATH}:
+        - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8"
+        - "/app/bin"
+        - "/app/bin"
+        - "/app/bin"
+        - "/usr/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/usr/local"
+        - "/usr"
+        - "/"
+        - "/usr"
+        - "/usr/local"
+        - "/usr/X11R6"
+        - "/usr/pkg"
+        - "/opt"
+...
+
+---
+events:
+  -
+    kind: "find_package-v1"
+    backtrace:
+      - "CMakeLists.txt:66 (find_package)"
+    name: "SDL3"
+    configs:
+      -
+        filename: "SDL3Config.cmake"
+        kind: "cmake"
+      -
+        filename: "sdl3-config.cmake"
+        kind: "cmake"
+    version_request:
+      version: "3.4.0"
+      version_complete: "3.4.0"
+      exact: false
+    settings:
+      required: "optional"
+      quiet: true
+      global: false
+      policy_scope: true
+      bypass_provider: false
+      names:
+        - "SDL3"
+      path_suffixes:
+        - ""
+      paths:
+        CMAKE_FIND_USE_CMAKE_PATH: true
+        CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+        CMAKE_FIND_USE_INSTALL_PREFIX: true
+        CMAKE_FIND_USE_PACKAGE_ROOT_PATH: true
+        CMAKE_FIND_USE_CMAKE_PACKAGE_REGISTRY: true
+        CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: true
+        CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
+    candidates:
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "none?"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "none?"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_ttf/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_ttf/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_image/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_image/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "config"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_ttf/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_ttf/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_image/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_image/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "config"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/opt/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/opt/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+    found: null
+    search_context:
+      ENV{PATH}:
+        - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8"
+        - "/app/bin"
+        - "/app/bin"
+        - "/app/bin"
+        - "/usr/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/usr/local"
+        - "/usr"
+        - "/"
+        - "/usr"
+        - "/usr/local"
+        - "/usr/X11R6"
+        - "/usr/pkg"
+        - "/opt"
+...
+
+---
+events:
+  -
+    kind: "find_package-v1"
+    backtrace:
+      - "CMakeLists.txt:69 (find_package)"
+    name: "SDL3"
+    configs:
+      -
+        filename: "SDL3Config.cmake"
+        kind: "cmake"
+      -
+        filename: "sdl3-config.cmake"
+        kind: "cmake"
+    version_request:
+      version: "3.4.0"
+      version_complete: "3.4.0"
+      exact: false
+    settings:
+      required: "optional"
+      quiet: true
+      global: false
+      policy_scope: true
+      bypass_provider: false
+      names:
+        - "SDL3"
+      path_suffixes:
+        - ""
+      paths:
+        CMAKE_FIND_USE_CMAKE_PATH: true
+        CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+        CMAKE_FIND_USE_INSTALL_PREFIX: true
+        CMAKE_FIND_USE_PACKAGE_ROOT_PATH: true
+        CMAKE_FIND_USE_CMAKE_PACKAGE_REGISTRY: true
+        CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: true
+        CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
+    candidates:
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "none?"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "none?"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_ttf/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_ttf/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_image/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_image/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "config"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_ttf/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_ttf/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_image/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_image/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "config"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/opt/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/opt/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+    found: null
+    search_context:
+      ENV{PATH}:
+        - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8"
+        - "/app/bin"
+        - "/app/bin"
+        - "/app/bin"
+        - "/usr/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/usr/local"
+        - "/usr"
+        - "/"
+        - "/usr"
+        - "/usr/local"
+        - "/usr/X11R6"
+        - "/usr/pkg"
+        - "/opt"
+...
+
+---
+events:
+  -
+    kind: "find_package-v1"
+    backtrace:
+      - "CMakeLists.txt:69 (find_package)"
+    name: "SDL3"
+    configs:
+      -
+        filename: "SDL3Config.cmake"
+        kind: "cmake"
+      -
+        filename: "sdl3-config.cmake"
+        kind: "cmake"
+    version_request:
+      version: "3.4.0"
+      version_complete: "3.4.0"
+      exact: false
+    settings:
+      required: "optional"
+      quiet: true
+      global: false
+      policy_scope: true
+      bypass_provider: false
+      names:
+        - "SDL3"
+      path_suffixes:
+        - ""
+      paths:
+        CMAKE_FIND_USE_CMAKE_PATH: true
+        CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+        CMAKE_FIND_USE_INSTALL_PREFIX: true
+        CMAKE_FIND_USE_PACKAGE_ROOT_PATH: true
+        CMAKE_FIND_USE_CMAKE_PACKAGE_REGISTRY: true
+        CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: true
+        CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
+    candidates:
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "none?"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "none?"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_ttf/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_ttf/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_image/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_image/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "config"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_ttf/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_ttf/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_image/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_image/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "config"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/opt/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/opt/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+    found: null
+    search_context:
+      ENV{PATH}:
+        - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8"
+        - "/app/bin"
+        - "/app/bin"
+        - "/app/bin"
+        - "/usr/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/usr/local"
+        - "/usr"
+        - "/"
+        - "/usr"
+        - "/usr/local"
+        - "/usr/X11R6"
+        - "/usr/pkg"
+        - "/opt"
+...
+
+---
+events:
+  -
+    kind: "find_package-v1"
+    backtrace:
+      - "CMakeLists.txt:69 (find_package)"
+    name: "SDL3"
+    configs:
+      -
+        filename: "SDL3Config.cmake"
+        kind: "cmake"
+      -
+        filename: "sdl3-config.cmake"
+        kind: "cmake"
+    version_request:
+      version: "3.4.0"
+      version_complete: "3.4.0"
+      exact: false
+    settings:
+      required: "optional"
+      quiet: true
+      global: false
+      policy_scope: true
+      bypass_provider: false
+      names:
+        - "SDL3"
+      path_suffixes:
+        - ""
+      paths:
+        CMAKE_FIND_USE_CMAKE_PATH: true
+        CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+        CMAKE_FIND_USE_INSTALL_PREFIX: true
+        CMAKE_FIND_USE_PACKAGE_ROOT_PATH: true
+        CMAKE_FIND_USE_CMAKE_PACKAGE_REGISTRY: true
+        CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: true
+        CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
+    candidates:
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "none?"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "none?"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_ttf/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_ttf/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_image/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_image/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "config"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_ttf/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_ttf/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_image/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_image/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "config"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/opt/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/opt/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+    found: null
+    search_context:
+      ENV{PATH}:
+        - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8"
+        - "/app/bin"
+        - "/app/bin"
+        - "/app/bin"
+        - "/usr/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/usr/local"
+        - "/usr"
+        - "/"
+        - "/usr"
+        - "/usr/local"
+        - "/usr/X11R6"
+        - "/usr/pkg"
+        - "/opt"
+...
+
+---
+events:
+  -
+    kind: "find_package-v1"
+    backtrace:
+      - "CMakeLists.txt:69 (find_package)"
+    name: "SDL3"
+    configs:
+      -
+        filename: "SDL3Config.cmake"
+        kind: "cmake"
+      -
+        filename: "sdl3-config.cmake"
+        kind: "cmake"
+    version_request:
+      version: "3.4.0"
+      version_complete: "3.4.0"
+      exact: false
+    settings:
+      required: "optional"
+      quiet: true
+      global: false
+      policy_scope: true
+      bypass_provider: false
+      names:
+        - "SDL3"
+      path_suffixes:
+        - ""
+      paths:
+        CMAKE_FIND_USE_CMAKE_PATH: true
+        CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+        CMAKE_FIND_USE_INSTALL_PREFIX: true
+        CMAKE_FIND_USE_PACKAGE_ROOT_PATH: true
+        CMAKE_FIND_USE_CMAKE_PACKAGE_REGISTRY: true
+        CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: true
+        CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
+    candidates:
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "none?"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "none?"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_ttf/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_ttf/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_image/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_image/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "config"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_ttf/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_ttf/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_image/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_image/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "config"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/opt/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/opt/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+    found: null
+    search_context:
+      ENV{PATH}:
+        - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8"
+        - "/app/bin"
+        - "/app/bin"
+        - "/app/bin"
+        - "/usr/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/usr/local"
+        - "/usr"
+        - "/"
+        - "/usr"
+        - "/usr/local"
+        - "/usr/X11R6"
+        - "/usr/pkg"
+        - "/opt"
+...
+
+---
+events:
+  -
+    kind: "find_package-v1"
+    backtrace:
+      - "CMakeLists.txt:69 (find_package)"
+    name: "SDL3"
+    configs:
+      -
+        filename: "SDL3Config.cmake"
+        kind: "cmake"
+      -
+        filename: "sdl3-config.cmake"
+        kind: "cmake"
+    version_request:
+      version: "3.4.0"
+      version_complete: "3.4.0"
+      exact: false
+    settings:
+      required: "optional"
+      quiet: true
+      global: false
+      policy_scope: true
+      bypass_provider: false
+      names:
+        - "SDL3"
+      path_suffixes:
+        - ""
+      paths:
+        CMAKE_FIND_USE_CMAKE_PATH: true
+        CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+        CMAKE_FIND_USE_INSTALL_PREFIX: true
+        CMAKE_FIND_USE_PACKAGE_ROOT_PATH: true
+        CMAKE_FIND_USE_CMAKE_PACKAGE_REGISTRY: true
+        CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: true
+        CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
+    candidates:
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "none?"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "none?"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_ttf/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_ttf/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_image/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_image/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "config"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_ttf/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_ttf/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_image/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_image/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "config"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/opt/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/opt/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+    found: null
+    search_context:
+      ENV{PATH}:
+        - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8"
+        - "/app/bin"
+        - "/app/bin"
+        - "/app/bin"
+        - "/usr/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/usr/local"
+        - "/usr"
+        - "/"
+        - "/usr"
+        - "/usr/local"
+        - "/usr/X11R6"
+        - "/usr/pkg"
+        - "/opt"
+...
+
+---
+events:
+  -
+    kind: "find_package-v1"
+    backtrace:
+      - "CMakeLists.txt:69 (find_package)"
+    name: "SDL3"
+    configs:
+      -
+        filename: "SDL3Config.cmake"
+        kind: "cmake"
+      -
+        filename: "sdl3-config.cmake"
+        kind: "cmake"
+    version_request:
+      version: "3.4.0"
+      version_complete: "3.4.0"
+      exact: false
+    settings:
+      required: "optional"
+      quiet: true
+      global: false
+      policy_scope: true
+      bypass_provider: false
+      names:
+        - "SDL3"
+      path_suffixes:
+        - ""
+      paths:
+        CMAKE_FIND_USE_CMAKE_PATH: true
+        CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+        CMAKE_FIND_USE_INSTALL_PREFIX: true
+        CMAKE_FIND_USE_PACKAGE_ROOT_PATH: true
+        CMAKE_FIND_USE_CMAKE_PACKAGE_REGISTRY: true
+        CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: true
+        CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
+    candidates:
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "none?"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "none?"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_ttf/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_ttf/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_image/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_image/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "config"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_ttf/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_ttf/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_image/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_image/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "config"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/opt/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/opt/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+    found: null
+    search_context:
+      ENV{PATH}:
+        - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8"
+        - "/app/bin"
+        - "/app/bin"
+        - "/app/bin"
+        - "/usr/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/usr/local"
+        - "/usr"
+        - "/"
+        - "/usr"
+        - "/usr/local"
+        - "/usr/X11R6"
+        - "/usr/pkg"
+        - "/opt"
+...
+
+---
+events:
+  -
+    kind: "find_package-v1"
+    backtrace:
+      - "CMakeLists.txt:69 (find_package)"
+    name: "SDL3"
+    configs:
+      -
+        filename: "SDL3Config.cmake"
+        kind: "cmake"
+      -
+        filename: "sdl3-config.cmake"
+        kind: "cmake"
+    version_request:
+      version: "3.4.0"
+      version_complete: "3.4.0"
+      exact: false
+    settings:
+      required: "optional"
+      quiet: true
+      global: false
+      policy_scope: true
+      bypass_provider: false
+      names:
+        - "SDL3"
+      path_suffixes:
+        - ""
+      paths:
+        CMAKE_FIND_USE_CMAKE_PATH: true
+        CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+        CMAKE_FIND_USE_INSTALL_PREFIX: true
+        CMAKE_FIND_USE_PACKAGE_ROOT_PATH: true
+        CMAKE_FIND_USE_CMAKE_PACKAGE_REGISTRY: true
+        CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: true
+        CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
+    candidates:
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "none?"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "none?"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_ttf/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_ttf/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_image/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_image/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "config"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_ttf/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_ttf/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_image/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_image/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "config"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/opt/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/opt/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+    found: null
+    search_context:
+      ENV{PATH}:
+        - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8"
+        - "/app/bin"
+        - "/app/bin"
+        - "/app/bin"
+        - "/usr/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/usr/local"
+        - "/usr"
+        - "/"
+        - "/usr"
+        - "/usr/local"
+        - "/usr/X11R6"
+        - "/usr/pkg"
+        - "/opt"
+...
+
+---
+events:
+  -
+    kind: "find_package-v1"
+    backtrace:
+      - "CMakeLists.txt:69 (find_package)"
+    name: "SDL3"
+    configs:
+      -
+        filename: "SDL3Config.cmake"
+        kind: "cmake"
+      -
+        filename: "sdl3-config.cmake"
+        kind: "cmake"
+    version_request:
+      version: "3.4.0"
+      version_complete: "3.4.0"
+      exact: false
+    settings:
+      required: "optional"
+      quiet: true
+      global: false
+      policy_scope: true
+      bypass_provider: false
+      names:
+        - "SDL3"
+      path_suffixes:
+        - ""
+      paths:
+        CMAKE_FIND_USE_CMAKE_PATH: true
+        CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+        CMAKE_FIND_USE_INSTALL_PREFIX: true
+        CMAKE_FIND_USE_PACKAGE_ROOT_PATH: true
+        CMAKE_FIND_USE_CMAKE_PACKAGE_REGISTRY: true
+        CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: true
+        CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
+    candidates:
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "none?"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "none?"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_ttf/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_ttf/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_image/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_image/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "config"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_ttf/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_ttf/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_image/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_image/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "config"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/opt/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/opt/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+    found: null
+    search_context:
+      ENV{PATH}:
+        - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8"
+        - "/app/bin"
+        - "/app/bin"
+        - "/app/bin"
+        - "/usr/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/usr/local"
+        - "/usr"
+        - "/"
+        - "/usr"
+        - "/usr/local"
+        - "/usr/X11R6"
+        - "/usr/pkg"
+        - "/opt"
+...
+
+---
+events:
+  -
+    kind: "find_package-v1"
+    backtrace:
+      - "CMakeLists.txt:69 (find_package)"
+    name: "SDL3"
+    configs:
+      -
+        filename: "SDL3Config.cmake"
+        kind: "cmake"
+      -
+        filename: "sdl3-config.cmake"
+        kind: "cmake"
+    version_request:
+      version: "3.4.0"
+      version_complete: "3.4.0"
+      exact: false
+    settings:
+      required: "optional"
+      quiet: true
+      global: false
+      policy_scope: true
+      bypass_provider: false
+      names:
+        - "SDL3"
+      path_suffixes:
+        - ""
+      paths:
+        CMAKE_FIND_USE_CMAKE_PATH: true
+        CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+        CMAKE_FIND_USE_INSTALL_PREFIX: true
+        CMAKE_FIND_USE_PACKAGE_ROOT_PATH: true
+        CMAKE_FIND_USE_CMAKE_PACKAGE_REGISTRY: true
+        CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: true
+        CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
+    candidates:
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "none?"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "none?"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/pkgRedirects/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/app/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_ttf/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_ttf/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_image/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3_image/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "config"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/usr/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_ttf/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_ttf/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_image/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3_image/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake"
+        mode: "config"
+        reason: "insufficient_version"
+        message: "The version found is not compatible with the version requested."
+      -
+        path: "/lib/x86_64-linux-gnu/cmake/SDL3/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/opt/SDL3Config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/opt/sdl3-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+    found: null
+    search_context:
+      ENV{PATH}:
+        - "/home/benno111/.codex/tmp/arg0/codex-arg07rPyp8"
+        - "/app/bin"
+        - "/app/bin"
+        - "/app/bin"
+        - "/usr/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/node_modules/bin"
+        - "/home/benno111/.var/app/com.visualstudio.code/data/vscode/extensions/openai.chatgpt-0.4.73-linux-x64/bin/linux-x86_64"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/usr/local"
+        - "/usr"
+        - "/"
+        - "/usr"
+        - "/usr/local"
+        - "/usr/X11R6"
+        - "/usr/pkg"
+        - "/opt"
+...

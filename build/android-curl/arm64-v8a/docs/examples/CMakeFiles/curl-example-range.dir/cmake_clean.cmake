@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-range.dir/link.d"
   "CMakeFiles/curl-example-range.dir/range.c.o"
   "CMakeFiles/curl-example-range.dir/range.c.o.d"
   "range"

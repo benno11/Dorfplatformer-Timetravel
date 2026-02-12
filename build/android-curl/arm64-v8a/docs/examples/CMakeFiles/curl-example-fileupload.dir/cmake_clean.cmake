@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-fileupload.dir/link.d"
   "CMakeFiles/curl-example-fileupload.dir/fileupload.c.o"
   "CMakeFiles/curl-example-fileupload.dir/fileupload.c.o.d"
   "fileupload"

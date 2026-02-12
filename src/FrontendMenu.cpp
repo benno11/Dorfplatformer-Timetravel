@@ -45,13 +45,71 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     bool closeMenuOpen = false;
     int closeMenuSel = 0; // 0 Resume, 1 Close Game
     int menuSel = -1;    // 0 Settings, 1 Play, 2 Editor
-    int settingsTab = 0; // 0 General, 1 Audio, 2 Debug, 3 Controls
+    int settingsTab = 0; // 0 General, 1 Audio, 2 Debug, 3 Controls, 4 About, 5-9 Extra categories
     int settingsSelAudio = 0;
     int settingsSelDebug = 0;
     bool pendingSettingsExitCleanup = false;
     Uint64 inputBlockUntilTicks = 0;
     constexpr Uint64 kMenuInputBlockMs = 110;
-    constexpr int kSettingsTabCount = 5;
+    constexpr int kSettingsTabCount = 10;
+    constexpr int kExtraTabStart = 5;
+    constexpr int kExtraTabCount = 5;
+    constexpr int kExtraTabOptionCount = 11;
+    bool localExtraTabValues[kExtraTabCount][kExtraTabOptionCount] = {};
+    auto extraTabValueRef = [&](int tabIdx, int optIdx) -> bool& {
+        const int t = std::clamp(tabIdx, 0, kExtraTabCount - 1);
+        const int o = std::clamp(optIdx, 0, kExtraTabOptionCount - 1);
+        const int flat = t * kExtraTabOptionCount + o;
+        if (ctx.extraSettings && ctx.extraSettingsCount >= (kExtraTabCount * kExtraTabOptionCount)) {
+            return ctx.extraSettings[flat];
+        }
+        return localExtraTabValues[t][o];
+    };
+    const char* extraTabNames[kExtraTabCount] = {"GRAPHICS+", "GAMEPLAY+", "ACCESSIBILITY", "NETWORK+", "PRIVACY+"};
+    const char* extraTabOptionLabels[kExtraTabCount][kExtraTabOptionCount] = {
+        {"BLOOM", "MOTION BLUR", "FILM GRAIN", "CHROMATIC ABERRATION", "SHADOW BOOST", "LIGHT SHAFTS", "WATER REFLECTIONS", "PARTICLE DENSITY+", "DISTANT DETAIL", "RETRO PIXEL FILTER", "SCREEN SHAKE+"},
+        {"AUTO SAVE", "AUTO CHECKPOINT", "TUTORIAL HINTS", "SMART CAMERA", "MAGNET COINS", "SLOW-MO ON DEATH", "ASSISTED JUMPS", "EXTENDED INVULN FRAMES", "QUICK RESTART", "ENEMY AGGRO REDUCE", "DROP SAFE MODE"},
+        {"HIGH CONTRAST UI", "COLORBLIND MODE", "LARGE TEXT", "OUTLINE PLAYER", "SCREEN READER CUES", "SUBTITLES+", "FLASH REDUCTION", "INPUT HOLD ASSIST", "AIM ASSIST", "MENU NARRATION", "CAPTION BACKGROUND"},
+        {"AUTO RETRY CONNECTION", "LIMIT BACKGROUND FETCH", "SYNC CLOUD PROGRESS", "USE CDN MIRROR", "LOW BANDWIDTH MODE", "UPLOAD CRASH LOGS", "PING DIAGNOSTICS", "NET DEBUG OVERLAY", "FORCE IPV4", "TLS STRICT MODE", "CACHE REMOTE LEVELS"},
+        {"SEND ANONYMOUS METRICS", "PERSONALIZED CONTENT", "SESSION TELEMETRY", "ERROR REPORT DETAILS", "LOCAL HISTORY LOG", "CROSS-DEVICE IDS", "ALLOW SOCIAL FEATURES", "FRIEND PRESENCE", "SHOW ONLINE STATUS", "DELETE TEMP DATA ON EXIT", "PRIVACY LOCKDOWN"}
+    };
+    auto isExtraTab = [&](int tab) -> bool { return tab >= kExtraTabStart && tab < kSettingsTabCount; };
+    auto extraTabIndex = [&](int tab) -> int { return std::clamp(tab - kExtraTabStart, 0, kExtraTabCount - 1); };
+    auto extraTabUsedOptionCount = [&](int tab) -> int {
+        // Keep only wired options visible.
+        // PRIVACY+ currently has one hooked option: SEND ANONYMOUS METRICS.
+        if (tab == 9) return 1;
+        return 0;
+    };
+    auto extraTabOptionAtVisibleRow = [&](int tab, int row) -> int {
+        if (tab == 9 && row == 0) return 0;
+        return -1;
+    };
+    auto extraTabRowCountForTab = [&](int tab) -> int {
+        const int used = extraTabUsedOptionCount(tab);
+        if (used <= 0) return 0;
+        return used + 1; // + BACK
+    };
+    auto tabIsVisible = [&](int tab) -> bool {
+        if (!isExtraTab(tab)) return true;
+        return extraTabUsedOptionCount(tab) > 0;
+    };
+    auto visibleTabList = [&]() -> std::vector<int> {
+        std::vector<int> tabs;
+        for (int i = 0; i < kSettingsTabCount; ++i) {
+            if (tabIsVisible(i)) tabs.push_back(i);
+        }
+        return tabs;
+    };
+    auto firstVisibleTab = [&]() -> int {
+        for (int i = 0; i < kSettingsTabCount; ++i) {
+            if (tabIsVisible(i)) return i;
+        }
+        return 0;
+    };
+    auto normalizeSettingsTab = [&]() {
+        if (!tabIsVisible(settingsTab)) settingsTab = firstVisibleTab();
+    };
     auto blockMenuInput = [&]() {
         inputBlockUntilTicks = SDL_GetTicks() + kMenuInputBlockMs;
     };
@@ -67,7 +125,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         closeMenuOpen = value;
     };
     auto setSettingsTab = [&](int value) {
-        settingsTab = value;
+        settingsTab = std::clamp(value, 0, kSettingsTabCount - 1);
+        normalizeSettingsTab();
     };
 #if defined(__ANDROID__)
     constexpr int IDX_VSYNC = 0;
@@ -132,6 +191,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         if (tab == 2) return 8;
         if (tab == 3) return 0;
         if (tab == 4) return 0;
+        if (isExtraTab(tab)) return extraTabRowCountForTab(tab);
         return kSettingsCount;
     };
     auto settingsMaxScroll = [&](int tab) -> int {
@@ -351,6 +411,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     // Apply persisted audio state before entering the menu loop.
     if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
     if (ctx.applyMenuMusicToggle) ctx.applyMenuMusicToggle();
+    normalizeSettingsTab();
     InputSystem menuInput;
     menuInput.scanConnected();
 
@@ -421,12 +482,13 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     setInSettings(false);
                     continue;
                 }
+                const int selectableRows = std::max(1, settingsRowsForTab(settingsTab));
                 if (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_UP) {
-                    settingsSel = (settingsSel + kSettingsCount - 1) % kSettingsCount;
+                    settingsSel = (settingsSel + selectableRows - 1) % selectableRows;
                     continue;
                 }
                 if (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_DOWN) {
-                    settingsSel = (settingsSel + 1) % kSettingsCount;
+                    settingsSel = (settingsSel + 1) % selectableRows;
                     continue;
                 }
             }
@@ -475,15 +537,71 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     }
                 } else {
                     if (e.key.key == SDLK_TAB || e.key.key == SDLK_q || e.key.key == SDLK_e) {
-                        setSettingsTab((settingsTab + 1) % kSettingsTabCount);
+                        const std::vector<int> tabs = visibleTabList();
+                        int nextTab = settingsTab;
+                        if (!tabs.empty()) {
+                            auto it = std::find(tabs.begin(), tabs.end(), settingsTab);
+                            const int idx = (it == tabs.end()) ? 0 : (int)(it - tabs.begin());
+                            nextTab = tabs[(idx + 1) % (int)tabs.size()];
+                        }
+                        setSettingsTab(nextTab);
+                        if (settingsTab == 1) settingsSelAudio = 0;
+                        if (settingsTab == 2) settingsSelDebug = 0;
+                        if (isExtraTab(settingsTab)) settingsSel = 0;
                         settingsScrollY = 0;
                         continue;
                     }
-                    if (e.key.key == SDLK_1) { setSettingsTab(0); settingsScrollY = 0; continue; }
-                    if (e.key.key == SDLK_2) { setSettingsTab(1); settingsScrollY = 0; continue; }
-                    if (e.key.key == SDLK_3) { setSettingsTab(2); settingsScrollY = 0; continue; }
-                    if (e.key.key == SDLK_4) { setSettingsTab(3); settingsScrollY = 0; continue; }
-                    if (e.key.key == SDLK_5) { setSettingsTab(4); settingsScrollY = 0; continue; }
+                    {
+                        int digitIdx = -1;
+                        if (e.key.key == SDLK_1) digitIdx = 0;
+                        else if (e.key.key == SDLK_2) digitIdx = 1;
+                        else if (e.key.key == SDLK_3) digitIdx = 2;
+                        else if (e.key.key == SDLK_4) digitIdx = 3;
+                        else if (e.key.key == SDLK_5) digitIdx = 4;
+                        else if (e.key.key == SDLK_6) digitIdx = 5;
+                        else if (e.key.key == SDLK_7) digitIdx = 6;
+                        else if (e.key.key == SDLK_8) digitIdx = 7;
+                        else if (e.key.key == SDLK_9) digitIdx = 8;
+                        else if (e.key.key == SDLK_0) digitIdx = 9;
+                        if (digitIdx >= 0) {
+                            const std::vector<int> tabs = visibleTabList();
+                            if (digitIdx < (int)tabs.size()) {
+                                setSettingsTab(tabs[digitIdx]);
+                                if (settingsTab == 1) settingsSelAudio = 0;
+                                if (settingsTab == 2) settingsSelDebug = 0;
+                                if (isExtraTab(settingsTab)) settingsSel = 0;
+                                settingsScrollY = 0;
+                            }
+                            continue;
+                        }
+                    }
+                    if (isExtraTab(settingsTab)) {
+                        const int extraRows = settingsRowsForTab(settingsTab);
+                        if (e.key.key == SDLK_UP || e.key.key == SDLK_w) {
+                            settingsSel = (settingsSel + extraRows - 1) % extraRows;
+                            ensureSettingsRowVisible(settingsSel);
+                        }
+                        if (e.key.key == SDLK_DOWN || e.key.key == SDLK_s) {
+                            settingsSel = (settingsSel + 1) % extraRows;
+                            ensureSettingsRowVisible(settingsSel);
+                        }
+                        if (isBackKey) {
+                            setInSettings(false);
+                            continue;
+                        }
+                        if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER ||
+                            e.key.key == SDLK_LEFT || e.key.key == SDLK_RIGHT) {
+                            const int extraIdx = extraTabIndex(settingsTab);
+                            const int optionIdx = extraTabOptionAtVisibleRow(settingsTab, settingsSel);
+                            if (optionIdx >= 0) {
+                                bool& v = extraTabValueRef(extraIdx, optionIdx);
+                                v = !v;
+                            } else {
+                                setInSettings(false);
+                            }
+                        }
+                        continue;
+                    }
                     if (e.key.key == SDLK_UP || e.key.key == SDLK_w) {
                         settingsSel = (settingsSel + kSettingsCount - 1) % kSettingsCount;
                         ensureSettingsRowVisible(settingsSel);
@@ -631,13 +749,16 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         continue;
                     }
                 } else {
-                    for (int ti = 0; ti < kSettingsTabCount; ++ti) {
-                        SDL_Rect tr = settingsTabBtn(ti);
+                    const std::vector<int> tabs = visibleTabList();
+                    for (int vi = 0; vi < (int)tabs.size(); ++vi) {
+                        const int ti = tabs[vi];
+                        SDL_Rect tr = settingsTabBtn(vi);
                         if (SDL_PointInRect(&pt, &tr)) {
                             setSettingsTab(ti);
                             settingsScrollY = 0;
                             if (ti == 1) settingsSelAudio = 0;
                             if (ti == 2) settingsSelDebug = 0;
+                            if (isExtraTab(ti)) settingsSel = 0;
                             continue;
                         }
                     }
@@ -654,6 +775,23 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         }
                     }
                     if (settingsTab == 3 || settingsTab == 4) continue;
+                    if (isExtraTab(settingsTab)) {
+                        const int extraIdx = extraTabIndex(settingsTab);
+                        const int extraRows = settingsRowsForTab(settingsTab);
+                        for (int i = 0; i < extraRows; ++i) {
+                            SDL_Rect row = settingsRowBtn(i);
+                            if (!SDL_PointInRect(&pt, &row)) continue;
+                            settingsSel = i;
+                            const int optionIdx = extraTabOptionAtVisibleRow(settingsTab, i);
+                            if (optionIdx >= 0) {
+                                bool& v = extraTabValueRef(extraIdx, optionIdx);
+                                v = !v;
+                            }
+                            else setInSettings(false);
+                            break;
+                        }
+                        continue;
+                    }
                     if (settingsTab == 1) {
                         SDL_Rect row0 = settingsRowBtn(0);
                         SDL_Rect row1 = settingsRowBtn(1);
@@ -805,13 +943,16 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         continue;
                     }
                 } else {
-                    for (int ti = 0; ti < kSettingsTabCount; ++ti) {
-                        SDL_Rect tr = settingsTabBtn(ti);
+                    const std::vector<int> tabs = visibleTabList();
+                    for (int vi = 0; vi < (int)tabs.size(); ++vi) {
+                        const int ti = tabs[vi];
+                        SDL_Rect tr = settingsTabBtn(vi);
                         if (SDL_PointInRect(&pt, &tr)) {
                             setSettingsTab(ti);
                             settingsScrollY = 0;
                             if (ti == 1) settingsSelAudio = 0;
                             if (ti == 2) settingsSelDebug = 0;
+                            if (isExtraTab(ti)) settingsSel = 0;
                             continue;
                         }
                     }
@@ -828,6 +969,23 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         }
                     }
                     if (settingsTab == 3 || settingsTab == 4) continue;
+                    if (isExtraTab(settingsTab)) {
+                        const int extraIdx = extraTabIndex(settingsTab);
+                        const int extraRows = settingsRowsForTab(settingsTab);
+                        for (int i = 0; i < extraRows; ++i) {
+                            SDL_Rect row = settingsRowBtn(i);
+                            if (!SDL_PointInRect(&pt, &row)) continue;
+                            settingsSel = i;
+                            const int optionIdx = extraTabOptionAtVisibleRow(settingsTab, i);
+                            if (optionIdx >= 0) {
+                                bool& v = extraTabValueRef(extraIdx, optionIdx);
+                                v = !v;
+                            }
+                            else setInSettings(false);
+                            break;
+                        }
+                        continue;
+                    }
                     if (settingsTab == 1) {
                         SDL_Rect row0 = settingsRowBtn(0);
                         SDL_Rect row1 = settingsRowBtn(1);
@@ -1182,9 +1340,11 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_RenderFillRect(ctx.ren, &fill);
                 }
             };
-            const char* tabNames[kSettingsTabCount] = {"GENERAL", "AUDIO", "DEBUG", "CONTROLS", "ABOUT"};
-            for (int ti = 0; ti < kSettingsTabCount; ++ti) {
-                SDL_Rect tr = settingsTabBtn(ti);
+            const char* tabNames[kSettingsTabCount] = {"GENERAL", "AUDIO", "DEBUG", "CONTROLS", "ABOUT", "GRAPHICS+", "GAMEPLAY+", "ACCESSIBILITY", "NETWORK+", "PRIVACY+"};
+            const std::vector<int> tabs = visibleTabList();
+            for (int vi = 0; vi < (int)tabs.size(); ++vi) {
+                const int ti = tabs[vi];
+                SDL_Rect tr = settingsTabBtn(vi);
                 SDL_SetRenderDrawColor(ctx.ren, settingsTab == ti ? 80 : 50, 90, 120, 255);
                 SDL_RenderFillRect(ctx.ren, &tr);
                 SDL_SetRenderDrawColor(ctx.ren, 180, 200, 230, 255);
@@ -1198,18 +1358,32 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 const int sdlPatch = SDL_VERSIONNUM_MICRO(sdlVer);
                 const char* platform = SDL_GetPlatform();
                 const char* rendererName = SDL_GetRendererName(ctx.ren);
+                const char* videoDriver = SDL_GetCurrentVideoDriver();
+                const char* audioDriver = SDL_GetCurrentAudioDriver();
+                const char* sdlRevision = SDL_GetRevision();
+                const int logicalCpuCores = SDL_GetNumLogicalCPUCores();
+                const int systemRamMiB = SDL_GetSystemRAM();
                 int winW = 0, winH = 0;
                 SDL_GetWindowSize(ctx.win, &winW, &winH);
-                DrawText(ctx.ren, 130, 162, 2, "DORFPLATFORMER TIMETRAVEL");
-                DrawText(ctx.ren, 130, 188, 2, std::string("VERSION: ") + (ctx.versionString.empty() ? "dev" : ctx.versionString));
-                DrawText(ctx.ren, 130, 214, 2, std::string("SDL: ") + std::to_string(sdlMajor) + "." + std::to_string(sdlMinor) + "." + std::to_string(sdlPatch));
-                DrawText(ctx.ren, 130, 240, 2, std::string("PLATFORM: ") + (platform ? platform : "unknown"));
-                DrawText(ctx.ren, 130, 266, 2, std::string("RENDERER: ") + (rendererName ? rendererName : "unknown"));
-                DrawText(ctx.ren, 130, 292, 2, std::string("WINDOW: ") + std::to_string(winW) + "x" + std::to_string(winH));
-                DrawText(ctx.ren, 130, 318, 2, std::string("BASE: ") + std::to_string(ctx.baseScreenW) + "x" + std::to_string(ctx.baseScreenH));
-                DrawText(ctx.ren, 130, 344, 2, std::string("UI SCALE: ") + std::to_string(uiScalePercent) + "%");
-                DrawText(ctx.ren, 130, 370, 2, "BUILD UUID:");
-                DrawText(ctx.ren, 130, 392, 1, ctx.buildUuid);
+                auto drawAboutLine = [&](int y, int scale, const std::string& text) {
+                    DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(scale, text) / 2, y, scale, text);
+                };
+                drawAboutLine(162, 2, "DORFPLATFORMER TIMETRAVEL");
+                drawAboutLine(188, 2, std::string("VERSION: ") + (ctx.versionString.empty() ? "dev" : ctx.versionString));
+                drawAboutLine(214, 2, std::string("SDL: ") + std::to_string(sdlMajor) + "." + std::to_string(sdlMinor) + "." + std::to_string(sdlPatch));
+                drawAboutLine(240, 2, std::string("PLATFORM: ") + (platform ? platform : "unknown"));
+                drawAboutLine(266, 2, std::string("RENDERER: ") + (rendererName ? rendererName : "unknown"));
+                drawAboutLine(292, 2, std::string("WINDOW: ") + std::to_string(winW) + "x" + std::to_string(winH));
+                drawAboutLine(318, 2, std::string("BASE: ") + std::to_string(ctx.baseScreenW) + "x" + std::to_string(ctx.baseScreenH));
+                drawAboutLine(344, 2, std::string("UI SCALE: ") + std::to_string(uiScalePercent) + "%");
+                drawAboutLine(370, 2, std::string("VIDEO DRIVER: ") + (videoDriver ? videoDriver : "unknown"));
+                drawAboutLine(396, 2, std::string("AUDIO DRIVER: ") + (audioDriver ? audioDriver : "unknown"));
+                drawAboutLine(422, 2, std::string("CPU CORES: ") + std::to_string(logicalCpuCores));
+                drawAboutLine(448, 2, std::string("SYSTEM RAM: ") + std::to_string(systemRamMiB) + " MiB");
+                drawAboutLine(474, 2, "SDL REVISION:");
+                drawAboutLine(496, 1, sdlRevision ? sdlRevision : "unknown");
+                drawAboutLine(516, 2, "BUILD UUID:");
+                drawAboutLine(538, 1, ctx.buildUuid);
             } else if (settingsTab == 3) {
                 DrawText(ctx.ren, 130, 162, 2, "MOVEMENT:  A/D  or  LEFT/RIGHT");
                 DrawText(ctx.ren, 130, 192, 2, "JUMP:      SPACE/W/UP");
@@ -1276,6 +1450,35 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     if (i == 6) drawToggleCheckbox(i, powerManagementEnabled);
                     int y = settingsRowY(i);
                     if (i == settingsSelDebug) {
+                        SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_BLEND);
+                        SDL_SetRenderDrawColor(ctx.ren, 255, 255, 255, 76);
+                        SDL_Rect hl{ctx.baseScreenW / 2 - 140, y - 2, 280, 30};
+                        SDL_RenderFillRect(ctx.ren, &hl);
+                        SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_NONE);
+                    }
+                    DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(2, rows[i]) / 2, y, 2, rows[i]);
+                }
+                SDL_SetRenderClipRect(ctx.ren, nullptr);
+            } else if (isExtraTab(settingsTab)) {
+                SDL_Rect listClip = settingsListClipRect();
+                SDL_SetRenderClipRect(ctx.ren, &listClip);
+                const int extraIdx = extraTabIndex(settingsTab);
+                std::vector<std::string> rows;
+                const int used = extraTabUsedOptionCount(settingsTab);
+                rows.reserve(used + 1);
+                for (int i = 0; i < used; ++i) {
+                    const int optionIdx = extraTabOptionAtVisibleRow(settingsTab, i);
+                    if (optionIdx < 0) continue;
+                    rows.push_back(std::string(extraTabOptionLabels[extraIdx][optionIdx]) + ": " +
+                                   (extraTabValueRef(extraIdx, optionIdx) ? "ON" : "OFF"));
+                }
+                rows.push_back("BACK");
+                for (int i = 0; i < (int)rows.size(); ++i) {
+                    drawToggleHitbox(i, i == settingsSel);
+                    const int optionIdx = extraTabOptionAtVisibleRow(settingsTab, i);
+                    if (optionIdx >= 0) drawToggleCheckbox(i, extraTabValueRef(extraIdx, optionIdx));
+                    int y = settingsRowY(i);
+                    if (i == settingsSel) {
                         SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_BLEND);
                         SDL_SetRenderDrawColor(ctx.ren, 255, 255, 255, 76);
                         SDL_Rect hl{ctx.baseScreenW / 2 - 140, y - 2, 280, 30};

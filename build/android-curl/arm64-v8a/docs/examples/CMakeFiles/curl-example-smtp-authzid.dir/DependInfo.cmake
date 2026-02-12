@@ -9,6 +9,7 @@ set(CMAKE_DEPENDS_LANGUAGES
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "/home/benno111/Documents/GitHub/DF-New/deps/android-curl-src/docs/examples/smtp-authzid.c" "docs/examples/CMakeFiles/curl-example-smtp-authzid.dir/smtp-authzid.c.o" "gcc" "docs/examples/CMakeFiles/curl-example-smtp-authzid.dir/smtp-authzid.c.o.d"
+  "" "docs/examples/smtp-authzid" "gcc" "docs/examples/CMakeFiles/curl-example-smtp-authzid.dir/link.d"
   )
 
 # Targets to which this target links which contain Fortran sources.

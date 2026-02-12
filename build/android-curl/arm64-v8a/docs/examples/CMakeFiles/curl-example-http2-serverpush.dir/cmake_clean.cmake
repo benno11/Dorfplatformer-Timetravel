@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-http2-serverpush.dir/link.d"
   "CMakeFiles/curl-example-http2-serverpush.dir/http2-serverpush.c.o"
   "CMakeFiles/curl-example-http2-serverpush.dir/http2-serverpush.c.o.d"
   "http2-serverpush"

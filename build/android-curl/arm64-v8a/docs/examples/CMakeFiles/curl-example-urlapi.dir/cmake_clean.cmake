@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-urlapi.dir/link.d"
   "CMakeFiles/curl-example-urlapi.dir/urlapi.c.o"
   "CMakeFiles/curl-example-urlapi.dir/urlapi.c.o.d"
   "urlapi"

@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/libcurl_shared.dir/link.d"
   "CMakeFiles/libcurl_shared.dir/altsvc.c.o"
   "CMakeFiles/libcurl_shared.dir/altsvc.c.o.d"
   "CMakeFiles/libcurl_shared.dir/amigaos.c.o"

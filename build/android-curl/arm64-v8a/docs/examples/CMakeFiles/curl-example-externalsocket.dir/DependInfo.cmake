@@ -9,6 +9,7 @@ set(CMAKE_DEPENDS_LANGUAGES
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "/home/benno111/Documents/GitHub/DF-New/deps/android-curl-src/docs/examples/externalsocket.c" "docs/examples/CMakeFiles/curl-example-externalsocket.dir/externalsocket.c.o" "gcc" "docs/examples/CMakeFiles/curl-example-externalsocket.dir/externalsocket.c.o.d"
+  "" "docs/examples/externalsocket" "gcc" "docs/examples/CMakeFiles/curl-example-externalsocket.dir/link.d"
   )
 
 # Targets to which this target links which contain Fortran sources.

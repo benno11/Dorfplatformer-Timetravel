@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-ftp-wildcard.dir/link.d"
   "CMakeFiles/curl-example-ftp-wildcard.dir/ftp-wildcard.c.o"
   "CMakeFiles/curl-example-ftp-wildcard.dir/ftp-wildcard.c.o.d"
   "ftp-wildcard"

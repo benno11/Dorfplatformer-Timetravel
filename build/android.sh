@@ -135,6 +135,7 @@ fi
 API="${API:-24}"
 ABI="${ABI:-arm64-v8a}"
 FAST="${FAST:-0}"
+ANDROID_EMBED_SDL=1
 SDL_REQUIRED_VERSION="${SDL_REQUIRED_VERSION:-3.4.0}"
 ver_ge() {
   local a="$1" b="$2"
@@ -292,11 +293,9 @@ LDFLAGS=(
   -L"$SDL3_ANDROID_ROOT/lib/$ABI"
   -L"$SDL3_IMAGE_ROOT/lib/$ABI"
   -L"$SDL3_TTF_ROOT/lib/$ABI"
-  -lSDL3
-  -lSDL3_image
-  -lSDL3_ttf
-  -lSDL3_mixer
+  -L"$SDL3_MIXER_ROOT/lib/$ABI"
   -landroid
+  -lOpenSLES
   -llog
   -lGLESv2
   -lEGL
@@ -307,8 +306,56 @@ if [ ! -d "$SDL3_MIXER_ROOT/lib/$ABI" ]; then
   echo "[HINT] Run: ./build/setup-android-sdl.sh"
   exit 1
 fi
-LDFLAGS+=( -L"$SDL3_MIXER_ROOT/lib/$ABI" )
-echo "[INFO] SDL3_mixer linked"
+
+SDL_LINK_INPUTS=()
+pick_sdl_lib() {
+  local root="$1"
+  local base="$2"
+  local static_path="$root/lib/$ABI/lib${base}.a"
+  if [ -f "$static_path" ]; then
+    SDL_LINK_INPUTS+=("$static_path")
+    return 0
+  fi
+  echo "[ERROR] Missing static SDL library: lib${base}.a under $root/lib/$ABI"
+  echo "[HINT] Android build embeds SDL in libplatformer.so and does not use SDL shared .so at startup."
+  return 1
+}
+
+pick_sdl_lib "$SDL3_ANDROID_ROOT" "SDL3"
+pick_sdl_lib "$SDL3_IMAGE_ROOT" "SDL3_image"
+pick_sdl_lib "$SDL3_TTF_ROOT" "SDL3_ttf"
+pick_sdl_lib "$SDL3_MIXER_ROOT" "SDL3_mixer"
+
+echo "[INFO] SDL link mode: embed/static only"
+
+EXTRA_STATIC_INPUTS=()
+declare -A _extra_seen=()
+collect_extra_static_libs() {
+  local root="$1"
+  local libdir="$root/lib/$ABI"
+  [ -d "$libdir" ] || return 0
+  local f base
+  while IFS= read -r -d '' f; do
+    base="$(basename "$f")"
+    case "$base" in
+      libSDL3.a|libSDL3_image.a|libSDL3_ttf.a|libSDL3_mixer.a|libSDL3_test.a)
+        continue
+        ;;
+    esac
+    if [ -z "${_extra_seen[$base]+x}" ]; then
+      _extra_seen["$base"]=1
+      EXTRA_STATIC_INPUTS+=("$f")
+    fi
+  done < <(find "$libdir" -maxdepth 1 -type f -name 'lib*.a' -print0 | sort -z)
+}
+
+collect_extra_static_libs "$SDL3_ANDROID_ROOT"
+collect_extra_static_libs "$SDL3_IMAGE_ROOT"
+collect_extra_static_libs "$SDL3_TTF_ROOT"
+collect_extra_static_libs "$SDL3_MIXER_ROOT"
+if [ "${#EXTRA_STATIC_INPUTS[@]}" -gt 0 ]; then
+  echo "[INFO] Extra static codec libs linked: ${#EXTRA_STATIC_INPUTS[@]}"
+fi
 
 CURL_ENABLED=0
 if [ -f "$CURL_ANDROID_ROOT/include/curl/curl.h" ] && [ -f "$CURL_ANDROID_ROOT/lib/$ABI/libcurl.so" ]; then
@@ -370,7 +417,9 @@ SRC=(
 OUT_LIB="$OUT_DIR/libplatformer.so"
 
 echo "[INFO] Building Android ABI=$ABI API=$API"
-"$CXX" "${CXXFLAGS[@]}" "${CPPFLAGS[@]}" "${SRC[@]}" -shared "${LDFLAGS[@]}" -o "$OUT_LIB"
+"$CXX" "${CXXFLAGS[@]}" "${CPPFLAGS[@]}" "${SRC[@]}" -shared \
+  -Wl,--start-group "${SDL_LINK_INPUTS[@]}" "${EXTRA_STATIC_INPUTS[@]}" -Wl,--end-group \
+  "${LDFLAGS[@]}" -o "$OUT_LIB"
 
 echo "[OK] Built: $OUT_LIB"
 copy_if_exists() {
@@ -381,10 +430,7 @@ copy_if_exists() {
     echo "[OK] Synced next to game: $(basename "$src")"
   fi
 }
-copy_if_exists "$SDL3_ANDROID_ROOT/lib/$ABI/libSDL3.so" "$OUT_DIR/libSDL3.so"
-copy_if_exists "$SDL3_IMAGE_ROOT/lib/$ABI/libSDL3_image.so" "$OUT_DIR/libSDL3_image.so"
-copy_if_exists "$SDL3_TTF_ROOT/lib/$ABI/libSDL3_ttf.so" "$OUT_DIR/libSDL3_ttf.so"
-copy_if_exists "$SDL3_MIXER_ROOT/lib/$ABI/libSDL3_mixer.so" "$OUT_DIR/libSDL3_mixer.so"
+echo "[INFO] SDL is embedded in libplatformer.so; skipping SDL .so sync"
 if [ "$CURL_ENABLED" = "1" ]; then
   copy_if_exists "$CURL_ANDROID_ROOT/lib/$ABI/libcurl.so" "$OUT_DIR/libcurl.so"
 fi

@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-multi-single.dir/link.d"
   "CMakeFiles/curl-example-multi-single.dir/multi-single.c.o"
   "CMakeFiles/curl-example-multi-single.dir/multi-single.c.o.d"
   "multi-single"

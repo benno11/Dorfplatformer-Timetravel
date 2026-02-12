@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-pop3-multi.dir/link.d"
   "CMakeFiles/curl-example-pop3-multi.dir/pop3-multi.c.o"
   "CMakeFiles/curl-example-pop3-multi.dir/pop3-multi.c.o.d"
   "pop3-multi"

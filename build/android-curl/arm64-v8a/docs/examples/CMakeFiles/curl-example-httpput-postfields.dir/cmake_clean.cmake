@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-httpput-postfields.dir/link.d"
   "CMakeFiles/curl-example-httpput-postfields.dir/httpput-postfields.c.o"
   "CMakeFiles/curl-example-httpput-postfields.dir/httpput-postfields.c.o.d"
   "httpput-postfields"

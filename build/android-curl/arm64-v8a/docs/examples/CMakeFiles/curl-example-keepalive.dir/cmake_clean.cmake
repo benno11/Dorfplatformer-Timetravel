@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-keepalive.dir/link.d"
   "CMakeFiles/curl-example-keepalive.dir/keepalive.c.o"
   "CMakeFiles/curl-example-keepalive.dir/keepalive.c.o.d"
   "keepalive"

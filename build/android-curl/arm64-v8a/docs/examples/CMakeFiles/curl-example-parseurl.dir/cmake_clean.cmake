@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-parseurl.dir/link.d"
   "CMakeFiles/curl-example-parseurl.dir/parseurl.c.o"
   "CMakeFiles/curl-example-parseurl.dir/parseurl.c.o.d"
   "parseurl"

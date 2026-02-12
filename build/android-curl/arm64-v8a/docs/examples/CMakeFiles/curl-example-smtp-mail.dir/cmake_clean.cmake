@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-smtp-mail.dir/link.d"
   "CMakeFiles/curl-example-smtp-mail.dir/smtp-mail.c.o"
   "CMakeFiles/curl-example-smtp-mail.dir/smtp-mail.c.o.d"
   "smtp-mail"

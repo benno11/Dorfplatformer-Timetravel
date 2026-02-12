@@ -1355,3 +1355,315 @@ SDL drivers: video=x11 audio=pipewire
 audio drivers available: pipewire, pulseaudio, alsa, sndio, jack, disk, dummy
 active audio driver: pipewire
 connected gamepads: <none>
+=== startup begin ===
+init attempt: video+audio+gamepad (env defaults) -> ok
+SDL_Init completed
+SDL drivers: video=x11 audio=alsa
+audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
+active audio driver: alsa
+connected gamepads: <none>
+=== startup begin ===
+init attempt: video+audio+gamepad (env defaults) -> ok
+SDL_Init completed
+SDL drivers: video=x11 audio=alsa
+audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
+active audio driver: alsa
+connected gamepads: <none>
+=== startup begin ===
+init attempt: video+audio+gamepad (env defaults) -> ok
+SDL_Init completed
+SDL drivers: video=x11 audio=alsa
+audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
+active audio driver: alsa
+connected gamepads: <none>
+=== startup begin ===
+init attempt: video+audio+gamepad (env defaults) -> ok
+SDL_Init completed
+SDL drivers: video=x11 audio=alsa
+audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
+active audio driver: alsa
+connected gamepads: <none>
+=== startup begin ===
+init attempt: video+audio+gamepad (env defaults) -> ok
+SDL_Init completed
+SDL drivers: video=x11 audio=alsa
+audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
+active audio driver: alsa
+connected gamepads: <none>
+=== startup begin ===
+init attempt: video+audio+gamepad (pipewire) -> Pipewire: Failed to connect hotplug detection context (112)
+init attempt: video+audio (pipewire) -> Pipewire: Failed to connect hotplug detection context (112)
+init attempt: video+audio+gamepad (pulseaudio) -> Could not setup connection to PulseAudio
+init attempt: video+audio (pulseaudio) -> Could not setup connection to PulseAudio
+init attempt: video+audio+gamepad (env defaults) -> ok
+SDL_Init completed
+SDL drivers: video=x11 audio=alsa
+audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
+active audio driver: alsa
+connected gamepads: <none>
+=== startup begin ===
+init attempt: video+audio+gamepad (pipewire) -> Pipewire: Failed to connect hotplug detection context (112)
+init attempt: video+audio (pipewire) -> Pipewire: Failed to connect hotplug detection context (112)
+init attempt: video+audio+gamepad (pulseaudio) -> Could not setup connection to PulseAudio
+init attempt: video+audio (pulseaudio) -> Could not setup connection to PulseAudio
+init attempt: video+audio+gamepad (env defaults) -> ok
+SDL_Init completed
+SDL drivers: video=x11 audio=alsa
+audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
+active audio driver: alsa
+connected gamepads: <none>
+=== startup begin ===
+init attempt: video+audio+gamepad (pipewire) -> Pipewire: Failed to connect hotplug detection context (112)
+init attempt: video+audio (pipewire) -> Pipewire: Failed to connect hotplug detection context (112)
+init attempt: video+audio+gamepad (pulseaudio) -> Could not setup connection to PulseAudio
+init attempt: video+audio (pulseaudio) -> Could not setup connection to PulseAudio
+init attempt: video+audio+gamepad (env defaults) -> ok
+SDL_Init completed
+SDL drivers: video=x11 audio=alsa
+audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
+active audio driver: alsa
+connected gamepads: <none>
+=== startup begin ===
+init attempt: video+audio+gamepad (pipewire) -> Pipewire: Failed to connect hotplug detection context (112)
+init attempt: video+audio (pipewire) -> Pipewire: Failed to connect hotplug detection context (112)
+init attempt: video+audio+gamepad (pulseaudio) -> Could not setup connection to PulseAudio
+init attempt: video+audio (pulseaudio) -> Could not setup connection to PulseAudio
+init attempt: video+audio+gamepad (env defaults) -> ok
+SDL_Init completed
+SDL drivers: video=x11 audio=alsa
+audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
+active audio driver: alsa
+connected gamepads: <none>
+=== startup begin ===
+init attempt: video+audio+gamepad (pipewire) -> Pipewire: Failed to connect hotplug detection context (112)
+init attempt: video+audio (pipewire) -> Pipewire: Failed to connect hotplug detection context (112)
+init attempt: video+audio+gamepad (pulseaudio) -> Could not setup connection to PulseAudio
+init attempt: video+audio (pulseaudio) -> Could not setup connection to PulseAudio
+init attempt: video+audio+gamepad (env defaults) -> ok
+SDL_Init completed
+SDL drivers: video=x11 audio=alsa
+audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
+active audio driver: alsa
+connected gamepads: <none>
+=== startup begin ===
+init attempt: video+audio+gamepad (pipewire) -> Pipewire: Failed to connect hotplug detection context (112)
+init attempt: video+audio (pipewire) -> Pipewire: Failed to connect hotplug detection context (112)
+init attempt: video+audio+gamepad (pulseaudio) -> Could not setup connection to PulseAudio
+init attempt: video+audio (pulseaudio) -> Could not setup connection to PulseAudio
+init attempt: video+audio+gamepad (env defaults) -> ok
+SDL_Init completed
+SDL drivers: video=x11 audio=alsa
+audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
+active audio driver: alsa
+connected gamepads: <none>
+=== startup begin ===
+init attempt: video+audio+gamepad (pipewire) -> Pipewire: Failed to connect hotplug detection context (112)
+init attempt: video+audio (pipewire) -> Pipewire: Failed to connect hotplug detection context (112)
+init attempt: video+audio+gamepad (pulseaudio) -> Could not setup connection to PulseAudio
+init attempt: video+audio (pulseaudio) -> Could not setup connection to PulseAudio
+init attempt: video+audio+gamepad (env defaults) -> ok
+SDL_Init completed
+SDL drivers: video=x11 audio=alsa
+audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
+active audio driver: alsa
+connected gamepads: <none>
+=== startup begin ===
+init attempt: video+audio+gamepad (pipewire) -> Pipewire: Failed to connect hotplug detection context (112)
+init attempt: video+audio (pipewire) -> Pipewire: Failed to connect hotplug detection context (112)
+init attempt: video+audio+gamepad (pulseaudio) -> Could not setup connection to PulseAudio
+init attempt: video+audio (pulseaudio) -> Could not setup connection to PulseAudio
+init attempt: video+audio+gamepad (env defaults) -> ok
+SDL_Init completed
+SDL drivers: video=x11 audio=alsa
+audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
+active audio driver: alsa
+connected gamepads: <none>
+=== startup begin ===
+init attempt: video+gamepad (env defaults) -> ok
+SDL_Init completed
+audio init attempt (pipewire): ok
+SDL drivers: video=x11 audio=alsa
+audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
+active audio driver: alsa
+connected gamepads: <none>
+=== startup begin ===
+init attempt: video+gamepad (env defaults) -> ok
+SDL_Init completed
+audio init attempt (pipewire): mismatch active=alsa expected=pipewire
+audio init attempt (pulseaudio): mismatch active=alsa expected=pulseaudio
+audio init attempt (env default): ok
+audio override: active driver 'alsa' is not preferred
+audio init attempt (override pipewire): mismatch active=alsa expected=pipewire
+audio init attempt (override pulseaudio): mismatch active=alsa expected=pulseaudio
+audio init attempt (override dummy): mismatch active=alsa expected=dummy
+audio override: no preferred driver override succeeded
+SDL drivers: video=x11 audio=<none>
+audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
+active audio driver: <none>
+connected gamepads: <none>
+=== startup begin ===
+init attempt: video+gamepad (env defaults) -> ok
+SDL_Init completed
+audio init attempt (pipewire): mismatch active=alsa expected=pipewire
+audio init attempt (pulseaudio): mismatch active=alsa expected=pulseaudio
+audio init attempt (env default): ok
+audio override: active driver 'alsa' is not preferred
+audio init attempt (override pipewire): mismatch active=alsa expected=pipewire
+audio init attempt (override pulseaudio): mismatch active=alsa expected=pulseaudio
+audio init attempt (override dummy): mismatch active=alsa expected=dummy
+audio override: no preferred driver override succeeded
+audio init attempt (restore env default): ok
+SDL drivers: video=x11 audio=alsa
+audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
+active audio driver: alsa
+connected gamepads: <none>
+=== startup begin ===
+audio preselect: pipewire
+init attempt: video+gamepad (env defaults) -> ok
+SDL_Init completed
+audio init attempt (pipewire) failed: Pipewire: Failed to connect hotplug detection context (112)
+audio init attempt (pulseaudio) failed: Pipewire: Failed to connect hotplug detection context (112)
+audio init attempt (env default) failed: Pipewire: Failed to connect hotplug detection context (112)
+audio init attempt (alsa) failed: Pipewire: Failed to connect hotplug detection context (112)
+audio init attempt (sndio) failed: Pipewire: Failed to connect hotplug detection context (112)
+audio init attempt (dummy) failed: Pipewire: Failed to connect hotplug detection context (112)
+audio init failed for all attempted drivers
+SDL drivers: video=x11 audio=<none>
+audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
+active audio driver: <none>
+connected gamepads: <none>
+=== startup begin ===
+audio preselect: pulseaudio
+init attempt: video+gamepad (env defaults) -> ok
+SDL_Init completed
+audio init attempt (pipewire) failed: Could not setup connection to PulseAudio
+audio init attempt (pulseaudio) failed: Could not setup connection to PulseAudio
+audio init attempt (env default) failed: Could not setup connection to PulseAudio
+audio init attempt (alsa) failed: Could not setup connection to PulseAudio
+audio init attempt (sndio) failed: Could not setup connection to PulseAudio
+audio init attempt (dummy) failed: Could not setup connection to PulseAudio
+audio init failed for all attempted drivers
+SDL drivers: video=x11 audio=<none>
+audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
+active audio driver: <none>
+connected gamepads: <none>
+=== startup begin ===
+audio preselect: pulseaudio
+init attempt: video+gamepad (env defaults) -> ok
+SDL_Init completed
+audio init attempt (pipewire): mismatch active=pulseaudio expected=pipewire
+audio init attempt (pulseaudio): ok
+SDL drivers: video=x11 audio=pulseaudio
+audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
+active audio driver: pulseaudio
+connected gamepads: <none>
+=== startup begin ===
+audio preselect: pulseaudio
+init attempt: video+gamepad (env defaults) -> ok
+SDL_Init completed
+audio init attempt (pipewire): mismatch active=pulseaudio expected=pipewire
+audio init attempt (pulseaudio): ok
+SDL drivers: video=x11 audio=pulseaudio
+audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
+active audio driver: pulseaudio
+connected gamepads: <none>
+=== startup begin ===
+audio preselect: pulseaudio
+init attempt: video+gamepad (env defaults) -> ok
+SDL_Init completed
+audio init attempt (pipewire): mismatch active=pulseaudio expected=pipewire
+audio init attempt (pulseaudio): ok
+SDL drivers: video=x11 audio=pulseaudio
+audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
+active audio driver: pulseaudio
+connected gamepads: <none>
+=== startup begin ===
+audio preselect: pulseaudio
+init attempt: video+gamepad (env defaults) -> ok
+SDL_Init completed
+audio init attempt (pipewire): mismatch active=pulseaudio expected=pipewire
+audio init attempt (pulseaudio): ok
+SDL drivers: video=x11 audio=pulseaudio
+audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
+active audio driver: pulseaudio
+connected gamepads: <none>
+=== startup begin ===
+audio preselect: pulseaudio
+init attempt: video+gamepad (env defaults) -> ok
+SDL_Init completed
+audio init attempt (pipewire): mismatch active=pulseaudio expected=pipewire
+audio init attempt (pulseaudio): ok
+SDL drivers: video=x11 audio=pulseaudio
+audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
+active audio driver: pulseaudio
+connected gamepads: <none>
+=== startup begin ===
+audio preselect: pulseaudio
+init attempt: video+gamepad (env defaults) -> ok
+SDL_Init completed
+audio init attempt (pipewire): mismatch active=pulseaudio expected=pipewire
+audio init attempt (pulseaudio): ok
+SDL drivers: video=x11 audio=pulseaudio
+audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
+active audio driver: pulseaudio
+connected gamepads: <none>
+=== startup begin ===
+audio preselect: pulseaudio
+init attempt: video+gamepad (env defaults) -> ok
+SDL_Init completed
+audio init attempt (pipewire): mismatch active=pulseaudio expected=pipewire
+audio init attempt (pulseaudio): ok
+SDL drivers: video=x11 audio=pulseaudio
+audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
+active audio driver: pulseaudio
+connected gamepads: <none>
+=== startup begin ===
+audio preselect: pulseaudio
+init attempt: video+gamepad (env defaults) -> ok
+SDL_Init completed
+audio init attempt (pipewire): mismatch active=pulseaudio expected=pipewire
+audio init attempt (pulseaudio): ok
+SDL drivers: video=x11 audio=pulseaudio
+audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
+active audio driver: pulseaudio
+connected gamepads: <none>
+=== startup begin ===
+audio preselect: pulseaudio
+init attempt: video+gamepad (env defaults) -> ok
+SDL_Init completed
+audio init attempt (pipewire): mismatch active=pulseaudio expected=pipewire
+audio init attempt (pulseaudio): ok
+SDL drivers: video=x11 audio=pulseaudio
+audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
+active audio driver: pulseaudio
+connected gamepads: <none>
+=== startup begin ===
+audio preselect: pulseaudio
+init attempt: video+gamepad (env defaults) -> ok
+SDL_Init completed
+audio init attempt (pipewire): mismatch active=pulseaudio expected=pipewire
+audio init attempt (pulseaudio): ok
+SDL drivers: video=x11 audio=pulseaudio
+audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
+active audio driver: pulseaudio
+connected gamepads: <none>
+=== startup begin ===
+audio preselect: pulseaudio
+init attempt: video+gamepad (env defaults) -> ok
+SDL_Init completed
+audio init attempt (pipewire): mismatch active=pulseaudio expected=pipewire
+audio init attempt (pulseaudio): ok
+SDL drivers: video=x11 audio=pulseaudio
+audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
+active audio driver: pulseaudio
+connected gamepads: <none>
+=== startup begin ===
+audio preselect: pulseaudio
+init attempt: video+gamepad (env defaults) -> ok
+SDL_Init completed
+audio init attempt (pipewire): mismatch active=pulseaudio expected=pipewire
+audio init attempt (pulseaudio): ok
+SDL drivers: video=x11 audio=pulseaudio
+audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
+active audio driver: pulseaudio
+connected gamepads: <none>

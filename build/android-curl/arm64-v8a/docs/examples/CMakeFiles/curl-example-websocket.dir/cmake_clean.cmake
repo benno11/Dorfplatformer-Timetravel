@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-websocket.dir/link.d"
   "CMakeFiles/curl-example-websocket.dir/websocket.c.o"
   "CMakeFiles/curl-example-websocket.dir/websocket.c.o.d"
   "websocket"

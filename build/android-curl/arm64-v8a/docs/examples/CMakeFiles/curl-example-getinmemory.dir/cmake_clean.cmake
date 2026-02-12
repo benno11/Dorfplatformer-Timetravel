@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-getinmemory.dir/link.d"
   "CMakeFiles/curl-example-getinmemory.dir/getinmemory.c.o"
   "CMakeFiles/curl-example-getinmemory.dir/getinmemory.c.o.d"
   "getinmemory"

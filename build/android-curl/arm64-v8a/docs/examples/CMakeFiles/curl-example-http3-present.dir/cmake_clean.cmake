@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-http3-present.dir/link.d"
   "CMakeFiles/curl-example-http3-present.dir/http3-present.c.o"
   "CMakeFiles/curl-example-http3-present.dir/http3-present.c.o.d"
   "http3-present"

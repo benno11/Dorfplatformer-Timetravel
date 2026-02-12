@@ -26,6 +26,34 @@ need_install() {
   ! dpkg -s "$1" >/dev/null 2>&1
 }
 
+apt_pkg_available() {
+  apt-cache show "$1" >/dev/null 2>&1
+}
+
+pick_jdk_package() {
+  local candidates=(
+    openjdk-17-jdk
+    default-jdk
+    openjdk-21-jdk
+    openjdk-22-jdk
+    openjdk-23-jdk
+  )
+  local pkg
+  for pkg in "${candidates[@]}"; do
+    if apt_pkg_available "$pkg"; then
+      echo "$pkg"
+      return 0
+    fi
+  done
+  return 1
+}
+
+JDK_PACKAGE="$(pick_jdk_package || true)"
+if [ -z "$JDK_PACKAGE" ]; then
+  echo "[WARN] No known JDK package found via apt-cache (openjdk/default-jdk)."
+  echo "[WARN] Continuing without Java package in host package list."
+fi
+
 HOST_PACKAGES=(
   build-essential
   clang
@@ -35,9 +63,11 @@ HOST_PACKAGES=(
   git
   unzip
   zip
-  openjdk-17-jdk
   nlohmann-json3-dev
 )
+if [ -n "$JDK_PACKAGE" ]; then
+  HOST_PACKAGES+=("$JDK_PACKAGE")
+fi
 
 MISSING=()
 for pkg in "${HOST_PACKAGES[@]}"; do

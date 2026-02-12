@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-simplepost.dir/link.d"
   "CMakeFiles/curl-example-simplepost.dir/simplepost.c.o"
   "CMakeFiles/curl-example-simplepost.dir/simplepost.c.o.d"
   "simplepost"

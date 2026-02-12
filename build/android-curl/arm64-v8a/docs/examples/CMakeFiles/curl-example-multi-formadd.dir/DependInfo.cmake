@@ -9,6 +9,7 @@ set(CMAKE_DEPENDS_LANGUAGES
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "/home/benno111/Documents/GitHub/DF-New/deps/android-curl-src/docs/examples/multi-formadd.c" "docs/examples/CMakeFiles/curl-example-multi-formadd.dir/multi-formadd.c.o" "gcc" "docs/examples/CMakeFiles/curl-example-multi-formadd.dir/multi-formadd.c.o.d"
+  "" "docs/examples/multi-formadd" "gcc" "docs/examples/CMakeFiles/curl-example-multi-formadd.dir/link.d"
   )
 
 # Targets to which this target links which contain Fortran sources.

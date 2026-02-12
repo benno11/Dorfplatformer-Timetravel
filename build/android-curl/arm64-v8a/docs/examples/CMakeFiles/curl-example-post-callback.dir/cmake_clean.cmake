@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-post-callback.dir/link.d"
   "CMakeFiles/curl-example-post-callback.dir/post-callback.c.o"
   "CMakeFiles/curl-example-post-callback.dir/post-callback.c.o.d"
   "post-callback"

@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-persistent.dir/link.d"
   "CMakeFiles/curl-example-persistent.dir/persistent.c.o"
   "CMakeFiles/curl-example-persistent.dir/persistent.c.o.d"
   "persistent"

@@ -9,6 +9,7 @@ set(CMAKE_DEPENDS_LANGUAGES
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "/home/benno111/Documents/GitHub/DF-New/deps/android-curl-src/docs/examples/ipv6.c" "docs/examples/CMakeFiles/curl-example-ipv6.dir/ipv6.c.o" "gcc" "docs/examples/CMakeFiles/curl-example-ipv6.dir/ipv6.c.o.d"
+  "" "docs/examples/ipv6" "gcc" "docs/examples/CMakeFiles/curl-example-ipv6.dir/link.d"
   )
 
 # Targets to which this target links which contain Fortran sources.

@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-pop3-authzid.dir/link.d"
   "CMakeFiles/curl-example-pop3-authzid.dir/pop3-authzid.c.o"
   "CMakeFiles/curl-example-pop3-authzid.dir/pop3-authzid.c.o.d"
   "pop3-authzid"

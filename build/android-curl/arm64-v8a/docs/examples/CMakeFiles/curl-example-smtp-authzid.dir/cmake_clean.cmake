@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-smtp-authzid.dir/link.d"
   "CMakeFiles/curl-example-smtp-authzid.dir/smtp-authzid.c.o"
   "CMakeFiles/curl-example-smtp-authzid.dir/smtp-authzid.c.o.d"
   "smtp-authzid"

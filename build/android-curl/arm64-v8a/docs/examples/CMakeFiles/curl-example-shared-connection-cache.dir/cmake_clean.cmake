@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-shared-connection-cache.dir/link.d"
   "CMakeFiles/curl-example-shared-connection-cache.dir/shared-connection-cache.c.o"
   "CMakeFiles/curl-example-shared-connection-cache.dir/shared-connection-cache.c.o.d"
   "shared-connection-cache"

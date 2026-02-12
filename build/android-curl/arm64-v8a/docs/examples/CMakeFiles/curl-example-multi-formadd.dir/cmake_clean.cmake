@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-multi-formadd.dir/link.d"
   "CMakeFiles/curl-example-multi-formadd.dir/multi-formadd.c.o"
   "CMakeFiles/curl-example-multi-formadd.dir/multi-formadd.c.o.d"
   "multi-formadd"

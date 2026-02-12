@@ -9,6 +9,7 @@ set(CMAKE_DEPENDS_LANGUAGES
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "/home/benno111/Documents/GitHub/DF-New/deps/android-curl-src/docs/examples/smtp-multi.c" "docs/examples/CMakeFiles/curl-example-smtp-multi.dir/smtp-multi.c.o" "gcc" "docs/examples/CMakeFiles/curl-example-smtp-multi.dir/smtp-multi.c.o.d"
+  "" "docs/examples/smtp-multi" "gcc" "docs/examples/CMakeFiles/curl-example-smtp-multi.dir/link.d"
   )
 
 # Targets to which this target links which contain Fortran sources.

@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-protofeats.dir/link.d"
   "CMakeFiles/curl-example-protofeats.dir/protofeats.c.o"
   "CMakeFiles/curl-example-protofeats.dir/protofeats.c.o.d"
   "protofeats"

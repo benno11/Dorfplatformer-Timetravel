@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-ipv6.dir/link.d"
   "CMakeFiles/curl-example-ipv6.dir/ipv6.c.o"
   "CMakeFiles/curl-example-ipv6.dir/ipv6.c.o.d"
   "ipv6"

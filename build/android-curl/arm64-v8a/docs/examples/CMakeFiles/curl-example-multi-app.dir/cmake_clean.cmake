@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-multi-app.dir/link.d"
   "CMakeFiles/curl-example-multi-app.dir/multi-app.c.o"
   "CMakeFiles/curl-example-multi-app.dir/multi-app.c.o.d"
   "multi-app"

@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-postit2.dir/link.d"
   "CMakeFiles/curl-example-postit2.dir/postit2.c.o"
   "CMakeFiles/curl-example-postit2.dir/postit2.c.o.d"
   "postit2"

@@ -1,6 +1,8 @@
 #include "AudioSystem.h"
 
 #include <algorithm>
+#include <cstdlib>
+#include <cstring>
 #include <vector>
 
 #include <sdl3/SDL.h>
@@ -200,6 +202,31 @@ static bool startMusicWithRetry(Mix_Music* music, int loops) {
     Mix_HaltMusicCompat();
     return Mix_PlayMusicCompat(music, loops) == 0;
 }
+
+static bool audioDriverAvailable(const char* driver) {
+    if (!driver || !*driver) return false;
+    const int n = SDL_GetNumAudioDrivers();
+    for (int i = 0; i < n; ++i) {
+        const char* d = SDL_GetAudioDriver(i);
+        if (d && std::strcmp(d, driver) == 0) return true;
+    }
+    return false;
+}
+
+static bool reinitAudioSubsystemWithDriver(const char* driver) {
+    if (!driver || !*driver) return false;
+    SDL_SetHint(SDL_HINT_AUDIO_DRIVER, driver);
+    if (setenv("SDL_AUDIO_DRIVER", driver, 1) != 0 || setenv("SDL_AUDIODRIVER", driver, 1) != 0) {
+        SDL_Log("Audio mixer retry: could not set audio driver env to %s", driver);
+        return false;
+    }
+    SDL_QuitSubSystem(SDL_INIT_AUDIO);
+    if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
+        SDL_Log("Audio mixer retry: SDL_InitSubSystem failed for driver %s: %s", driver, SDL_GetError());
+        return false;
+    }
+    return true;
+}
 } // namespace
 #endif
 
@@ -229,9 +256,40 @@ bool AudioSystem::initialize() {
 
 #if AUDIO_HAS_SDL3_MIXER
     constexpr int mixerFlags = MIX_INIT_MP3;
-    impl_->ready = (Mix_InitCompat(mixerFlags) & mixerFlags) == mixerFlags &&
-                   Mix_OpenAudioCompat(44100, MIX_DEFAULT_FORMAT, 2, 2048) == 0;
-    if (!impl_->ready) SDL_Log("Audio mixer init failed: %s", Mix_GetErrorCompat());
+    impl_->ready = (Mix_InitCompat(mixerFlags) & mixerFlags) == mixerFlags;
+    if (impl_->ready) {
+        impl_->ready = (Mix_OpenAudioCompat(44100, MIX_DEFAULT_FORMAT, 2, 2048) == 0);
+    }
+    if (!impl_->ready) {
+        const char* activeDriver = SDL_GetCurrentAudioDriver();
+        const std::string firstError = Mix_GetErrorCompat() ? Mix_GetErrorCompat() : "";
+        const bool pipewireHotplugFailed =
+            firstError.find("Pipewire: Failed to connect hotplug detection context") != std::string::npos;
+        SDL_Log("Audio mixer init failed (driver=%s): %s",
+                activeDriver ? activeDriver : "<none>",
+                firstError.c_str());
+
+        const char* retryDrivers[] = {"pipewire", "pulseaudio", "dummy", "alsa", "sndio"};
+        for (const char* driver : retryDrivers) {
+            if (pipewireHotplugFailed && std::strcmp(driver, "pipewire") == 0) continue;
+            if (!audioDriverAvailable(driver)) continue;
+            if (activeDriver && std::strcmp(activeDriver, driver) == 0) continue;
+            if (!reinitAudioSubsystemWithDriver(driver)) continue;
+            const char* switchedDriver = SDL_GetCurrentAudioDriver();
+            if (!switchedDriver || std::strcmp(switchedDriver, driver) != 0) {
+                SDL_Log("Audio mixer retry skipped (requested=%s active=%s)",
+                        driver,
+                        switchedDriver ? switchedDriver : "<none>");
+                continue;
+            }
+            if (Mix_OpenAudioCompat(44100, MIX_DEFAULT_FORMAT, 2, 2048) == 0) {
+                impl_->ready = true;
+                SDL_Log("Audio mixer init recovered with SDL_AUDIODRIVER=%s", driver);
+                break;
+            }
+            SDL_Log("Audio mixer retry failed (driver=%s): %s", driver, Mix_GetErrorCompat());
+        }
+    }
 #else
     SDL_Log("SDL_mixer not found at compile time: music playback disabled.");
     impl_->ready = false;

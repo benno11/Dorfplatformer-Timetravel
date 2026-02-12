@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-progressfunc.dir/link.d"
   "CMakeFiles/curl-example-progressfunc.dir/progressfunc.c.o"
   "CMakeFiles/curl-example-progressfunc.dir/progressfunc.c.o.d"
   "progressfunc"

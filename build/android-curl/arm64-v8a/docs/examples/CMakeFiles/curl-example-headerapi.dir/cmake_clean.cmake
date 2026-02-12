@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-headerapi.dir/link.d"
   "CMakeFiles/curl-example-headerapi.dir/headerapi.c.o"
   "CMakeFiles/curl-example-headerapi.dir/headerapi.c.o.d"
   "headerapi"

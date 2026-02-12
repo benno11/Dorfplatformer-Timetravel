@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-chkspeed.dir/link.d"
   "CMakeFiles/curl-example-chkspeed.dir/chkspeed.c.o"
   "CMakeFiles/curl-example-chkspeed.dir/chkspeed.c.o.d"
   "chkspeed"

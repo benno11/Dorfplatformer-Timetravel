@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-httpcustomheader.dir/link.d"
   "CMakeFiles/curl-example-httpcustomheader.dir/httpcustomheader.c.o"
   "CMakeFiles/curl-example-httpcustomheader.dir/httpcustomheader.c.o.d"
   "httpcustomheader"

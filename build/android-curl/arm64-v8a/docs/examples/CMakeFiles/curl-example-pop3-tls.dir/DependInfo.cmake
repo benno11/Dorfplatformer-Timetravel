@@ -9,6 +9,7 @@ set(CMAKE_DEPENDS_LANGUAGES
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "/home/benno111/Documents/GitHub/DF-New/deps/android-curl-src/docs/examples/pop3-tls.c" "docs/examples/CMakeFiles/curl-example-pop3-tls.dir/pop3-tls.c.o" "gcc" "docs/examples/CMakeFiles/curl-example-pop3-tls.dir/pop3-tls.c.o.d"
+  "" "docs/examples/pop3-tls" "gcc" "docs/examples/CMakeFiles/curl-example-pop3-tls.dir/link.d"
   )
 
 # Targets to which this target links which contain Fortran sources.

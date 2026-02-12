@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-imap-noop.dir/link.d"
   "CMakeFiles/curl-example-imap-noop.dir/imap-noop.c.o"
   "CMakeFiles/curl-example-imap-noop.dir/imap-noop.c.o.d"
   "imap-noop"

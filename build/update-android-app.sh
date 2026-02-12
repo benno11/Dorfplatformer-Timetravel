@@ -92,10 +92,7 @@ copy_lib_prefer_build() {
   return 1
 }
 
-copy_lib_prefer_build "libSDL3.so" "$SDL3_ANDROID_ROOT"
-copy_lib_prefer_build "libSDL3_image.so" "$SDL3_IMAGE_ROOT"
-copy_lib_prefer_build "libSDL3_ttf.so" "$SDL3_TTF_ROOT"
-copy_lib_prefer_build "libSDL3_mixer.so" "$SDL3_MIXER_ROOT"
+echo "[info] SDL is embedded in libplatformer.so -> skipping SDL shared library packaging"
 
 # Optional networking stack for Android (curl + common TLS deps).
 curl_enabled=0

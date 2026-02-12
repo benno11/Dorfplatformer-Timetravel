@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-multi-debugcallback.dir/link.d"
   "CMakeFiles/curl-example-multi-debugcallback.dir/multi-debugcallback.c.o"
   "CMakeFiles/curl-example-multi-debugcallback.dir/multi-debugcallback.c.o.d"
   "multi-debugcallback"

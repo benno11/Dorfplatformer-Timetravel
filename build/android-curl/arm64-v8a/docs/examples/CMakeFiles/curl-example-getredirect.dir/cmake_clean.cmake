@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-getredirect.dir/link.d"
   "CMakeFiles/curl-example-getredirect.dir/getredirect.c.o"
   "CMakeFiles/curl-example-getredirect.dir/getredirect.c.o.d"
   "getredirect"

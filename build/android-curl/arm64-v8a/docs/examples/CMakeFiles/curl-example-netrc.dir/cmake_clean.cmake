@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-netrc.dir/link.d"
   "CMakeFiles/curl-example-netrc.dir/netrc.c.o"
   "CMakeFiles/curl-example-netrc.dir/netrc.c.o.d"
   "netrc"

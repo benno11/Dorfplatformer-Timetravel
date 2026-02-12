@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-ftpgetresp.dir/link.d"
   "CMakeFiles/curl-example-ftpgetresp.dir/ftpgetresp.c.o"
   "CMakeFiles/curl-example-ftpgetresp.dir/ftpgetresp.c.o.d"
   "ftpgetresp"

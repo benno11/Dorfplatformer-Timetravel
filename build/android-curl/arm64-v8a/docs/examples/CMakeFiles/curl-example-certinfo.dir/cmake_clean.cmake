@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-certinfo.dir/link.d"
   "CMakeFiles/curl-example-certinfo.dir/certinfo.c.o"
   "CMakeFiles/curl-example-certinfo.dir/certinfo.c.o.d"
   "certinfo"

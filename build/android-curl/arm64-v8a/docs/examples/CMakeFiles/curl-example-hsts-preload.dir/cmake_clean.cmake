@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-hsts-preload.dir/link.d"
   "CMakeFiles/curl-example-hsts-preload.dir/hsts-preload.c.o"
   "CMakeFiles/curl-example-hsts-preload.dir/hsts-preload.c.o.d"
   "hsts-preload"

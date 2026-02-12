@@ -16,9 +16,10 @@ NETWORK_TIMEOUT_SECONDS="${NETWORK_TIMEOUT_SECONDS:-180}"
 #
 # Output layout (used by build/android.sh):
 #   deps/android/include/SDL3/...
-#   deps/android/lib/<abi>/libSDL3.so
-#   deps/android/lib/<abi>/libSDL3_image.so
-#   deps/android/lib/<abi>/libSDL3_ttf.so
+#   deps/android/lib/<abi>/libSDL3.a
+#   deps/android/lib/<abi>/libSDL3_image.a
+#   deps/android/lib/<abi>/libSDL3_ttf.a
+#   deps/android/lib/<abi>/libSDL3_mixer.a
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
@@ -100,6 +101,13 @@ if [ "$FORCE_REBUILD_SDL" = "1" ]; then
   mkdir -p "$STAGE_ROOT/lib/$ABI"
 fi
 
+# Always reset per-component Android build/install dirs before configure to
+# avoid stale CMake exports (e.g. SDL3sharedTargets.cmake from older shared builds).
+reset_component_dirs() {
+  local name="$1"
+  rm -rf "$BUILD_ROOT/$name" "$INSTALL_ROOT/$name"
+}
+
 run_with_timeout() {
   if command -v timeout >/dev/null 2>&1; then
     timeout "$NETWORK_TIMEOUT_SECONDS" "$@"
@@ -135,6 +143,7 @@ clone_or_update() {
   local chosen_ref=""
   local candidate=""
   local ok=0
+  local did_fetch=0
 
   echo "[INFO] Resolving ref for $name (requested: $ref)"
 
@@ -157,6 +166,7 @@ clone_or_update() {
       if run_with_timeout git -C "$dir" fetch --depth 1 origin "$candidate"; then
         chosen_ref="$candidate"
         ok=1
+        did_fetch=1
         break
       fi
       echo "[WARN] Failed to update $name with ref '$candidate'"
@@ -170,8 +180,16 @@ clone_or_update() {
   fi
 
   if [ -d "$dir/.git" ]; then
-    git -C "$dir" checkout -f FETCH_HEAD
-    git -C "$dir" reset --hard FETCH_HEAD
+    if [ "$did_fetch" -eq 1 ] && git -C "$dir" rev-parse --verify -q FETCH_HEAD >/dev/null; then
+      git -C "$dir" checkout -f FETCH_HEAD
+      git -C "$dir" reset --hard FETCH_HEAD
+    elif git -C "$dir" rev-parse --verify -q "origin/$chosen_ref" >/dev/null; then
+      git -C "$dir" checkout -f "$chosen_ref" || git -C "$dir" checkout -f "origin/$chosen_ref"
+      git -C "$dir" reset --hard "origin/$chosen_ref"
+    else
+      # Fresh clone path: --branch already checked out; keep repository in clean state.
+      git -C "$dir" reset --hard HEAD
+    fi
   fi
 }
 
@@ -224,47 +242,64 @@ if [ ! -f "$SRC_ROOT/SDL/include/SDL3/SDL.h" ]; then
 fi
 
 echo "[INFO] Building SDL3"
+reset_component_dirs "SDL"
 cmake_android \
   "$SRC_ROOT/SDL" \
   "$BUILD_ROOT/SDL" \
   "$INSTALL_ROOT/SDL" \
-  -DSDL_SHARED=ON \
-  -DSDL_STATIC=OFF \
+  -DSDL_SHARED=OFF \
+  -DSDL_STATIC=ON \
   -DSDL_TESTS=OFF
 
 SDL3_CMAKE_DIR="$INSTALL_ROOT/SDL/lib/cmake/SDL3"
 
 echo "[INFO] Building SDL3_image"
+reset_component_dirs "SDL_image"
 cmake_android \
   "$SRC_ROOT/SDL_image" \
   "$BUILD_ROOT/SDL_image" \
   "$INSTALL_ROOT/SDL_image" \
+  -DBUILD_SHARED_LIBS=OFF \
   -DBUILD_TESTING=OFF \
-  -DSDL3IMAGE_SAMPLES=OFF \
-  -DSDL3IMAGE_VENDORED=ON \
+  -DSDLIMAGE_SAMPLES=OFF \
+  -DSDLIMAGE_DEPS_SHARED=OFF \
+  -DSDLIMAGE_WEBP=OFF \
+  -DSDLIMAGE_VENDORED=ON \
   -DSDL3_DIR="$SDL3_CMAKE_DIR"
 
 echo "[INFO] Building SDL3_ttf"
+reset_component_dirs "SDL_ttf"
 cmake_android \
   "$SRC_ROOT/SDL_ttf" \
   "$BUILD_ROOT/SDL_ttf" \
   "$INSTALL_ROOT/SDL_ttf" \
+  -DBUILD_SHARED_LIBS=OFF \
   -DBUILD_TESTING=OFF \
-  -DSDL3TTF_SAMPLES=OFF \
-  -DSDL3TTF_VENDORED=ON \
-  -DSDL3TTF_HARFBUZZ=OFF \
+  -DSDLTTF_SAMPLES=OFF \
+  -DSDLTTF_VENDORED=ON \
+  -DSDLTTF_HARFBUZZ=OFF \
   -DSDL3_DIR="$SDL3_CMAKE_DIR"
 
 echo "[INFO] Building SDL3_mixer"
+reset_component_dirs "SDL_mixer"
 cmake_android \
   "$SRC_ROOT/SDL_mixer" \
   "$BUILD_ROOT/SDL_mixer" \
   "$INSTALL_ROOT/SDL_mixer" \
+  -DBUILD_SHARED_LIBS=OFF \
   -DBUILD_TESTING=OFF \
   -DSDLMIXER_TESTS=OFF \
   -DSDLMIXER_EXAMPLES=OFF \
+  -DSDLMIXER_DEPS_SHARED=OFF \
   -DSDLMIXER_VENDORED=ON \
-  -DSDLMIXER_OPUS=ON \
+  -DSDLMIXER_OPUS=OFF \
+  -DSDLMIXER_MP3=ON \
+  -DSDLMIXER_MP3_DRMP3=ON \
+  -DSDLMIXER_MP3_MPG123=OFF \
+  -DSDLMIXER_FLAC=OFF \
+  -DSDLMIXER_VORBIS=OFF \
+  -DSDLMIXER_WAVPACK=OFF \
+  -DSDLMIXER_GME=OFF \
   -DSDLMIXER_MOD=OFF \
   -DSDLMIXER_MIDI=OFF \
   -DSDL3_DIR="$SDL3_CMAKE_DIR"
@@ -293,7 +328,7 @@ copy_headers "$INSTALL_ROOT/SDL_mixer"
 copy_libs() {
   local from="$1"
   if [ -d "$from" ]; then
-    find "$from" -maxdepth 1 -type f \( -name 'libSDL*.so' -o -name 'libSDL*.a' \) -exec cp -a {} "$STAGE_ROOT/lib/$ABI/" \;
+    find "$from" -maxdepth 1 -type f \( -name 'lib*.a' -o -name 'libSDL*.so' \) -exec cp -a {} "$STAGE_ROOT/lib/$ABI/" \;
   fi
 }
 
@@ -302,8 +337,8 @@ copy_libs "$INSTALL_ROOT/SDL_image/lib"
 copy_libs "$INSTALL_ROOT/SDL_ttf/lib"
 copy_libs "$INSTALL_ROOT/SDL_mixer/lib"
 
-if [ ! -f "$STAGE_ROOT/lib/$ABI/libSDL3.so" ]; then
-  echo "[WARN] Could not find libSDL3.so in staged output."
+if [ ! -f "$STAGE_ROOT/lib/$ABI/libSDL3.a" ]; then
+  echo "[WARN] Could not find libSDL3.a in staged output."
 fi
 
 echo "[OK] Staged Android SDL deps at: $STAGE_ROOT"

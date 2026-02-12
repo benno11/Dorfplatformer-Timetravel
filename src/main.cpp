@@ -27,6 +27,9 @@
 #include <cstdlib>
 #include <vector>
 #include <fstream>
+#if defined(HAVE_CURL) && HAVE_CURL
+#include <curl/curl.h>
+#endif
 #if defined(__ANDROID__)
 #include <jni.h>
 #endif
@@ -75,16 +78,43 @@ int main(int argc, char** argv) {
         const char* v = std::getenv(name);
         return (v && *v) ? std::string(v) : std::string("<unset>");
     };
+    auto configuredAudioDriver = [&]() -> std::string {
+        const char* hintDriver = SDL_GetHint(SDL_HINT_AUDIO_DRIVER);
+        if (hintDriver && *hintDriver) return std::string(hintDriver);
+        const std::string modernEnv = envOrUnset("SDL_AUDIO_DRIVER");
+        if (modernEnv != "<unset>") return modernEnv;
+        const std::string legacyEnv = envOrUnset("SDL_AUDIODRIVER");
+        if (legacyEnv != "<unset>") return legacyEnv;
+        return "<unset>";
+    };
+    auto applyAudioDriverSelection = [&](const char* driver) {
+        if (driver && *driver) {
+            SDL_SetHint(SDL_HINT_AUDIO_DRIVER, driver);
+            setenv("SDL_AUDIO_DRIVER", driver, 1);
+            setenv("SDL_AUDIODRIVER", driver, 1); // Legacy compatibility.
+            return;
+        }
+        SDL_ResetHint(SDL_HINT_AUDIO_DRIVER);
+        unsetenv("SDL_AUDIO_DRIVER");
+        unsetenv("SDL_AUDIODRIVER");
+    };
     struct InitAttempt {
         const char* label;
         const char* videoDriver; // nullptr means keep current env
-        const char* audioDriver; // nullptr means keep current env
         Uint32 flags;
     };
     auto hasVideoDriver = [](const char* name) -> bool {
         const int n = SDL_GetNumVideoDrivers();
         for (int i = 0; i < n; ++i) {
             const char* d = SDL_GetVideoDriver(i);
+            if (d && std::strcmp(d, name) == 0) return true;
+        }
+        return false;
+    };
+    auto hasAudioDriver = [](const char* name) -> bool {
+        const int n = SDL_GetNumAudioDrivers();
+        for (int i = 0; i < n; ++i) {
+            const char* d = SDL_GetAudioDriver(i);
             if (d && std::strcmp(d, name) == 0) return true;
         }
         return false;
@@ -131,40 +161,59 @@ int main(int argc, char** argv) {
         SDL_free(ids);
         return out.empty() ? "<none>" : out;
     };
-    std::vector<InitAttempt> attempts = {
-        {"video+audio+gamepad (env defaults)", nullptr, nullptr, SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD},
-        {"video+gamepad (env defaults)", nullptr, nullptr, SDL_INIT_VIDEO | SDL_INIT_GAMEPAD},
-        {"video+audio (env defaults)", nullptr, nullptr, SDL_INIT_VIDEO | SDL_INIT_AUDIO},
-        {"video only (env defaults)", nullptr, nullptr, SDL_INIT_VIDEO},
-    };
+    std::vector<InitAttempt> attempts;
+    const bool hasExplicitAudioEnv = configuredAudioDriver() != "<unset>";
+    if (!hasExplicitAudioEnv) {
+        const char* preselectedAudio = nullptr;
+        if (hasAudioDriver("pulseaudio")) preselectedAudio = "pulseaudio";
+        else if (hasAudioDriver("dummy")) preselectedAudio = "dummy";
+        else if (hasAudioDriver("alsa")) preselectedAudio = "alsa";
+        else if (hasAudioDriver("pipewire")) preselectedAudio = "pipewire";
+        if (preselectedAudio) {
+            applyAudioDriverSelection(preselectedAudio);
+            logStartup(std::string("audio preselect: ") + preselectedAudio);
+        }
+    }
+    attempts.push_back({"video+gamepad (env defaults)", nullptr, SDL_INIT_VIDEO | SDL_INIT_GAMEPAD});
+    attempts.push_back({"video only (env defaults)", nullptr, SDL_INIT_VIDEO});
     const bool hasX11 = !envOrUnset("DISPLAY").empty() && envOrUnset("DISPLAY") != "<unset>";
     const bool hasWayland = !envOrUnset("WAYLAND_DISPLAY").empty() && envOrUnset("WAYLAND_DISPLAY") != "<unset>";
-    if (hasX11 && hasVideoDriver("x11")) {
-        attempts.push_back({"video+audio+gamepad (x11 + dummy audio)", "x11", "dummy", SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD});
-        attempts.push_back({"video+gamepad (x11)", "x11", nullptr, SDL_INIT_VIDEO | SDL_INIT_GAMEPAD});
-        attempts.push_back({"video+audio (x11 + dummy audio)", "x11", "dummy", SDL_INIT_VIDEO | SDL_INIT_AUDIO});
-        attempts.push_back({"video only (x11)", "x11", nullptr, SDL_INIT_VIDEO});
-    }
-    if (hasWayland && hasVideoDriver("wayland")) {
-        attempts.push_back({"video+audio+gamepad (wayland + dummy audio)", "wayland", "dummy", SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD});
-        attempts.push_back({"video+gamepad (wayland)", "wayland", nullptr, SDL_INIT_VIDEO | SDL_INIT_GAMEPAD});
-        attempts.push_back({"video+audio (wayland + dummy audio)", "wayland", "dummy", SDL_INIT_VIDEO | SDL_INIT_AUDIO});
-        attempts.push_back({"video only (wayland)", "wayland", nullptr, SDL_INIT_VIDEO});
+    const bool canX11 = hasX11 && hasVideoDriver("x11");
+    const bool canWayland = hasWayland && hasVideoDriver("wayland");
+    const std::string sessionType = envOrUnset("XDG_SESSION_TYPE");
+    const bool preferWayland = canWayland && (sessionType == "wayland" || !canX11);
+    auto pushWaylandAttempts = [&attempts]() {
+        attempts.push_back({"video+gamepad (wayland)", "wayland", SDL_INIT_VIDEO | SDL_INIT_GAMEPAD});
+        attempts.push_back({"video only (wayland)", "wayland", SDL_INIT_VIDEO});
+    };
+    auto pushX11Attempts = [&attempts]() {
+        attempts.push_back({"video+gamepad (x11)", "x11", SDL_INIT_VIDEO | SDL_INIT_GAMEPAD});
+        attempts.push_back({"video only (x11)", "x11", SDL_INIT_VIDEO});
+    };
+    if (preferWayland) {
+        if (canWayland) pushWaylandAttempts();
+        if (canX11) pushX11Attempts();
+    } else {
+        if (canX11) pushX11Attempts();
+        if (canWayland) pushWaylandAttempts();
     }
     if (hasVideoDriver("offscreen")) {
-        attempts.push_back({"video only (offscreen)", "offscreen", nullptr, SDL_INIT_VIDEO});
+        attempts.push_back({"video only (offscreen)", "offscreen", SDL_INIT_VIDEO});
     }
     if (hasVideoDriver("dummy")) {
-        attempts.push_back({"video only (dummy)", "dummy", nullptr, SDL_INIT_VIDEO});
+        attempts.push_back({"video only (dummy)", "dummy", SDL_INIT_VIDEO});
     }
 
     bool sdlOk = false;
     std::string initTrace;
+    const std::string initialVideoEnv = envOrUnset("SDL_VIDEODRIVER");
+    const std::string initialAudioEnv = configuredAudioDriver();
     for (const auto& a : attempts) {
         if (a.videoDriver) setenv("SDL_VIDEODRIVER", a.videoDriver, 1);
+        else if (initialVideoEnv != "<unset>") setenv("SDL_VIDEODRIVER", initialVideoEnv.c_str(), 1);
         else unsetenv("SDL_VIDEODRIVER");
-        if (a.audioDriver) setenv("SDL_AUDIODRIVER", a.audioDriver, 1);
-        else unsetenv("SDL_AUDIODRIVER");
+        if (initialAudioEnv != "<unset>") applyAudioDriverSelection(initialAudioEnv.c_str());
+        else applyAudioDriverSelection(nullptr);
         SDL_Quit();
         if (SDL_Init(a.flags)) {
             initTrace += std::string(a.label) + ": ok\n";
@@ -184,7 +233,9 @@ int main(int argc, char** argv) {
         msg += "XDG_RUNTIME_DIR=" + envOrUnset("XDG_RUNTIME_DIR") + "\n";
         msg += "available_video_drivers=" + listVideoDrivers() + "\n";
         msg += "SDL_VIDEODRIVER=" + envOrUnset("SDL_VIDEODRIVER") + "\n";
-        msg += "SDL_AUDIODRIVER=" + envOrUnset("SDL_AUDIODRIVER");
+        msg += "SDL_AUDIO_DRIVER=" + envOrUnset("SDL_AUDIO_DRIVER") + "\n";
+        msg += "SDL_AUDIODRIVER=" + envOrUnset("SDL_AUDIODRIVER") + "\n";
+        msg += "SDL_HINT_AUDIO_DRIVER=" + configuredAudioDriver();
         logStartup("init failed");
         logStartup(msg);
         reportStartupError("SDL Init Error", msg, nullptr);
@@ -192,24 +243,80 @@ int main(int argc, char** argv) {
         return 1;
     }
     logStartup("SDL_Init completed");
+    auto tryAudioInit = [&](const char* label, const char* forcedDriver) -> bool {
+        SDL_QuitSubSystem(SDL_INIT_AUDIO);
+        if (forcedDriver && *forcedDriver) applyAudioDriverSelection(forcedDriver);
+        else if (initialAudioEnv != "<unset>") applyAudioDriverSelection(initialAudioEnv.c_str());
+        else applyAudioDriverSelection(nullptr);
+        if (SDL_InitSubSystem(SDL_INIT_AUDIO)) {
+            const char* active = SDL_GetCurrentAudioDriver();
+            if (forcedDriver && *forcedDriver && active && std::strcmp(active, forcedDriver) != 0) {
+                logStartup(std::string("audio init attempt (") + label + "): mismatch active=" + active + " expected=" + forcedDriver);
+                return false;
+            }
+            logStartup(std::string("audio init attempt (") + label + "): ok");
+            return true;
+        }
+        const std::string err = sdlErr();
+        logStartup(std::string("audio init attempt (") + label + ") failed: " + err);
+        if ((forcedDriver && *forcedDriver && std::strcmp(forcedDriver, "dummy") != 0) &&
+            err.find("Pipewire: Failed to connect hotplug detection context") != std::string::npos) {
+            SDL_QuitSubSystem(SDL_INIT_AUDIO);
+            applyAudioDriverSelection("dummy");
+            if (SDL_InitSubSystem(SDL_INIT_AUDIO)) {
+                const char* active = SDL_GetCurrentAudioDriver();
+                if (active && std::strcmp(active, "dummy") == 0) {
+                    logStartup(std::string("audio init fallback (") + label + " -> dummy): ok");
+                    return true;
+                }
+                logStartup(std::string("audio init fallback (") + label + " -> dummy): mismatch active=" +
+                           (active ? active : "<none>") + " expected=dummy");
+            } else {
+                logStartup(std::string("audio init fallback (") + label + " -> dummy) failed: " + sdlErr());
+            }
+        }
+        return false;
+    };
+    auto isGoodAudioDriver = [](const char* driver) -> bool {
+        if (!driver) return false;
+        return std::strcmp(driver, "pipewire") == 0 ||
+               std::strcmp(driver, "pulseaudio") == 0 ||
+               std::strcmp(driver, "dummy") == 0;
+    };
+    bool audioReady = false;
+    if (hasExplicitAudioEnv) {
+        audioReady = tryAudioInit("env default", nullptr);
+    } else {
+        if (hasAudioDriver("pipewire")) audioReady = tryAudioInit("pipewire", "pipewire");
+        if (!audioReady && hasAudioDriver("pulseaudio")) audioReady = tryAudioInit("pulseaudio", "pulseaudio");
+        if (!audioReady) audioReady = tryAudioInit("env default", nullptr);
+        if (!audioReady && hasAudioDriver("alsa")) audioReady = tryAudioInit("alsa", "alsa");
+        if (!audioReady && hasAudioDriver("sndio")) audioReady = tryAudioInit("sndio", "sndio");
+        if (!audioReady && hasAudioDriver("dummy")) audioReady = tryAudioInit("dummy", "dummy");
+    }
+    if (!audioReady) {
+        logStartup("audio init failed for all attempted drivers");
+    } else {
+        const char* active = SDL_GetCurrentAudioDriver();
+        if (!isGoodAudioDriver(active)) {
+            logStartup(std::string("audio override: active driver '") + (active ? active : "<none>") + "' is not preferred");
+            bool overridden = false;
+            if (hasAudioDriver("pipewire")) overridden = tryAudioInit("override pipewire", "pipewire");
+            if (!overridden && hasAudioDriver("pulseaudio")) overridden = tryAudioInit("override pulseaudio", "pulseaudio");
+            if (!overridden && hasAudioDriver("dummy")) overridden = tryAudioInit("override dummy", "dummy");
+            if (!overridden) {
+                logStartup("audio override: no preferred driver override succeeded");
+                (void)tryAudioInit("restore env default", nullptr);
+            } else {
+                logStartup(std::string("audio override: switched to ") +
+                           (SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver() : "<none>"));
+            }
+        }
+    }
     logStartup(std::string("SDL drivers: video=") +
                (SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "<none>") +
                " audio=" +
                (SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver() : "<none>"));
-    if ((SDL_WasInit(SDL_INIT_AUDIO) & SDL_INIT_AUDIO) == 0) {
-        unsetenv("SDL_AUDIODRIVER");
-        if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
-            logStartup(std::string("audio init attempt (env default) failed: ") + sdlErr());
-            setenv("SDL_AUDIODRIVER", "dummy", 1);
-            if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
-                logStartup(std::string("audio init attempt (dummy) failed: ") + sdlErr());
-            } else {
-                logStartup("audio init attempt (dummy): ok");
-            }
-        } else {
-            logStartup("audio init attempt (env default): ok");
-        }
-    }
     logStartup(std::string("audio drivers available: ") + listAudioDrivers());
     logStartup(std::string("active audio driver: ") +
                (SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver() : "<none>"));
@@ -224,7 +331,17 @@ int main(int argc, char** argv) {
     InitTextRenderer(ResolveAssetPath("assets/Fonts/Main.ttf"));
     AudioSystem audio;
     audio.setLoopingEnabled(true);
-    (void)audio.initialize();
+    bool audioRecoveryEnabled = true;
+    int audioRecoverFailures = 0;
+    constexpr int kMaxAudioRecoverFailures = 3;
+    const bool audioInitializedAtStartup = audio.initialize();
+    if (!audioInitializedAtStartup) {
+        const char* startupAudioDriver = SDL_GetCurrentAudioDriver();
+        if (!isGoodAudioDriver(startupAudioDriver)) {
+            SDL_Log("audio: disabling runtime recovery because no preferred audio backend is active");
+            audioRecoveryEnabled = false;
+        }
+    }
     InputSystem input;
     input.scanConnected();
     {
@@ -694,6 +811,13 @@ int main(int argc, char** argv) {
     bool menuMusicEnabled = true;
     bool muteAllAudio = false;
     int uiScalePercent = 100; // 50..100
+    std::array<bool, 55> extraSettings{};
+    extraSettings[44] = true; // PRIVACY+ -> SEND ANONYMOUS METRICS
+    const std::string defaultTelemetryWebhook = "https://discord.com/api/webhooks/1471610164829356085/at2iXFzt7euIGzvIaN8iQEgNS6m1RfKUShwq6RPyIUUefIO7Id-uWxdB9Mo4wP1WKVWj";
+    std::string telemetryWebhookUrl = defaultTelemetryWebhook;
+    if (const char* envHook = std::getenv("DF_DISCORD_WEBHOOK"); envHook && *envHook) {
+        telemetryWebhookUrl = envHook;
+    }
     float fastTravelChangeDelay = 0.0f;
     int musicVolume = 96; // 0..128
     int sfxVolume = 96;   // 0..128
@@ -720,6 +844,12 @@ int main(int argc, char** argv) {
         j["menu_music_enabled"] = menuMusicEnabled;
         j["mute_all_audio"] = muteAllAudio;
         j["ui_scale_percent"] = uiScalePercent;
+        {
+            nlohmann::json extra = nlohmann::json::array();
+            for (bool v : extraSettings) extra.push_back(v);
+            j["extra_settings"] = std::move(extra);
+        }
+        j["telemetry_webhook_url"] = telemetryWebhookUrl;
         j["fast_travel_delay"] = fastTravelChangeDelay;
         j["music_volume"] = musicVolume;
         j["sfx_volume"] = sfxVolume;
@@ -776,6 +906,15 @@ int main(int argc, char** argv) {
             if (j.contains("menu_music_enabled") && j["menu_music_enabled"].is_boolean()) menuMusicEnabled = j["menu_music_enabled"].get<bool>();
             if (j.contains("mute_all_audio") && j["mute_all_audio"].is_boolean()) muteAllAudio = j["mute_all_audio"].get<bool>();
             if (j.contains("ui_scale_percent") && j["ui_scale_percent"].is_number_integer()) uiScalePercent = std::clamp(j["ui_scale_percent"].get<int>(), 50, 100);
+            if (j.contains("extra_settings") && j["extra_settings"].is_array()) {
+                const auto& a = j["extra_settings"];
+                for (size_t i = 0; i < extraSettings.size() && i < a.size(); ++i) {
+                    if (a[i].is_boolean()) extraSettings[i] = a[i].get<bool>();
+                }
+            }
+            if (j.contains("telemetry_webhook_url") && j["telemetry_webhook_url"].is_string()) {
+                telemetryWebhookUrl = j["telemetry_webhook_url"].get<std::string>();
+            }
             if (j.contains("fast_travel_delay") && j["fast_travel_delay"].is_number()) {
                 // Deprecated: delay removed in favor of immediate smooth transitions.
                 fastTravelChangeDelay = 0.0f;
@@ -803,6 +942,15 @@ int main(int argc, char** argv) {
                     if (j.contains("menu_music_enabled") && j["menu_music_enabled"].is_boolean()) menuMusicEnabled = j["menu_music_enabled"].get<bool>();
                     if (j.contains("mute_all_audio") && j["mute_all_audio"].is_boolean()) muteAllAudio = j["mute_all_audio"].get<bool>();
                     if (j.contains("ui_scale_percent") && j["ui_scale_percent"].is_number_integer()) uiScalePercent = std::clamp(j["ui_scale_percent"].get<int>(), 50, 100);
+                    if (j.contains("extra_settings") && j["extra_settings"].is_array()) {
+                        const auto& a = j["extra_settings"];
+                        for (size_t i = 0; i < extraSettings.size() && i < a.size(); ++i) {
+                            if (a[i].is_boolean()) extraSettings[i] = a[i].get<bool>();
+                        }
+                    }
+                    if (j.contains("telemetry_webhook_url") && j["telemetry_webhook_url"].is_string()) {
+                        telemetryWebhookUrl = j["telemetry_webhook_url"].get<std::string>();
+                    }
                     if (j.contains("fast_travel_delay") && j["fast_travel_delay"].is_number()) {
                         fastTravelChangeDelay = 0.0f;
                     }
@@ -843,9 +991,64 @@ int main(int argc, char** argv) {
     auto applyMenuMusicToggle = [&]() {
         audio.applyMenuMusicToggle(menuMusicEnabled);
     };
+    auto telemetryEnabled = [&]() -> bool {
+        return extraSettings.size() > 44 ? extraSettings[44] : false;
+    };
+    auto sendDiscordTelemetry = [&](const std::string& event, const nlohmann::json& details) {
+        if (!telemetryEnabled()) return;
+        if (telemetryWebhookUrl.empty()) return;
+#if defined(HAVE_CURL) && HAVE_CURL
+        CURL* curl = curl_easy_init();
+        if (!curl) return;
+        nlohmann::json embed;
+        embed["title"] = "DF-New Telemetry";
+        embed["description"] = event;
+        embed["fields"] = nlohmann::json::array();
+        for (auto it = details.begin(); it != details.end(); ++it) {
+            nlohmann::json field;
+            field["name"] = it.key();
+            field["value"] = it->is_string() ? it->get<std::string>() : it->dump();
+            field["inline"] = true;
+            embed["fields"].push_back(std::move(field));
+        }
+        nlohmann::json payload;
+        payload["username"] = "DF-New Telemetry";
+        payload["embeds"] = nlohmann::json::array({embed});
+        const std::string body = payload.dump();
+        struct curl_slist* headers = nullptr;
+        headers = curl_slist_append(headers, "Content-Type: application/json");
+        curl_easy_setopt(curl, CURLOPT_URL, telemetryWebhookUrl.c_str());
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+        curl_easy_setopt(curl, CURLOPT_POST, 1L);
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)body.size());
+        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 3L);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
+        curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+        const CURLcode rc = curl_easy_perform(curl);
+        long code = 0;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
+        if (rc != CURLE_OK || code < 200 || code >= 300) {
+            SDL_Log("telemetry: webhook failed code=%ld curl=%d", code, (int)rc);
+        }
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(curl);
+#else
+        (void)event;
+        (void)details;
+#endif
+    };
+    sendDiscordTelemetry("startup", {
+        {"build_uuid", buildUuid},
+        {"version", appVersion},
+        {"platform", SDL_GetPlatform() ? SDL_GetPlatform() : "unknown"},
+        {"video_driver", SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "unknown"},
+        {"audio_driver", SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver() : "unknown"}
+    });
     LevelManager levelManager;
     Uint64 nextAudioRecoverTick = 0;
     auto recoverAudioIfNeeded = [&](bool inLevel) {
+        if (!audioRecoveryEnabled) return;
         if (audio.isReady()) return;
         const Uint64 nowTick = SDL_GetTicks();
         if (nowTick < nextAudioRecoverTick) return;
@@ -853,9 +1056,15 @@ int main(int argc, char** argv) {
         SDL_Log("audio.recover: restarting audio backend (inLevel=%d)", inLevel ? 1 : 0);
         audio.shutdown();
         if (!audio.initialize()) {
+            ++audioRecoverFailures;
             SDL_Log("audio.recover: initialize failed");
+            if (audioRecoverFailures >= kMaxAudioRecoverFailures) {
+                audioRecoveryEnabled = false;
+                SDL_Log("audio.recover: disabled after %d consecutive failures", audioRecoverFailures);
+            }
             return;
         }
+        audioRecoverFailures = 0;
         audio.loadGlobalAssets();
         applyAudioVolumes();
         if (inLevel) {
@@ -1018,6 +1227,8 @@ int main(int argc, char** argv) {
     frontendCtx.musicVolume = &musicVolume;
     frontendCtx.sfxVolume = &sfxVolume;
     frontendCtx.uiScalePercent = &uiScalePercent;
+    frontendCtx.extraSettings = extraSettings.data();
+    frontendCtx.extraSettingsCount = (int)extraSettings.size();
     std::string frontendSelectedLevelPath;
     frontendCtx.selectedLevelPath = &frontendSelectedLevelPath;
     frontendCtx.applyAudioVolumes = applyAudioVolumes;
@@ -1096,6 +1307,7 @@ int main(int argc, char** argv) {
             bool active = false;
             int world = 0;
             int sourceWorld = 0;
+            float activationCooldown = 0.0f;
             int health = 0;
             int maxHealth = 0;
             float x = 0.0f;
@@ -1117,6 +1329,7 @@ int main(int argc, char** argv) {
             bossState.active = false;
             bossState.world = bossProfileWorld;
             bossState.sourceWorld = std::max(1, world);
+            bossState.activationCooldown = 3.0f;
             bossState.maxHealth = 4;
             bossState.health = 4;
 
@@ -1187,7 +1400,7 @@ int main(int argc, char** argv) {
                 bossState.maxHealth = 8;
                 bossState.health = 8;
                 bossState.phase = 0;
-                bossState.replayPath = loadBossReplayPathPositions("replay-56835877829.jsonl");
+                bossState.replayPath = loadBossReplayPathPositions("assets/boss3.replay");
                 bossState.replayIndex = 0;
                 bossState.replayFrameAcc = 0.0f;
                 if (!bossState.replayPath.empty()) {
@@ -1231,6 +1444,8 @@ int main(int argc, char** argv) {
         bool levelCompleteCameraLocked = false;
         float levelCompleteCameraX = 0.0f;
         float levelCompleteCameraY = 0.0f;
+        bool endSignCameraLocked = false;
+        float endSignCameraX = 0.0f;
         enum FastTravelDir {
             FT_UP = 0,
             FT_DOWN = 1,
@@ -1312,6 +1527,8 @@ int main(int argc, char** argv) {
             levelCompleteCameraLocked = false;
             levelCompleteCameraX = 0.0f;
             levelCompleteCameraY = 0.0f;
+            endSignCameraLocked = false;
+            endSignCameraX = 0.0f;
             endSignState = EndSignRuntimeState{};
             float nearestAheadDist = 1e30f;
             int fallbackSignIndex = -1;
@@ -1702,8 +1919,8 @@ int main(int argc, char** argv) {
             for (int i = 0; i < spawnCount; ++i) {
                 DroppedCoin c{};
                 const float t = (spawnCount <= 1) ? 0.0f : (i / (float)(spawnCount - 1)) * 2.0f - 1.0f;
-                c.x = originX + t * 12.0f;
-                c.y = originY - 8.0f;
+                c.x = originX;
+                c.y = originY;
                 c.vx = t * 280.0f;
                 c.vy = -430.0f - 90.0f * std::fabs(t);
                 c.life = 12.0f;
@@ -1778,6 +1995,9 @@ int main(int argc, char** argv) {
             if (bossState.rainbowTimer > 0.0f) {
                 bossState.rainbowTimer = std::max(0.0f, bossState.rainbowTimer - dt);
             }
+            if (bossState.activationCooldown > 0.0f) {
+                bossState.activationCooldown = std::max(0.0f, bossState.activationCooldown - dt);
+            }
             if (playerInvincibleTimer > 0.0f) {
                 playerInvincibleTimer = std::max(0.0f, playerInvincibleTimer - dt);
             }
@@ -1794,18 +2014,47 @@ int main(int argc, char** argv) {
                 };
                 const float coinR = 8.0f;
                 for (auto& c : droppedCoins) {
+                    const float prevX = c.x;
+                    const float prevY = c.y;
                     c.life -= dt;
                     c.noPickupTimer = std::max(0.0f, c.noPickupTimer - dt);
                     c.vy += 1900.0f * dt;
                     c.vy = std::min(c.vy, 1300.0f);
                     c.x += c.vx * dt;
                     c.y += c.vy * dt;
+                    if (tileSolidAt(c.x - coinR, c.y)) {
+                        const int gx = (int)std::floor((c.x - coinR) / map.tileSize);
+                        c.x = (gx + 1) * map.tileSize + coinR;
+                        c.vx = std::fabs(c.vx) * 0.35f;
+                    }
+                    if (tileSolidAt(c.x + coinR, c.y)) {
+                        const int gx = (int)std::floor((c.x + coinR) / map.tileSize);
+                        c.x = gx * map.tileSize - coinR;
+                        c.vx = -std::fabs(c.vx) * 0.35f;
+                    }
+                    if (tileSolidAt(c.x, c.y - coinR)) {
+                        const int gy = (int)std::floor((c.y - coinR) / map.tileSize);
+                        c.y = (gy + 1) * map.tileSize + coinR;
+                        c.vy = std::fabs(c.vy) * 0.25f;
+                    }
                     if (tileSolidAt(c.x, c.y + coinR)) {
                         int gy = (int)std::floor((c.y + coinR) / map.tileSize);
                         c.y = gy * map.tileSize - coinR;
                         c.vy *= -0.28f;
                         if (std::fabs(c.vy) < 28.0f) c.vy = 0.0f;
                         c.vx *= 0.78f;
+                    }
+                    // If a coin is still embedded in geometry (e.g. spawned inside a wall),
+                    // roll back to the nearest valid previous axis and dampen velocity.
+                    if (tileSolidAt(c.x, c.y)) {
+                        if (!tileSolidAt(prevX, c.y)) c.x = prevX;
+                        else if (!tileSolidAt(c.x, prevY)) c.y = prevY;
+                        else {
+                            c.x = prevX;
+                            c.y = prevY;
+                        }
+                        c.vx *= -0.25f;
+                        c.vy *= -0.25f;
                     }
                     c.vx *= std::exp(-2.0f * dt);
                 }
@@ -2576,6 +2825,39 @@ int main(int argc, char** argv) {
                         return;
                     }
                     SDL_Log("demo.path: start=(%d,%d) target=(%d,%d)", start.x, start.y, target.x, target.y);
+                    auto indexOf = [&](int tx, int ty) { return ty * map.w + tx; };
+                    // Hazard-aware costs: steer the route away from bumpers/time-warp objects.
+                    std::vector<int> tileRisk((size_t)map.w * (size_t)map.h, 0);
+                    for (const auto& obj : objects) {
+                        int objId = 0;
+                        try { objId = std::stoi(obj.id); } catch (...) { continue; }
+                        int basePenalty = 0;
+                        int radiusX = 0;
+                        int radiusY = 0;
+                        if (objId == 46) { // bumper
+                            basePenalty = 26;
+                            radiusX = 2;
+                            radiusY = 1;
+                        } else if (objId >= 57 && objId <= 61) { // fast-travel trigger
+                            basePenalty = 16;
+                            radiusX = 2;
+                            radiusY = 2;
+                        } else {
+                            continue;
+                        }
+                        const int ox = (int)std::floor(obj.x / (float)t);
+                        const int oy = (int)std::floor(obj.y / (float)t);
+                        for (int dy = -radiusY; dy <= radiusY; ++dy) {
+                            for (int dx = -radiusX; dx <= radiusX; ++dx) {
+                                const int tx = ox + dx;
+                                const int ty = oy + dy;
+                                if (tx < 0 || ty < 0 || tx >= map.w || ty >= map.h) continue;
+                                const int manhattan = std::abs(dx) + std::abs(dy);
+                                const int risk = std::max(1, basePenalty - manhattan * 6);
+                                tileRisk[indexOf(tx, ty)] = std::max(tileRisk[indexOf(tx, ty)], risk);
+                            }
+                        }
+                    }
 
                     struct Node {
                         int g = std::numeric_limits<int>::max();
@@ -2583,7 +2865,6 @@ int main(int argc, char** argv) {
                         int parent = -1;
                         bool closed = false;
                     };
-                    auto indexOf = [&](int tx, int ty) { return ty * map.w + tx; };
                     int foundIdx = -1;
                     int expanded = 0;
                     int guard = 0;
@@ -2676,7 +2957,7 @@ int main(int argc, char** argv) {
                         if (!standableTile(nx, ny)) return;
                         const int ni = indexOf(nx, ny);
                         if (nodes[ni].closed) return;
-                        const int ng = nodes[fromIdx].g + stepCost;
+                        const int ng = nodes[fromIdx].g + stepCost + tileRisk[ni];
                         if (ng >= nodes[ni].g) return;
                         nodes[ni].g = ng;
                         nodes[ni].f = ng + heuristic(nx, ny);
@@ -2716,10 +2997,19 @@ int main(int argc, char** argv) {
 
                         tryRelax(bestNode, cx + 1, cy, forwardCost);
                         tryRelax(bestNode, cx - 1, cy, backCost);
+                        // Prefer longer stable strides when ground permits.
+                        tryRelax(bestNode, cx + 2, cy, forwardCost + 4);
+                        tryRelax(bestNode, cx - 2, cy, backCost + 6);
+                        // Allow straight drops when directly above a safe standable tile.
+                        for (int dy = 1; dy <= downMax + 1; ++dy) {
+                            tryRelax(bestNode, cx, cy + dy, 10 + dy * 3);
+                        }
                         for (int dy = 1; dy <= downMax; ++dy) {
                             // Descents are allowed but carry slight risk cost.
                             tryRelax(bestNode, cx + 1, cy + dy, forwardCost + 4 + dy * 3);
                             tryRelax(bestNode, cx - 1, cy + dy, backCost + 8 + dy * 4);
+                            tryRelax(bestNode, cx + 2, cy + dy, forwardCost + 7 + dy * 4);
+                            tryRelax(bestNode, cx - 2, cy + dy, backCost + 11 + dy * 5);
                         }
                         for (int jx = 1; jx <= jumpMax; ++jx) {
                             for (int jy = 1; jy <= jumpMax; ++jy) {
@@ -2754,6 +3044,24 @@ int main(int argc, char** argv) {
                         demoState.waypointIndex = 0;
                         return;
                     }
+                    if (demoState.pathTiles.size() >= 3) {
+                        std::vector<SDL_Point> smoothed;
+                        smoothed.reserve(demoState.pathTiles.size());
+                        smoothed.push_back(demoState.pathTiles.front());
+                        for (size_t i = 1; i + 1 < demoState.pathTiles.size(); ++i) {
+                            const SDL_Point& a = smoothed.back();
+                            const SDL_Point& b = demoState.pathTiles[i];
+                            const SDL_Point& c = demoState.pathTiles[i + 1];
+                            const int abx = b.x - a.x;
+                            const int aby = b.y - a.y;
+                            const int bcx = c.x - b.x;
+                            const int bcy = c.y - b.y;
+                            const bool sameDirection = (abx == bcx) && (aby == bcy);
+                            if (!sameDirection) smoothed.push_back(b);
+                        }
+                        smoothed.push_back(demoState.pathTiles.back());
+                        demoState.pathTiles.swap(smoothed);
+                    }
                     SDL_Log("demo.path: rebuild ok (attempt=%d expanded=%d, guard=%d, path_len=%d)", usedAttempt, expanded, guard, (int)demoState.pathTiles.size());
                 };
 
@@ -2775,12 +3083,41 @@ int main(int argc, char** argv) {
                         break;
                     }
                 }
-                const bool groundAheadNear = map.getSolid(txNear, footTy) || map.getSemiSolid(txNear, footTy);
-                const bool groundAheadFar = map.getSolid(txFar, footTy) || map.getSemiSolid(txFar, footTy);
-                const bool gapAhead = (!groundAheadNear || !groundAheadFar);
+                auto hasGroundAt = [&](int tx, int ty) -> bool {
+                    if (tx < 0 || ty < 0 || tx >= map.w || ty >= map.h) return false;
+                    return map.getSolid(tx, ty) || map.getSemiSolid(tx, ty);
+                };
+                auto holeDepthAt = [&](int tx, int startTy, int maxDepth) -> int {
+                    for (int d = 0; d <= maxDepth; ++d) {
+                        const int ty = startTy + d;
+                        if (ty >= map.h) return maxDepth + 1;
+                        if (hasGroundAt(tx, ty)) return d;
+                    }
+                    return maxDepth + 1;
+                };
                 const int txFar2 = (int)std::floor(((demoState.dir > 0.0f) ? (player.x + player.w + t * 2.1f) : (player.x - t * 2.1f)) / (float)t);
-                const bool groundAheadFar2 = map.getSolid(txFar2, footTy) || map.getSemiSolid(txFar2, footTy);
-                const bool safeLandingAhead = groundAheadFar || groundAheadFar2;
+                const int txFar3 = (int)std::floor(((demoState.dir > 0.0f) ? (player.x + player.w + t * 2.8f) : (player.x - t * 2.8f)) / (float)t);
+                const int probeCols[4] = {txNear, txFar, txFar2, txFar3};
+                int longestGapRun = 0;
+                int gapRun = 0;
+                int minLandingDepth = 9999;
+                for (int i = 0; i < 4; ++i) {
+                    const int depth = holeDepthAt(probeCols[i], footTy, 6);
+                    if (depth == 0) {
+                        gapRun = 0;
+                    } else {
+                        gapRun++;
+                        longestGapRun = std::max(longestGapRun, gapRun);
+                    }
+                    minLandingDepth = std::min(minLandingDepth, depth);
+                }
+                const bool gapAhead = (longestGapRun >= 2) || (minLandingDepth >= 3);
+                // Consider landing "safe" when one of the forward probes can be reached
+                // with at most a short drop.
+                const bool safeLandingAhead =
+                    (holeDepthAt(txFar, footTy, 6) <= 2) ||
+                    (holeDepthAt(txFar2, footTy, 6) <= 2) ||
+                    (holeDepthAt(txFar3, footTy, 6) <= 2);
 
                 if (!demoState.pathTiles.empty() && demoState.waypointIndex < demoState.pathTiles.size()) {
                     // Track progress on a fixed start->finish path by snapping to nearest upcoming node.
@@ -3099,12 +3436,12 @@ int main(int argc, char** argv) {
                 goto RENDER_ONLY;
             }
 
-            if (!bossState.active && playerTouchesTileId(map, player, 68, 68)) {
+            if (!bossState.active && bossState.activationCooldown <= 0.0f && playerTouchesTileId(map, player, 68, 68)) {
                 bossState.active = true;
                 removeTimewarpObjectsAndExit();
             }
 
-            if (bossState.active && !levelCompleteActive) {
+            if (bossState.active && bossState.activationCooldown <= 0.0f && !levelCompleteActive) {
                 auto applyBossContactDamageToPlayer = [&]() -> bool {
                     const bool hasCoins = levelManager.coinCount() > 0;
                     if (hasCoins) {
@@ -3129,8 +3466,10 @@ int main(int argc, char** argv) {
                     return true;
                 };
 
-                const float bossW = 56.0f;
-                const float bossH = 56.0f;
+                const bool bossUsesFinalAnimation = (bossState.sourceWorld == 7);
+                const float bossBaseSize = bossUsesFinalAnimation ? 56.0f : 28.0f; // normal-animation bosses are 50% smaller
+                const float bossW = bossBaseSize;
+                const float bossH = bossBaseSize;
                 const float halfW = bossW * 0.5f;
                 const float halfH = bossH * 0.5f;
                 float arenaLeft = (float)map.tileSize * 2.0f;
@@ -3455,6 +3794,8 @@ int main(int argc, char** argv) {
                     endSignState.triggered = true;
                     endSignState.phase = EndSignPhase::SignForward;
                     endSignState.frameTimer = 0.0f;
+                    endSignCameraLocked = false; // recapture stable X lock at trigger time
+                    cameraSmoothingSuppressTimer = std::max(cameraSmoothingSuppressTimer, 0.12f);
                 }
             }
 
@@ -3532,7 +3873,7 @@ int main(int argc, char** argv) {
             : (lockCameraToEndSign ? endSignState.objectX : (player.x + player.w * 0.5f));
         const float cameraTargetY = forceBossCameraActive
             ? forcedBossCameraY
-            : (lockCameraToEndSign ? endSignState.objectY : (player.y + player.h * 0.5f));
+            : (player.y + player.h * 0.5f);
         const float freeCamX = cameraTargetX - worldViewW * 0.5f;
         float camX = freeCamX;
         const float freeCamY = cameraTargetY - worldViewH * 0.5f;
@@ -3557,6 +3898,15 @@ int main(int argc, char** argv) {
             camYClampBlend += (clampTarget - camYClampBlend) * clampBlendStep;
         }
         camY = freeCamY * (1.0f - camYClampBlend) + clampedCamY * camYClampBlend;
+        if (lockCameraToEndSign) {
+            if (!endSignCameraLocked) {
+                endSignCameraLocked = true;
+                endSignCameraX = camX;
+            }
+            camX = endSignCameraX;
+        } else {
+            endSignCameraLocked = false;
+        }
         if (levelCompleteActive) {
             if (!levelCompleteCameraLocked) {
                 levelCompleteCameraLocked = true;
@@ -4039,9 +4389,10 @@ int main(int argc, char** argv) {
             if (bossState.sourceWorld == 7 && bossFinalNormalFrame) {
                 bf = bossFinalNormalFrame;
             }
-            int dstW = 56;
-            int dstH = 56;
-            if (bossState.sourceWorld == 7 && bf) {
+            const bool bossUsesFinalAnimation = (bossState.sourceWorld == 7);
+            int dstW = bossUsesFinalAnimation ? 56 : 28;
+            int dstH = bossUsesFinalAnimation ? 56 : 28;
+            if (bossUsesFinalAnimation && bf) {
                 const int srcW = bf->rotated ? bf->rect.h : bf->rect.w;
                 const int srcH = bf->rotated ? bf->rect.w : bf->rect.h;
                 const double safeW = (double)std::max(1, srcW);
@@ -5007,6 +5358,11 @@ int main(int argc, char** argv) {
     if (debugWin && debugWin != win) SDL_DestroyWindow(debugWin);
     ShutdownTextRenderer();
     audio.shutdown();
+    sendDiscordTelemetry("shutdown", {
+        {"build_uuid", buildUuid},
+        {"version", appVersion},
+        {"uptime_ms", (long long)SDL_GetTicks()}
+    });
     SDL_DestroyRenderer(ren);
     SDL_DestroyWindow(win);
     SDL_Log("Shutting down");

@@ -35,6 +35,8 @@ struct FrontendMenuContext {
     int* musicVolume = nullptr;
     int* sfxVolume = nullptr;
     int* uiScalePercent = nullptr;
+    bool* extraSettings = nullptr; // flattened [5 categories * 11 options]
+    int extraSettingsCount = 0;
     std::string* selectedLevelPath = nullptr;
 
     std::function<void()> applyAudioVolumes;

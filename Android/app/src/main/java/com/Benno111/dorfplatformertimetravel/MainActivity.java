@@ -64,12 +64,6 @@ public class MainActivity extends SDLActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        try {
-            Class.forName("org.libsdl.app.SDLInputConnection");
-            Log.i(TAG, "SDLInputConnection class visible before SDL init");
-        } catch (Throwable t) {
-            Log.e(TAG, "SDLInputConnection class NOT visible before SDL init", t);
-        }
         super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
@@ -174,12 +168,7 @@ public class MainActivity extends SDLActivity {
 
     @Override
     protected String[] getLibraries() {
-        return new String[] {
-                "SDL3",
-                "SDL3_image",
-                "SDL3_ttf",
-                "SDL3_mixer",
-                "platformer"
-        };
+        // Android startup loads only the game library; SDL is embedded.
+        return new String[] { "platformer" };
     }
 }

@@ -146,16 +146,40 @@ PlayerUpdateResult UpdatePlayerMovement(
     float swimUpSpeed = movement.swimUpSpeed;
     float swimRise = movement.swimRise;
 
+    float controlAccel = accel;
+    float controlFriction = friction;
+    if (!inWater && !player.onGround) {
+        // Air control should be softer than ground control.
+        controlAccel *= 0.72f;
+        controlFriction *= 0.18f;
+    }
+
     if (move != 0.0f) {
-        player.vx += move * accel * dt;
-        if (player.vx > maxSpeed) player.vx = maxSpeed;
-        if (player.vx < -maxSpeed) player.vx = -maxSpeed;
-    } else {
-        if (player.vx > 0.0f) {
-            player.vx = std::max(0.0f, player.vx - friction * dt);
-        } else if (player.vx < 0.0f) {
-            player.vx = std::min(0.0f, player.vx + friction * dt);
+        const float targetVx = move * maxSpeed;
+        const bool reversing = (player.vx * move) < 0.0f;
+        if (reversing) {
+            // Brake harder on direction flip so speed remains manageable.
+            const float turnBrake = controlFriction * 1.6f * dt;
+            if (player.vx > 0.0f) player.vx = std::max(0.0f, player.vx - turnBrake);
+            else player.vx = std::min(0.0f, player.vx + turnBrake);
         }
+        const float step = controlAccel * dt;
+        if (player.vx < targetVx) player.vx = std::min(targetVx, player.vx + step);
+        else if (player.vx > targetVx) player.vx = std::max(targetVx, player.vx - step);
+    } else {
+        const float step = controlFriction * dt;
+        if (player.vx > 0.0f) player.vx = std::max(0.0f, player.vx - step);
+        else if (player.vx < 0.0f) player.vx = std::min(0.0f, player.vx + step);
+    }
+
+    // Soft-cap overspeed instead of hard-clamping to avoid sudden snaps.
+    const float speedSign = (player.vx >= 0.0f) ? 1.0f : -1.0f;
+    const float speedAbs = std::fabs(player.vx);
+    if (speedAbs > maxSpeed) {
+        float excess = speedAbs - maxSpeed;
+        const float recover = (!inWater && player.onGround) ? 14.0f : 7.0f;
+        excess *= std::max(0.0f, 1.0f - recover * dt);
+        player.vx = speedSign * (maxSpeed + excess);
     }
 
     bool jumpDown = touchJump || gamepadJump || keys[SDL_SCANCODE_SPACE] || keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_UP];
@@ -195,8 +219,9 @@ PlayerUpdateResult UpdatePlayerMovement(
         player.jumpBufferTime = 0.0f;
     }
 
-    if (!inWater && player.jumpHeld && jumpDown && player.jumpHoldTime < jumpHoldMax) {
-        player.vy += jumpHoldGravity * dt;
+    if (!inWater && player.jumpHeld && jumpDown && player.jumpHoldTime < jumpHoldMax && player.vy < 0.0f) {
+        // Variable jump height: while jump is held, apply reduced upward gravity.
+        gravity = std::min(gravity, std::max(0.0f, jumpHoldGravity));
         player.jumpHoldTime += dt;
     } else {
         player.jumpHeld = false;
@@ -204,6 +229,10 @@ PlayerUpdateResult UpdatePlayerMovement(
 
     if (jumpReleased && player.vy < -jumpCutSpeed) {
         player.vy = -jumpCutSpeed;
+    }
+    if (!inWater && !jumpDown && player.vy < 0.0f) {
+        // Early release should create a noticeably shorter hop.
+        gravity *= 1.35f;
     }
 
     if (inWater) {

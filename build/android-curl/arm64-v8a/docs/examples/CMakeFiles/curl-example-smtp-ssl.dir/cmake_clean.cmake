@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-smtp-ssl.dir/link.d"
   "CMakeFiles/curl-example-smtp-ssl.dir/smtp-ssl.c.o"
   "CMakeFiles/curl-example-smtp-ssl.dir/smtp-ssl.c.o.d"
   "smtp-ssl"

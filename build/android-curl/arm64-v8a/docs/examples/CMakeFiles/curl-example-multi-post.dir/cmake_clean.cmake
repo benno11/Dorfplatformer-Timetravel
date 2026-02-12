@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-multi-post.dir/link.d"
   "CMakeFiles/curl-example-multi-post.dir/multi-post.c.o"
   "CMakeFiles/curl-example-multi-post.dir/multi-post.c.o.d"
   "multi-post"

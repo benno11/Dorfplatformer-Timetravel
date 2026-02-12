@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-sftpget.dir/link.d"
   "CMakeFiles/curl-example-sftpget.dir/sftpget.c.o"
   "CMakeFiles/curl-example-sftpget.dir/sftpget.c.o.d"
   "sftpget"

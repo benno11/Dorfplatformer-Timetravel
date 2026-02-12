@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-sepheaders.dir/link.d"
   "CMakeFiles/curl-example-sepheaders.dir/sepheaders.c.o"
   "CMakeFiles/curl-example-sepheaders.dir/sepheaders.c.o.d"
   "sepheaders"

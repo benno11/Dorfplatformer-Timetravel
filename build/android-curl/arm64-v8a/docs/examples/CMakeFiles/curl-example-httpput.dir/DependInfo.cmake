@@ -9,6 +9,7 @@ set(CMAKE_DEPENDS_LANGUAGES
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "/home/benno111/Documents/GitHub/DF-New/deps/android-curl-src/docs/examples/httpput.c" "docs/examples/CMakeFiles/curl-example-httpput.dir/httpput.c.o" "gcc" "docs/examples/CMakeFiles/curl-example-httpput.dir/httpput.c.o.d"
+  "" "docs/examples/httpput" "gcc" "docs/examples/CMakeFiles/curl-example-httpput.dir/link.d"
   )
 
 # Targets to which this target links which contain Fortran sources.

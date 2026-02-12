@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-address-scope.dir/link.d"
   "CMakeFiles/curl-example-address-scope.dir/address-scope.c.o"
   "CMakeFiles/curl-example-address-scope.dir/address-scope.c.o.d"
   "address-scope"

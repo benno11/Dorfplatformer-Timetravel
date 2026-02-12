@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-sendrecv.dir/link.d"
   "CMakeFiles/curl-example-sendrecv.dir/sendrecv.c.o"
   "CMakeFiles/curl-example-sendrecv.dir/sendrecv.c.o.d"
   "sendrecv"

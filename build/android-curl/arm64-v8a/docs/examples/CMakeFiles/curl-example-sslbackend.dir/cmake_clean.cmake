@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-sslbackend.dir/link.d"
   "CMakeFiles/curl-example-sslbackend.dir/sslbackend.c.o"
   "CMakeFiles/curl-example-sslbackend.dir/sslbackend.c.o.d"
   "sslbackend"

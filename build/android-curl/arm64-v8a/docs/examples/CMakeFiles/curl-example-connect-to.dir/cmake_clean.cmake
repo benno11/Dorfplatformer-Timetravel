@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-connect-to.dir/link.d"
   "CMakeFiles/curl-example-connect-to.dir/connect-to.c.o"
   "CMakeFiles/curl-example-connect-to.dir/connect-to.c.o.d"
   "connect-to"

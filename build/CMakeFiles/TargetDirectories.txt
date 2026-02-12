@@ -1,0 +1,4 @@
+/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/platformer.dir
+/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/sheet_config.dir
+/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/edit_cache.dir
+/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles/rebuild_cache.dir

@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-https.dir/link.d"
   "CMakeFiles/curl-example-https.dir/https.c.o"
   "CMakeFiles/curl-example-https.dir/https.c.o.d"
   "https"

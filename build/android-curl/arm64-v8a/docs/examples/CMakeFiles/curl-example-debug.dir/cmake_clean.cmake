@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/curl-example-debug.dir/link.d"
   "CMakeFiles/curl-example-debug.dir/debug.c.o"
   "CMakeFiles/curl-example-debug.dir/debug.c.o.d"
   "debug"
