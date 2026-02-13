@@ -269,7 +269,13 @@ bool AudioSystem::initialize() {
                 activeDriver ? activeDriver : "<none>",
                 firstError.c_str());
 
-        const char* retryDrivers[] = {"pipewire", "pulseaudio", "dummy", "alsa", "sndio"};
+        const char* retryDrivers[] = {
+#if defined(__ANDROID__)
+            "aaudio", "openslES", "dummy"
+#else
+            "pipewire", "pulseaudio", "dummy", "alsa", "sndio"
+#endif
+        };
         for (const char* driver : retryDrivers) {
             if (pipewireHotplugFailed && std::strcmp(driver, "pipewire") == 0) continue;
             if (!audioDriverAvailable(driver)) continue;

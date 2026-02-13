@@ -165,10 +165,15 @@ int main(int argc, char** argv) {
     const bool hasExplicitAudioEnv = configuredAudioDriver() != "<unset>";
     if (!hasExplicitAudioEnv) {
         const char* preselectedAudio = nullptr;
+#if defined(__ANDROID__)
+        if (hasAudioDriver("aaudio")) preselectedAudio = "aaudio";
+        else if (hasAudioDriver("openslES")) preselectedAudio = "openslES";
+#else
         if (hasAudioDriver("pulseaudio")) preselectedAudio = "pulseaudio";
         else if (hasAudioDriver("dummy")) preselectedAudio = "dummy";
         else if (hasAudioDriver("alsa")) preselectedAudio = "alsa";
         else if (hasAudioDriver("pipewire")) preselectedAudio = "pipewire";
+#endif
         if (preselectedAudio) {
             applyAudioDriverSelection(preselectedAudio);
             logStartup(std::string("audio preselect: ") + preselectedAudio);
@@ -279,20 +284,31 @@ int main(int argc, char** argv) {
     };
     auto isGoodAudioDriver = [](const char* driver) -> bool {
         if (!driver) return false;
+#if defined(__ANDROID__)
+        return std::strcmp(driver, "dummy") != 0;
+#else
         return std::strcmp(driver, "pipewire") == 0 ||
                std::strcmp(driver, "pulseaudio") == 0 ||
                std::strcmp(driver, "dummy") == 0;
+#endif
     };
     bool audioReady = false;
     if (hasExplicitAudioEnv) {
         audioReady = tryAudioInit("env default", nullptr);
     } else {
+#if defined(__ANDROID__)
+        if (!audioReady) audioReady = tryAudioInit("env default", nullptr);
+        if (!audioReady && hasAudioDriver("aaudio")) audioReady = tryAudioInit("aaudio", "aaudio");
+        if (!audioReady && hasAudioDriver("openslES")) audioReady = tryAudioInit("openslES", "openslES");
+        if (!audioReady && hasAudioDriver("dummy")) audioReady = tryAudioInit("dummy", "dummy");
+#else
         if (hasAudioDriver("pipewire")) audioReady = tryAudioInit("pipewire", "pipewire");
         if (!audioReady && hasAudioDriver("pulseaudio")) audioReady = tryAudioInit("pulseaudio", "pulseaudio");
         if (!audioReady) audioReady = tryAudioInit("env default", nullptr);
         if (!audioReady && hasAudioDriver("alsa")) audioReady = tryAudioInit("alsa", "alsa");
         if (!audioReady && hasAudioDriver("sndio")) audioReady = tryAudioInit("sndio", "sndio");
         if (!audioReady && hasAudioDriver("dummy")) audioReady = tryAudioInit("dummy", "dummy");
+#endif
     }
     if (!audioReady) {
         logStartup("audio init failed for all attempted drivers");
@@ -301,9 +317,14 @@ int main(int argc, char** argv) {
         if (!isGoodAudioDriver(active)) {
             logStartup(std::string("audio override: active driver '") + (active ? active : "<none>") + "' is not preferred");
             bool overridden = false;
+#if defined(__ANDROID__)
+            if (hasAudioDriver("aaudio")) overridden = tryAudioInit("override aaudio", "aaudio");
+            if (!overridden && hasAudioDriver("openslES")) overridden = tryAudioInit("override openslES", "openslES");
+#else
             if (hasAudioDriver("pipewire")) overridden = tryAudioInit("override pipewire", "pipewire");
             if (!overridden && hasAudioDriver("pulseaudio")) overridden = tryAudioInit("override pulseaudio", "pulseaudio");
             if (!overridden && hasAudioDriver("dummy")) overridden = tryAudioInit("override dummy", "dummy");
+#endif
             if (!overridden) {
                 logStartup("audio override: no preferred driver override succeeded");
                 (void)tryAudioInit("restore env default", nullptr);
