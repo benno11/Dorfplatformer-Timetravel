@@ -165,6 +165,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
     editorInput.scanConnected();
 
     SDL_Texture* blocksTex = IMG_LoadTexture(ren, ResolveAssetPath("assets/Sheets/DF_Blocks-uhd.png").c_str());
+    if (blocksTex) SDL_SetTextureScaleMode(blocksTex, SDL_SCALEMODE_NEAREST);
     auto blocksFrameList = loadPlistFrameList("assets/Sheets/DF_Blocks-uhd.plist");
     std::unordered_map<std::string, Frame> blocksFrameByName;
     blocksFrameByName.reserve(blocksFrameList.size());

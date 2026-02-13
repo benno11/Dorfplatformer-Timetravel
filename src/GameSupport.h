@@ -50,7 +50,7 @@ struct FrameEntry {
     Frame frame;
 };
 
-bool playerTouchesTileId(const TileMap& map, const Player& player, int idA, int idB);
+bool playerTouchesTileId(const TileMap& map, const Player& player, int idA, int idB, bool wrapX = false, bool wrapY = false);
 bool pointInRectF(float x, float y, const SDL_FRect& r);
 int parseLevelIdFromLevelPath(const std::string& levelPath);
 bool readProcessMemoryKB(long& rssKB, long& vmKB);

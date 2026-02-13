@@ -49,9 +49,7 @@
 
 int main(int argc, char** argv) {
     CrashReporter::start();
-    // Clear terminal at startup for a clean runtime log view.
-    std::fputs("\033[2J\033[H", stdout);
-    std::fflush(stdout);
+    // Keep existing terminal output (e.g. compile script logs) visible.
     const std::string buildUuid = makeBuildUuid();
     auto reportStartupError = [](const char* title, const std::string& msg, SDL_Window* parent) {
 #if defined(__ANDROID__)
@@ -60,7 +58,7 @@ int main(int argc, char** argv) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, title, msg.c_str(), parent);
 #endif
     };
-    SDL_SetHint("SDL_RENDER_SCALE_QUALITY", "2");
+    SDL_SetHint("SDL_RENDER_SCALE_QUALITY", "0");
     SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
     SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");
     auto sdlErr = []() -> std::string {
@@ -379,11 +377,30 @@ int main(int argc, char** argv) {
         }
     }
 
-    constexpr int kBaseScreenW = 960;
-    constexpr int kBaseScreenH = 540;
-    constexpr float kGameplayZoom = 1.5f;
-    const int kGameplayViewW = std::max(1, (int)std::lround((float)kBaseScreenW / kGameplayZoom));
-    const int kGameplayViewH = std::max(1, (int)std::lround((float)kBaseScreenH / kGameplayZoom));
+    int kBaseScreenW = 1920;
+    int kBaseScreenH = 1080;
+    {
+        const SDL_DisplayID primaryDisplay = SDL_GetPrimaryDisplay();
+        const SDL_DisplayMode* displayMode = nullptr;
+        if (primaryDisplay != 0) {
+            displayMode = SDL_GetCurrentDisplayMode(primaryDisplay);
+            if (!displayMode) displayMode = SDL_GetDesktopDisplayMode(primaryDisplay);
+        }
+        if (displayMode && displayMode->w > 0 && displayMode->h > 0) {
+            float aspect = (float)displayMode->w / (float)displayMode->h;
+            // Clamp to practical gameplay targets: 4:3 .. 32:9.
+            aspect = std::clamp(aspect, 4.0f / 3.0f, 32.0f / 9.0f);
+            kBaseScreenH = 1080;
+            kBaseScreenW = std::max(1280, (int)std::lround((float)kBaseScreenH * aspect));
+            if ((kBaseScreenW & 1) != 0) ++kBaseScreenW;
+            SDL_Log("Adaptive aspect target: %dx%d (display %dx%d)", kBaseScreenW, kBaseScreenH, displayMode->w, displayMode->h);
+        }
+    }
+    // Base resolution is 2x legacy (1920x1080 vs 960x540), so zoom must also be
+    // doubled to preserve the original gameplay/background framing.
+    constexpr float kGameplayZoom = 3.0f;
+    int kGameplayViewW = std::max(1, (int)std::lround((float)kBaseScreenW / kGameplayZoom));
+    int kGameplayViewH = std::max(1, (int)std::lround((float)kBaseScreenH / kGameplayZoom));
 
     SDL_Window* win = SDL_CreateWindow("Dorfplatformer Timetravel", kBaseScreenW, kBaseScreenH, SDL_WINDOW_RESIZABLE);
     if (!win) {
@@ -435,6 +452,8 @@ int main(int argc, char** argv) {
         SDL_Quit();
         return 1;
     }
+    SDL_SetTextureScaleMode(worldTarget, SDL_SCALEMODE_NEAREST);
+    SDL_SetTextureScaleMode(gameTarget, SDL_SCALEMODE_NEAREST);
     SDL_Window* debugWin = nullptr;
     SDL_Renderer* debugRen = nullptr;
     bool showDetailedDebugger = false;
@@ -459,6 +478,7 @@ int main(int argc, char** argv) {
 
     std::string pausePlist = texPath("plists", "pause", "assets/Sheets/DF_Pause-uhd.plist");
     SDL_Texture* pauseTex = IMG_LoadTexture(ren, ResolveAssetPath(texPath("textures", "pause", "assets/Sheets/DF_Pause-uhd.png")).c_str());
+    if (pauseTex) SDL_SetTextureScaleMode(pauseTex, SDL_SCALEMODE_NEAREST);
     auto pauseFrames = loadPlistFrames(pausePlist);
 
     std::string blocksPlist = texPath("plists", "blocks", "assets/Sheets/DF_Blocks-uhd.plist");
@@ -488,29 +508,119 @@ int main(int argc, char** argv) {
         auto it = blocksFrameByName.find(key);
         if (it != blocksFrameByName.end()) cycleFrames[i] = &it->second;
     }
+    const Frame* world3PatternFrames[10] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
+    for (int i = 0; i < 10; ++i) {
+        const std::string key = std::string("3.") + std::to_string(i + 1);
+        auto it = blocksFrameByName.find(key);
+        if (it != blocksFrameByName.end()) world3PatternFrames[i] = &it->second;
+        else {
+            auto itPng = blocksFrameByName.find(key + ".png");
+            if (itPng != blocksFrameByName.end()) world3PatternFrames[i] = &itPng->second;
+            else {
+                const std::string fallbackKey = std::string("c") + std::to_string(i + 1);
+                auto itFallback = blocksFrameByName.find(fallbackKey);
+                if (itFallback != blocksFrameByName.end()) world3PatternFrames[i] = &itFallback->second;
+                else {
+                    auto itFallbackPng = blocksFrameByName.find(fallbackKey + ".png");
+                    if (itFallbackPng != blocksFrameByName.end()) world3PatternFrames[i] = &itFallbackPng->second;
+                }
+            }
+        }
+    }
 
-    std::string bgPlist = texPath("plists", "background", "assets/Sheets/DF_Background-uhd.plist");
-    SDL_Texture* bgTex = IMG_LoadTexture(ren, ResolveAssetPath(texPath("textures", "background", "assets/Sheets/DF_Background-uhd.png")).c_str());
-    auto bgFrameList = loadPlistFrameList(bgPlist);
-    std::unordered_map<std::string, Frame> bgFrameByName;
-    bgFrameByName.reserve(bgFrameList.size());
-    for (const auto& e : bgFrameList) bgFrameByName[e.name] = e.frame;
-    auto findBgFrame = [&](const char* name) -> const Frame* {
-        auto it = bgFrameByName.find(name);
-        if (it != bgFrameByName.end()) return &it->second;
+    const std::string bgTexPathFallback = "assets/Sheets/DF_Background-uhd.png";
+    const std::string bgPlistFallback = "assets/Sheets/DF_Background-uhd.plist";
+    SDL_Texture* bgTexWorld1 = nullptr;
+    SDL_Texture* bgTexWorld2 = nullptr;
+    SDL_Texture* bgTexWorld4 = nullptr;
+    SDL_Texture* bgTexWorld5 = nullptr;
+    SDL_Texture* bgTexWorld6 = nullptr;
+    std::unordered_map<std::string, Frame> bgFrameByNameWorld1;
+    std::unordered_map<std::string, Frame> bgFrameByNameWorld2;
+    std::unordered_map<std::string, Frame> bgFrameByNameWorld4;
+    std::unordered_map<std::string, Frame> bgFrameByNameWorld5;
+    std::unordered_map<std::string, Frame> bgFrameByNameWorld6;
+    std::vector<Frame> bgFrameListWorld1;
+    std::vector<Frame> bgFrameListWorld2;
+    std::vector<Frame> bgFrameListWorld4;
+    std::vector<Frame> bgFrameListWorld5;
+    std::vector<Frame> bgAnimFramesWorld6;
+    auto loadBgSheet = [&](const std::string& texPathPrimary,
+                           const std::string& plistPrimary,
+                           SDL_Texture*& outTex,
+                           std::unordered_map<std::string, Frame>& outFrames,
+                           std::vector<Frame>* outAnimFrames = nullptr) {
+        outTex = IMG_LoadTexture(ren, ResolveAssetPath(texPathPrimary).c_str());
+        if (outTex) SDL_SetTextureScaleMode(outTex, SDL_SCALEMODE_NEAREST);
+        auto bgFrameList = loadPlistFrameList(plistPrimary);
+        if (!outTex || bgFrameList.empty()) {
+            if (outTex) {
+                SDL_DestroyTexture(outTex);
+                outTex = nullptr;
+            }
+            outTex = IMG_LoadTexture(ren, ResolveAssetPath(bgTexPathFallback).c_str());
+            if (outTex) SDL_SetTextureScaleMode(outTex, SDL_SCALEMODE_NEAREST);
+            bgFrameList = loadPlistFrameList(bgPlistFallback);
+        }
+        outFrames.clear();
+        outFrames.reserve(bgFrameList.size());
+        for (const auto& e : bgFrameList) outFrames[e.name] = e.frame;
+        if (outAnimFrames) {
+            outAnimFrames->clear();
+            outAnimFrames->reserve(bgFrameList.size());
+            for (const auto& e : bgFrameList) outAnimFrames->push_back(e.frame);
+        }
+    };
+    loadBgSheet(
+        texPath("textures", "background_world1", "assets/Sheets/DF_Back_1-uhd.png"),
+        texPath("plists", "background_world1", "assets/Sheets/DF_Back_1-uhd.plist"),
+        bgTexWorld1,
+        bgFrameByNameWorld1,
+        &bgFrameListWorld1
+    );
+    loadBgSheet(
+        texPath("textures", "background_world2", "assets/Sheets/DF_Back_2-uhd.png"),
+        texPath("plists", "background_world2", "assets/Sheets/DF_Back_2-uhd.plist"),
+        bgTexWorld2,
+        bgFrameByNameWorld2,
+        &bgFrameListWorld2
+    );
+    loadBgSheet(
+        texPath("textures", "background_world4", "assets/Sheets/DF_Back_4-uhd.png"),
+        texPath("plists", "background_world4", "assets/Sheets/DF_Back_4-uhd.plist"),
+        bgTexWorld4,
+        bgFrameByNameWorld4,
+        &bgFrameListWorld4
+    );
+    loadBgSheet(
+        texPath("textures", "background_world5", "assets/Sheets/DF_Back_5-uhd.png"),
+        texPath("plists", "background_world5", "assets/Sheets/DF_Back_5-uhd.plist"),
+        bgTexWorld5,
+        bgFrameByNameWorld5,
+        &bgFrameListWorld5
+    );
+    loadBgSheet(
+        texPath("textures", "background_world6", "assets/Sheets/DF_Back_6-uhd.png"),
+        texPath("plists", "background_world6", "assets/Sheets/DF_Back_6-uhd.plist"),
+        bgTexWorld6,
+        bgFrameByNameWorld6,
+        &bgAnimFramesWorld6
+    );
+    auto findBgFrameIn = [&](const std::unordered_map<std::string, Frame>& frameByName, const char* name) -> const Frame* {
+        auto it = frameByName.find(name);
+        if (it != frameByName.end()) return &it->second;
         const std::string s(name ? name : "");
         if (s.size() > 4 && s.substr(s.size() - 4) == ".png") {
-            auto itNoExt = bgFrameByName.find(s.substr(0, s.size() - 4));
-            if (itNoExt != bgFrameByName.end()) return &itNoExt->second;
+            auto itNoExt = frameByName.find(s.substr(0, s.size() - 4));
+            if (itNoExt != frameByName.end()) return &itNoExt->second;
         }
         return nullptr;
     };
-    const Frame* parallaxLayer0 = findBgFrame("w1b.png");
-    const Frame* parallaxLayer1 = findBgFrame("w1f.png");
-    const Frame* parallaxLayer2 = findBgFrame("w1f.png");
     SDL_Texture* introCardTex = IMG_LoadTexture(ren, ResolveAssetPath("assets/Sheets/Introcard-uhd.png").c_str());
+    if (introCardTex) SDL_SetTextureScaleMode(introCardTex, SDL_SCALEMODE_NEAREST);
     auto introCardFrames = loadPlistFrames("assets/Sheets/Introcard-uhd.plist");
     SDL_Texture* endSignTex = IMG_LoadTexture(ren, ResolveAssetPath("assets/Sheets/end_sign-uhd.png").c_str());
+    if (endSignTex) SDL_SetTextureScaleMode(endSignTex, SDL_SCALEMODE_NEAREST);
     auto endSignFrames = loadPlistFrames("assets/Sheets/end_sign-uhd.plist");
     const Frame* defaultEndSignFrame = nullptr;
     {
@@ -519,6 +629,7 @@ int main(int argc, char** argv) {
         if (it != endSignFrames.end()) defaultEndSignFrame = &it->second;
     }
     SDL_Texture* bossesTex = IMG_LoadTexture(ren, ResolveAssetPath("assets/Sheets/DF_Bosses-uhd.png").c_str());
+    if (bossesTex) SDL_SetTextureScaleMode(bossesTex, SDL_SCALEMODE_NEAREST);
     auto bossesFrames = loadPlistFrames("assets/Sheets/DF_Bosses-uhd.plist");
     const Frame* bossNormalFrame = nullptr;
     const Frame* bossHurtFrame = nullptr;
@@ -537,6 +648,7 @@ int main(int argc, char** argv) {
 
     const std::string entitiesPlist = "assets/Sheets/DF_Enitys-uhd.plist";
     SDL_Texture* entitiesTex = IMG_LoadTexture(ren, ResolveAssetPath("assets/Sheets/DF_Enitys-uhd.png").c_str());
+    if (entitiesTex) SDL_SetTextureScaleMode(entitiesTex, SDL_SCALEMODE_NEAREST);
     auto entitiesFrameList = loadPlistFrameList(entitiesPlist);
     std::unordered_map<std::string, Frame> entitiesFrameByName;
     entitiesFrameByName.reserve(entitiesFrameList.size());
@@ -568,6 +680,7 @@ int main(int argc, char** argv) {
 
     std::string playerPlist = texPath("plists", "player", "assets/Sheets/DF_Player1-uhd.plist");
     SDL_Texture* playerTex = IMG_LoadTexture(ren, ResolveAssetPath(texPath("textures", "player", "assets/Sheets/DF_Player1-uhd.png")).c_str());
+    if (playerTex) SDL_SetTextureScaleMode(playerTex, SDL_SCALEMODE_NEAREST);
     auto playerFrameList = loadPlistFrameList(playerPlist);
     std::unordered_map<std::string, Frame> playerFramesByName;
     playerFramesByName.reserve(playerFrameList.size());
@@ -803,7 +916,11 @@ int main(int argc, char** argv) {
     if (!gameTarget) {
         reportStartupError("Render Target Error", "Failed to create game render target.", win);
         if (playerTex) SDL_DestroyTexture(playerTex);
-        if (bgTex) SDL_DestroyTexture(bgTex);
+        if (bgTexWorld1) SDL_DestroyTexture(bgTexWorld1);
+        if (bgTexWorld2) SDL_DestroyTexture(bgTexWorld2);
+        if (bgTexWorld4) SDL_DestroyTexture(bgTexWorld4);
+        if (bgTexWorld5) SDL_DestroyTexture(bgTexWorld5);
+        if (bgTexWorld6) SDL_DestroyTexture(bgTexWorld6);
         if (introCardTex) SDL_DestroyTexture(introCardTex);
         if (blocksTex) SDL_DestroyTexture(blocksTex);
         if (entitiesTex) SDL_DestroyTexture(entitiesTex);
@@ -831,7 +948,9 @@ int main(int argc, char** argv) {
     bool powerManagementEnabled = true;
     bool menuMusicEnabled = true;
     bool muteAllAudio = false;
-    int uiScalePercent = 100; // 50..100
+    constexpr int kUiScaleMinPercent = 50;
+    constexpr int kUiScaleMaxPercent = 200;
+    int uiScalePercent = kUiScaleMaxPercent;
     std::array<bool, 55> extraSettings{};
     extraSettings[44] = true; // PRIVACY+ -> SEND ANONYMOUS METRICS
     const std::string defaultTelemetryWebhook = "https://discord.com/api/webhooks/1471610164829356085/at2iXFzt7euIGzvIaN8iQEgNS6m1RfKUShwq6RPyIUUefIO7Id-uWxdB9Mo4wP1WKVWj";
@@ -926,7 +1045,9 @@ int main(int argc, char** argv) {
             if (j.contains("power_management") && j["power_management"].is_boolean()) powerManagementEnabled = j["power_management"].get<bool>();
             if (j.contains("menu_music_enabled") && j["menu_music_enabled"].is_boolean()) menuMusicEnabled = j["menu_music_enabled"].get<bool>();
             if (j.contains("mute_all_audio") && j["mute_all_audio"].is_boolean()) muteAllAudio = j["mute_all_audio"].get<bool>();
-            if (j.contains("ui_scale_percent") && j["ui_scale_percent"].is_number_integer()) uiScalePercent = std::clamp(j["ui_scale_percent"].get<int>(), 50, 100);
+            if (j.contains("ui_scale_percent") && j["ui_scale_percent"].is_number_integer()) {
+                uiScalePercent = std::clamp(j["ui_scale_percent"].get<int>(), kUiScaleMinPercent, kUiScaleMaxPercent);
+            }
             if (j.contains("extra_settings") && j["extra_settings"].is_array()) {
                 const auto& a = j["extra_settings"];
                 for (size_t i = 0; i < extraSettings.size() && i < a.size(); ++i) {
@@ -962,7 +1083,9 @@ int main(int argc, char** argv) {
                     if (j.contains("power_management") && j["power_management"].is_boolean()) powerManagementEnabled = j["power_management"].get<bool>();
                     if (j.contains("menu_music_enabled") && j["menu_music_enabled"].is_boolean()) menuMusicEnabled = j["menu_music_enabled"].get<bool>();
                     if (j.contains("mute_all_audio") && j["mute_all_audio"].is_boolean()) muteAllAudio = j["mute_all_audio"].get<bool>();
-                    if (j.contains("ui_scale_percent") && j["ui_scale_percent"].is_number_integer()) uiScalePercent = std::clamp(j["ui_scale_percent"].get<int>(), 50, 100);
+                    if (j.contains("ui_scale_percent") && j["ui_scale_percent"].is_number_integer()) {
+                        uiScalePercent = std::clamp(j["ui_scale_percent"].get<int>(), kUiScaleMinPercent, kUiScaleMaxPercent);
+                    }
                     if (j.contains("extra_settings") && j["extra_settings"].is_array()) {
                         const auto& a = j["extra_settings"];
                         for (size_t i = 0; i < extraSettings.size() && i < a.size(); ++i) {
@@ -1213,7 +1336,7 @@ int main(int argc, char** argv) {
             SDL_SetRenderTarget(ren, nullptr);
             int ww = 0, wh = 0;
             SDL_GetWindowSize(win, &ww, &wh);
-            SDL_Rect presentRect = computePresentRect(ww, wh, kBaseScreenW, kBaseScreenH, uiScalePercent / 100.0f);
+            SDL_Rect presentRect = computePresentRect(ww, wh, kBaseScreenW, kBaseScreenH, 1.0f);
             SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
             SDL_RenderClear(ren);
             SDL_RenderCopy(ren, gameTarget, nullptr, &presentRect);
@@ -1228,6 +1351,7 @@ int main(int argc, char** argv) {
     frontendCtx.win = win;
     frontendCtx.ren = ren;
     frontendCtx.gameTarget = gameTarget;
+    frontendCtx.gameTargetRef = &gameTarget;
     frontendCtx.baseScreenW = kBaseScreenW;
     frontendCtx.baseScreenH = kBaseScreenH;
     frontendCtx.buildUuid = buildUuid;
@@ -1254,6 +1378,54 @@ int main(int argc, char** argv) {
     frontendCtx.selectedLevelPath = &frontendSelectedLevelPath;
     frontendCtx.applyAudioVolumes = applyAudioVolumes;
     frontendCtx.applyMenuMusicToggle = applyMenuMusicToggle;
+    auto applyDynamicResolutionFromWindow = [&](bool force) -> bool {
+        int winW = 0, winH = 0;
+        SDL_GetWindowSize(win, &winW, &winH);
+        if (winW <= 0 || winH <= 0) return true;
+
+        float aspect = (float)winW / (float)winH;
+        aspect = std::clamp(aspect, 4.0f / 3.0f, 32.0f / 9.0f);
+        const int newBaseH = 1080;
+        int newBaseW = std::max(1280, (int)std::lround((float)newBaseH * aspect));
+        if ((newBaseW & 1) != 0) ++newBaseW;
+        const int newGameplayW = std::max(1, (int)std::lround((float)newBaseW / kGameplayZoom));
+        const int newGameplayH = std::max(1, (int)std::lround((float)newBaseH / kGameplayZoom));
+
+        if (!force &&
+            newBaseW == kBaseScreenW && newBaseH == kBaseScreenH &&
+            newGameplayW == kGameplayViewW && newGameplayH == kGameplayViewH) {
+            return true;
+        }
+
+        SDL_Texture* newGameTarget = SDL_CreateTexture(
+            ren, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, newBaseW, newBaseH);
+        SDL_Texture* newWorldTarget = SDL_CreateTexture(
+            ren, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, newGameplayW, newGameplayH);
+        if (!newGameTarget || !newWorldTarget) {
+            if (newWorldTarget) SDL_DestroyTexture(newWorldTarget);
+            if (newGameTarget) SDL_DestroyTexture(newGameTarget);
+            SDL_Log("Dynamic resolution update failed: %s", SDL_GetError());
+            return false;
+        }
+        SDL_SetTextureScaleMode(newWorldTarget, SDL_SCALEMODE_NEAREST);
+        SDL_SetTextureScaleMode(newGameTarget, SDL_SCALEMODE_NEAREST);
+        SDL_DestroyTexture(worldTarget);
+        SDL_DestroyTexture(gameTarget);
+        worldTarget = newWorldTarget;
+        gameTarget = newGameTarget;
+        kBaseScreenW = newBaseW;
+        kBaseScreenH = newBaseH;
+        kGameplayViewW = newGameplayW;
+        kGameplayViewH = newGameplayH;
+        frontendCtx.gameTarget = gameTarget;
+        frontendCtx.baseScreenW = kBaseScreenW;
+        frontendCtx.baseScreenH = kBaseScreenH;
+        SDL_Log("Dynamic resolution updated: base=%dx%d gameplay=%dx%d window=%dx%d",
+            kBaseScreenW, kBaseScreenH, kGameplayViewW, kGameplayViewH, winW, winH);
+        return true;
+    };
+    frontendCtx.updateDynamicResolution = [&]() { (void)applyDynamicResolutionFromWindow(false); };
+    applyDynamicResolutionFromWindow(true);
     // Enforce persisted startup audio state immediately.
     applyMenuMusicToggle();
     while (running) {
@@ -1358,10 +1530,12 @@ int main(int argc, char** argv) {
                 std::vector<SDL_FPoint> out;
                 std::vector<std::string> candidates;
                 candidates.push_back((replayDirPath / replayFile).string());
+                candidates.push_back((replayDirPath / std::filesystem::path(replayFile).filename()).string());
                 candidates.push_back(replayFile);
                 for (const auto& p : candidates) {
-                    std::ifstream in(p, std::ios::binary);
-                    if (!in.is_open()) continue;
+                    const std::string text = ReadTextFile(p);
+                    if (text.empty()) continue;
+                    std::istringstream in(text);
                     std::string line;
                     while (std::getline(in, line)) {
                         if (line.empty()) continue;
@@ -1973,9 +2147,26 @@ int main(int argc, char** argv) {
 
         while (levelRunning) {
             recoverAudioIfNeeded(true);
+            applyDynamicResolutionFromWindow(false);
             Uint32 now = SDL_GetTicks();
             float dt = (now - lastTicks) / 1000.0f;
             lastTicks = now;
+            SetTextScaleMultiplier(std::clamp((float)uiScalePercent / 100.0f, 0.5f, 2.0f));
+            auto isVerticalWrapEnabledAtX = [&](float x) -> bool {
+                if (((currentLevelId == 29 && x > 1250.0f) ||
+                     (currentLevelId == 30 && x > 1250.0f) ||
+                     currentLevelId == 39 ||
+                     currentLevelId == 40 ||
+                     currentLevelId == 53 ||
+                     currentLevelId == 54)) {
+                    return true;
+                }
+                if ((currentLevelId == 21 || currentLevelId == 22 || currentLevelId == 23 || currentLevelId == 24) &&
+                    x > 3211.0f && x < 4559.0f) {
+                    return true;
+                }
+                return false;
+            };
             if (levelCompleteActive) {
                 paused = false;
             }
@@ -1984,9 +2175,12 @@ int main(int argc, char** argv) {
             else updateFpsSmoothed += ((float)updateFpsInstant - updateFpsSmoothed) * 0.16f;
             updateFpsDisplay = std::clamp((int)std::lround(updateFpsSmoothed), 0, kFpsDisplayMax);
             bool temp1TouchedThisFrame = false;
-            verticalWrapActive = false;
+            const bool gameplayWrapX = (currentLevelId == 39 || currentLevelId == 40);
+            const bool gameplayWrapY = isVerticalWrapEnabledAtX(player.x);
+            verticalWrapActive = gameplayWrapY;
             activeBumperIndices.clear();
-            SetHorizontalWrapCollision(currentLevelId == 39 || currentLevelId == 40);
+            SetHorizontalWrapCollision(gameplayWrapX);
+            SetVerticalWrapCollision(gameplayWrapY);
             frameMsHistory[frameMsHistoryHead] = dt * 1000.0f;
             {
                 long rssKB = -1, vmKB = -1;
@@ -2175,7 +2369,7 @@ int main(int argc, char** argv) {
                 int wx = (int)std::lround(kv.second.x * winW);
                 int wy = (int)std::lround(kv.second.y * winH);
                 int gx = 0, gy = 0;
-                if (!windowToGamePoint(wx, wy, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy, uiScalePercent / 100.0f)) continue;
+                if (!windowToGamePoint(wx, wy, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy, 1.0f)) continue;
                 float px = (float)gx;
                 float py = (float)gy;
                 if (pointInRectF(px, py, leftHit)) touchLeft = true;
@@ -2207,7 +2401,7 @@ int main(int argc, char** argv) {
                 if (embeddedDetailedDebugger && e.button.windowID == mainWindowId) {
                     int winW = 0, winH = 0, gx = 0, gy = 0;
                     SDL_GetWindowSize(win, &winW, &winH);
-                    if (windowToGamePoint(e.button.x, e.button.y, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy, uiScalePercent / 100.0f)) {
+                    if (windowToGamePoint(e.button.x, e.button.y, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy, 1.0f)) {
                         if (handleDetailedDebuggerTap(gx, gy)) continue;
                     }
                 } else if (debugWin && debugRen &&
@@ -2238,6 +2432,10 @@ int main(int argc, char** argv) {
                     mainWindowMinimized = false;
                 }
             }
+            if ((e.type == SDL_EVENT_WINDOW_RESIZED || e.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) &&
+                e.window.windowID == mainWindowId) {
+                applyDynamicResolutionFromWindow(false);
+            }
             if (e.type == SDL_EVENT_FINGER_DOWN) {
                 bool consumedByDebugger = false;
                 if (embeddedDetailedDebugger &&
@@ -2247,7 +2445,7 @@ int main(int argc, char** argv) {
                     int wx = (int)std::lround(e.tfinger.x * winW);
                     int wy = (int)std::lround(e.tfinger.y * winH);
                     int gx = 0, gy = 0;
-                    if (windowToGamePoint(wx, wy, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy, uiScalePercent / 100.0f)) {
+                    if (windowToGamePoint(wx, wy, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy, 1.0f)) {
                         consumedByDebugger = handleDetailedDebuggerTap(gx, gy);
                     }
                 } else if (debugWin && e.tfinger.windowID == SDL_GetWindowID(debugWin)) {
@@ -2415,7 +2613,7 @@ int main(int argc, char** argv) {
             if (paused && e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
                 int winW = 0, winH = 0, gx = 0, gy = 0;
                 SDL_GetWindowSize(win, &winW, &winH);
-                if (windowToGamePoint(e.button.x, e.button.y, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy, uiScalePercent / 100.0f)) {
+                if (windowToGamePoint(e.button.x, e.button.y, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy, 1.0f)) {
                     SDL_Point pt{gx, gy};
                     if (SDL_PointInRect(&pt, &pauseBtnContinue)) handlePauseSelect(0);
                     else if (SDL_PointInRect(&pt, &pauseBtnRestart)) handlePauseSelect(1);
@@ -2429,7 +2627,7 @@ int main(int argc, char** argv) {
                 int wx = (int)(e.tfinger.x * winW);
                 int wy = (int)(e.tfinger.y * winH);
                 int gx = 0, gy = 0;
-                if (windowToGamePoint(wx, wy, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy, uiScalePercent / 100.0f)) {
+                if (windowToGamePoint(wx, wy, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy, 1.0f)) {
                     SDL_Point pt{gx, gy};
                     if (SDL_PointInRect(&pt, &pauseBtnContinue)) handlePauseSelect(0);
                     else if (SDL_PointInRect(&pt, &pauseBtnRestart)) handlePauseSelect(1);
@@ -2501,6 +2699,27 @@ int main(int argc, char** argv) {
             unsigned int movementReasons = 0u;
             auto addMovementReason = [&](unsigned int reasonBit) {
                 movementReasons |= reasonBit;
+            };
+            const float mapWrapW = (float)(map.w * map.tileSize);
+            const float mapWrapH = (float)(map.h * map.tileSize);
+            auto wrapCoordNear = [&](float value, float size, float anchor, float wrapSize, bool wrapEnabled) -> float {
+                if (!wrapEnabled || wrapSize <= 0.0f) return value;
+                float wrapped = value;
+                const float centerOffset = size * 0.5f;
+                while ((wrapped + centerOffset - anchor) < -wrapSize * 0.5f) wrapped += wrapSize;
+                while ((wrapped + centerOffset - anchor) > wrapSize * 0.5f) wrapped -= wrapSize;
+                return wrapped;
+            };
+            auto overlapPlayerWithWrappedRect = [&](float rx, float ry, float rw, float rh, float& outRx, float& outRy) -> bool {
+                const float playerCX = player.x + (float)player.w * 0.5f;
+                const float playerCY = player.y + (float)player.h * 0.5f;
+                outRx = wrapCoordNear(rx, rw, playerCX, mapWrapW, gameplayWrapX);
+                outRy = wrapCoordNear(ry, rh, playerCY, mapWrapH, gameplayWrapY);
+                const float px1 = player.x;
+                const float px2 = player.x + (float)player.w;
+                const float py1 = player.y;
+                const float py2 = player.y + (float)player.h;
+                return (px2 > outRx) && (px1 < outRx + rw) && (py2 > outRy) && (py1 < outRy + rh);
             };
             bool fastTravelReload = false;
             bool fastTravelTriggered = false;
@@ -2630,11 +2849,9 @@ int main(int argc, char** argv) {
                     const float oy = obj.y - 16.0f;
                     const float ow = 32.0f;
                     const float oh = 32.0f;
-                    const float px1 = player.x;
-                    const float px2 = player.x + (float)player.w;
-                    const float py1 = player.y;
-                    const float py2 = player.y + (float)player.h;
-                    const bool overlap = (px2 > ox) && (px1 < ox + ow) && (py2 > oy) && (py1 < oy + oh);
+                    float testOx = ox;
+                    float testOy = oy;
+                    const bool overlap = overlapPlayerWithWrappedRect(ox, oy, ow, oh, testOx, testOy);
                     if (!overlap) continue;
 
                     const int dir = fastTravelDirForObjectId(objId);
@@ -3381,26 +3598,73 @@ int main(int argc, char** argv) {
             {
                 const float beforeWrapX = player.x;
                 const float beforeWrapY = player.y;
-                const bool horizontalWrapActive = (currentLevelId == 39 || currentLevelId == 40);
-                if (((currentLevelId == 29 &&
-                    player.x > 1250.0f) || (currentLevelId == 30 &&
-                    player.x > 1250.0f) || currentLevelId == 39 ||
-                     currentLevelId == 40 || currentLevelId == 53 || currentLevelId == 54)) {
-                    verticalWrapActive = true;
-                }
-                if ((currentLevelId == 21 || currentLevelId == 22 || currentLevelId == 23 || currentLevelId == 24) &&
-                    player.x > 3211.0f && player.x < 4559.0f) {
-                    verticalWrapActive = true;
-                }
-                if (verticalWrapActive) {
+                bool wrappedX = false;
+                bool wrappedY = false;
+                const bool horizontalWrapActive = gameplayWrapX;
+                const bool verticalWrapNow = isVerticalWrapEnabledAtX(player.x);
+                verticalWrapActive = verticalWrapNow;
+                if (verticalWrapNow) {
                     const float mapHeightPx = (float)(map.h * map.tileSize);
-                    while (player.y + (float)player.h < 0.0f) player.y += mapHeightPx;
-                    while (player.y >= mapHeightPx) player.y -= mapHeightPx;
+                    while (player.y + (float)player.h < 0.0f) {
+                        player.y += mapHeightPx;
+                        wrappedY = true;
+                    }
+                    while (player.y >= mapHeightPx) {
+                        player.y -= mapHeightPx;
+                        wrappedY = true;
+                    }
                 }
                 if (horizontalWrapActive) {
                     const float mapWidthPx = (float)(map.w * map.tileSize);
-                    while (player.x + (float)player.w < 0.0f) player.x += mapWidthPx;
-                    while (player.x >= mapWidthPx) player.x -= mapWidthPx;
+                    while (player.x + (float)player.w < 0.0f) {
+                        player.x += mapWidthPx;
+                        wrappedX = true;
+                    }
+                    while (player.x >= mapWidthPx) {
+                        player.x -= mapWidthPx;
+                        wrappedX = true;
+                    }
+                }
+                if ((wrappedX || wrappedY) && RectHitsSolid(map, player.x, player.y, player.w, player.h)) {
+                    const float wrappedPosX = player.x;
+                    const float wrappedPosY = player.y;
+                    bool foundSafe = false;
+                    auto tryPlace = [&](float nx, float ny) -> bool {
+                        if (RectHitsSolid(map, nx, ny, player.w, player.h)) return false;
+                        player.x = nx;
+                        player.y = ny;
+                        foundSafe = true;
+                        return true;
+                    };
+                    float preferX = 0.0f;
+                    float preferY = 0.0f;
+                    if (wrappedX) {
+                        if (player.vx > 0.01f) preferX = -1.0f;
+                        else if (player.vx < -0.01f) preferX = 1.0f;
+                        else preferX = (beforeWrapX <= player.x) ? 1.0f : -1.0f;
+                    }
+                    if (wrappedY) {
+                        if (player.vy > 0.01f) preferY = -1.0f;
+                        else if (player.vy < -0.01f) preferY = 1.0f;
+                        else preferY = (beforeWrapY <= player.y) ? 1.0f : -1.0f;
+                    }
+                    for (int up = 0; up <= 72 && !foundSafe; up += 2) {
+                        for (int side = 0; side <= 36 && !foundSafe; side += 2) {
+                            const float sx = (side == 0) ? 0.0f : ((preferX == 0.0f) ? (float)side : preferX * (float)side);
+                            const float uy = (up == 0) ? 0.0f : ((preferY == 0.0f) ? -(float)up : preferY * (float)up);
+                            if (tryPlace(wrappedPosX + sx, wrappedPosY + uy)) break;
+                            if (side > 0 && tryPlace(wrappedPosX - sx, wrappedPosY + uy)) break;
+                            if (up > 0 && tryPlace(wrappedPosX + sx, wrappedPosY - uy)) break;
+                        }
+                    }
+                    if (!foundSafe) {
+                        player.x = beforeWrapX;
+                        player.y = beforeWrapY;
+                        if (wrappedX) player.vx = 0.0f;
+                        if (wrappedY) player.vy = 0.0f;
+                    } else if (std::fabs(player.y - wrappedPosY) > 0.01f) {
+                        player.onGround = false;
+                    }
                 }
                 if (std::fabs(player.x - beforeWrapX) > 0.01f || std::fabs(player.y - beforeWrapY) > 0.01f) {
                     addMovementReason(MR_WORLD_WRAP);
@@ -3457,7 +3721,8 @@ int main(int argc, char** argv) {
                 goto RENDER_ONLY;
             }
 
-            if (!bossState.active && bossState.activationCooldown <= 0.0f && playerTouchesTileId(map, player, 68, 68)) {
+            if (!bossState.active && bossState.activationCooldown <= 0.0f &&
+                playerTouchesTileId(map, player, 68, 68, gameplayWrapX, gameplayWrapY)) {
                 bossState.active = true;
                 removeTimewarpObjectsAndExit();
             }
@@ -3616,18 +3881,17 @@ int main(int argc, char** argv) {
 
                 const float bx = bossState.x - halfW;
                 const float by = bossState.y - halfH;
-                const float px1 = player.x;
-                const float px2 = player.x + (float)player.w;
-                const float py1 = player.y;
-                const float py2 = player.y + (float)player.h;
-                const bool overlap = (px2 > bx) && (px1 < bx + bossW) && (py2 > by) && (py1 < by + bossH);
+                float testBx = bx;
+                float testBy = by;
+                const bool overlap = overlapPlayerWithWrappedRect(bx, by, bossW, bossH, testBx, testBy);
                 if (overlap && playerInvincibleTimer <= 0.0f && levelLoadDeathGraceTimer <= 0.0f) {
                     if (!bossCanMoveAndTakeDamage) {
                         if (applyBossContactDamageToPlayer()) continue;
                     } else {
-                        const bool stomp = (player.vy > 80.0f) && (py2 <= by + bossH * 0.55f);
+                        const float py2 = player.y + (float)player.h;
+                        const bool stomp = (player.vy > 80.0f) && (py2 <= testBy + bossH * 0.55f);
                         if (stomp) {
-                            player.y = by - (float)player.h;
+                            player.y = testBy - (float)player.h;
                             player.vy = -1000.0f;
                             player.onGround = false;
                             playerInvincibleTimer = 0.12f;
@@ -3670,8 +3934,16 @@ int main(int argc, char** argv) {
             if (!paused && !deathSequenceActive && !levelCompleteActive && player.onGround) {
                 const float footX = player.x + player.w * 0.5f;
                 const float footY = player.y + (float)player.h + 1.0f;
-                const int tx = (int)std::floor(footX / (float)map.tileSize);
-                const int ty = (int)std::floor(footY / (float)map.tileSize);
+                int tx = (int)std::floor(footX / (float)map.tileSize);
+                int ty = (int)std::floor(footY / (float)map.tileSize);
+                if (gameplayWrapX && map.w > 0) {
+                    tx %= map.w;
+                    if (tx < 0) tx += map.w;
+                }
+                if (gameplayWrapY && map.h > 0) {
+                    ty %= map.h;
+                    if (ty < 0) ty += map.h;
+                }
                 if (tx >= 0 && tx < map.w && ty >= 0 && ty < map.h) {
                     const int idx = ty * map.w + tx;
                     const int standingTileId = (int)map.tileIds[idx];
@@ -3703,12 +3975,12 @@ int main(int argc, char** argv) {
                 }
             }
 
-            int collectedNow = levelManager.collectCoinsAtPlayer(map, player);
+            int collectedNow = levelManager.collectCoinsAtPlayer(map, player, gameplayWrapX, gameplayWrapY);
             if (collectedNow > 0) {
                 audio.playCoinSfx();
             }
             if (timeTravelTriggerCooldown <= 0.0f) {
-                levelManager.updateTimeWarpIdAtPlayer(map, player);
+                levelManager.updateTimeWarpIdAtPlayer(map, player, gameplayWrapX, gameplayWrapY);
             }
 
             // Spring objects (id 31): bounce player upward on top contact.
@@ -3719,13 +3991,16 @@ int main(int argc, char** argv) {
                 const float sy = obj.y - 16.0f;
                 const float sw = 32.0f;
                 const float sh = 32.0f;
+                float testSx = sx;
+                float testSy = sy;
+                if (!overlapPlayerWithWrappedRect(sx, sy, sw, sh, testSx, testSy)) continue;
                 const float px1 = player.x;
                 const float px2 = player.x + (float)player.w;
                 const float py2 = player.y + (float)player.h;
-                const bool xOverlap = (px2 > sx) && (px1 < sx + sw);
-                const bool nearTop = (py2 >= sy) && (py2 <= sy + sh * 0.75f);
+                const bool xOverlap = (px2 > testSx) && (px1 < testSx + sw);
+                const bool nearTop = (py2 >= testSy) && (py2 <= testSy + sh * 0.75f);
                 if (xOverlap && nearTop && player.vy >= 0.0f) {
-                    player.y = sy - (float)player.h;
+                    player.y = testSy - (float)player.h;
                     player.vy = -1800.0f;
                     player.onGround = false;
                     addMovementReason(MR_SPRING);
@@ -3740,17 +4015,15 @@ int main(int argc, char** argv) {
                 const float by = obj.y - 16.0f;
                 const float bw = 32.0f;
                 const float bh = 32.0f;
-                const float px1 = player.x;
-                const float px2 = player.x + (float)player.w;
-                const float py1 = player.y;
-                const float py2 = player.y + (float)player.h;
-                const bool overlap = (px2 > bx) && (px1 < bx + bw) && (py2 > by) && (py1 < by + bh);
+                float testBx = bx;
+                float testBy = by;
+                const bool overlap = overlapPlayerWithWrappedRect(bx, by, bw, bh, testBx, testBy);
                 if (!overlap) continue;
 
                 const float playerCY = player.y + player.h * 0.5f;
-                const float bumperCY = by + bh * 0.5f;
+                const float bumperCY = testBy + bh * 0.5f;
                 if (playerCY <= bumperCY && player.vy >= 0.0f) {
-                    player.y = by - (float)player.h;
+                    player.y = testBy - (float)player.h;
                     player.vy = -1200.0f;
                     player.onGround = false;
                     addMovementReason(MR_BUMPER);
@@ -3759,7 +4032,7 @@ int main(int argc, char** argv) {
                     break;
                 }
                 if (playerCY > bumperCY && player.vy <= 0.0f) {
-                    player.y = by + bh;
+                    player.y = testBy + bh;
                     player.vy = 1200.0f;
                     player.onGround = false;
                     addMovementReason(MR_BUMPER);
@@ -3821,7 +4094,8 @@ int main(int argc, char** argv) {
             }
 
             // Fallback for levels without end_sign object.
-            if (!levelCompleteActive && !endSignState.present && playerTouchesTileId(map, player, 30, 30)) {
+            if (!levelCompleteActive && !endSignState.present &&
+                playerTouchesTileId(map, player, 30, 30, gameplayWrapX, gameplayWrapY)) {
                 startLevelCompleteSequence();
             }
             updatePlayerAnimState(inputMove, inputDown, dt);
@@ -3939,47 +4213,173 @@ int main(int argc, char** argv) {
         } else {
             levelCompleteCameraLocked = false;
         }
+        // Snap render camera to pixel grid to avoid subpixel shimmer across all worlds.
+        camX = std::round(camX);
+        camY = std::round(camY);
 
         SDL_SetRenderTarget(ren, worldTarget);
-        SDL_SetRenderDrawColor(ren, 12, 14, 18, 255);
-        SDL_RenderClear(ren);
+        const int currentWorldId = levelManager.worldId();
+        if (currentWorldId == 5) {
+            const SDL_Color top{0x66, 0xea, 0xff, 0xff};    // #66eaff
+            const SDL_Color bottom{0xc0, 0x68, 0x72, 0xff}; // #c06872
+            for (int y = 0; y < worldViewH; ++y) {
+                const float t = (worldViewH > 1) ? ((float)y / (float)(worldViewH - 1)) : 0.0f;
+                const Uint8 r = (Uint8)std::lround((float)top.r + ((float)bottom.r - (float)top.r) * t);
+                const Uint8 g = (Uint8)std::lround((float)top.g + ((float)bottom.g - (float)top.g) * t);
+                const Uint8 b = (Uint8)std::lround((float)top.b + ((float)bottom.b - (float)top.b) * t);
+                SDL_SetRenderDrawColor(ren, r, g, b, 255);
+                SDL_RenderLine(ren, 0.0f, (float)y, (float)worldViewW, (float)y);
+            }
+        } else {
+            SDL_SetRenderDrawColor(ren, 221, 248, 255, 255); // #ddf8ff
+            SDL_RenderClear(ren);
+        }
 
-        // Parallax background (3 layers)
-        if (bgTex && (parallaxLayer0 || parallaxLayer1 || parallaxLayer2)) {
-            struct Layer {
-                const Frame* frame;
-                bool verticalParallax;
-            };
-            Layer layers[3] = {
-                {parallaxLayer0, false},
-                {parallaxLayer1, true},
-                {parallaxLayer2, true}
-            };
-            const float parallaxFactor = 0.5f;
-            for (const auto& layer : layers) {
-                const Frame* f = layer.frame;
-                if (!f) continue;
-                int fw = f->rotated ? f->rect.h : f->rect.w;
-                int fh = f->rotated ? f->rect.w : f->rect.h;
-                if (fw <= 0 || fh <= 0) continue;
-                float ox = std::fmod(camX * parallaxFactor, (float)fw);
-                float maxCamY = std::max(1.0f, (float)(map.h * map.tileSize - worldViewH));
-                float parallaxCamY = maxCamY - camY;
-                float t = std::clamp((parallaxCamY / maxCamY) * parallaxFactor, 0.0f, 1.0f);
-                if (!layer.verticalParallax) t = 0.0f;
-                if (ox < 0) ox += fw;
-                float yF = (float)worldViewH - (float)fh + t * (float)fh;
-                int y = (int)std::lround(yF);
-                for (int x = -1; x <= worldViewW / fw + 1; ++x) {
-                    SDL_Rect dst{
-                        (int)(x * fw - ox),
-                        y,
-                        fw,
-                        fh
-                    };
-                    renderFrame(ren, bgTex, *f, dst);
+        // World 3 uses a full-screen block pattern from DF_Blocks (3.1..3.10).
+        bool renderedWorld3PatternBg = false;
+        if (currentWorldId == 3 && blocksTex) {
+            const Frame* fallbackFrame = nullptr;
+            for (const Frame* f : world3PatternFrames) {
+                if (f) {
+                    fallbackFrame = f;
+                    break;
                 }
             }
+            if (fallbackFrame) {
+                const int blockW = std::max(16, map.tileSize * 2);
+                const int blockH = std::max(16, map.tileSize * 2);
+                SDL_SetTextureColorMod(blocksTex, 150, 150, 150);
+                for (int y = 0, gy = 0; y < worldViewH; y += blockH, ++gy) {
+                    for (int x = 0, gx = 0; x < worldViewW; x += blockW, ++gx) {
+                        unsigned int hash = (unsigned int)(gx * 73856093u) ^ (unsigned int)(gy * 19349663u) ^ 0x9e3779b9u;
+                        hash ^= (unsigned int)(currentLevelId * 83492791u);
+                        const int frameIndex = (int)(hash % 10u);
+                        const Frame* frame = world3PatternFrames[frameIndex];
+                        if (!frame) frame = fallbackFrame;
+                        SDL_Rect dst{
+                            x,
+                            y,
+                            std::min(blockW, worldViewW - x),
+                            std::min(blockH, worldViewH - y)
+                        };
+                        renderFrame(ren, blocksTex, *frame, dst);
+                    }
+                }
+                SDL_SetTextureColorMod(blocksTex, 255, 255, 255);
+                renderedWorld3PatternBg = true;
+            }
+        }
+
+        // World 6 uses an animated full-screen background instead of parallax.
+        bool renderedWorld6AnimatedBg = false;
+        if (currentWorldId == 6 && bgTexWorld6 && !bgAnimFramesWorld6.empty()) {
+            const int animIndex = (int)((SDL_GetTicks() / 120) % (Uint32)bgAnimFramesWorld6.size());
+            const Frame& animFrame = bgAnimFramesWorld6[animIndex];
+            const SDL_Rect fullDst{0, 0, worldViewW, worldViewH};
+            renderFrame(ren, bgTexWorld6, animFrame, fullDst);
+            renderedWorld6AnimatedBg = true;
+        }
+        if (!renderedWorld3PatternBg && !renderedWorld6AnimatedBg) {
+            // Parallax background (3 layers)
+            SDL_Texture* activeBgTex = bgTexWorld1;
+            const std::unordered_map<std::string, Frame>* activeBgFrames = &bgFrameByNameWorld1;
+            const std::vector<Frame>* activeBgFrameList = &bgFrameListWorld1;
+            const char* layerBackName = "far.png";
+            const char* layerMidName = "middle.png";
+            const char* layerMidAltName = nullptr;
+            if (currentWorldId == 2 && bgTexWorld2) {
+                activeBgTex = bgTexWorld2;
+                activeBgFrames = &bgFrameByNameWorld2;
+                activeBgFrameList = &bgFrameListWorld2;
+                layerBackName = "far.png";
+                layerMidName = "middle.png";
+                layerMidAltName = nullptr;
+            } else if (currentWorldId == 4 && bgTexWorld4) {
+                activeBgTex = bgTexWorld4;
+                activeBgFrames = &bgFrameByNameWorld4;
+                activeBgFrameList = &bgFrameListWorld4;
+                layerBackName = "far.png";
+                layerMidName = "mid.png";
+                layerMidAltName = "middle.png";
+            } else if (currentWorldId == 5 && bgTexWorld5) {
+                activeBgTex = bgTexWorld5;
+                activeBgFrames = &bgFrameByNameWorld5;
+                activeBgFrameList = &bgFrameListWorld5;
+                layerBackName = "far.png";
+                layerMidName = "middle.png";
+                layerMidAltName = nullptr;
+            }
+            const Frame* parallaxLayer0 = findBgFrameIn(*activeBgFrames, layerBackName);
+            const Frame* parallaxLayer1 = findBgFrameIn(*activeBgFrames, layerMidName);
+            if (!parallaxLayer1 && layerMidAltName) {
+                parallaxLayer1 = findBgFrameIn(*activeBgFrames, layerMidAltName);
+            }
+            const Frame* parallaxLayer2 = parallaxLayer1;
+            if ((!parallaxLayer0 || !parallaxLayer1 || !parallaxLayer2) && activeBgFrameList && !activeBgFrameList->empty()) {
+                const size_t n = activeBgFrameList->size();
+                if (!parallaxLayer0) parallaxLayer0 = &(*activeBgFrameList)[0];
+                if (!parallaxLayer1) parallaxLayer1 = &(*activeBgFrameList)[std::min<size_t>(1, n - 1)];
+                if (!parallaxLayer2) parallaxLayer2 = parallaxLayer1;
+            }
+            if (activeBgTex && (parallaxLayer0 || parallaxLayer1 || parallaxLayer2)) {
+                struct Layer {
+                    const Frame* frame;
+                    bool verticalParallax;
+                    Uint8 alpha;
+                    float scale;
+                };
+                Layer layers[3] = {
+                    {parallaxLayer0, false, 255, 0.80f},
+                    {parallaxLayer1, true, 255, 0.80f},
+                    {parallaxLayer2, true, 255, 0.80f}
+                };
+                const float parallaxFactor = 0.5f;
+                SDL_SetTextureBlendMode(activeBgTex, SDL_BLENDMODE_BLEND);
+                for (const auto& layer : layers) {
+                    const Frame* f = layer.frame;
+                    if (!f) continue;
+                    const int srcW = f->rotated ? f->rect.h : f->rect.w;
+                    const int srcH = f->rotated ? f->rect.w : f->rect.h;
+                    const float parallaxScale = layer.scale;
+                    int fw = std::max(1, (int)std::lround((float)srcW * parallaxScale));
+                    int fh = std::max(1, (int)std::lround((float)srcH * parallaxScale));
+                    if (fw <= 0 || fh <= 0) continue;
+                    float ox = std::fmod(camX * parallaxFactor, (float)fw);
+                    float maxCamY = std::max(1.0f, (float)(map.h * map.tileSize - worldViewH));
+                    float parallaxCamY = maxCamY - camY;
+                    float t = std::clamp((parallaxCamY / maxCamY) * parallaxFactor, 0.0f, 1.0f);
+                    if (!layer.verticalParallax) t = 0.0f;
+                    if (ox < 0) ox += fw;
+                    float yF = (float)worldViewH - (float)fh + t * (float)fh;
+                    int y = (int)std::lround(yF);
+                    SDL_SetTextureAlphaMod(activeBgTex, layer.alpha);
+                    for (int x = -1; x <= worldViewW / fw + 1; ++x) {
+                        SDL_Rect dst{
+                            (int)(x * fw - ox),
+                            y,
+                            fw,
+                            fh
+                        };
+                        renderFrame(ren, activeBgTex, *f, dst);
+                    }
+                }
+                SDL_SetTextureAlphaMod(activeBgTex, 255);
+            }
+        }
+        if (currentWorldId == 5) {
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+            const SDL_Color top{0x66, 0xea, 0xff, 0x58};    // #66eaff
+            const SDL_Color bottom{0xc0, 0x68, 0x72, 0x72}; // #c06872
+            for (int y = 0; y < worldViewH; ++y) {
+                const float t = (worldViewH > 1) ? ((float)y / (float)(worldViewH - 1)) : 0.0f;
+                const Uint8 r = (Uint8)std::lround((float)top.r + ((float)bottom.r - (float)top.r) * t);
+                const Uint8 g = (Uint8)std::lround((float)top.g + ((float)bottom.g - (float)top.g) * t);
+                const Uint8 b = (Uint8)std::lround((float)top.b + ((float)bottom.b - (float)top.b) * t);
+                const Uint8 a = (Uint8)std::lround((float)top.a + ((float)bottom.a - (float)top.a) * t);
+                SDL_SetRenderDrawColor(ren, r, g, b, a);
+                SDL_RenderLine(ren, 0.0f, (float)y, (float)worldViewW, (float)y);
+            }
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
         }
 
         map.renderBgDebug(ren, camX, camY);
@@ -4739,6 +5139,19 @@ int main(int argc, char** argv) {
         }
 
         if (paused) {
+            const float uiButtonScale = std::clamp((float)uiScalePercent / 100.0f, 0.5f, 2.0f);
+            auto scaleRectCentered = [&](const SDL_Rect& in) -> SDL_Rect {
+                const float cx = (float)in.x + (float)in.w * 0.5f;
+                const float cy = (float)in.y + (float)in.h * 0.5f;
+                const int nw = std::max(1, (int)std::lround((float)in.w * uiButtonScale));
+                const int nh = std::max(1, (int)std::lround((float)in.h * uiButtonScale));
+                return SDL_Rect{
+                    (int)std::lround(cx - (float)nw * 0.5f),
+                    (int)std::lround(cy - (float)nh * 0.5f),
+                    nw,
+                    nh
+                };
+            };
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
             SDL_SetRenderDrawColor(ren, 10, 10, 14, 180);
             SDL_Rect overlay{0, 0, screenW, screenH};
@@ -4751,26 +5164,29 @@ int main(int argc, char** argv) {
 
             if (hasPanel && hasContinue && hasRestart && hasExit) {
                 const Frame& panelFrame = pauseFrames["Panel"];
-                SDL_Rect panelDst{screenW / 2 - panelFrame.rect.w / 2,
-                                  screenH / 2 - panelFrame.rect.h / 2,
-                                  panelFrame.rect.w, panelFrame.rect.h};
+                SDL_Rect panelDst = scaleRectCentered(SDL_Rect{
+                    screenW / 2 - panelFrame.rect.w / 2,
+                    screenH / 2 - panelFrame.rect.h / 2,
+                    panelFrame.rect.w,
+                    panelFrame.rect.h
+                });
                 renderFrame(ren, pauseTex, panelFrame, panelDst);
 
                 const Frame& continueFrame = pauseFrames["Continuebtn"];
                 const Frame& restartFrame = pauseFrames["Retartbtn"];
                 const Frame& exitFrame = pauseFrames["exitbtn"];
 
-                int contW = continueFrame.rotated ? continueFrame.rect.h : continueFrame.rect.w;
-                int contH = continueFrame.rotated ? continueFrame.rect.w : continueFrame.rect.h;
-                int restartW = restartFrame.rotated ? restartFrame.rect.h : restartFrame.rect.w;
-                int restartH = restartFrame.rotated ? restartFrame.rect.w : restartFrame.rect.h;
-                int exitW = exitFrame.rotated ? exitFrame.rect.h : exitFrame.rect.w;
-                int exitH = exitFrame.rotated ? exitFrame.rect.w : exitFrame.rect.h;
+                int contW = std::max(1, (int)std::lround((continueFrame.rotated ? continueFrame.rect.h : continueFrame.rect.w) * uiButtonScale));
+                int contH = std::max(1, (int)std::lround((continueFrame.rotated ? continueFrame.rect.w : continueFrame.rect.h) * uiButtonScale));
+                int restartW = std::max(1, (int)std::lround((restartFrame.rotated ? restartFrame.rect.h : restartFrame.rect.w) * uiButtonScale));
+                int restartH = std::max(1, (int)std::lround((restartFrame.rotated ? restartFrame.rect.w : restartFrame.rect.h) * uiButtonScale));
+                int exitW = std::max(1, (int)std::lround((exitFrame.rotated ? exitFrame.rect.h : exitFrame.rect.w) * uiButtonScale));
+                int exitH = std::max(1, (int)std::lround((exitFrame.rotated ? exitFrame.rect.w : exitFrame.rect.h) * uiButtonScale));
 
-                int spacing = 18;
+                int spacing = std::max(8, (int)std::lround(18.0f * uiButtonScale));
                 int totalW = contW + restartW + exitW + spacing * 2;
                 int startX = screenW / 2 - totalW / 2;
-                int centerY = screenH / 2 + 30;
+                int centerY = screenH / 2 + (int)std::lround(30.0f * uiButtonScale);
 
                 SDL_Rect contDst{startX, centerY - contH / 2, contW, contH};
                 SDL_Rect restartDst{startX + contW + spacing, centerY - restartH / 2, restartW, restartH};
@@ -4787,18 +5203,19 @@ int main(int argc, char** argv) {
                 SDL_Rect highlight = (pauseSelection == 0) ? contDst : (pauseSelection == 1 ? restartDst : exitDst);
                 SDL_RenderDrawRect(ren, &highlight);
             } else {
-                SDL_Rect panel{screenW / 2 - 140, screenH / 2 - 90, 280, 180};
+                SDL_Rect panel = scaleRectCentered(SDL_Rect{screenW / 2 - 140, screenH / 2 - 90, 280, 180});
                 SDL_SetRenderDrawColor(ren, 30, 30, 38, 230);
                 SDL_RenderFillRect(ren, &panel);
                 SDL_SetRenderDrawColor(ren, 80, 90, 110, 255);
                 SDL_RenderDrawRect(ren, &panel);
 
                 SDL_SetRenderDrawColor(ren, 230, 230, 230, 255);
-                DrawText(ren, screenW / 2 - 60, screenH / 2 - 70, 3, "PAUSED");
+                DrawText(ren, screenW / 2 - MeasureTextWidth(3, "PAUSED") / 2, panel.y + (int)std::lround(22.0f * uiButtonScale), 3, "PAUSED");
 
-                SDL_Rect resumeBtn{screenW / 2 - 140, screenH / 2 + 10, 100, 36};
-                SDL_Rect restartBtn{screenW / 2 - 50, screenH / 2 + 10, 100, 36};
-                SDL_Rect quitBtn{screenW / 2 + 40, screenH / 2 + 10, 100, 36};
+                SDL_Rect resumeBtn = scaleRectCentered(SDL_Rect{screenW / 2 - 140, screenH / 2 + 10, 100, 36});
+                SDL_Rect restartBtn = scaleRectCentered(SDL_Rect{screenW / 2 - 50, screenH / 2 + 10, 100, 36});
+                SDL_Rect quitBtn = scaleRectCentered(SDL_Rect{screenW / 2 + 40, screenH / 2 + 10, 100, 36});
+                const int labelLineH = std::max(10, (int)std::lround(16.0f * uiButtonScale));
                 pauseBtnContinue = resumeBtn;
                 pauseBtnRestart = restartBtn;
                 pauseBtnExit = quitBtn;
@@ -4806,17 +5223,17 @@ int main(int argc, char** argv) {
                 SDL_SetRenderDrawColor(ren, pauseSelection == 0 ? 70 : 45, pauseSelection == 0 ? 120 : 70, pauseSelection == 0 ? 170 : 90, 255);
                 SDL_RenderFillRect(ren, &resumeBtn);
                 SDL_SetRenderDrawColor(ren, 200, 200, 200, 255);
-                DrawText(ren, resumeBtn.x + 35, resumeBtn.y + 8, 2, "RESUME");
+                DrawText(ren, resumeBtn.x + (resumeBtn.w - MeasureTextWidth(2, "RESUME")) / 2, resumeBtn.y + (resumeBtn.h - labelLineH) / 2, 2, "RESUME");
 
                 SDL_SetRenderDrawColor(ren, pauseSelection == 1 ? 70 : 45, pauseSelection == 1 ? 120 : 70, pauseSelection == 1 ? 170 : 90, 255);
                 SDL_RenderFillRect(ren, &restartBtn);
                 SDL_SetRenderDrawColor(ren, 200, 200, 200, 255);
-                DrawText(ren, restartBtn.x + 18, restartBtn.y + 8, 2, "RESTART");
+                DrawText(ren, restartBtn.x + (restartBtn.w - MeasureTextWidth(2, "RESTART")) / 2, restartBtn.y + (restartBtn.h - labelLineH) / 2, 2, "RESTART");
 
                 SDL_SetRenderDrawColor(ren, pauseSelection == 2 ? 120 : 70, pauseSelection == 2 ? 70 : 50, pauseSelection == 2 ? 70 : 60, 255);
                 SDL_RenderFillRect(ren, &quitBtn);
                 SDL_SetRenderDrawColor(ren, 200, 200, 200, 255);
-                DrawText(ren, quitBtn.x + 30, quitBtn.y + 8, 2, "QUIT");
+                DrawText(ren, quitBtn.x + (quitBtn.w - MeasureTextWidth(2, "QUIT")) / 2, quitBtn.y + (quitBtn.h - labelLineH) / 2, 2, "QUIT");
             }
 
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
@@ -5106,8 +5523,8 @@ int main(int argc, char** argv) {
         SDL_SetRenderTarget(ren, nullptr);
         int winW = 0, winH = 0;
         SDL_GetWindowSize(win, &winW, &winH);
-        SDL_Rect presentDst = computePresentRect(winW, winH, kBaseScreenW, kBaseScreenH, uiScalePercent / 100.0f);
-        SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+        SDL_Rect presentDst = computePresentRect(winW, winH, kBaseScreenW, kBaseScreenH, 1.0f);
+        SDL_SetRenderDrawColor(ren, 221, 248, 255, 255); // #ddf8ff
         SDL_RenderClear(ren);
         SDL_RenderCopy(ren, gameTarget, nullptr, &presentDst);
         SDL_RenderPresent(ren);
@@ -5373,6 +5790,11 @@ int main(int argc, char** argv) {
     if (endSignTex) SDL_DestroyTexture(endSignTex);
     if (pauseTex) SDL_DestroyTexture(pauseTex);
     if (introCardTex) SDL_DestroyTexture(introCardTex);
+    if (bgTexWorld1) SDL_DestroyTexture(bgTexWorld1);
+    if (bgTexWorld2) SDL_DestroyTexture(bgTexWorld2);
+    if (bgTexWorld4) SDL_DestroyTexture(bgTexWorld4);
+    if (bgTexWorld5) SDL_DestroyTexture(bgTexWorld5);
+    if (bgTexWorld6) SDL_DestroyTexture(bgTexWorld6);
     if (worldTarget) SDL_DestroyTexture(worldTarget);
     if (gameTarget) SDL_DestroyTexture(gameTarget);
     if (debugRen && debugRen != ren) SDL_DestroyRenderer(debugRen);

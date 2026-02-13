@@ -32,6 +32,49 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     int& musicVolume = *ctx.musicVolume;
     int& sfxVolume = *ctx.sfxVolume;
     int& uiScalePercent = *ctx.uiScalePercent;
+    constexpr int kUiScaleMinPercent = 50;
+    constexpr int kUiScaleMaxPercent = 200;
+    auto uiButtonScale = [&]() -> float {
+        return std::clamp((float)uiScalePercent / 100.0f, 0.5f, 2.0f);
+    };
+    constexpr float kMenuAuthorW = 960.0f;
+    constexpr float kMenuAuthorH = 540.0f;
+    auto menuCanvasScale = [&]() -> float {
+        const float sx = (float)ctx.baseScreenW / kMenuAuthorW;
+        const float sy = (float)ctx.baseScreenH / kMenuAuthorH;
+        return std::max(0.5f, std::min(sx, sy));
+    };
+    auto menuCanvasOriginX = [&]() -> float {
+        const float s = menuCanvasScale();
+        return ((float)ctx.baseScreenW - kMenuAuthorW * s) * 0.5f;
+    };
+    auto menuCanvasOriginY = [&]() -> float {
+        const float s = menuCanvasScale();
+        return ((float)ctx.baseScreenH - kMenuAuthorH * s) * 0.5f;
+    };
+    auto mainMenuScale = [&]() -> float {
+        const float canvas = menuCanvasScale();
+        const float desired = uiButtonScale();
+        const float desiredBtnW = 112.0f * canvas * desired;
+        const float desiredGap = 44.0f * canvas * desired;
+        const float desiredTotalW = desiredBtnW * 3.0f + desiredGap * 2.0f;
+        const float maxTotalW = std::max(260.0f, (float)ctx.baseScreenW - 120.0f);
+        const float fit = (desiredTotalW > 0.0f) ? std::min(1.0f, maxTotalW / desiredTotalW) : 1.0f;
+        return std::clamp(desired * fit, 0.55f, 2.5f);
+    };
+    auto scaleRectCentered = [&](const SDL_Rect& in, float scale) -> SDL_Rect {
+        if (scale <= 0.0f) return in;
+        const float cx = (float)in.x + (float)in.w * 0.5f;
+        const float cy = (float)in.y + (float)in.h * 0.5f;
+        const int nw = std::max(1, (int)std::lround((float)in.w * scale));
+        const int nh = std::max(1, (int)std::lround((float)in.h * scale));
+        return SDL_Rect{
+            (int)std::lround(cx - (float)nw * 0.5f),
+            (int)std::lround(cy - (float)nh * 0.5f),
+            nw,
+            nh
+        };
+    };
 
     auto applyRenderVsync = [&]() {
 #if SDL_VERSION_ATLEAST(2, 0, 18)
@@ -162,6 +205,9 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     enum class SliderDragTarget { None, Music, Sfx };
     SliderDragTarget sliderDrag = SliderDragTarget::None;
     SDL_FingerID sliderDragFinger = 0;
+    enum class ScrollbarDragTarget { None, Settings, About };
+    ScrollbarDragTarget scrollbarDrag = ScrollbarDragTarget::None;
+    SDL_FingerID scrollbarDragFinger = 0;
     auto applySettingsExitCleanup = [&]() {
         if (!pendingSettingsExitCleanup) return;
         pendingSettingsExitCleanup = false;
@@ -169,6 +215,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         if (menuSel < 0 || menuSel > 2) menuSel = 1;
         sliderDrag = SliderDragTarget::None;
         sliderDragFinger = 0;
+        scrollbarDrag = ScrollbarDragTarget::None;
+        scrollbarDragFinger = 0;
     };
     Uint64 lastTouchDownTicks = 0;
     int lastTouchDownWinX = -100000;
@@ -179,13 +227,24 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     SDL_Event e;
     const int settingsStartY = 150;
     const int settingsRowH = 36;
-    const int settingsTabX = 16;
     const int settingsTabY = 118;
     const int settingsTabW = 120;
     const int settingsTabH = 30;
     const int settingsListTop = settingsStartY;
     const int settingsListBottom = ctx.baseScreenH - 24;
     int settingsScrollY = 0;
+    int aboutScrollY = 0;
+    constexpr int kAboutContentBottomY = 558;
+    auto aboutMaxScroll = [&]() -> int {
+        return std::max(0, kAboutContentBottomY - settingsListBottom);
+    };
+    auto clampAboutScroll = [&]() {
+        aboutScrollY = std::clamp(aboutScrollY, 0, aboutMaxScroll());
+    };
+    auto scrollAboutBy = [&](int dy) {
+        aboutScrollY += dy;
+        clampAboutScroll();
+    };
     auto settingsRowsForTab = [&](int tab) -> int {
         if (tab == 1) return 5;
         if (tab == 2) return 8;
@@ -194,10 +253,36 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         if (isExtraTab(tab)) return extraTabRowCountForTab(tab);
         return kSettingsCount;
     };
+    auto settingsRowWidthPx = [&]() -> int {
+        const int scaled = std::max(120, (int)std::lround(280.0f * uiButtonScale()));
+        return std::min(scaled, std::max(120, (int)std::lround((float)ctx.baseScreenW * 0.62f)));
+    };
+    auto settingsRowHeightPx = [&]() -> int {
+        return std::max(18, (int)std::lround(30.0f * uiButtonScale()));
+    };
+    auto settingsRowStepPx = [&]() -> int {
+        return std::max(settingsRowHeightPx() + 4, (int)std::lround((float)settingsRowH * uiButtonScale()));
+    };
+    auto settingsListPadPx = [&]() -> int {
+        return std::max(4, (int)std::lround(8.0f * uiButtonScale()));
+    };
+    auto settingsTabWidthPx = [&]() -> int {
+        const int scaled = std::max(84, (int)std::lround((float)settingsTabW * uiButtonScale()));
+        return std::min(scaled, std::max(84, (int)std::lround((float)ctx.baseScreenW * 0.24f)));
+    };
+    auto settingsTabHeightPx = [&]() -> int {
+        return std::max(20, (int)std::lround((float)settingsTabH * uiButtonScale()));
+    };
+    auto settingsTabGapPx = [&]() -> int {
+        return std::max(4, (int)std::lround(6.0f * uiButtonScale()));
+    };
+    auto settingsTabsToListGapPx = [&]() -> int {
+        return std::max(10, (int)std::lround(18.0f * uiButtonScale()));
+    };
     auto settingsMaxScroll = [&](int tab) -> int {
         const int rows = settingsRowsForTab(tab);
         if (rows <= 0) return 0;
-        const int contentH = (rows - 1) * settingsRowH + 30;
+        const int contentH = (rows - 1) * settingsRowStepPx() + settingsRowHeightPx();
         const int viewH = std::max(1, settingsListBottom - settingsListTop);
         return std::max(0, contentH - viewH);
     };
@@ -208,27 +293,53 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         settingsScrollY += dy;
         clampSettingsScroll();
     };
-    auto settingsRowY = [&](int idx) -> int { return settingsStartY + idx * settingsRowH - settingsScrollY; };
+    auto settingsRowY = [&](int idx) -> int { return settingsStartY + idx * settingsRowStepPx() - settingsScrollY; };
     auto settingsRowBtn = [&](int idx) -> SDL_Rect {
-        return SDL_Rect{ctx.baseScreenW / 2 - 140, settingsRowY(idx), 280, 30};
+        const int rowW = settingsRowWidthPx();
+        const int rowHpx = settingsRowHeightPx();
+        const int tabW = settingsTabWidthPx();
+        const int pad = settingsListPadPx();
+        const int tabsGap = settingsTabsToListGapPx();
+        const int trackGap = std::max(6, (int)std::lround(8.0f * uiButtonScale()));
+        const int trackW = std::max(8, (int)std::lround(10.0f * uiButtonScale()));
+        const int totalW = tabW + tabsGap + (rowW + pad * 2) + trackGap + trackW;
+        const int left = ctx.baseScreenW / 2 - totalW / 2;
+        const int rowLeft = left + tabW + tabsGap;
+        return SDL_Rect{rowLeft + pad, settingsRowY(idx), rowW, rowHpx};
     };
     auto settingsListClipRect = [&]() -> SDL_Rect {
-        return SDL_Rect{ctx.baseScreenW / 2 - 148, settingsListTop - 4, 296, std::max(1, settingsListBottom - settingsListTop + 8)};
+        const int pad = settingsListPadPx();
+        SDL_Rect row0 = settingsRowBtn(0);
+        return SDL_Rect{row0.x - pad, settingsListTop - pad / 2, row0.w + pad * 2, std::max(1, settingsListBottom - settingsListTop + pad)};
     };
     auto settingsScrollbarTrackRect = [&]() -> SDL_Rect {
         SDL_Rect clip = settingsListClipRect();
-        return SDL_Rect{clip.x + clip.w + 8, settingsListTop, 10, std::max(1, settingsListBottom - settingsListTop)};
+        const int gap = std::max(6, (int)std::lround(8.0f * uiButtonScale()));
+        const int trackW = std::max(8, (int)std::lround(10.0f * uiButtonScale()));
+        return SDL_Rect{clip.x + clip.w + gap, settingsListTop, trackW, std::max(1, settingsListBottom - settingsListTop)};
     };
     auto settingsScrollbarThumbRect = [&]() -> SDL_Rect {
         SDL_Rect track = settingsScrollbarTrackRect();
         const int maxScroll = settingsMaxScroll(settingsTab);
         if (maxScroll <= 0) return SDL_Rect{track.x, track.y, track.w, track.h};
         const int rows = settingsRowsForTab(settingsTab);
-        const int contentH = std::max(1, (rows - 1) * settingsRowH + 30);
+        const int contentH = std::max(1, (rows - 1) * settingsRowStepPx() + settingsRowHeightPx());
         const int viewH = std::max(1, track.h);
         const int thumbH = std::clamp((viewH * viewH) / std::max(1, contentH), 18, viewH);
         const int travel = std::max(1, track.h - thumbH);
         const float t = std::clamp(settingsScrollY / (float)maxScroll, 0.0f, 1.0f);
+        const int thumbY = track.y + (int)std::lround(t * travel);
+        return SDL_Rect{track.x, thumbY, track.w, thumbH};
+    };
+    auto aboutScrollbarThumbRect = [&]() -> SDL_Rect {
+        SDL_Rect track = settingsScrollbarTrackRect();
+        const int maxScroll = aboutMaxScroll();
+        if (maxScroll <= 0) return SDL_Rect{track.x, track.y, track.w, track.h};
+        const int contentH = std::max(1, kAboutContentBottomY - settingsListTop);
+        const int viewH = std::max(1, track.h);
+        const int thumbH = std::clamp((viewH * viewH) / std::max(1, contentH), 18, viewH);
+        const int travel = std::max(1, track.h - thumbH);
+        const float t = std::clamp(aboutScrollY / (float)maxScroll, 0.0f, 1.0f);
         const int thumbY = track.y + (int)std::lround(t * travel);
         return SDL_Rect{track.x, thumbY, track.w, thumbH};
     };
@@ -245,14 +356,58 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         const float t = (top - track.y) / (float)travel;
         settingsScrollY = std::clamp((int)std::lround(t * maxScroll), 0, maxScroll);
     };
+    auto pageSettingsScrollFromY = [&](int y) {
+        SDL_Rect thumb = settingsScrollbarThumbRect();
+        const int page = std::max(24, settingsListBottom - settingsListTop - 24);
+        if (y < thumb.y) settingsScrollY -= page;
+        else if (y > thumb.y + thumb.h) settingsScrollY += page;
+        clampSettingsScroll();
+    };
+    auto setAboutScrollFromY = [&](int y) {
+        const int maxScroll = aboutMaxScroll();
+        if (maxScroll <= 0) {
+            aboutScrollY = 0;
+            return;
+        }
+        SDL_Rect track = settingsScrollbarTrackRect();
+        SDL_Rect thumb = aboutScrollbarThumbRect();
+        const int travel = std::max(1, track.h - thumb.h);
+        const int top = std::clamp(y - thumb.h / 2, track.y, track.y + travel);
+        const float t = (top - track.y) / (float)travel;
+        aboutScrollY = std::clamp((int)std::lround(t * maxScroll), 0, maxScroll);
+    };
+    auto pageAboutScrollFromY = [&](int y) {
+        SDL_Rect thumb = aboutScrollbarThumbRect();
+        const int page = std::max(24, settingsListBottom - settingsListTop - 24);
+        if (y < thumb.y) aboutScrollY -= page;
+        else if (y > thumb.y + thumb.h) aboutScrollY += page;
+        clampAboutScroll();
+    };
     auto settingsTabBtn = [&](int idx) -> SDL_Rect {
-        return SDL_Rect{settingsTabX, settingsTabY + idx * (settingsTabH + 6), settingsTabW, settingsTabH};
+        const int tabW = settingsTabWidthPx();
+        const int tabH = settingsTabHeightPx();
+        const int tabGap = settingsTabGapPx();
+        const int rowW = settingsRowWidthPx();
+        const int pad = settingsListPadPx();
+        const int tabsGap = settingsTabsToListGapPx();
+        const int trackGap = std::max(6, (int)std::lround(8.0f * uiButtonScale()));
+        const int trackW = std::max(8, (int)std::lround(10.0f * uiButtonScale()));
+        const int totalW = tabW + tabsGap + (rowW + pad * 2) + trackGap + trackW;
+        const int left = ctx.baseScreenW / 2 - totalW / 2;
+        const SDL_Rect base{left, settingsTabY + idx * (tabH + tabGap), tabW, tabH};
+        return scaleRectCentered(base, uiButtonScale());
     };
     auto musicSliderRect = [&]() -> SDL_Rect {
-        return SDL_Rect{ctx.baseScreenW / 2 - 70, settingsRowY(2) + 22, 200, 10};
+        const int sliderW = std::max(100, (int)std::lround(200.0f * uiButtonScale()));
+        const int sliderH = std::max(6, (int)std::lround(10.0f * uiButtonScale()));
+        const SDL_Rect row = settingsRowBtn(2);
+        return SDL_Rect{ctx.baseScreenW / 2 - sliderW / 2, row.y + row.h - sliderH - 2, sliderW, sliderH};
     };
     auto sfxSliderRect = [&]() -> SDL_Rect {
-        return SDL_Rect{ctx.baseScreenW / 2 - 70, settingsRowY(3) + 22, 200, 10};
+        const int sliderW = std::max(100, (int)std::lround(200.0f * uiButtonScale()));
+        const int sliderH = std::max(6, (int)std::lround(10.0f * uiButtonScale()));
+        const SDL_Rect row = settingsRowBtn(3);
+        return SDL_Rect{ctx.baseScreenW / 2 - sliderW / 2, row.y + row.h - sliderH - 2, sliderW, sliderH};
     };
     auto sliderValueFromPoint = [&](int x, const SDL_Rect& slider) -> int {
         int rel = x - slider.x;
@@ -263,7 +418,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     auto mouseToGamePoint = [&](int mx, int my, SDL_Point& pt) -> bool {
         int winW = 0, winH = 0, gx = 0, gy = 0;
         SDL_GetWindowSize(ctx.win, &winW, &winH);
-        if (!windowToGamePoint(mx, my, winW, winH, ctx.baseScreenW, ctx.baseScreenH, gx, gy, uiScalePercent / 100.0f)) return false;
+        if (!windowToGamePoint(mx, my, winW, winH, ctx.baseScreenW, ctx.baseScreenH, gx, gy, 1.0f)) return false;
         pt.x = gx;
         pt.y = gy;
         return true;
@@ -279,29 +434,69 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         return (dx * dx + dy * dy) <= (kSyntheticMouseSuppressDistPx * kSyntheticMouseSuppressDistPx);
     };
     auto mainMenuBtnRect = [&](int idx) -> SDL_Rect {
-        const int btnW = 112;
-        const int btnH = 112;
-        const int gap = 44;
-        const int totalW = btnW * 3 + gap * 2;
-        const int startX = ctx.baseScreenW / 2 - totalW / 2;
-        return SDL_Rect{startX + idx * (btnW + gap), 210, btnW, btnH};
+        const float canvas = menuCanvasScale();
+        const float s = mainMenuScale();
+        const int btnW = std::max(56, (int)std::lround(112.0f * canvas * s));
+        const int btnH = std::max(56, (int)std::lround(112.0f * canvas * s));
+        const int step = std::max(btnW + 8, (int)std::lround((112.0f + 44.0f) * canvas * s));
+        const int centerY = (int)std::lround(menuCanvasOriginY() + 266.0f * canvas);
+        const int centerX = (int)std::lround(menuCanvasOriginX() + 480.0f * canvas) + (idx - 1) * step;
+        return SDL_Rect{centerX - btnW / 2, centerY - btnH / 2, btnW, btnH};
+    };
+    auto quitModalRect = [&]() -> SDL_Rect {
+        const float s = uiButtonScale();
+        SDL_Rect base{ctx.baseScreenW / 2 - 180, ctx.baseScreenH / 2 - 90, 360, 180};
+        return scaleRectCentered(base, s);
+    };
+    auto quitResumeBtnRect = [&](const SDL_Rect& modal) -> SDL_Rect {
+        const float s = uiButtonScale();
+        return SDL_Rect{
+            modal.x + (int)std::lround(26.0f * s),
+            modal.y + (int)std::lround(94.0f * s),
+            std::max(40, (int)std::lround(140.0f * s)),
+            std::max(20, (int)std::lround(56.0f * s))
+        };
+    };
+    auto quitCloseBtnRect = [&](const SDL_Rect& modal) -> SDL_Rect {
+        const float s = uiButtonScale();
+        return SDL_Rect{
+            modal.x + (int)std::lround(194.0f * s),
+            modal.y + (int)std::lround(94.0f * s),
+            std::max(40, (int)std::lround(140.0f * s)),
+            std::max(20, (int)std::lround(56.0f * s))
+        };
     };
     auto ensureSettingsRowVisible = [&](int rowIdx) {
         if (rowIdx < 0) return;
-        int y = settingsRowY(rowIdx);
+        SDL_Rect row = settingsRowBtn(rowIdx);
+        int y = row.y;
         if (y < settingsListTop) {
             settingsScrollY -= (settingsListTop - y);
-        } else if (y + 30 > settingsListBottom) {
-            settingsScrollY += (y + 30 - settingsListBottom);
+        } else if (y + row.h > settingsListBottom) {
+            settingsScrollY += (y + row.h - settingsListBottom);
         }
         clampSettingsScroll();
     };
     SDL_Texture* mainMenuTex = IMG_LoadTexture(ctx.ren, ResolveAssetPath("assets/Sheets/DF_Main_menu-uhd.png").c_str());
+    if (mainMenuTex) SDL_SetTextureScaleMode(mainMenuTex, SDL_SCALEMODE_NEAREST);
     auto mainMenuFrames = loadPlistFrames("assets/Sheets/DF_Main_menu-uhd.plist");
     SDL_Texture* menuFallbackTex = IMG_LoadTexture(ctx.ren, ResolveAssetPath("assets/Sheets/DF_Menus-uhd.png").c_str());
+    if (menuFallbackTex) SDL_SetTextureScaleMode(menuFallbackTex, SDL_SCALEMODE_NEAREST);
     auto menuFallbackFrames = loadPlistFrames("assets/Sheets/DF_Menus-uhd.plist");
-    SDL_Texture* menuBgTex = IMG_LoadTexture(ctx.ren, ResolveAssetPath("assets/Sheets/DF_Background-uhd.png").c_str());
-    auto menuBgFrames = loadPlistFrames("assets/Sheets/DF_Background-uhd.plist");
+    SDL_Texture* menuBgTex = IMG_LoadTexture(ctx.ren, ResolveAssetPath("assets/Sheets/DF_Back_1-uhd.png").c_str());
+    if (menuBgTex) SDL_SetTextureScaleMode(menuBgTex, SDL_SCALEMODE_NEAREST);
+    if (menuBgTex) SDL_SetTextureBlendMode(menuBgTex, SDL_BLENDMODE_BLEND);
+    auto menuBgFrames = loadPlistFrames("assets/Sheets/DF_Back_1-uhd.plist");
+    if (!menuBgTex || menuBgFrames.empty()) {
+        if (menuBgTex) {
+            SDL_DestroyTexture(menuBgTex);
+            menuBgTex = nullptr;
+        }
+        menuBgTex = IMG_LoadTexture(ctx.ren, ResolveAssetPath("assets/Sheets/DF_Background-uhd.png").c_str());
+        if (menuBgTex) SDL_SetTextureScaleMode(menuBgTex, SDL_SCALEMODE_NEAREST);
+        if (menuBgTex) SDL_SetTextureBlendMode(menuBgTex, SDL_BLENDMODE_BLEND);
+        menuBgFrames = loadPlistFrames("assets/Sheets/DF_Background-uhd.plist");
+    }
     auto getMenuFrame = [&](const char* name, SDL_Texture*& outTex) -> const Frame* {
         auto it = mainMenuFrames.find(name);
         if (it != mainMenuFrames.end()) {
@@ -416,6 +611,13 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     menuInput.scanConnected();
 
     while (running) {
+        if (ctx.updateDynamicResolution) ctx.updateDynamicResolution();
+        SDL_Texture* gameTarget = (ctx.gameTargetRef && *ctx.gameTargetRef) ? *ctx.gameTargetRef : ctx.gameTarget;
+        if (!gameTarget) {
+            SDL_Delay(1);
+            continue;
+        }
+        SetTextScaleMultiplier(std::clamp((float)uiScalePercent / 100.0f, 0.5f, 2.0f));
         applySettingsExitCleanup();
         int eventsProcessed = 0;
         while (eventsProcessed < 256 && SDL_PollEvent(&e)) {
@@ -549,6 +751,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         if (settingsTab == 2) settingsSelDebug = 0;
                         if (isExtraTab(settingsTab)) settingsSel = 0;
                         settingsScrollY = 0;
+                        if (settingsTab == 4) aboutScrollY = 0;
                         continue;
                     }
                     {
@@ -571,6 +774,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                                 if (settingsTab == 2) settingsSelDebug = 0;
                                 if (isExtraTab(settingsTab)) settingsSel = 0;
                                 settingsScrollY = 0;
+                                if (settingsTab == 4) aboutScrollY = 0;
                             }
                             continue;
                         }
@@ -663,6 +867,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         continue;
                     }
                     if (settingsTab == 4) {
+                        if (e.key.key == SDLK_UP || e.key.key == SDLK_w) scrollAboutBy(-24);
+                        if (e.key.key == SDLK_DOWN || e.key.key == SDLK_s) scrollAboutBy(24);
+                        if (e.key.key == SDLK_PAGEUP) scrollAboutBy(-96);
+                        if (e.key.key == SDLK_PAGEDOWN) scrollAboutBy(96);
                         if (isBackKey || e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) setInSettings(false);
                         continue;
                     }
@@ -673,7 +881,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
 #if defined(__ANDROID__)
                         if (settingsSel == IDX_VSYNC) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
                         else if (settingsSel == IDX_CAM_CLAMP) clampCamX = !clampCamX;
-                        else if (settingsSel == IDX_UI_SCALE && dir != 0) uiScalePercent = std::clamp(uiScalePercent + dir * 5, 50, 100);
+                        else if (settingsSel == IDX_UI_SCALE && dir != 0) uiScalePercent = std::clamp(uiScalePercent + dir * 5, kUiScaleMinPercent, kUiScaleMaxPercent);
                         else if (settingsSel == IDX_SHOW_FPS) defaultShowFpsCounter = !defaultShowFpsCounter;
                         else if (settingsSel == IDX_SHOW_DETAILED) defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
                         else if (settingsSel == IDX_SHOW_HITBOXES) defaultShowHitboxes = !defaultShowHitboxes;
@@ -681,13 +889,13 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         else if (settingsSel == IDX_SHOW_DEBUG_VIEW) defaultShowDebugView = !defaultShowDebugView;
                         else if (settingsSel == IDX_MUSIC && dir != 0) musicVolume = std::clamp(musicVolume + dir * 8, 0, 128);
                         else if (settingsSel == IDX_SFX && dir != 0) sfxVolume = std::clamp(sfxVolume + dir * 8, 0, 128);
-                        else if (settingsSel == IDX_ABOUT) { setSettingsTab(4); settingsScrollY = 0; }
+                        else if (settingsSel == IDX_ABOUT) { setSettingsTab(4); settingsScrollY = 0; aboutScrollY = 0; }
                         else setInSettings(false);
 #else
                         if (settingsSel == IDX_FULLSCREEN) { fullscreen = !fullscreen; SDL_SetWindowFullscreen(ctx.win, fullscreen); }
                         else if (settingsSel == IDX_VSYNC) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
                         else if (settingsSel == IDX_CAM_CLAMP) clampCamX = !clampCamX;
-                        else if (settingsSel == IDX_UI_SCALE && dir != 0) uiScalePercent = std::clamp(uiScalePercent + dir * 5, 50, 100);
+                        else if (settingsSel == IDX_UI_SCALE && dir != 0) uiScalePercent = std::clamp(uiScalePercent + dir * 5, kUiScaleMinPercent, kUiScaleMaxPercent);
                         else if (settingsSel == IDX_SHOW_FPS) defaultShowFpsCounter = !defaultShowFpsCounter;
                         else if (settingsSel == IDX_SHOW_DETAILED) defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
                         else if (settingsSel == IDX_SHOW_HITBOXES) defaultShowHitboxes = !defaultShowHitboxes;
@@ -695,7 +903,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         else if (settingsSel == IDX_SHOW_DEBUG_VIEW) defaultShowDebugView = !defaultShowDebugView;
                         else if (settingsSel == IDX_MUSIC && dir != 0) musicVolume = std::clamp(musicVolume + dir * 8, 0, 128);
                         else if (settingsSel == IDX_SFX && dir != 0) sfxVolume = std::clamp(sfxVolume + dir * 8, 0, 128);
-                        else if (settingsSel == IDX_ABOUT) { setSettingsTab(4); settingsScrollY = 0; }
+                        else if (settingsSel == IDX_ABOUT) { setSettingsTab(4); settingsScrollY = 0; aboutScrollY = 0; }
                         else setInSettings(false);
 #endif
                         if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
@@ -703,11 +911,15 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 }
             }
             if (e.type == SDL_EVENT_MOUSE_WHEEL) {
-                if (inSettings && !closeMenuOpen && settingsTab != 3 && settingsTab != 4) {
-                    scrollSettingsBy(-e.wheel.y * 24);
+                if (inSettings && !closeMenuOpen && settingsTab != 3) {
+                    if (settingsTab == 4) scrollAboutBy(-e.wheel.y * 24);
+                    else scrollSettingsBy(-e.wheel.y * 24);
                 }
             }
-            if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_LEFT) sliderDrag = SliderDragTarget::None;
+            if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_LEFT) {
+                sliderDrag = SliderDragTarget::None;
+                scrollbarDrag = ScrollbarDragTarget::None;
+            }
             if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
                 if (!activeTouchFingers.empty()) continue;
                 // Some platforms emit synthetic mouse clicks for taps; ignore only near-immediate
@@ -716,9 +928,9 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 SDL_Point pt{};
                 if (!mouseToGamePoint(e.button.x, e.button.y, pt)) continue;
                 if (closeMenuOpen) {
-                    SDL_Rect modal{ctx.baseScreenW / 2 - 180, ctx.baseScreenH / 2 - 90, 360, 180};
-                    SDL_Rect resumeBtn{modal.x + 26, modal.y + 94, 140, 56};
-                    SDL_Rect closeBtn{modal.x + 194, modal.y + 94, 140, 56};
+                    SDL_Rect modal = quitModalRect();
+                    SDL_Rect resumeBtn = quitResumeBtnRect(modal);
+                    SDL_Rect closeBtn = quitCloseBtnRect(modal);
                     if (SDL_PointInRect(&pt, &resumeBtn)) {
                         closeMenuSel = 0;
                         setCloseMenuOpen(false);
@@ -756,9 +968,23 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         if (SDL_PointInRect(&pt, &tr)) {
                             setSettingsTab(ti);
                             settingsScrollY = 0;
+                            aboutScrollY = 0;
                             if (ti == 1) settingsSelAudio = 0;
                             if (ti == 2) settingsSelDebug = 0;
                             if (isExtraTab(ti)) settingsSel = 0;
+                            continue;
+                        }
+                    }
+                    if (settingsTab == 4 && aboutMaxScroll() > 0) {
+                        SDL_Rect scrollbarTrack = settingsScrollbarTrackRect();
+                        SDL_Rect scrollbarThumb = aboutScrollbarThumbRect();
+                        if (SDL_PointInRect(&pt, &scrollbarTrack)) {
+                            if (SDL_PointInRect(&pt, &scrollbarThumb)) {
+                                scrollbarDrag = ScrollbarDragTarget::About;
+                                setAboutScrollFromY(pt.y);
+                            } else {
+                                pageAboutScrollFromY(pt.y);
+                            }
                             continue;
                         }
                     }
@@ -767,9 +993,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         SDL_Rect scrollbarThumb = settingsScrollbarThumbRect();
                         if (SDL_PointInRect(&pt, &scrollbarTrack)) {
                             if (SDL_PointInRect(&pt, &scrollbarThumb)) {
+                                scrollbarDrag = ScrollbarDragTarget::Settings;
                                 setSettingsScrollFromY(pt.y);
                             } else {
-                                setSettingsScrollFromY(pt.y);
+                                pageSettingsScrollFromY(pt.y);
                             }
                             continue;
                         }
@@ -862,13 +1089,13 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_Rect debugViewBtn = settingsRowBtn(IDX_SHOW_DEBUG_VIEW);
                     if (SDL_PointInRect(&pt, &vsyncBtn)) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
                     else if (SDL_PointInRect(&pt, &camBtn)) clampCamX = !clampCamX;
-                    else if (SDL_PointInRect(&pt, &uiScaleBtn)) uiScalePercent = (uiScalePercent >= 100) ? 50 : (uiScalePercent + 5);
+                    else if (SDL_PointInRect(&pt, &uiScaleBtn)) uiScalePercent = (uiScalePercent >= kUiScaleMaxPercent) ? kUiScaleMinPercent : (uiScalePercent + 5);
                     else if (SDL_PointInRect(&pt, &fpsBtn)) defaultShowFpsCounter = !defaultShowFpsCounter;
                     else if (SDL_PointInRect(&pt, &dbgBtn)) defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
                     else if (SDL_PointInRect(&pt, &hitBtn)) defaultShowHitboxes = !defaultShowHitboxes;
                     else if (SDL_PointInRect(&pt, &playerHitBtn)) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
                     else if (SDL_PointInRect(&pt, &debugViewBtn)) defaultShowDebugView = !defaultShowDebugView;
-                    else if (SDL_PointInRect(&pt, &aboutBtn)) { setSettingsTab(4); settingsScrollY = 0; }
+                    else if (SDL_PointInRect(&pt, &aboutBtn)) { setSettingsTab(4); settingsScrollY = 0; aboutScrollY = 0; }
                     else if (SDL_PointInRect(&pt, &backBtn)) setInSettings(false);
 #else
                     SDL_Rect fullBtn = settingsRowBtn(IDX_FULLSCREEN);
@@ -883,13 +1110,13 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     if (SDL_PointInRect(&pt, &fullBtn)) { fullscreen = !fullscreen; SDL_SetWindowFullscreen(ctx.win, fullscreen); }
                     else if (SDL_PointInRect(&pt, &vsyncBtn)) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
                     else if (SDL_PointInRect(&pt, &camBtn)) clampCamX = !clampCamX;
-                    else if (SDL_PointInRect(&pt, &uiScaleBtn)) uiScalePercent = (uiScalePercent >= 100) ? 50 : (uiScalePercent + 5);
+                    else if (SDL_PointInRect(&pt, &uiScaleBtn)) uiScalePercent = (uiScalePercent >= kUiScaleMaxPercent) ? kUiScaleMinPercent : (uiScalePercent + 5);
                     else if (SDL_PointInRect(&pt, &fpsBtn)) defaultShowFpsCounter = !defaultShowFpsCounter;
                     else if (SDL_PointInRect(&pt, &dbgBtn)) defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
                     else if (SDL_PointInRect(&pt, &hitBtn)) defaultShowHitboxes = !defaultShowHitboxes;
                     else if (SDL_PointInRect(&pt, &playerHitBtn)) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
                     else if (SDL_PointInRect(&pt, &debugViewBtn)) defaultShowDebugView = !defaultShowDebugView;
-                    else if (SDL_PointInRect(&pt, &aboutBtn)) { setSettingsTab(4); settingsScrollY = 0; }
+                    else if (SDL_PointInRect(&pt, &aboutBtn)) { setSettingsTab(4); settingsScrollY = 0; aboutScrollY = 0; }
                     else if (SDL_PointInRect(&pt, &backBtn)) setInSettings(false);
 #endif
                         if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
@@ -907,9 +1134,9 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 SDL_Point pt{};
                 if (!mouseToGamePoint(wx, wy, pt)) continue;
                 if (closeMenuOpen) {
-                    SDL_Rect modal{ctx.baseScreenW / 2 - 180, ctx.baseScreenH / 2 - 90, 360, 180};
-                    SDL_Rect resumeBtn{modal.x + 26, modal.y + 94, 140, 56};
-                    SDL_Rect closeBtn{modal.x + 194, modal.y + 94, 140, 56};
+                    SDL_Rect modal = quitModalRect();
+                    SDL_Rect resumeBtn = quitResumeBtnRect(modal);
+                    SDL_Rect closeBtn = quitCloseBtnRect(modal);
                     if (SDL_PointInRect(&pt, &resumeBtn)) {
                         closeMenuSel = 0;
                         setCloseMenuOpen(false);
@@ -950,9 +1177,24 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         if (SDL_PointInRect(&pt, &tr)) {
                             setSettingsTab(ti);
                             settingsScrollY = 0;
+                            aboutScrollY = 0;
                             if (ti == 1) settingsSelAudio = 0;
                             if (ti == 2) settingsSelDebug = 0;
                             if (isExtraTab(ti)) settingsSel = 0;
+                            continue;
+                        }
+                    }
+                    if (settingsTab == 4 && aboutMaxScroll() > 0) {
+                        SDL_Rect scrollbarTrack = settingsScrollbarTrackRect();
+                        SDL_Rect scrollbarThumb = aboutScrollbarThumbRect();
+                        if (SDL_PointInRect(&pt, &scrollbarTrack)) {
+                            if (SDL_PointInRect(&pt, &scrollbarThumb)) {
+                                scrollbarDrag = ScrollbarDragTarget::About;
+                                scrollbarDragFinger = e.tfinger.fingerID;
+                                setAboutScrollFromY(pt.y);
+                            } else {
+                                pageAboutScrollFromY(pt.y);
+                            }
                             continue;
                         }
                     }
@@ -961,9 +1203,11 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         SDL_Rect scrollbarThumb = settingsScrollbarThumbRect();
                         if (SDL_PointInRect(&pt, &scrollbarTrack)) {
                             if (SDL_PointInRect(&pt, &scrollbarThumb)) {
+                                scrollbarDrag = ScrollbarDragTarget::Settings;
+                                scrollbarDragFinger = e.tfinger.fingerID;
                                 setSettingsScrollFromY(pt.y);
                             } else {
-                                setSettingsScrollFromY(pt.y);
+                                pageSettingsScrollFromY(pt.y);
                             }
                             continue;
                         }
@@ -1058,7 +1302,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_Rect debugViewBtn = settingsRowBtn(IDX_SHOW_DEBUG_VIEW);
                     if (SDL_PointInRect(&pt, &vsyncBtn)) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
                     else if (SDL_PointInRect(&pt, &camBtn)) clampCamX = !clampCamX;
-                    else if (SDL_PointInRect(&pt, &uiScaleBtn)) uiScalePercent = (uiScalePercent >= 100) ? 50 : (uiScalePercent + 5);
+                    else if (SDL_PointInRect(&pt, &uiScaleBtn)) uiScalePercent = (uiScalePercent >= kUiScaleMaxPercent) ? kUiScaleMinPercent : (uiScalePercent + 5);
                     else if (SDL_PointInRect(&pt, &fpsBtn)) defaultShowFpsCounter = !defaultShowFpsCounter;
                     else if (SDL_PointInRect(&pt, &dbgBtn)) defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
                     else if (SDL_PointInRect(&pt, &hitBtn)) defaultShowHitboxes = !defaultShowHitboxes;
@@ -1079,7 +1323,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     if (SDL_PointInRect(&pt, &fullBtn)) { fullscreen = !fullscreen; SDL_SetWindowFullscreen(ctx.win, fullscreen); }
                     else if (SDL_PointInRect(&pt, &vsyncBtn)) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
                     else if (SDL_PointInRect(&pt, &camBtn)) clampCamX = !clampCamX;
-                    else if (SDL_PointInRect(&pt, &uiScaleBtn)) uiScalePercent = (uiScalePercent >= 100) ? 50 : (uiScalePercent + 5);
+                    else if (SDL_PointInRect(&pt, &uiScaleBtn)) uiScalePercent = (uiScalePercent >= kUiScaleMaxPercent) ? kUiScaleMinPercent : (uiScalePercent + 5);
                     else if (SDL_PointInRect(&pt, &fpsBtn)) defaultShowFpsCounter = !defaultShowFpsCounter;
                     else if (SDL_PointInRect(&pt, &dbgBtn)) defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
                     else if (SDL_PointInRect(&pt, &hitBtn)) defaultShowHitboxes = !defaultShowHitboxes;
@@ -1098,7 +1342,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 SDL_GetWindowSize(ctx.win, &winW, &winH);
                 int wx = (int)std::lround(e.tfinger.x * winW);
                 int wy = (int)std::lround(e.tfinger.y * winH);
-                if (!windowToGamePoint(wx, wy, winW, winH, ctx.baseScreenW, ctx.baseScreenH, gx, gy, uiScalePercent / 100.0f)) continue;
+                if (!windowToGamePoint(wx, wy, winW, winH, ctx.baseScreenW, ctx.baseScreenH, gx, gy, 1.0f)) continue;
                 SDL_Point pt{gx, gy};
                 SDL_Rect musicSlider = musicSliderRect();
                 SDL_Rect sfxSlider = sfxSliderRect();
@@ -1106,8 +1350,22 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 if (sliderDrag == SliderDragTarget::Sfx) sfxVolume = sliderValueFromPoint(pt.x, sfxSlider);
                 if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
             }
+            if (e.type == SDL_EVENT_FINGER_MOTION &&
+                inSettings && scrollbarDrag != ScrollbarDragTarget::None &&
+                e.tfinger.fingerID == scrollbarDragFinger) {
+                int winW = 0, winH = 0, gx = 0, gy = 0;
+                SDL_GetWindowSize(ctx.win, &winW, &winH);
+                int wx = (int)std::lround(e.tfinger.x * winW);
+                int wy = (int)std::lround(e.tfinger.y * winH);
+                if (!windowToGamePoint(wx, wy, winW, winH, ctx.baseScreenW, ctx.baseScreenH, gx, gy, 1.0f)) continue;
+                if (scrollbarDrag == ScrollbarDragTarget::Settings) setSettingsScrollFromY(gy);
+                if (scrollbarDrag == ScrollbarDragTarget::About) setAboutScrollFromY(gy);
+            }
             if (e.type == SDL_EVENT_FINGER_UP && e.tfinger.fingerID == sliderDragFinger) {
                 sliderDrag = SliderDragTarget::None;
+            }
+            if (e.type == SDL_EVENT_FINGER_UP && e.tfinger.fingerID == scrollbarDragFinger) {
+                scrollbarDrag = ScrollbarDragTarget::None;
             }
             if (e.type == SDL_EVENT_FINGER_UP) {
                 activeTouchFingers.erase(e.tfinger.fingerID);
@@ -1115,13 +1373,16 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             if (e.type == SDL_EVENT_FINGER_CANCELED && e.tfinger.fingerID == sliderDragFinger) {
                 sliderDrag = SliderDragTarget::None;
             }
+            if (e.type == SDL_EVENT_FINGER_CANCELED && e.tfinger.fingerID == scrollbarDragFinger) {
+                scrollbarDrag = ScrollbarDragTarget::None;
+            }
             if (e.type == SDL_EVENT_FINGER_CANCELED) {
                 activeTouchFingers.erase(e.tfinger.fingerID);
             }
             if (e.type == SDL_MOUSEMOTION && inSettings && sliderDrag != SliderDragTarget::None) {
                 int winW = 0, winH = 0, gx = 0, gy = 0;
                 SDL_GetWindowSize(ctx.win, &winW, &winH);
-                if (!windowToGamePoint(e.motion.x, e.motion.y, winW, winH, ctx.baseScreenW, ctx.baseScreenH, gx, gy, uiScalePercent / 100.0f)) continue;
+                if (!windowToGamePoint(e.motion.x, e.motion.y, winW, winH, ctx.baseScreenW, ctx.baseScreenH, gx, gy, 1.0f)) continue;
                 SDL_Point pt{gx, gy};
                 SDL_Rect musicSlider = musicSliderRect();
                 SDL_Rect sfxSlider = sfxSliderRect();
@@ -1129,43 +1390,58 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 if (sliderDrag == SliderDragTarget::Sfx) sfxVolume = sliderValueFromPoint(pt.x, sfxSlider);
                 if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
             }
+            if (e.type == SDL_MOUSEMOTION && inSettings && scrollbarDrag != ScrollbarDragTarget::None) {
+                int winW = 0, winH = 0, gx = 0, gy = 0;
+                SDL_GetWindowSize(ctx.win, &winW, &winH);
+                if (!windowToGamePoint(e.motion.x, e.motion.y, winW, winH, ctx.baseScreenW, ctx.baseScreenH, gx, gy, 1.0f)) continue;
+                if (scrollbarDrag == ScrollbarDragTarget::Settings) setSettingsScrollFromY(gy);
+                if (scrollbarDrag == ScrollbarDragTarget::About) setAboutScrollFromY(gy);
+            }
             // Keep mouse/touch handling behavior in main for now to minimize risk.
         }
 
-        SDL_SetRenderTarget(ctx.ren, ctx.gameTarget);
-        SDL_SetRenderDrawColor(ctx.ren, 12, 14, 18, 255);
+        SDL_SetRenderTarget(ctx.ren, gameTarget);
+        SDL_SetRenderDrawColor(ctx.ren, 221, 248, 255, 255); // #ddf8ff
         SDL_RenderClear(ctx.ren);
         if (menuBgTex && !menuBgFrames.empty()) {
             auto getBgFrame = [&](const char* name) -> const Frame* {
                 auto it = menuBgFrames.find(name);
                 if (it != menuBgFrames.end()) return &it->second;
+                std::string withPng = std::string(name) + ".png";
+                auto itPng = menuBgFrames.find(withPng);
+                if (itPng != menuBgFrames.end()) return &itPng->second;
                 return nullptr;
             };
-            const Frame* bgBack = getBgFrame("w1b");
-            if (!bgBack) bgBack = getBgFrame("w1b.png");
-            const Frame* bgFront = getBgFrame("w1f");
-            if (!bgFront) bgFront = getBgFrame("w1f.png");
+            const Frame* bgBack = getBgFrame("far");
+            const Frame* bgMiddle = getBgFrame("middle");
+            if (!bgMiddle) bgMiddle = getBgFrame("mid");
 
             struct MenuParallaxLayer {
                 const Frame* frame;
                 float speed;
                 float yBias;
                 float alpha;
+                float scaleMul;
             };
             MenuParallaxLayer layers[] = {
-                {bgBack, 0.015f, 0.0f, 255.0f},
-                {bgFront, 0.045f, 10.0f, 255.0f},
-                {bgFront, 0.075f, 20.0f, 255.0f},
+                {bgBack, 0.015f, 0.0f, 255.0f, 1.0f},
+                {bgMiddle, 0.045f, 10.0f, 255.0f, 1.0f},
+                {bgMiddle, 0.075f, 20.0f, 255.0f, 1.0f},
             };
             const Uint64 ticks = SDL_GetTicks();
+            const float bgScale = std::clamp(menuCanvasScale() * mainMenuScale() * 0.80f, 0.5f, 3.0f);
+            const float canvasScale = menuCanvasScale();
+            const float canvasBottomY = menuCanvasOriginY() + kMenuAuthorH * canvasScale;
             for (const auto& layer : layers) {
                 if (!layer.frame) continue;
-                int fw = layer.frame->rotated ? layer.frame->rect.h : layer.frame->rect.w;
-                int fh = layer.frame->rotated ? layer.frame->rect.w : layer.frame->rect.h;
-                if (fw <= 0 || fh <= 0) continue;
-                float ox = std::fmod((float)ticks * layer.speed, (float)fw);
+                const int srcW = layer.frame->rotated ? layer.frame->rect.h : layer.frame->rect.w;
+                const int srcH = layer.frame->rotated ? layer.frame->rect.w : layer.frame->rect.h;
+                const float layerScale = std::clamp(bgScale * layer.scaleMul, 0.5f, 3.0f);
+                int fw = std::max(1, (int)std::lround((float)srcW * layerScale));
+                int fh = std::max(1, (int)std::lround((float)srcH * layerScale));
+                float ox = std::fmod((float)ticks * layer.speed * layerScale, (float)fw);
                 if (ox < 0.0f) ox += (float)fw;
-                int y = (int)std::lround((float)ctx.baseScreenH - (float)fh + layer.yBias);
+                int y = (int)std::lround(canvasBottomY - (float)fh + layer.yBias * canvasScale);
                 SDL_SetTextureAlphaMod(menuBgTex, (Uint8)std::clamp((int)std::lround(layer.alpha), 0, 255));
                 for (int x = -1; x <= ctx.baseScreenW / fw + 1; ++x) {
                     SDL_Rect dst{(int)std::lround((float)(x * fw) - ox), y, fw, fh};
@@ -1191,7 +1467,13 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             const Frame* settingsLogo = getMenuFrame("settings_btn_logo", settingsLogoTex);
             const Frame* editorLogo = getMenuFrame("Editor_logo", editorLogoTex);
             if (mainLogoTex && mainLogo) {
-                SDL_Rect dst{ctx.baseScreenW / 2 - 320, 42, 640, 66};
+                const float canvas = menuCanvasScale();
+                const float s = mainMenuScale();
+                const int logoW = std::max(120, (int)std::lround(640.0f * canvas * s));
+                const int logoH = std::max(24, (int)std::lround(66.0f * canvas * s));
+                const int logoCX = (int)std::lround(menuCanvasOriginX() + 480.0f * canvas);
+                const int logoCY = (int)std::lround(menuCanvasOriginY() + 75.0f * canvas);
+                SDL_Rect dst{logoCX - logoW / 2, logoCY - logoH / 2, logoW, logoH};
                 renderFrame(ctx.ren, mainLogoTex, *mainLogo, dst);
             }
             SDL_Rect menuBtns[3] = {mainMenuBtnRect(0), mainMenuBtnRect(1), mainMenuBtnRect(2)};
@@ -1213,35 +1495,55 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             }
             if (settingsLogoTex && settingsLogo) {
                 SDL_Rect b = mainMenuBtnRect(0);
-                SDL_Rect dst{b.x + 20, b.y + 16, 72, 72};
+                SDL_Rect dst{
+                    b.x + (int)std::lround((float)b.w * 0.18f),
+                    b.y + (int)std::lround((float)b.h * 0.14f),
+                    (int)std::lround((float)b.w * 0.64f),
+                    (int)std::lround((float)b.h * 0.64f)
+                };
                 renderFrame(ctx.ren, settingsLogoTex, *settingsLogo, dst);
             }
             if (playLogoTex && playLogo) {
                 SDL_Rect b = mainMenuBtnRect(1);
-                SDL_Rect dst{b.x + 30, b.y + 12, 52, 88};
+                SDL_Rect dst{
+                    b.x + (int)std::lround((float)b.w * 0.27f),
+                    b.y + (int)std::lround((float)b.h * 0.11f),
+                    (int)std::lround((float)b.w * 0.46f),
+                    (int)std::lround((float)b.h * 0.79f)
+                };
                 renderFrame(ctx.ren, playLogoTex, *playLogo, dst);
             }
             if (editorLogoTex && editorLogo) {
                 SDL_Rect b = mainMenuBtnRect(2);
-                SDL_Rect dst{b.x + 34, b.y + 16, 44, 80};
+                SDL_Rect dst{
+                    b.x + (int)std::lround((float)b.w * 0.30f),
+                    b.y + (int)std::lround((float)b.h * 0.14f),
+                    (int)std::lround((float)b.w * 0.39f),
+                    (int)std::lround((float)b.h * 0.71f)
+                };
                 renderFrame(ctx.ren, editorLogoTex, *editorLogo, dst);
             }
             if ((!settingsLogoTex || !settingsLogo) || (!playLogoTex || !playLogo) || (!editorLogoTex || !editorLogo)) {
-                DrawText(ctx.ren, menuBtns[0].x + 14, menuBtns[0].y + 82, 2, "SETTINGS");
-                DrawText(ctx.ren, menuBtns[1].x + 24, menuBtns[1].y + 82, 2, "PLAY");
-                DrawText(ctx.ren, menuBtns[2].x + 18, menuBtns[2].y + 82, 2, "EDITOR");
+                const char* labels[3] = {"SETTINGS", "PLAY", "EDITOR"};
+                for (int i = 0; i < 3; ++i) {
+                    const int tw = MeasureTextWidth(2, labels[i]);
+                    const int ty = menuBtns[i].y + (int)std::lround((float)menuBtns[i].h * 0.73f);
+                    DrawText(ctx.ren, menuBtns[i].x + (menuBtns[i].w - tw) / 2, ty, 2, labels[i]);
+                }
             }
             if (!mainLogoTex || !mainLogo) {
                 const std::string title = "Dorfplatformer Timetravel";
-                DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(3, title) / 2, 84, 3, title);
+                const int titleY = (int)std::lround(menuCanvasOriginY() + 84.0f * menuCanvasScale());
+                DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(3, title) / 2, titleY, 3, title);
             }
             if (!closeMenuOpen) {
                 const std::string versionText = std::string("v") + (ctx.versionString.empty() ? "dev" : ctx.versionString);
                 const std::string copyrightText = "Copyright (c) Benno111 2024 - 2026";
-                const int footerScale = 2;
-                const int footerY = ctx.baseScreenH - 44;
-                DrawText(ctx.ren, 12, footerY, footerScale, versionText);
-                DrawText(ctx.ren, ctx.baseScreenW - 12 - MeasureTextWidth(footerScale, copyrightText), footerY, footerScale, copyrightText);
+                const int footerScale = std::max(1, (int)std::lround(2.0f * menuCanvasScale() * mainMenuScale()));
+                const int footerY = (int)std::lround(menuCanvasOriginY() + 496.0f * menuCanvasScale());
+                const int edgePad = std::max(8, (int)std::lround(12.0f * menuCanvasScale()));
+                DrawText(ctx.ren, edgePad, footerY, footerScale, versionText);
+                DrawText(ctx.ren, ctx.baseScreenW - edgePad - MeasureTextWidth(footerScale, copyrightText), footerY, footerScale, copyrightText);
             }
             if (closeMenuOpen) {
                 constexpr Uint8 kQuitDimAlpha = 150;
@@ -1253,7 +1555,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 SDL_Rect dim{0, 0, ctx.baseScreenW, ctx.baseScreenH};
                 SDL_RenderFillRect(ctx.ren, &dim);
 
-                SDL_Rect modal{ctx.baseScreenW / 2 - 180, ctx.baseScreenH / 2 - 90, 360, 180};
+                SDL_Rect modal = quitModalRect();
                 SDL_Texture* popupWindowTex = nullptr;
                 const Frame* popupWindow = getMenuFrame("window", popupWindowTex);
                 if (!popupWindow) popupWindow = getMenuFrame("window.png", popupWindowTex);
@@ -1268,10 +1570,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_SetRenderDrawColor(ctx.ren, 170, 190, 220, 255);
                     SDL_RenderDrawRect(ctx.ren, &modal);
                 }
-                DrawText(ctx.ren, modal.x + (modal.w - MeasureTextWidth(2, "CLOSE GAME?")) / 2, modal.y + 18, 2, "CLOSE GAME?");
+                DrawText(ctx.ren, modal.x + (modal.w - MeasureTextWidth(2, "CLOSE GAME?")) / 2, modal.y + (int)std::lround(18.0f * uiButtonScale()), 2, "CLOSE GAME?");
 
-                SDL_Rect resumeBtn{modal.x + 26, modal.y + 94, 140, 56};
-                SDL_Rect closeBtn{modal.x + 194, modal.y + 94, 140, 56};
+                SDL_Rect resumeBtn = quitResumeBtnRect(modal);
+                SDL_Rect closeBtn = quitCloseBtnRect(modal);
                 SDL_Texture* popupBtnTex = nullptr;
                 const Frame* popupBtnFrame = getMenuFrame("button_genreaic", popupBtnTex);
                 if (!popupBtnFrame) popupBtnFrame = getMenuFrame("button_genreaic.png", popupBtnTex);
@@ -1295,12 +1597,13 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 SDL_SetRenderDrawColor(ctx.ren, 190, 200, 220, 255);
                 SDL_RenderDrawRect(ctx.ren, &resumeBtn);
                 SDL_RenderDrawRect(ctx.ren, &closeBtn);
-                DrawText(ctx.ren, resumeBtn.x + (resumeBtn.w - MeasureTextWidth(2, "RESUME")) / 2, resumeBtn.y + 18, 2, "RESUME");
-                DrawText(ctx.ren, closeBtn.x + (closeBtn.w - MeasureTextWidth(2, "CLOSE")) / 2, closeBtn.y + 18, 2, "CLOSE");
+                const int labelLineH = std::max(10, (int)std::lround(16.0f * uiButtonScale()));
+                DrawText(ctx.ren, resumeBtn.x + (resumeBtn.w - MeasureTextWidth(2, "RESUME")) / 2, resumeBtn.y + (resumeBtn.h - labelLineH) / 2, 2, "RESUME");
+                DrawText(ctx.ren, closeBtn.x + (closeBtn.w - MeasureTextWidth(2, "CLOSE")) / 2, closeBtn.y + (closeBtn.h - labelLineH) / 2, 2, "CLOSE");
             }
         } else {
             const std::string title = "SETTINGS";
-            DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(3, title) / 2, 84, 3, title);
+            DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(3, title) / 2, (int)std::lround(84.0f * uiButtonScale()), 3, title);
             SDL_Texture* checkboxActiveTex = nullptr;
             SDL_Texture* checkboxInactiveTex = nullptr;
             SDL_Texture* toggleButtonTex = nullptr;
@@ -1365,8 +1668,11 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 const int systemRamMiB = SDL_GetSystemRAM();
                 int winW = 0, winH = 0;
                 SDL_GetWindowSize(ctx.win, &winW, &winH);
+                SDL_Rect listClip = settingsListClipRect();
+                SDL_SetRenderClipRect(ctx.ren, &listClip);
                 auto drawAboutLine = [&](int y, int scale, const std::string& text) {
-                    DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(scale, text) / 2, y, scale, text);
+                    const int yy = y - aboutScrollY;
+                    DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(scale, text) / 2, yy, scale, text);
                 };
                 drawAboutLine(162, 2, "DORFPLATFORMER TIMETRAVEL");
                 drawAboutLine(188, 2, std::string("VERSION: ") + (ctx.versionString.empty() ? "dev" : ctx.versionString));
@@ -1384,13 +1690,14 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 drawAboutLine(496, 1, sdlRevision ? sdlRevision : "unknown");
                 drawAboutLine(516, 2, "BUILD UUID:");
                 drawAboutLine(538, 1, ctx.buildUuid);
+                SDL_SetRenderClipRect(ctx.ren, nullptr);
             } else if (settingsTab == 3) {
                 DrawText(ctx.ren, 130, 162, 2, "MOVEMENT:  A/D  or  LEFT/RIGHT");
                 DrawText(ctx.ren, 130, 192, 2, "JUMP:      SPACE/W/UP");
                 DrawText(ctx.ren, 130, 222, 2, "DOWN:      S/DOWN");
                 DrawText(ctx.ren, 130, 252, 2, "PAUSE:     ESC");
             } else if (settingsTab == 1) {
-                SDL_Rect listClip{ctx.baseScreenW / 2 - 148, settingsListTop - 4, 296, std::max(1, settingsListBottom - settingsListTop + 8)};
+                SDL_Rect listClip = settingsListClipRect();
                 SDL_SetRenderClipRect(ctx.ren, &listClip);
                 std::vector<std::string> rows = {
                     std::string("MENU MUSIC: ") + (menuMusicEnabled ? "ON" : "OFF"),
@@ -1407,7 +1714,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     if (i == settingsSelAudio) {
                         SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_BLEND);
                         SDL_SetRenderDrawColor(ctx.ren, 255, 255, 255, 76);
-                        SDL_Rect hl{ctx.baseScreenW / 2 - 140, y - 2, 280, 30};
+                        SDL_Rect hl = settingsRowBtn(i);
                         SDL_RenderFillRect(ctx.ren, &hl);
                         SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_NONE);
                     }
@@ -1452,7 +1759,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     if (i == settingsSelDebug) {
                         SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_BLEND);
                         SDL_SetRenderDrawColor(ctx.ren, 255, 255, 255, 76);
-                        SDL_Rect hl{ctx.baseScreenW / 2 - 140, y - 2, 280, 30};
+                        SDL_Rect hl = settingsRowBtn(i);
                         SDL_RenderFillRect(ctx.ren, &hl);
                         SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_NONE);
                     }
@@ -1481,7 +1788,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     if (i == settingsSel) {
                         SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_BLEND);
                         SDL_SetRenderDrawColor(ctx.ren, 255, 255, 255, 76);
-                        SDL_Rect hl{ctx.baseScreenW / 2 - 140, y - 2, 280, 30};
+                        SDL_Rect hl = settingsRowBtn(i);
                         SDL_RenderFillRect(ctx.ren, &hl);
                         SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_NONE);
                     }
@@ -1547,7 +1854,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     if (i == settingsSel) {
                         SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_BLEND);
                         SDL_SetRenderDrawColor(ctx.ren, 255, 255, 255, 76);
-                        SDL_Rect hl{ctx.baseScreenW / 2 - 140, y - 2, 280, 30};
+                        SDL_Rect hl = settingsRowBtn(i);
                         SDL_RenderFillRect(ctx.ren, &hl);
                         SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_NONE);
                     }
@@ -1555,9 +1862,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 }
                 SDL_SetRenderClipRect(ctx.ren, nullptr);
             }
-            if (settingsTab != 3 && settingsTab != 4 && settingsMaxScroll(settingsTab) > 0) {
+            if ((settingsTab != 3 && settingsTab != 4 && settingsMaxScroll(settingsTab) > 0) ||
+                (settingsTab == 4 && aboutMaxScroll() > 0)) {
                 SDL_Rect track = settingsScrollbarTrackRect();
-                SDL_Rect thumb = settingsScrollbarThumbRect();
+                SDL_Rect thumb = (settingsTab == 4) ? aboutScrollbarThumbRect() : settingsScrollbarThumbRect();
                 SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_NONE);
                 SDL_SetRenderDrawColor(ctx.ren, 42, 52, 68, 255);
                 SDL_RenderFillRect(ctx.ren, &track);
@@ -1571,10 +1879,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         SDL_SetRenderTarget(ctx.ren, nullptr);
         int winW = 0, winH = 0;
         SDL_GetWindowSize(ctx.win, &winW, &winH);
-        SDL_Rect presentDst = computePresentRect(winW, winH, ctx.baseScreenW, ctx.baseScreenH, uiScalePercent / 100.0f);
-        SDL_SetRenderDrawColor(ctx.ren, 0, 0, 0, 255);
+        SDL_Rect presentDst = computePresentRect(winW, winH, ctx.baseScreenW, ctx.baseScreenH, 1.0f);
+        SDL_SetRenderDrawColor(ctx.ren, 221, 248, 255, 255); // #ddf8ff
         SDL_RenderClear(ctx.ren);
-        SDL_RenderCopy(ctx.ren, ctx.gameTarget, nullptr, &presentDst);
+        SDL_RenderCopy(ctx.ren, gameTarget, nullptr, &presentDst);
         SDL_RenderPresent(ctx.ren);
     }
     cleanupMenuAssets();

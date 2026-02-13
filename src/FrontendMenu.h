@@ -14,6 +14,7 @@ struct FrontendMenuContext {
     SDL_Window* win = nullptr;
     SDL_Renderer* ren = nullptr;
     SDL_Texture* gameTarget = nullptr;
+    SDL_Texture** gameTargetRef = nullptr;
     int baseScreenW = 0;
     int baseScreenH = 0;
     std::string buildUuid;
@@ -41,6 +42,7 @@ struct FrontendMenuContext {
 
     std::function<void()> applyAudioVolumes;
     std::function<void()> applyMenuMusicToggle;
+    std::function<void()> updateDynamicResolution;
 };
 
 FrontendAction runFrontendMenu(FrontendMenuContext& ctx);

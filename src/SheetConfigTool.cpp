@@ -6,6 +6,7 @@
 #include <sstream>
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 
 struct Frame {
     SDL_FRect rect{};
@@ -172,14 +173,9 @@ int main(int argc, char** argv) {
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
         return 1;
     }
-    if (!(IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG)) {
-        SDL_Log("IMG_Init failed: %s", IMG_GetError());
-        return 1;
-    }
-
     SDL_Surface* surf = IMG_Load(imagePath.c_str());
     if (!surf) {
-        SDL_Log("Failed to load image: %s", IMG_GetError());
+        SDL_Log("Failed to load image: %s", SDL_GetError());
         return 1;
     }
 
@@ -188,11 +184,10 @@ int main(int argc, char** argv) {
     int winW = std::min(1280, std::max(640, texW));
     int winH = std::min(720, std::max(480, texH));
 
-    SDL_Window* win = SDL_CreateWindow("Sheet Config",
-        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-        winW, winH, SDL_WINDOW_SHOWN);
-    SDL_Renderer* ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    SDL_Window* win = SDL_CreateWindow("Sheet Config", winW, winH, 0);
+    SDL_Renderer* ren = SDL_CreateRenderer(win, nullptr);
     SDL_Texture* tex = SDL_CreateTextureFromSurface(ren, surf);
+    if (tex) SDL_SetTextureScaleMode(tex, SDL_SCALEMODE_NEAREST);
     SDL_FreeSurface(surf);
 
     bool running = true;
@@ -225,7 +220,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    SDL_StartTextInput();
+    SDL_StartTextInput(win);
 
     while (running) {
         SDL_Event e;
@@ -318,26 +313,26 @@ int main(int argc, char** argv) {
                 }
             }
             if (e.type == SDL_KEYDOWN) {
-                if (e.key.keysym.sym == SDLK_ESCAPE) running = false;
-                if (e.key.keysym.sym == SDLK_DELETE && selected >= 0) {
+                if (e.key.key == SDLK_ESCAPE) running = false;
+                if (e.key.key == SDLK_DELETE && selected >= 0) {
                     frames.erase(frames.begin() + selected);
                     selected = -1;
                 }
-                if (!renaming && e.key.keysym.sym == SDLK_t && selected >= 0) {
+                if (!renaming && e.key.key == SDLK_t && selected >= 0) {
                     frames[selected].rotated = !frames[selected].rotated;
                 }
-                if (e.key.keysym.sym == SDLK_s && (e.key.keysym.mod & KMOD_CTRL)) {
+                if (e.key.key == SDLK_s && (e.key.mod & KMOD_CTRL)) {
                     writePlist(outPath, basenameOnly(imagePath), texW, texH, frames);
                     SDL_Log("Saved %s", outPath.c_str());
                 }
-                if (renaming && e.key.keysym.sym == SDLK_RETURN) {
+                if (renaming && e.key.key == SDLK_RETURN) {
                     frames[selected].name = renameBuffer;
                     renaming = false;
                 }
-                if (renaming && e.key.keysym.sym == SDLK_BACKSPACE && !renameBuffer.empty()) {
+                if (renaming && e.key.key == SDLK_BACKSPACE && !renameBuffer.empty()) {
                     renameBuffer.pop_back();
                 }
-                if (!renaming && e.key.keysym.sym == SDLK_r && selected >= 0) {
+                if (!renaming && e.key.key == SDLK_r && selected >= 0) {
                     renaming = true;
                     renameBuffer = frames[selected].name;
                 }
@@ -360,8 +355,8 @@ int main(int argc, char** argv) {
         SDL_SetRenderDrawColor(ren, 18, 18, 22, 255);
         SDL_RenderClear(ren);
 
-        SDL_Rect dst{-(int)cam.x, -(int)cam.y, texW, texH};
-        SDL_RenderCopy(ren, tex, nullptr, &dst);
+        SDL_FRect dst{-(float)(int)cam.x, -(float)(int)cam.y, (float)texW, (float)texH};
+        SDL_RenderTexture(ren, tex, nullptr, &dst);
 
         SDL_SetRenderDrawColor(ren, 0, 200, 220, 255);
         for (int i = 0; i < (int)frames.size(); ++i) {
@@ -418,11 +413,10 @@ int main(int argc, char** argv) {
         SDL_RenderPresent(ren);
     }
 
-    SDL_StopTextInput();
+    SDL_StopTextInput(win);
     SDL_DestroyTexture(tex);
     SDL_DestroyRenderer(ren);
     SDL_DestroyWindow(win);
-    IMG_Quit();
     SDL_Quit();
     return 0;
 }

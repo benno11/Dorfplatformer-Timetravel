@@ -5,6 +5,8 @@
 
 bool InitTextRenderer(const std::string& fontPath);
 void ShutdownTextRenderer();
+void SetTextScaleMultiplier(float multiplier);
+float GetTextScaleMultiplier();
 
 void DrawText(SDL_Renderer* ren, int x, int y, int scale, const std::string& text);
 void DrawTextColored(SDL_Renderer* ren, int x, int y, int scale, const std::string& text, const SDL_Color& color);

@@ -6,6 +6,8 @@ set -euo pipefail
 # Usage:
 #   ./build/update-android-app.sh
 #   ABI=arm64-v8a ./build/update-android-app.sh
+#   ABI=all ./build/update-android-app.sh
+#   ABIS="arm64-v8a,armeabi-v7a,x86_64,x86" ./build/update-android-app.sh
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ANDROID_DIR="$ROOT_DIR/Android"
@@ -13,8 +15,24 @@ APP_MAIN_DIR="$ANDROID_DIR/app/src/main"
 ASSETS_SRC="$ROOT_DIR/assets"
 ASSETS_DST="$APP_MAIN_DIR/assets"
 
+# Track caller intent before defaults are applied.
+ABI_WAS_SET=0
+ABIS_WAS_SET=0
+if [ -n "${ABI+x}" ]; then ABI_WAS_SET=1; fi
+if [ -n "${ABIS+x}" ]; then ABIS_WAS_SET=1; fi
+
 ABI="${ABI:-arm64-v8a}"
+ABIS="${ABIS:-}"
+SKIP_ASSETS="${SKIP_ASSETS:-0}"
 ANDROID_ALLOW_NO_CURL="${ANDROID_ALLOW_NO_CURL:-0}"
+
+normalize_abi() {
+  case "$1" in
+    arm32|armeabi-v7a) echo "armeabi-v7a" ;;
+    x86-64|x86_64) echo "x86_64" ;;
+    *) echo "$1" ;;
+  esac
+}
 
 if [ ! -d "$ANDROID_DIR" ]; then
   echo "[error] android project not found at: $ANDROID_DIR"
@@ -31,11 +49,60 @@ if [ -f "$ROOT_DIR/build/android.env" ]; then
   . "$ROOT_DIR/build/android.env"
 fi
 
+# Default to syncing every built ABI unless the caller explicitly set ABI/ABIS.
+if [ -z "${ANDROID_MULTI_ABI_CHILD:-}" ] && [ "$ABI_WAS_SET" -eq 0 ] && [ "$ABIS_WAS_SET" -eq 0 ]; then
+  ABI="all"
+fi
+
 SDL3_ANDROID_ROOT="${SDL3_ANDROID_ROOT:-$ROOT_DIR/deps/android}"
 SDL3_IMAGE_ROOT="${SDL3_IMAGE_ROOT:-$SDL3_ANDROID_ROOT}"
 SDL3_TTF_ROOT="${SDL3_TTF_ROOT:-$SDL3_ANDROID_ROOT}"
 SDL3_MIXER_ROOT="${SDL3_MIXER_ROOT:-$SDL3_ANDROID_ROOT}"
 CURL_ANDROID_ROOT="${CURL_ANDROID_ROOT:-$ROOT_DIR/deps/android-curl}"
+
+if [ -z "${ANDROID_MULTI_ABI_CHILD:-}" ]; then
+  multi_abis=()
+  if [ -n "$ABIS" ]; then
+    abis_normalized="$(printf '%s' "$ABIS" | tr ',' ' ')"
+    # shellcheck disable=SC2206
+    multi_abis=($abis_normalized)
+    for i in "${!multi_abis[@]}"; do
+      multi_abis[$i]="$(normalize_abi "${multi_abis[$i]}")"
+    done
+  elif [ "$ABI" = "all" ]; then
+    for candidate in arm64-v8a armeabi-v7a x86_64 x86 riscv64; do
+      if [ -f "$ROOT_DIR/build/android/$candidate/libplatformer.so" ]; then
+        multi_abis+=("$candidate")
+      fi
+    done
+    if [ "${#multi_abis[@]}" -eq 0 ]; then
+      echo "[error] ABI=all requested, but no built native libs found under build/android/<abi>/libplatformer.so"
+      echo "[hint] run ./build/android-prod.sh first"
+      exit 1
+    fi
+  fi
+
+  if [ "${#multi_abis[@]}" -gt 0 ]; then
+    self_script="$0"
+    case "$self_script" in
+      /*) ;;
+      *) self_script="$PWD/$self_script" ;;
+    esac
+    echo "[info] multi-ABI sync requested: ${multi_abis[*]}"
+    for one_abi in "${multi_abis[@]}"; do
+      echo "[info] ---- syncing ABI=$one_abi ----"
+      ANDROID_MULTI_ABI_CHILD=1 SKIP_ASSETS=1 ABI="$one_abi" ABIS="" "$self_script"
+    done
+    rm -rf "$ASSETS_DST"
+    cp -a "$ASSETS_SRC" "$ASSETS_DST"
+    echo "[ok] synced assets -> $ASSETS_DST"
+    echo "[done] android app content updated for ABIs: ${multi_abis[*]}"
+    echo "[next] cd Android && ./gradlew assembleDebug"
+    exit 0
+  fi
+fi
+
+ABI="$(normalize_abi "$ABI")"
 NATIVE_BUILD_LIB="$ROOT_DIR/build/android/$ABI/libplatformer.so"
 NATIVE_BUILD_DIR="$ROOT_DIR/build/android/$ABI"
 NATIVE_LIBS_DST="$APP_MAIN_DIR/jniLibs/$ABI"
@@ -146,9 +213,11 @@ if [ -n "$ndk_arch" ] && [ -n "${ANDROID_NDK_HOME:-}" ]; then
   copy_if_exists "$cxx_shared" "$NATIVE_LIBS_DST/libc++_shared.so"
 fi
 
-rm -rf "$ASSETS_DST"
-cp -a "$ASSETS_SRC" "$ASSETS_DST"
-echo "[ok] synced assets -> $ASSETS_DST"
+if [ "$SKIP_ASSETS" != "1" ]; then
+  rm -rf "$ASSETS_DST"
+  cp -a "$ASSETS_SRC" "$ASSETS_DST"
+  echo "[ok] synced assets -> $ASSETS_DST"
+fi
 
 echo "[done] android app content updated."
 if [ "$curl_enabled" = "1" ]; then

@@ -21,12 +21,57 @@ RELEASE="${RELEASE:-0}"
 LTO="${LTO:-0}"
 SDL_REQUIRED_VERSION="${SDL_REQUIRED_VERSION:-3.4.0}"
 BUILD_SHEET="${BUILD_SHEET:-0}"
+AUTO_BUILD_UPDATED_SCRIPTS="${AUTO_BUILD_UPDATED_SCRIPTS:-1}"
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 SRC_DIR="$ROOT_DIR/src"
 OUT_PLATFORMER="$ROOT_DIR/platformer"
 OUT_SHEET="$ROOT_DIR/sheet_config"
 BUILD_INCLUDE_DIR="$ROOT_DIR/.build/include/sdl3"
+LINUX_BUILD_DIR="$ROOT_DIR/.build/linux"
+
+compute_build_code_id() {
+  local id=""
+  if command -v git >/dev/null 2>&1 && git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    local head dirty=""
+    head="$(git -C "$ROOT_DIR" rev-parse --short=12 HEAD 2>/dev/null || true)"
+    if [ -n "$head" ]; then
+      if ! git -C "$ROOT_DIR" diff --quiet -- src 2>/dev/null || ! git -C "$ROOT_DIR" diff --cached --quiet -- src 2>/dev/null; then
+        dirty="-dirty"
+      fi
+      id="git-${head}${dirty}"
+    fi
+  fi
+  if [ -z "$id" ] && command -v sha256sum >/dev/null 2>&1; then
+    local sum=""
+    sum="$(find "$ROOT_DIR/src" -maxdepth 1 -type f \( -name '*.cpp' -o -name '*.h' \) -print0 | sort -z | xargs -0 cat | sha256sum | awk '{print substr($1,1,12)}' || true)"
+    if [ -n "$sum" ]; then
+      id="src-$sum"
+    fi
+  fi
+  if [ -z "$id" ]; then
+    id="dev"
+  fi
+  local nonce="${BUILD_UUID_NONCE:-}"
+  if [ -z "$nonce" ]; then
+    nonce="$(date +%s%N 2>/dev/null || true)"
+    if [ -z "$nonce" ]; then
+      nonce="$(date +%s)-$$"
+    fi
+  fi
+  id="${id}-b${nonce}"
+  printf '%s' "$id"
+}
+
+BUILD_CODE_ID="$(compute_build_code_id)"
+BUILD_CODE_HEADER="$ROOT_DIR/.build/generated/BuildCodeId.h"
+mkdir -p "$(dirname "$BUILD_CODE_HEADER")"
+build_code_header_text="#pragma once
+#define DF_BUILD_CODE_ID \"$BUILD_CODE_ID\"
+"
+if [ ! -f "$BUILD_CODE_HEADER" ] || ! printf '%s' "$build_code_header_text" | cmp -s - "$BUILD_CODE_HEADER"; then
+  printf '%s' "$build_code_header_text" > "$BUILD_CODE_HEADER"
+fi
 
 COMPILER=("$CXX")
 if command -v ccache >/dev/null 2>&1; then
@@ -307,6 +352,7 @@ fi
 
 if [ "$MODE" = "clean" ]; then
   rm -f "$OUT_PLATFORMER" "$OUT_SHEET"
+  rm -rf "$LINUX_BUILD_DIR"
   echo "[OK] Cleaned $OUT_PLATFORMER and $OUT_SHEET"
   exit 0
 fi
@@ -345,24 +391,190 @@ SHEET_SOURCES=(
   "$SRC_DIR/SheetConfigTool.cpp"
 )
 
-"${COMPILER[@]}" "${CXXFLAGS[@]}" \
-  "${SDL_CFLAGS_ARR[@]}" \
-  "${CURL_CFLAGS_ARR[@]}" \
-  "${JSON_FLAGS[@]}" \
-  "${PLATFORMER_SOURCES[@]}" \
-  "${CURL_LIBS_ARR[@]}" \
-  "${MIXER_LIBS_ARR[@]}" \
-  "${SDL_LIBS_ARR[@]}" \
-  -o "$OUT_PLATFORMER"
+dep_needs_rebuild() {
+  local depfile="$1"
+  local objfile="$2"
+  [ -f "$depfile" ] || return 0
+  local path
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    if [ ! -e "$path" ] || [ "$path" -nt "$objfile" ]; then
+      return 0
+    fi
+  done < <(
+    tr '\\\n' '  ' < "$depfile" |
+      sed -E 's/^[^:]*:[[:space:]]*//' |
+      tr ' ' '\n' |
+      sed '/^$/d'
+  )
+  return 1
+}
 
-if [ "$BUILD_SHEET" = "1" ]; then
-  "${COMPILER[@]}" "${CXXFLAGS[@]}" \
-    "${SDL_CFLAGS_ARR[@]}" \
-    "${SHEET_SOURCES[@]}" \
-    "${SDL_LIBS_ARR[@]}" \
-    -o "$OUT_SHEET"
+PLATFORMER_OBJ_DIR="$LINUX_BUILD_DIR/obj/platformer"
+PLATFORMER_DEP_DIR="$LINUX_BUILD_DIR/dep/platformer"
+PLATFORMER_FLAGS_STAMP="$LINUX_BUILD_DIR/.platformer-flags"
+SCRIPT_HASH_STAMP="$LINUX_BUILD_DIR/.build-scripts-hash"
+mkdir -p "$PLATFORMER_OBJ_DIR" "$PLATFORMER_DEP_DIR"
+
+current_script_hash=""
+if command -v sha256sum >/dev/null 2>&1; then
+  current_script_hash="$(
+    find "$ROOT_DIR/build" -maxdepth 1 -type f -name '*.sh' -print0 \
+      | sort -z \
+      | xargs -0 sha256sum \
+      | sha256sum \
+      | awk '{print $1}'
+  )"
+fi
+if [ -z "$current_script_hash" ]; then
+  current_script_hash="scripts-$(date +%s)"
+fi
+if [ ! -f "$SCRIPT_HASH_STAMP" ] || ! printf '%s\n' "$current_script_hash" | cmp -s - "$SCRIPT_HASH_STAMP"; then
+  echo "[INFO] Build scripts changed; clearing Linux object cache"
+  rm -rf "$LINUX_BUILD_DIR/obj" "$LINUX_BUILD_DIR/dep"
+  mkdir -p "$PLATFORMER_OBJ_DIR" "$PLATFORMER_DEP_DIR"
+  printf '%s\n' "$current_script_hash" > "$SCRIPT_HASH_STAMP"
+fi
+
+platformer_flags_text="$(printf '%s\n' "${COMPILER[@]}" "${CXXFLAGS[@]}" "${SDL_CFLAGS_ARR[@]}" "${CURL_CFLAGS_ARR[@]}" "${JSON_FLAGS[@]}")"
+if [ ! -f "$PLATFORMER_FLAGS_STAMP" ] || ! printf '%s\n' "$platformer_flags_text" | cmp -s - "$PLATFORMER_FLAGS_STAMP"; then
+  echo "[INFO] Platformer compile flags changed; clearing Linux object cache"
+  rm -rf "$PLATFORMER_OBJ_DIR" "$PLATFORMER_DEP_DIR"
+  mkdir -p "$PLATFORMER_OBJ_DIR" "$PLATFORMER_DEP_DIR"
+  printf '%s\n' "$platformer_flags_text" > "$PLATFORMER_FLAGS_STAMP"
+fi
+
+PLATFORMER_OBJECTS=()
+platformer_compiled=0
+for src in "${PLATFORMER_SOURCES[@]}"; do
+  rel="${src#$ROOT_DIR/}"
+  obj="$PLATFORMER_OBJ_DIR/${rel%.cpp}.o"
+  dep="$PLATFORMER_DEP_DIR/${rel%.cpp}.d"
+  mkdir -p "$(dirname "$obj")" "$(dirname "$dep")"
+  PLATFORMER_OBJECTS+=("$obj")
+
+  needs_build=0
+  if [ ! -f "$obj" ] || [ "$src" -nt "$obj" ]; then
+    needs_build=1
+  elif dep_needs_rebuild "$dep" "$obj"; then
+    needs_build=1
+  fi
+
+  if [ "$needs_build" -eq 1 ]; then
+    echo "[INFO] Compiling $rel"
+    "${COMPILER[@]}" "${CXXFLAGS[@]}" \
+      "${SDL_CFLAGS_ARR[@]}" \
+      "${CURL_CFLAGS_ARR[@]}" \
+      "${JSON_FLAGS[@]}" \
+      -MMD -MP -MF "$dep" -c "$src" -o "$obj"
+    platformer_compiled=1
+  else
+    echo "[INFO] Skipping unchanged $rel"
+  fi
+done
+
+platformer_needs_link=0
+if [ "$platformer_compiled" -eq 1 ] || [ ! -f "$OUT_PLATFORMER" ]; then
+  platformer_needs_link=1
 else
-  echo "[INFO] Skipping sheet tool build (set BUILD_SHEET=1 to enable)."
+  for obj in "${PLATFORMER_OBJECTS[@]}"; do
+    if [ "$obj" -nt "$OUT_PLATFORMER" ]; then
+      platformer_needs_link=1
+      break
+    fi
+  done
+fi
+
+if [ "$platformer_needs_link" -eq 1 ]; then
+  "${COMPILER[@]}" "${CXXFLAGS[@]}" \
+    "${PLATFORMER_OBJECTS[@]}" \
+    "${CURL_LIBS_ARR[@]}" \
+    "${MIXER_LIBS_ARR[@]}" \
+    "${SDL_LIBS_ARR[@]}" \
+    -o "$OUT_PLATFORMER"
+else
+  echo "[INFO] Skipping unchanged link: $OUT_PLATFORMER"
+fi
+
+should_build_sheet=0
+if [ "$BUILD_SHEET" = "1" ]; then
+  should_build_sheet=1
+elif [ "$AUTO_BUILD_UPDATED_SCRIPTS" = "1" ]; then
+  if [ ! -f "$OUT_SHEET" ]; then
+    should_build_sheet=1
+  else
+    for src in "${SHEET_SOURCES[@]}"; do
+      if [ "$src" -nt "$OUT_SHEET" ]; then
+        should_build_sheet=1
+        break
+      fi
+    done
+  fi
+fi
+
+if [ "$should_build_sheet" = "1" ]; then
+  SHEET_OBJ_DIR="$LINUX_BUILD_DIR/obj/sheet"
+  SHEET_DEP_DIR="$LINUX_BUILD_DIR/dep/sheet"
+  SHEET_FLAGS_STAMP="$LINUX_BUILD_DIR/.sheet-flags"
+  mkdir -p "$SHEET_OBJ_DIR" "$SHEET_DEP_DIR"
+
+  sheet_flags_text="$(printf '%s\n' "${COMPILER[@]}" "${CXXFLAGS[@]}" "${SDL_CFLAGS_ARR[@]}")"
+  if [ ! -f "$SHEET_FLAGS_STAMP" ] || ! printf '%s\n' "$sheet_flags_text" | cmp -s - "$SHEET_FLAGS_STAMP"; then
+    echo "[INFO] Sheet compile flags changed; clearing Linux object cache"
+    rm -rf "$SHEET_OBJ_DIR" "$SHEET_DEP_DIR"
+    mkdir -p "$SHEET_OBJ_DIR" "$SHEET_DEP_DIR"
+    printf '%s\n' "$sheet_flags_text" > "$SHEET_FLAGS_STAMP"
+  fi
+
+  SHEET_OBJECTS=()
+  sheet_compiled=0
+  for src in "${SHEET_SOURCES[@]}"; do
+    rel="${src#$ROOT_DIR/}"
+    obj="$SHEET_OBJ_DIR/${rel%.cpp}.o"
+    dep="$SHEET_DEP_DIR/${rel%.cpp}.d"
+    mkdir -p "$(dirname "$obj")" "$(dirname "$dep")"
+    SHEET_OBJECTS+=("$obj")
+
+    needs_build=0
+    if [ ! -f "$obj" ] || [ "$src" -nt "$obj" ]; then
+      needs_build=1
+    elif dep_needs_rebuild "$dep" "$obj"; then
+      needs_build=1
+    fi
+
+    if [ "$needs_build" -eq 1 ]; then
+      echo "[INFO] Compiling $rel"
+      "${COMPILER[@]}" "${CXXFLAGS[@]}" \
+        "${SDL_CFLAGS_ARR[@]}" \
+        -MMD -MP -MF "$dep" -c "$src" -o "$obj"
+      sheet_compiled=1
+    else
+      echo "[INFO] Skipping unchanged $rel"
+    fi
+  done
+
+  sheet_needs_link=0
+  if [ "$sheet_compiled" -eq 1 ] || [ ! -f "$OUT_SHEET" ]; then
+    sheet_needs_link=1
+  else
+    for obj in "${SHEET_OBJECTS[@]}"; do
+      if [ "$obj" -nt "$OUT_SHEET" ]; then
+        sheet_needs_link=1
+        break
+      fi
+    done
+  fi
+
+  if [ "$sheet_needs_link" -eq 1 ]; then
+    "${COMPILER[@]}" "${CXXFLAGS[@]}" \
+      "${SHEET_OBJECTS[@]}" \
+      "${SDL_LIBS_ARR[@]}" \
+      -o "$OUT_SHEET"
+  else
+    echo "[INFO] Skipping unchanged link: $OUT_SHEET"
+  fi
+else
+  echo "[INFO] Skipping unchanged script tool build (set BUILD_SHEET=1 to force)."
 fi
 
 echo "[OK] Build complete -> $OUT_PLATFORMER and $OUT_SHEET"

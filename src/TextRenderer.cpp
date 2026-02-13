@@ -2,6 +2,7 @@
 
 #include <sdl3/SDL_ttf.h>
 #include <algorithm>
+#include <cmath>
 #include <deque>
 #include <unordered_map>
 
@@ -11,6 +12,7 @@ std::string gFontPath;
 bool gTtfInited = false;
 std::unordered_map<std::string, int> gDebugLabelWidthCache;
 constexpr int kFontRenderScale = 6;
+float gTextScaleMultiplier = 1.0f;
 struct TextCacheEntry {
     SDL_Texture* tex = nullptr;
     int w = 0;
@@ -41,6 +43,11 @@ TTF_Font* getFont(int scale) {
     gFontCache[pt] = font;
     return font;
 }
+
+int effectiveTextScale(int scale) {
+    const float m = std::clamp(gTextScaleMultiplier, 0.5f, 2.0f);
+    return std::max(1, (int)std::lround((float)std::max(1, scale) * m));
+}
 }
 
 bool InitTextRenderer(const std::string& fontPath) {
@@ -68,22 +75,31 @@ void ShutdownTextRenderer() {
     gTtfInited = false;
 }
 
+void SetTextScaleMultiplier(float multiplier) {
+    gTextScaleMultiplier = multiplier;
+}
+
+float GetTextScaleMultiplier() {
+    return gTextScaleMultiplier;
+}
+
 void DrawText(SDL_Renderer* ren, int x, int y, int scale, const std::string& text) {
     DrawTextColored(ren, x, y, scale, text, SDL_Color{255, 255, 255, 255});
 }
 
 void DrawTextColored(SDL_Renderer* ren, int x, int y, int scale, const std::string& text, const SDL_Color& color) {
     if (text.empty()) return;
-    TTF_Font* font = getFont(scale);
+    const int scaled = effectiveTextScale(scale);
+    TTF_Font* font = getFont(scaled);
     if (!font) return;
 
     const SDL_Color fillColor = color;
     const SDL_Color outlineColor{0, 0, 0, 255};
-    const int finalOutlinePx = std::max(1, scale / 3);
+    const int finalOutlinePx = std::max(1, scaled / 3);
     const int outlinePx = finalOutlinePx * kFontRenderScale;
     auto& rendererCache = gTextCacheByRenderer[ren];
 
-    const std::string key = makeTextCacheKey(scale, text, fillColor);
+    const std::string key = makeTextCacheKey(scaled, text, fillColor);
     auto itCached = rendererCache.entries.find(key);
     if (itCached == rendererCache.entries.end()) {
         SDL_Surface* fillSurf = TTF_RenderText_Blended(font, text.c_str(), text.size(), fillColor);
@@ -120,7 +136,7 @@ void DrawTextColored(SDL_Renderer* ren, int x, int y, int scale, const std::stri
         SDL_FreeSurface(outlineSurf);
         SDL_FreeSurface(composed);
         if (!tex) return;
-        SDL_SetTextureScaleMode(tex, SDL_SCALEMODE_LINEAR);
+        SDL_SetTextureScaleMode(tex, SDL_SCALEMODE_NEAREST);
         SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
 
         TextCacheEntry entry;
@@ -147,18 +163,19 @@ void DrawTextColored(SDL_Renderer* ren, int x, int y, int scale, const std::stri
     SDL_FRect dst{
         (float)x,
         (float)y,
-        (float)itCached->second.w / (float)kFontRenderScale,
-        (float)itCached->second.h / (float)kFontRenderScale
+        (float)std::lround((float)itCached->second.w / (float)kFontRenderScale),
+        (float)std::lround((float)itCached->second.h / (float)kFontRenderScale)
     };
     SDL_RenderTexture(ren, itCached->second.tex, nullptr, &dst);
 }
 
 int MeasureTextWidth(int scale, const std::string& text) {
-    TTF_Font* font = getFont(scale);
+    const int scaled = effectiveTextScale(scale);
+    TTF_Font* font = getFont(scaled);
     if (!font) return 0;
     int w = 0;
     if (!TTF_GetStringSize(font, text.c_str(), text.size(), &w, nullptr)) return 0;
-    const int finalOutlinePx = std::max(1, scale / 3);
+    const int finalOutlinePx = std::max(1, scaled / 3);
     const int outlinePx = finalOutlinePx * kFontRenderScale;
     return (w + outlinePx * 2) / kFontRenderScale;
 }

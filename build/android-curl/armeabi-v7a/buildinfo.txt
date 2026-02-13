@@ -1,0 +1,15 @@
+# This is a generated file.  Do not edit.
+buildinfo.configure.tool: cmake
+buildinfo.configure.command: /usr/bin/cmake
+buildinfo.configure.version: 3.31.6
+buildinfo.configure.args:
+buildinfo.configure.generator: Unix Makefiles
+buildinfo.configure.make: /usr/bin/gmake
+buildinfo.host.cpu: x86_64
+buildinfo.host.os: Linux
+buildinfo.target.cpu: armv7-a
+buildinfo.target.os: Android
+buildinfo.target.flags: UNIX ANDROID-24 CROSS
+buildinfo.compiler: Clang
+buildinfo.compiler.version: 21.0.0
+buildinfo.sysroot: /home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot

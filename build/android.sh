@@ -32,6 +32,49 @@ if [ -f "build/android.env" ]; then
   . "build/android.env"
 fi
 
+compute_build_code_id() {
+  local id=""
+  if command -v git >/dev/null 2>&1 && git -C "$PWD" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    local head dirty=""
+    head="$(git -C "$PWD" rev-parse --short=12 HEAD 2>/dev/null || true)"
+    if [ -n "$head" ]; then
+      if ! git -C "$PWD" diff --quiet -- src 2>/dev/null || ! git -C "$PWD" diff --cached --quiet -- src 2>/dev/null; then
+        dirty="-dirty"
+      fi
+      id="git-${head}${dirty}"
+    fi
+  fi
+  if [ -z "$id" ] && command -v sha256sum >/dev/null 2>&1; then
+    local sum=""
+    sum="$(find "$PWD/src" -maxdepth 1 -type f \( -name '*.cpp' -o -name '*.h' \) -print0 | sort -z | xargs -0 cat | sha256sum | awk '{print substr($1,1,12)}' || true)"
+    if [ -n "$sum" ]; then
+      id="src-$sum"
+    fi
+  fi
+  if [ -z "$id" ]; then
+    id="dev"
+  fi
+  local nonce="${BUILD_UUID_NONCE:-}"
+  if [ -z "$nonce" ]; then
+    nonce="$(date +%s%N 2>/dev/null || true)"
+    if [ -z "$nonce" ]; then
+      nonce="$(date +%s)-$$"
+    fi
+  fi
+  id="${id}-b${nonce}"
+  printf '%s' "$id"
+}
+
+BUILD_CODE_ID="$(compute_build_code_id)"
+BUILD_CODE_HEADER="$PWD/.build/generated/BuildCodeId.h"
+mkdir -p "$(dirname "$BUILD_CODE_HEADER")"
+build_code_header_text="#pragma once
+#define DF_BUILD_CODE_ID \"$BUILD_CODE_ID\"
+"
+if [ ! -f "$BUILD_CODE_HEADER" ] || ! printf '%s' "$build_code_header_text" | cmp -s - "$BUILD_CODE_HEADER"; then
+  printf '%s' "$build_code_header_text" > "$BUILD_CODE_HEADER"
+fi
+
 FORCE_STAGED_SDL_ROOT="${FORCE_STAGED_SDL_ROOT:-1}"
 if [ "$FORCE_STAGED_SDL_ROOT" = "1" ]; then
   SDL3_ANDROID_ROOT="$PWD/deps/android"
@@ -415,9 +458,61 @@ SRC=(
 )
 
 OUT_LIB="$OUT_DIR/libplatformer.so"
+OBJ_DIR="$OUT_DIR/obj"
+DEP_DIR="$OUT_DIR/dep"
+FLAGS_STAMP="$OUT_DIR/.compile-flags"
+mkdir -p "$OBJ_DIR" "$DEP_DIR"
+
+current_flags_text="$(printf '%s\n' "$CXX" "${CXXFLAGS[@]}" "${CPPFLAGS[@]}")"
+if [ ! -f "$FLAGS_STAMP" ] || ! printf '%s\n' "$current_flags_text" | cmp -s - "$FLAGS_STAMP"; then
+  echo "[INFO] Compile flags changed; clearing cached objects for ABI=$ABI"
+  rm -rf "$OBJ_DIR" "$DEP_DIR"
+  mkdir -p "$OBJ_DIR" "$DEP_DIR"
+  printf '%s\n' "$current_flags_text" > "$FLAGS_STAMP"
+fi
+
+dep_needs_rebuild() {
+  local depfile="$1"
+  local objfile="$2"
+  [ -f "$depfile" ] || return 0
+  local path
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    if [ ! -e "$path" ] || [ "$path" -nt "$objfile" ]; then
+      return 0
+    fi
+  done < <(
+    tr '\\\n' '  ' < "$depfile" |
+      sed -E 's/^[^:]*:[[:space:]]*//' |
+      tr ' ' '\n' |
+      sed '/^$/d'
+  )
+  return 1
+}
+
+OBJECTS=()
+for src in "${SRC[@]}"; do
+  rel="${src#src/}"
+  obj="$OBJ_DIR/${rel%.cpp}.o"
+  dep="$DEP_DIR/${rel%.cpp}.d"
+  mkdir -p "$(dirname "$obj")" "$(dirname "$dep")"
+  OBJECTS+=("$obj")
+
+  needs_build=0
+  if [ ! -f "$obj" ] || [ "$src" -nt "$obj" ]; then
+    needs_build=1
+  elif dep_needs_rebuild "$dep" "$obj"; then
+    needs_build=1
+  fi
+
+  if [ "$needs_build" -eq 1 ]; then
+    echo "[INFO] Compiling $src"
+    "$CXX" "${CXXFLAGS[@]}" "${CPPFLAGS[@]}" -MMD -MP -MF "$dep" -c "$src" -o "$obj"
+  fi
+done
 
 echo "[INFO] Building Android ABI=$ABI API=$API"
-"$CXX" "${CXXFLAGS[@]}" "${CPPFLAGS[@]}" "${SRC[@]}" -shared \
+"$CXX" -shared "${OBJECTS[@]}" \
   -Wl,--start-group "${SDL_LINK_INPUTS[@]}" "${EXTRA_STATIC_INPUTS[@]}" -Wl,--end-group \
   "${LDFLAGS[@]}" -o "$OUT_LIB"
 

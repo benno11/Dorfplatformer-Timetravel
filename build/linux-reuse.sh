@@ -16,6 +16,49 @@ RUN="${RUN:-0}"
 SYNC_ANDROID="${SYNC_ANDROID:-0}"
 FAST="${FAST:-0}"
 
+compute_build_code_id() {
+  local id=""
+  if command -v git >/dev/null 2>&1 && git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    local head dirty=""
+    head="$(git -C "$ROOT_DIR" rev-parse --short=12 HEAD 2>/dev/null || true)"
+    if [ -n "$head" ]; then
+      if ! git -C "$ROOT_DIR" diff --quiet -- src 2>/dev/null || ! git -C "$ROOT_DIR" diff --cached --quiet -- src 2>/dev/null; then
+        dirty="-dirty"
+      fi
+      id="git-${head}${dirty}"
+    fi
+  fi
+  if [ -z "$id" ] && command -v sha256sum >/dev/null 2>&1; then
+    local sum=""
+    sum="$(find "$ROOT_DIR/src" -maxdepth 1 -type f \( -name '*.cpp' -o -name '*.h' \) -print0 | sort -z | xargs -0 cat | sha256sum | awk '{print substr($1,1,12)}' || true)"
+    if [ -n "$sum" ]; then
+      id="src-$sum"
+    fi
+  fi
+  if [ -z "$id" ]; then
+    id="dev"
+  fi
+  local nonce="${BUILD_UUID_NONCE:-}"
+  if [ -z "$nonce" ]; then
+    nonce="$(date +%s%N 2>/dev/null || true)"
+    if [ -z "$nonce" ]; then
+      nonce="$(date +%s)-$$"
+    fi
+  fi
+  id="${id}-b${nonce}"
+  printf '%s' "$id"
+}
+
+BUILD_CODE_ID="$(compute_build_code_id)"
+BUILD_CODE_HEADER="$ROOT_DIR/.build/generated/BuildCodeId.h"
+mkdir -p "$(dirname "$BUILD_CODE_HEADER")"
+build_code_header_text="#pragma once
+#define DF_BUILD_CODE_ID \"$BUILD_CODE_ID\"
+"
+if [ ! -f "$BUILD_CODE_HEADER" ] || ! printf '%s' "$build_code_header_text" | cmp -s - "$BUILD_CODE_HEADER"; then
+  printf '%s' "$build_code_header_text" > "$BUILD_CODE_HEADER"
+fi
+
 if [ "$FAST" = "1" ]; then
   CXXFLAGS="-std=c++17 -O1 -fno-plt"
   echo "[INFO] FAST build enabled"
@@ -82,25 +125,123 @@ if [ -f "third_party/nlohmann/json.hpp" ]; then
   JSON_CFLAGS="-Ithird_party"
 fi
 
-echo "[INFO] Recompiling main binary only: $PLATFORMER_BIN"
-g++ $CXXFLAGS \
-  $SDL_CFLAGS \
-  $JSON_CFLAGS \
-  src/main.cpp \
-  src/TileMap.cpp \
-  src/AssetPath.cpp \
-  src/LevelLoader.cpp \
-  src/TextRenderer.cpp \
-  src/LevelSelect.cpp \
-  src/PlayerController.cpp \
-  src/LevelManager.cpp \
-  src/GameSupport.cpp \
-  src/CrashReporter.cpp \
-  src/FrontendMenu.cpp \
-  src/AudioSystem.cpp \
-  $SDL_LIBS \
-  $MIXER_LIBS \
-  -o "$PLATFORMER_BIN"
+SRC=(
+  src/main.cpp
+  src/TileMap.cpp
+  src/AssetPath.cpp
+  src/LevelLoader.cpp
+  src/TextRenderer.cpp
+  src/LevelSelect.cpp
+  src/PlayerController.cpp
+  src/LevelManager.cpp
+  src/GameSupport.cpp
+  src/CrashReporter.cpp
+  src/FrontendMenu.cpp
+  src/AudioSystem.cpp
+)
+
+OBJ_DIR="$ROOT_DIR/.build/linux-reuse/obj"
+DEP_DIR="$ROOT_DIR/.build/linux-reuse/dep"
+FLAGS_STAMP="$ROOT_DIR/.build/linux-reuse/.compile-flags"
+SCRIPT_HASH_STAMP="$ROOT_DIR/.build/linux-reuse/.build-scripts-hash"
+mkdir -p "$OBJ_DIR" "$DEP_DIR"
+
+current_script_hash=""
+if command -v sha256sum >/dev/null 2>&1; then
+  current_script_hash="$(
+    find "$ROOT_DIR/build" -maxdepth 1 -type f -name '*.sh' -print0 \
+      | sort -z \
+      | xargs -0 sha256sum \
+      | sha256sum \
+      | awk '{print $1}'
+  )"
+fi
+if [ -z "$current_script_hash" ]; then
+  current_script_hash="scripts-$(date +%s)"
+fi
+if [ ! -f "$SCRIPT_HASH_STAMP" ] || ! printf '%s\n' "$current_script_hash" | cmp -s - "$SCRIPT_HASH_STAMP"; then
+  echo "[INFO] Build scripts changed; clearing Linux-reuse object cache"
+  rm -rf "$OBJ_DIR" "$DEP_DIR"
+  mkdir -p "$OBJ_DIR" "$DEP_DIR"
+  printf '%s\n' "$current_script_hash" > "$SCRIPT_HASH_STAMP"
+fi
+
+current_flags_text="$(printf '%s\n' "$CXX" "$CXXFLAGS" "$SDL_CFLAGS" "$JSON_CFLAGS")"
+if [ ! -f "$FLAGS_STAMP" ] || ! printf '%s\n' "$current_flags_text" | cmp -s - "$FLAGS_STAMP"; then
+  echo "[INFO] Compile flags changed; clearing Linux-reuse object cache"
+  rm -rf "$OBJ_DIR" "$DEP_DIR"
+  mkdir -p "$OBJ_DIR" "$DEP_DIR"
+  printf '%s\n' "$current_flags_text" > "$FLAGS_STAMP"
+fi
+
+dep_needs_rebuild() {
+  local depfile="$1"
+  local objfile="$2"
+  [ -f "$depfile" ] || return 0
+  local path
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    if [ ! -e "$path" ] || [ "$path" -nt "$objfile" ]; then
+      return 0
+    fi
+  done < <(
+    tr '\\\n' '  ' < "$depfile" |
+      sed -E 's/^[^:]*:[[:space:]]*//' |
+      tr ' ' '\n' |
+      sed '/^$/d'
+  )
+  return 1
+}
+
+OBJECTS=()
+compiled_any=0
+for src in "${SRC[@]}"; do
+  obj="$OBJ_DIR/${src%.cpp}.o"
+  dep="$DEP_DIR/${src%.cpp}.d"
+  mkdir -p "$(dirname "$obj")" "$(dirname "$dep")"
+  OBJECTS+=("$obj")
+
+  needs_build=0
+  if [ ! -f "$obj" ] || [ "$src" -nt "$obj" ]; then
+    needs_build=1
+  elif dep_needs_rebuild "$dep" "$obj"; then
+    needs_build=1
+  fi
+
+  if [ "$needs_build" -eq 1 ]; then
+    echo "[INFO] Compiling $src"
+    g++ $CXXFLAGS \
+      $SDL_CFLAGS \
+      $JSON_CFLAGS \
+      -MMD -MP -MF "$dep" -c "$src" -o "$obj"
+    compiled_any=1
+  else
+    echo "[INFO] Skipping unchanged $src"
+  fi
+done
+
+needs_link=0
+if [ "$compiled_any" -eq 1 ] || [ ! -f "$PLATFORMER_BIN" ]; then
+  needs_link=1
+else
+  for obj in "${OBJECTS[@]}"; do
+    if [ "$obj" -nt "$PLATFORMER_BIN" ]; then
+      needs_link=1
+      break
+    fi
+  done
+fi
+
+if [ "$needs_link" -eq 1 ]; then
+  echo "[INFO] Re-linking main binary: $PLATFORMER_BIN"
+  g++ $CXXFLAGS \
+    "${OBJECTS[@]}" \
+    $SDL_LIBS \
+    $MIXER_LIBS \
+    -o "$PLATFORMER_BIN"
+else
+  echo "[INFO] Skipping unchanged link: $PLATFORMER_BIN"
+fi
 
 chmod +x "$PLATFORMER_BIN" || true
 

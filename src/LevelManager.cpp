@@ -136,7 +136,7 @@ std::string LevelManager::nextLevelPath() const {
     return levelPathFromId(nextLevelId(currentLevel));
 }
 
-int LevelManager::collectCoinsAtPlayer(TileMap& map, const Player& player) {
+int LevelManager::collectCoinsAtPlayer(TileMap& map, const Player& player, bool wrapX, bool wrapY) {
     int t = map.tileSize;
     int left = (int)std::floor(player.x / t);
     int right = (int)std::floor((player.x + player.w - 1) / t);
@@ -145,10 +145,22 @@ int LevelManager::collectCoinsAtPlayer(TileMap& map, const Player& player) {
 
     int collected = 0;
     for (int ty = top; ty <= bottom; ++ty) {
-        if (ty < 0 || ty >= map.h) continue;
+        int qy = ty;
+        if (wrapY && map.h > 0) {
+            qy %= map.h;
+            if (qy < 0) qy += map.h;
+        } else if (ty < 0 || ty >= map.h) {
+            continue;
+        }
         for (int tx = left; tx <= right; ++tx) {
-            if (tx < 0 || tx >= map.w) continue;
-            int idx = ty * map.w + tx;
+            int qx = tx;
+            if (wrapX && map.w > 0) {
+                qx %= map.w;
+                if (qx < 0) qx += map.w;
+            } else if (tx < 0 || tx >= map.w) {
+                continue;
+            }
+            int idx = qy * map.w + qx;
             if (map.tileIds[idx] != 24) continue;
             map.tileIds[idx] = 2;
             applyBlockDefAt(map, idx, 2);
@@ -160,7 +172,7 @@ int LevelManager::collectCoinsAtPlayer(TileMap& map, const Player& player) {
     return collected;
 }
 
-void LevelManager::updateTimeWarpIdAtPlayer(const TileMap& map, const Player& player) {
+void LevelManager::updateTimeWarpIdAtPlayer(const TileMap& map, const Player& player, bool wrapX, bool wrapY) {
     int t = map.tileSize;
     int left = (int)std::floor(player.x / t);
     int right = (int)std::floor((player.x + player.w - 1) / t);
@@ -169,10 +181,22 @@ void LevelManager::updateTimeWarpIdAtPlayer(const TileMap& map, const Player& pl
 
     char next = timeWarpId_;
     for (int ty = top; ty <= bottom; ++ty) {
-        if (ty < 0 || ty >= map.h) continue;
+        int qy = ty;
+        if (wrapY && map.h > 0) {
+            qy %= map.h;
+            if (qy < 0) qy += map.h;
+        } else if (ty < 0 || ty >= map.h) {
+            continue;
+        }
         for (int tx = left; tx <= right; ++tx) {
-            if (tx < 0 || tx >= map.w) continue;
-            unsigned short id = map.tileIds[ty * map.w + tx];
+            int qx = tx;
+            if (wrapX && map.w > 0) {
+                qx %= map.w;
+                if (qx < 0) qx += map.w;
+            } else if (tx < 0 || tx >= map.w) {
+                continue;
+            }
+            unsigned short id = map.tileIds[qy * map.w + qx];
             if (id == 43) next = '1';
             if (id == 45) next = '2';
         }

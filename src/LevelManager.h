@@ -17,8 +17,8 @@ public:
     void reloadLevel(TileMap& map, std::vector<ObjectInstance>& objects, LevelMeta& meta, Player& player);
     std::string nextLevelPath() const;
 
-    int collectCoinsAtPlayer(TileMap& map, const Player& player);
-    void updateTimeWarpIdAtPlayer(const TileMap& map, const Player& player);
+    int collectCoinsAtPlayer(TileMap& map, const Player& player, bool wrapX = false, bool wrapY = false);
+    void updateTimeWarpIdAtPlayer(const TileMap& map, const Player& player, bool wrapX = false, bool wrapY = false);
     void setTileAt(TileMap& map, int idx, unsigned short tileId) const;
 
     int coinCount() const;

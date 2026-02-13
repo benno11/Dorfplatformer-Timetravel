@@ -12,17 +12,39 @@
 
 #include "AssetPath.h"
 
-bool playerTouchesTileId(const TileMap& map, const Player& player, int idA, int idB) {
+#if defined(__has_include)
+#if __has_include("../.build/generated/BuildCodeId.h")
+#include "../.build/generated/BuildCodeId.h"
+#endif
+#endif
+
+#ifndef DF_BUILD_CODE_ID
+#define DF_BUILD_CODE_ID "dev"
+#endif
+
+bool playerTouchesTileId(const TileMap& map, const Player& player, int idA, int idB, bool wrapX, bool wrapY) {
     int t = map.tileSize;
     int left = (int)std::floor(player.x / t);
     int right = (int)std::floor((player.x + player.w - 1) / t);
     int top = (int)std::floor(player.y / t);
     int bottom = (int)std::floor((player.y + player.h - 1) / t);
     for (int ty = top; ty <= bottom; ++ty) {
-        if (ty < 0 || ty >= map.h) continue;
+        int qy = ty;
+        if (wrapY && map.h > 0) {
+            qy %= map.h;
+            if (qy < 0) qy += map.h;
+        } else if (ty < 0 || ty >= map.h) {
+            continue;
+        }
         for (int tx = left; tx <= right; ++tx) {
-            if (tx < 0 || tx >= map.w) continue;
-            int id = (int)map.tileIds[ty * map.w + tx];
+            int qx = tx;
+            if (wrapX && map.w > 0) {
+                qx %= map.w;
+                if (qx < 0) qx += map.w;
+            } else if (tx < 0 || tx >= map.w) {
+                continue;
+            }
+            int id = (int)map.tileIds[qy * map.w + qx];
             if (id == idA || id == idB) return true;
         }
     }
@@ -62,7 +84,7 @@ bool readProcessMemoryKB(long& rssKB, long& vmKB) {
 }
 
 std::string makeBuildUuid() {
-    const std::string seed = std::string(__DATE__) + " " + std::string(__TIME__);
+    const std::string seed = DF_BUILD_CODE_ID;
     uint64_t h1 = 1469598103934665603ull;
     uint64_t h2 = 1099511628211ull;
     for (unsigned char c : seed) {
@@ -192,7 +214,10 @@ SDL_Texture* loadTextureWithColorKey(SDL_Renderer* ren, const std::string& path,
     SDL_SetColorKey(surf, SDL_TRUE, key);
     SDL_Texture* tex = SDL_CreateTextureFromSurface(ren, surf);
     SDL_FreeSurface(surf);
-    if (tex) SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
+    if (tex) {
+        SDL_SetTextureScaleMode(tex, SDL_SCALEMODE_NEAREST);
+        SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
+    }
     return tex;
 }
 

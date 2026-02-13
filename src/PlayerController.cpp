@@ -6,6 +6,7 @@
 
 namespace {
 bool g_horizontalWrapCollision = false;
+bool g_verticalWrapCollision = false;
 
 inline int wrapTileX(int x, int w) {
     if (w <= 0) return x;
@@ -13,10 +14,21 @@ inline int wrapTileX(int x, int w) {
     if (v < 0) v += w;
     return v;
 }
+
+inline int wrapTileY(int y, int h) {
+    if (h <= 0) return y;
+    int v = y % h;
+    if (v < 0) v += h;
+    return v;
+}
 }
 
 void SetHorizontalWrapCollision(bool enabled) {
     g_horizontalWrapCollision = enabled;
+}
+
+void SetVerticalWrapCollision(bool enabled) {
+    g_verticalWrapCollision = enabled;
 }
 
 bool RectHitsSolid(const TileMap& map, float x, float y, int w, int h) {
@@ -28,7 +40,8 @@ bool RectHitsSolid(const TileMap& map, float x, float y, int w, int h) {
     for (int ty = top; ty <= bottom; ++ty) {
         for (int tx = left; tx <= right; ++tx) {
             const int qx = g_horizontalWrapCollision ? wrapTileX(tx, map.w) : tx;
-            if (map.getSolid(qx, ty)) return true;
+            const int qy = g_verticalWrapCollision ? wrapTileY(ty, map.h) : ty;
+            if (map.getSolid(qx, qy)) return true;
         }
     }
     return false;
@@ -45,8 +58,9 @@ static bool rectHitsSemiSolidDown(const TileMap& map, float oldY, float newY, fl
     int ty = newBottom;
     for (int tx = left; tx <= right; ++tx) {
         const int qx = g_horizontalWrapCollision ? wrapTileX(tx, map.w) : tx;
-        if (!map.getSemiSolid(qx, ty)) continue;
-        float tileTop = ty * t;
+        const int qy = g_verticalWrapCollision ? wrapTileY(ty, map.h) : ty;
+        if (!map.getSemiSolid(qx, qy)) continue;
+        float tileTop = qy * t;
         float oldBottomY = oldY + h - 1;
         float newBottomY = newY + h - 1;
         if (oldBottomY <= tileTop && newBottomY >= tileTop) return true;
@@ -63,7 +77,8 @@ static bool rectHitsWater(const TileMap& map, float x, float y, int w, int h) {
     for (int ty = top; ty <= bottom; ++ty) {
         for (int tx = left; tx <= right; ++tx) {
             const int qx = g_horizontalWrapCollision ? wrapTileX(tx, map.w) : tx;
-            if (map.getWater(qx, ty)) return true;
+            const int qy = g_verticalWrapCollision ? wrapTileY(ty, map.h) : ty;
+            if (map.getWater(qx, qy)) return true;
         }
     }
     return false;
@@ -76,7 +91,8 @@ static bool rectHasGroundBelow(const TileMap& map, float x, float y, int w, int 
     int footTile = (int)std::floor((y + h) / t);
     for (int tx = left; tx <= right; ++tx) {
         const int qx = g_horizontalWrapCollision ? wrapTileX(tx, map.w) : tx;
-        if (map.getSolid(qx, footTile) || map.getSemiSolid(qx, footTile)) return true;
+        const int qy = g_verticalWrapCollision ? wrapTileY(footTile, map.h) : footTile;
+        if (map.getSolid(qx, qy) || map.getSemiSolid(qx, qy)) return true;
     }
     return false;
 }
@@ -214,18 +230,12 @@ PlayerUpdateResult UpdatePlayerMovement(
     if ((player.onGround || inWater) && player.jumpBufferTime > 0.0f) {
         player.vy = -jumpSpeed;
         if (player.onGround) player.onGround = false;
-        player.jumpHeld = true;
+        player.jumpHeld = false;
         player.jumpHoldTime = 0.0f;
         player.jumpBufferTime = 0.0f;
     }
 
-    if (!inWater && player.jumpHeld && jumpDown && player.jumpHoldTime < jumpHoldMax && player.vy < 0.0f) {
-        // Variable jump height: while jump is held, apply reduced upward gravity.
-        gravity = std::min(gravity, std::max(0.0f, jumpHoldGravity));
-        player.jumpHoldTime += dt;
-    } else {
-        player.jumpHeld = false;
-    }
+    player.jumpHeld = false;
 
     if (jumpReleased && player.vy < -jumpCutSpeed) {
         player.vy = -jumpCutSpeed;
