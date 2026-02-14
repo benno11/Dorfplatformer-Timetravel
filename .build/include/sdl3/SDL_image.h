@@ -1,1 +1,1 @@
-/usr/local/include/SDL3_image/SDL_image.h
+/usr/include/SDL3_image/SDL_image.h

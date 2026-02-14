@@ -127,6 +127,8 @@ fi
 
 SRC=(
   src/main.cpp
+  src/GameApp.cpp
+  src/AndroidEntrypoints.cpp
   src/TileMap.cpp
   src/AssetPath.cpp
   src/LevelLoader.cpp
@@ -138,6 +140,7 @@ SRC=(
   src/CrashReporter.cpp
   src/FrontendMenu.cpp
   src/AudioSystem.cpp
+  src/ParallaxRenderer.cpp
 )
 
 OBJ_DIR="$ROOT_DIR/.build/linux-reuse/obj"

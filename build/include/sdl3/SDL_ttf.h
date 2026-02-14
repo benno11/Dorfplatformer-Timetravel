@@ -160,7 +160,7 @@ extern SDL_DECLSPEC TTF_Font * SDLCALL TTF_OpenFont(const char *file, float ptsi
  * the last indexed size will be the default.
  *
  * If `closeio` is true, `src` will be automatically closed once the font is
- * closed. Otherwise you should close `src` yourself after closing the font.
+ * closed. Otherwise you should keep `src` open until the font is closed.
  *
  * When done with the returned TTF_Font, use TTF_CloseFont() to dispose of it.
  *
@@ -676,7 +676,7 @@ extern SDL_DECLSPEC bool SDLCALL TTF_GetFontSDF(const TTF_Font *font);
  * \threadsafety This function should be called on the thread that created the
  *               font.
  *
- * \since This function is available since SDL_ttf 3.4.0.
+ * \since This function is available since SDL_ttf 3.2.2.
  */
 extern SDL_DECLSPEC int SDLCALL TTF_GetFontWeight(const TTF_Font *font);
 

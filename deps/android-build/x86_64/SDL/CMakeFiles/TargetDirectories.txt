@@ -1,0 +1,11 @@
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/x86_64/SDL/CMakeFiles/SDL3-static.dir
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/x86_64/SDL/CMakeFiles/SDL3_test.dir
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/x86_64/SDL/CMakeFiles/uninstall.dir
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/x86_64/SDL/CMakeFiles/package.dir
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/x86_64/SDL/CMakeFiles/package_source.dir
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/x86_64/SDL/CMakeFiles/edit_cache.dir
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/x86_64/SDL/CMakeFiles/rebuild_cache.dir
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/x86_64/SDL/CMakeFiles/list_install_components.dir
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/x86_64/SDL/CMakeFiles/install.dir
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/x86_64/SDL/CMakeFiles/install/local.dir
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/x86_64/SDL/CMakeFiles/install/strip.dir

@@ -52,6 +52,8 @@ endif()
 
 add_executable(platformer
   src/main.cpp
+  src/GameApp.cpp
+  src/AndroidEntrypoints.cpp
   src/TileMap.cpp
   src/LevelLoader.cpp
   src/TextRenderer.cpp

@@ -1,0 +1,9 @@
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86/SDL_ttf/lib/libSDL3_ttf.a
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86/SDL_ttf/include/SDL3_ttf/SDL_textengine.h
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86/SDL_ttf/include/SDL3_ttf/SDL_ttf.h
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86/SDL_ttf/lib/cmake/SDL3_ttf/SDL3_ttfConfig.cmake
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86/SDL_ttf/lib/cmake/SDL3_ttf/SDL3_ttfConfigVersion.cmake
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86/SDL_ttf/lib/cmake/SDL3_ttf/SDL3_ttf-static-targets.cmake
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86/SDL_ttf/lib/cmake/SDL3_ttf/SDL3_ttf-static-targets-release.cmake
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86/SDL_ttf/lib/pkgconfig/sdl3-ttf.pc
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86/SDL_ttf/share/licenses/SDL3_ttf/LICENSE.txt

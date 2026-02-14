@@ -1,0 +1,14 @@
+# libvorbisenc pkg-config source file
+
+prefix=/home/benno111/Documents/GitHub/DF-New/deps/android-install/armeabi-v7a/SDL_mixer
+exec_prefix=/home/benno111/Documents/GitHub/DF-New/deps/android-install/armeabi-v7a/SDL_mixer/bin
+libdir=/home/benno111/Documents/GitHub/DF-New/deps/android-install/armeabi-v7a/SDL_mixer/lib
+includedir=/home/benno111/Documents/GitHub/DF-New/deps/android-install/armeabi-v7a/SDL_mixer/include
+
+Name: vorbisenc
+Description: vorbisenc is a library that provides a convenient API for setting up an encoding environment using libvorbis
+Version: 1.3.7
+Requires.private: vorbis
+Conflicts:
+Libs: -L${libdir} -lvorbisenc
+Cflags: -I${includedir}

@@ -444,6 +444,8 @@ fi
 
 SRC=(
   src/main.cpp
+  src/GameApp.cpp
+  src/AndroidEntrypoints.cpp
   src/TileMap.cpp
   src/AssetPath.cpp
   src/LevelLoader.cpp
@@ -455,6 +457,7 @@ SRC=(
   src/CrashReporter.cpp
   src/FrontendMenu.cpp
   src/AudioSystem.cpp
+  src/ParallaxRenderer.cpp
 )
 
 OUT_LIB="$OUT_DIR/libplatformer.so"

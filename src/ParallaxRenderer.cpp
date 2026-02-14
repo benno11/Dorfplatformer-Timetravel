@@ -4,6 +4,9 @@
 #include <cmath>
 
 namespace {
+constexpr float kParallaxBaseWidthFactor = 0.75f;
+constexpr float kParallaxBaseHeightFactor = 0.75f;
+
 const Frame* FindBgFrameIn(const std::unordered_map<std::string, Frame>& frameByName, const char* name) {
     if (!name) return nullptr;
     auto it = frameByName.find(name);
@@ -89,7 +92,10 @@ void RenderParallaxBackground(
         if (!f) continue;
         const int srcW = f->rotated ? f->rect.h : f->rect.w;
         const int srcH = f->rotated ? f->rect.w : f->rect.h;
-        const float parallaxScale = layer.scale;
+        const float targetW = std::max(1.0f, (float)worldViewW * kParallaxBaseWidthFactor);
+        const float targetH = std::max(1.0f, (float)worldViewH * kParallaxBaseHeightFactor);
+        const float fitScale = std::min(targetW / (float)srcW, targetH / (float)srcH);
+        const float parallaxScale = std::max(0.01f, fitScale * layer.scale);
         const int fw = std::max(1, (int)std::lround((float)srcW * parallaxScale));
         const int fh = std::max(1, (int)std::lround((float)srcH * parallaxScale));
         if (fw <= 0 || fh <= 0) continue;
@@ -118,4 +124,3 @@ void RenderParallaxBackground(
     }
     SDL_SetTextureAlphaMod(active->texture, 255);
 }
-

@@ -1,0 +1,13 @@
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_mixer/lib/libSDL3_mixer.a
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_mixer/include/SDL3_mixer/SDL_mixer.h
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_mixer/lib/libogg.a
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_mixer/lib/libvorbis.a
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_mixer/lib/libvorbisfile.a
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_mixer/lib/cmake/SDL3_mixer/SDL3_mixerConfig.cmake
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_mixer/lib/cmake/SDL3_mixer/SDL3_mixerConfigVersion.cmake
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_mixer/lib/cmake/SDL3_mixer/SDL3_mixer-static-targets.cmake
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_mixer/lib/cmake/SDL3_mixer/SDL3_mixer-static-targets-release.cmake
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_mixer/lib/pkgconfig/sdl3-mixer.pc
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_mixer/share/licenses/SDL3_mixer/LICENSE.txt
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_mixer/share/licenses/SDL3_mixer/optional/LICENSE.ogg-vorbis.txt
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_mixer/share/licenses/SDL3_mixer/optional/LICENSE.vorbis.txt

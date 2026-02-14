@@ -140,6 +140,8 @@ fi
   $SDL_CFLAGS \
   $JSON_CFLAGS \
   "$SRC_DIR/main.cpp" \
+  "$SRC_DIR/GameApp.cpp" \
+  "$SRC_DIR/AndroidEntrypoints.cpp" \
   "$SRC_DIR/TileMap.cpp" \
   "$SRC_DIR/AssetPath.cpp" \
   "$SRC_DIR/LevelLoader.cpp" \
@@ -151,6 +153,7 @@ fi
   "$SRC_DIR/CrashReporter.cpp" \
   "$SRC_DIR/FrontendMenu.cpp" \
   "$SRC_DIR/AudioSystem.cpp" \
+  "$SRC_DIR/ParallaxRenderer.cpp" \
   $SDL_LIBS \
   $MIXER_LIBS \
   -o "$OUT_PLATFORMER"

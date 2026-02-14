@@ -1,0 +1,13 @@
+prefix=/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_image
+exec_prefix=/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_image
+libdir=/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_image/lib
+sharedlibdir=/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_image/lib
+includedir=/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_image/include
+
+Name: zlib
+Description: zlib compression library
+Version: 1.3.1
+
+Requires:
+Libs: -L${libdir} -L${sharedlibdir} -lz
+Cflags: -I${includedir}

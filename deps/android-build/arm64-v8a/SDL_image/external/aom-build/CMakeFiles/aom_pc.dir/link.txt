@@ -1,0 +1,2 @@
+/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar qc libaom_pc.a CMakeFiles/aom_pc.dir/gen_src/aom_pc_dummy.c.o
+/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib libaom_pc.a

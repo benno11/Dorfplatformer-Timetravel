@@ -1,0 +1,11 @@
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/armeabi-v7a/SDL/CMakeFiles/SDL3-static.dir
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/armeabi-v7a/SDL/CMakeFiles/SDL3_test.dir
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/armeabi-v7a/SDL/CMakeFiles/uninstall.dir
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/armeabi-v7a/SDL/CMakeFiles/package.dir
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/armeabi-v7a/SDL/CMakeFiles/package_source.dir
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/armeabi-v7a/SDL/CMakeFiles/edit_cache.dir
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/armeabi-v7a/SDL/CMakeFiles/rebuild_cache.dir
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/armeabi-v7a/SDL/CMakeFiles/list_install_components.dir
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/armeabi-v7a/SDL/CMakeFiles/install.dir
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/armeabi-v7a/SDL/CMakeFiles/install/local.dir
+/home/benno111/Documents/GitHub/DF-New/deps/android-build/armeabi-v7a/SDL/CMakeFiles/install/strip.dir

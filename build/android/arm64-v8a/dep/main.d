@@ -119,7 +119,8 @@ build/android/arm64-v8a/obj/main.o: src/main.cpp \
   src/TileMap.h src/LevelLoader.h src/Player.h src/PlayerController.h \
   src/TextRenderer.h src/LevelSelect.h src/AssetPath.h \
   src/LevelManager.h src/FrontendMenu.h src/GameSupport.h \
-  src/CrashReporter.h src/AudioSystem.h src/InputSystem.h
+  src/ParallaxRenderer.h src/CrashReporter.h src/AudioSystem.h \
+  src/InputSystem.h
 /home/benno111/Documents/GitHub/DF-New/.build/include/sdl3/SDL.h:
 /home/benno111/Documents/GitHub/DF-New/deps/android/include/SDL3/SDL_stdinc.h:
 /home/benno111/Documents/GitHub/DF-New/deps/android/include/SDL3/SDL_platform_defines.h:
@@ -247,6 +248,7 @@ src/AssetPath.h:
 src/LevelManager.h:
 src/FrontendMenu.h:
 src/GameSupport.h:
+src/ParallaxRenderer.h:
 src/CrashReporter.h:
 src/AudioSystem.h:
 src/InputSystem.h:

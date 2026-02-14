@@ -1,1 +1,1 @@
-/usr/local/include/SDL3_ttf/SDL_textengine.h
+/usr/include/SDL3_ttf/SDL_textengine.h

@@ -1,0 +1,61 @@
+#include <sdl3/SDL.h>
+#include <sdl3/SDL_image.h>
+#include <vector>
+#include <string>
+#include <algorithm>
+#include <cmath>
+#include <fstream>
+#include <cctype>
+#include <unordered_map>
+#include <unordered_set>
+#include <nlohmann/json.hpp>
+#include <filesystem>
+#include <sstream>
+#include <iomanip>
+#include <iostream>
+#include <array>
+#include <thread>
+#include <mutex>
+#include <atomic>
+#include <condition_variable>
+#include <limits>
+#include <csignal>
+#include <cstdio>
+#include <cstring>
+#include <exception>
+#include <unistd.h>
+#include <cstdlib>
+#include <vector>
+#include <fstream>
+#if defined(HAVE_CURL) && HAVE_CURL
+#include <curl/curl.h>
+#endif
+#include "TileMap.h"
+#include "LevelLoader.h"
+#include "Player.h"
+#include "PlayerController.h"
+#include "TextRenderer.h"
+#include "LevelSelect.h"
+#include "AssetPath.h"
+#include "LevelManager.h"
+#include "FrontendMenu.h"
+#include "GameSupport.h"
+#include "ParallaxRenderer.h"
+#include "CrashReporter.h"
+#include "AudioSystem.h"
+#include "InputSystem.h"
+
+int RunGameApp(int argc, char** argv) {
+#include "main_parts/MainPart01.inl"
+#include "main_parts/MainPart02.inl"
+#include "main_parts/MainPart03.inl"
+#include "main_parts/MainPart04.inl"
+#include "main_parts/MainPart05.inl"
+#include "main_parts/MainPart06.inl"
+#include "main_parts/MainPart07.inl"
+#include "main_parts/MainPart08.inl"
+#include "main_parts/MainPart09.inl"
+#include "main_parts/MainPart10.inl"
+#include "main_parts/MainPart11.inl"
+#include "main_parts/MainPart12.inl"
+}

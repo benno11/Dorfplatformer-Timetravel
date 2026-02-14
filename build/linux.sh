@@ -374,6 +374,8 @@ fi
 
 PLATFORMER_SOURCES=(
   "$SRC_DIR/main.cpp"
+  "$SRC_DIR/GameApp.cpp"
+  "$SRC_DIR/AndroidEntrypoints.cpp"
   "$SRC_DIR/TileMap.cpp"
   "$SRC_DIR/AssetPath.cpp"
   "$SRC_DIR/LevelLoader.cpp"
@@ -385,6 +387,7 @@ PLATFORMER_SOURCES=(
   "$SRC_DIR/CrashReporter.cpp"
   "$SRC_DIR/FrontendMenu.cpp"
   "$SRC_DIR/AudioSystem.cpp"
+  "$SRC_DIR/ParallaxRenderer.cpp"
 )
 
 SHEET_SOURCES=(

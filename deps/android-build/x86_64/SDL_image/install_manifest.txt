@@ -1,0 +1,14 @@
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_image/lib/libSDL3_image.a
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_image/include/SDL3_image/SDL_image.h
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_image/lib/libz.a
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_image/lib/libpng16.a
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_image/lib/libtiff.a
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_image/lib/cmake/SDL3_image/SDL3_imageConfig.cmake
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_image/lib/cmake/SDL3_image/SDL3_imageConfigVersion.cmake
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_image/lib/cmake/SDL3_image/SDL3_image-static-targets.cmake
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_image/lib/cmake/SDL3_image/SDL3_image-static-targets-release.cmake
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_image/lib/pkgconfig/sdl3-image.pc
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_image/share/licenses/SDL3_image/LICENSE.txt
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_image/share/licenses/SDL3_image/optional/LICENSE.zlib.txt
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_image/share/licenses/SDL3_image/optional/LICENSE.libpng.txt
+/home/benno111/Documents/GitHub/DF-New/deps/android-install/x86_64/SDL_image/share/licenses/SDL3_image/optional/LICENSE.tiff.txt

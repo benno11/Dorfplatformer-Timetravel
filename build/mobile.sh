@@ -63,6 +63,8 @@ LIBS_PKG="$(pkg-config --libs "${PKGS[@]}")"
 echo "[INFO] Building mobile target with: $CXX"
 $CXX $CXXFLAGS $CPPFLAGS_PKG \
   "$SRC_DIR/main.cpp" \
+  "$SRC_DIR/GameApp.cpp" \
+  "$SRC_DIR/AndroidEntrypoints.cpp" \
   "$SRC_DIR/TileMap.cpp" \
   "$SRC_DIR/AssetPath.cpp" \
   "$SRC_DIR/LevelLoader.cpp" \
@@ -74,6 +76,7 @@ $CXX $CXXFLAGS $CPPFLAGS_PKG \
   "$SRC_DIR/CrashReporter.cpp" \
   "$SRC_DIR/FrontendMenu.cpp" \
   "$SRC_DIR/AudioSystem.cpp" \
+  "$SRC_DIR/ParallaxRenderer.cpp" \
   $LDFLAGS $LIBS_PKG \
   -o "$OUT_PLATFORMER"
 

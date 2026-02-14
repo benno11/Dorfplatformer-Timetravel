@@ -1,0 +1,2 @@
+/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar qc libav1_rc_qmode.a CMakeFiles/av1_rc_qmode.dir/av1/qmode_rc/ratectrl_qmode_interface.cc.o CMakeFiles/av1_rc_qmode.dir/av1/qmode_rc/reference_manager.cc.o CMakeFiles/av1_rc_qmode.dir/av1/qmode_rc/ratectrl_qmode.cc.o CMakeFiles/av1_rc_qmode.dir/av1/qmode_rc/ducky_encode.cc.o
+/home/benno111/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib libav1_rc_qmode.a
