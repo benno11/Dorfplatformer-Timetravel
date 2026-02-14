@@ -14,5 +14,8 @@
     "swim_up_speed": 380.0,
     "swim_rise": 900.0
   },
+  "background": {
+    "parallax_layer_scales": [0.8, 0.8, 0.8]
+  },
   "level_server_url": "https://timetravel-server-default-rtdb.europe-west1.firebasedatabase.app/"
 }

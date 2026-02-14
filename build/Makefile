@@ -334,6 +334,30 @@ src/LevelSelect.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/platformer.dir/build.make CMakeFiles/platformer.dir/src/LevelSelect.cpp.s
 .PHONY : src/LevelSelect.cpp.s
 
+src/ParallaxRenderer.o: src/ParallaxRenderer.cpp.o
+.PHONY : src/ParallaxRenderer.o
+
+# target to build an object file
+src/ParallaxRenderer.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/platformer.dir/build.make CMakeFiles/platformer.dir/src/ParallaxRenderer.cpp.o
+.PHONY : src/ParallaxRenderer.cpp.o
+
+src/ParallaxRenderer.i: src/ParallaxRenderer.cpp.i
+.PHONY : src/ParallaxRenderer.i
+
+# target to preprocess a source file
+src/ParallaxRenderer.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/platformer.dir/build.make CMakeFiles/platformer.dir/src/ParallaxRenderer.cpp.i
+.PHONY : src/ParallaxRenderer.cpp.i
+
+src/ParallaxRenderer.s: src/ParallaxRenderer.cpp.s
+.PHONY : src/ParallaxRenderer.s
+
+# target to generate assembly for a file
+src/ParallaxRenderer.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/platformer.dir/build.make CMakeFiles/platformer.dir/src/ParallaxRenderer.cpp.s
+.PHONY : src/ParallaxRenderer.cpp.s
+
 src/PlayerController.o: src/PlayerController.cpp.o
 .PHONY : src/PlayerController.o
 
@@ -488,6 +512,9 @@ help:
 	@echo "... src/LevelSelect.o"
 	@echo "... src/LevelSelect.i"
 	@echo "... src/LevelSelect.s"
+	@echo "... src/ParallaxRenderer.o"
+	@echo "... src/ParallaxRenderer.i"
+	@echo "... src/ParallaxRenderer.s"
 	@echo "... src/PlayerController.o"
 	@echo "... src/PlayerController.i"
 	@echo "... src/PlayerController.s"

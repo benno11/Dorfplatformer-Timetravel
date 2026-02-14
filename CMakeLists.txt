@@ -63,6 +63,7 @@ add_executable(platformer
   src/CrashReporter.cpp
   src/FrontendMenu.cpp
   src/AudioSystem.cpp
+  src/ParallaxRenderer.cpp
 )
 message(STATUS "Added target: platformer")
 

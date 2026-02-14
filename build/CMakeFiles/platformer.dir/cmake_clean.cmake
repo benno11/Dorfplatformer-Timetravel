@@ -16,6 +16,8 @@ file(REMOVE_RECURSE
   "CMakeFiles/platformer.dir/src/LevelManager.cpp.o.d"
   "CMakeFiles/platformer.dir/src/LevelSelect.cpp.o"
   "CMakeFiles/platformer.dir/src/LevelSelect.cpp.o.d"
+  "CMakeFiles/platformer.dir/src/ParallaxRenderer.cpp.o"
+  "CMakeFiles/platformer.dir/src/ParallaxRenderer.cpp.o.d"
   "CMakeFiles/platformer.dir/src/PlayerController.cpp.o"
   "CMakeFiles/platformer.dir/src/PlayerController.cpp.o.d"
   "CMakeFiles/platformer.dir/src/TextRenderer.cpp.o"

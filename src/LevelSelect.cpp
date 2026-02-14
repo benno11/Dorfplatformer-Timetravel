@@ -204,10 +204,162 @@ std::string writeLocalLevelFile(const std::vector<unsigned short>& rowMajorGrid,
     return outPath.string();
 }
 
-std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::string& initialPath = "") {
+struct NewLevelPromptResult {
+    bool accepted = false;
+    std::string name = "new_level";
+    int width = 30;
+    int height = 17;
+};
+
+std::string buildNamedLocalLevelPath(const std::string& name) {
+    const std::string dir = localLevelsFolderPath();
+    const std::string base = sanitizeFilePart(name.empty() ? "new_level" : name);
+    std::filesystem::path out = std::filesystem::path(dir) / (base + ".bin");
+    for (int attempt = 1; std::filesystem::exists(out) && attempt < 10000; ++attempt) {
+        out = std::filesystem::path(dir) / (base + "_" + std::to_string(attempt) + ".bin");
+    }
+    return out.string();
+}
+
+NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
+    NewLevelPromptResult out;
+    bool running = true;
+    int selectedRow = 0; // 0 name, 1 width, 2 height, 3 create, 4 cancel
+    SDL_StartTextInput(win);
+    auto clampSize = [](int v) { return std::clamp(v, 5, 400); };
+    auto trimSpaces = [](std::string s) {
+        while (!s.empty() && std::isspace((unsigned char)s.front())) s.erase(s.begin());
+        while (!s.empty() && std::isspace((unsigned char)s.back())) s.pop_back();
+        return s;
+    };
+
+    while (running) {
+        int winW = 0, winH = 0;
+        SDL_GetWindowSize(win, &winW, &winH);
+        SDL_Rect panel{winW / 2 - 260, winH / 2 - 160, 520, 320};
+        SDL_Rect rowName{panel.x + 20, panel.y + 56, panel.w - 40, 38};
+        SDL_Rect rowW{panel.x + 20, panel.y + 106, panel.w - 40, 38};
+        SDL_Rect rowH{panel.x + 20, panel.y + 156, panel.w - 40, 38};
+        SDL_Rect createBtn{panel.x + 80, panel.y + 242, 150, 42};
+        SDL_Rect cancelBtn{panel.x + 290, panel.y + 242, 150, 42};
+
+        SDL_Event e;
+        while (SDL_PollEvent(&e)) {
+            if (e.type == SDL_QUIT) { running = false; break; }
+            if (e.type == SDL_TEXTINPUT && selectedRow == 0) {
+                if (out.name.size() < 48) {
+                    out.name += e.text.text;
+                }
+                continue;
+            }
+            if (e.type == SDL_KEYDOWN && e.key.repeat == 0) {
+                if (e.key.key == SDLK_ESCAPE || e.key.key == SDLK_AC_BACK) {
+                    running = false;
+                    break;
+                }
+                if (e.key.key == SDLK_UP) {
+                    selectedRow = (selectedRow + 4) % 5;
+                    continue;
+                }
+                if (e.key.key == SDLK_DOWN || e.key.key == SDLK_TAB) {
+                    selectedRow = (selectedRow + 1) % 5;
+                    continue;
+                }
+                if ((e.key.key == SDLK_BACKSPACE || e.key.key == SDLK_DELETE) && selectedRow == 0) {
+                    if (!out.name.empty()) out.name.pop_back();
+                    continue;
+                }
+                if (selectedRow == 1 || selectedRow == 2) {
+                    int& v = (selectedRow == 1) ? out.width : out.height;
+                    const int step = (e.key.key == SDLK_PAGEUP || e.key.key == SDLK_PAGEDOWN) ? 10 : 1;
+                    if (e.key.key == SDLK_LEFT || e.key.key == SDLK_MINUS || e.key.key == SDLK_KP_MINUS || e.key.key == SDLK_PAGEDOWN) {
+                        v = clampSize(v - step);
+                        continue;
+                    }
+                    if (e.key.key == SDLK_RIGHT || e.key.key == SDLK_EQUALS || e.key.key == SDLK_PLUS || e.key.key == SDLK_KP_PLUS || e.key.key == SDLK_PAGEUP) {
+                        v = clampSize(v + step);
+                        continue;
+                    }
+                }
+                if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) {
+                    if (selectedRow == 3) {
+                        out.name = trimSpaces(out.name);
+                        if (out.name.empty()) out.name = "new_level";
+                        out.accepted = true;
+                        running = false;
+                    } else if (selectedRow == 4) {
+                        running = false;
+                    } else {
+                        selectedRow = (selectedRow + 1) % 5;
+                    }
+                    continue;
+                }
+            }
+            if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
+                SDL_Point pt{(int)e.button.x, (int)e.button.y};
+                if (SDL_PointInRect(&pt, &rowName)) selectedRow = 0;
+                else if (SDL_PointInRect(&pt, &rowW)) selectedRow = 1;
+                else if (SDL_PointInRect(&pt, &rowH)) selectedRow = 2;
+                else if (SDL_PointInRect(&pt, &createBtn)) {
+                    out.name = trimSpaces(out.name);
+                    if (out.name.empty()) out.name = "new_level";
+                    out.accepted = true;
+                    running = false;
+                } else if (SDL_PointInRect(&pt, &cancelBtn)) {
+                    running = false;
+                }
+            }
+            if (e.type == SDL_MOUSEWHEEL) {
+                if (selectedRow == 1) out.width = clampSize(out.width + e.wheel.y);
+                if (selectedRow == 2) out.height = clampSize(out.height + e.wheel.y);
+            }
+        }
+
+        SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+        SDL_RenderClear(ren);
+        SDL_SetRenderDrawColor(ren, 30, 34, 44, 255);
+        SDL_RenderFillRect(ren, &panel);
+        SDL_SetRenderDrawColor(ren, 200, 210, 230, 255);
+        SDL_RenderDrawRect(ren, &panel);
+        DrawText(ren, panel.x + 20, panel.y + 20, 3, "CREATE NEW LEVEL");
+
+        auto drawRow = [&](const SDL_Rect& r, bool selected, const std::string& text) {
+            SDL_SetRenderDrawColor(ren, selected ? 68 : 50, selected ? 98 : 72, selected ? 158 : 108, 255);
+            SDL_RenderFillRect(ren, &r);
+            SDL_SetRenderDrawColor(ren, 220, 225, 235, 255);
+            SDL_RenderDrawRect(ren, &r);
+            DrawText(ren, r.x + 10, r.y + 10, 2, text);
+        };
+        drawRow(rowName, selectedRow == 0, std::string("NAME: ") + out.name);
+        drawRow(rowW, selectedRow == 1, std::string("WIDTH: ") + std::to_string(out.width));
+        drawRow(rowH, selectedRow == 2, std::string("HEIGHT: ") + std::to_string(out.height));
+
+        SDL_SetRenderDrawColor(ren, selectedRow == 3 ? 70 : 55, selectedRow == 3 ? 110 : 85, selectedRow == 3 ? 90 : 65, 255);
+        SDL_RenderFillRect(ren, &createBtn);
+        SDL_SetRenderDrawColor(ren, 205, 235, 210, 255);
+        SDL_RenderDrawRect(ren, &createBtn);
+        DrawText(ren, createBtn.x + 38, createBtn.y + 12, 2, "CREATE");
+
+        SDL_SetRenderDrawColor(ren, selectedRow == 4 ? 110 : 80, selectedRow == 4 ? 70 : 55, selectedRow == 4 ? 90 : 70, 255);
+        SDL_RenderFillRect(ren, &cancelBtn);
+        SDL_SetRenderDrawColor(ren, 235, 205, 210, 255);
+        SDL_RenderDrawRect(ren, &cancelBtn);
+        DrawText(ren, cancelBtn.x + 38, cancelBtn.y + 12, 2, "CANCEL");
+        DrawText(ren, panel.x + 20, panel.y + panel.h - 24, 2, "UP/DOWN select  LEFT/RIGHT change size  ENTER confirm");
+
+        SDL_RenderPresent(ren);
+        SDL_Delay(16);
+    }
+
+    SDL_StopTextInput(win);
+    return out;
+}
+
+std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::string& initialPath = "",
+                                const std::string& newLevelName = "", int newLevelW = -1, int newLevelH = -1) {
     constexpr int kEditorTileSize = 32;
-    int gridW = 30;
-    int gridH = 17;
+    int gridW = (newLevelW > 0) ? std::clamp(newLevelW, 5, 400) : 30;
+    int gridH = (newLevelH > 0) ? std::clamp(newLevelH, 5, 400) : 17;
     std::vector<unsigned short> grid((size_t)gridW * (size_t)gridH, 2);
     std::vector<ObjectInstance> placedObjects;
 
@@ -237,11 +389,16 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
     bool paused = false;
     int pauseSel = 0; // 0 Resume, 1 Save, 2 Exit
     std::string savedPath;
-    const std::string saveTargetPath = initialPath;
+    const std::string saveTargetPath = initialPath.empty() ? buildNamedLocalLevelPath(newLevelName) : initialPath;
     std::string statusText;
     Uint64 statusUntil = 0;
     SDL_FingerID activeEditorFinger = 0;
     bool fingerPainting = false;
+    int viewX = 0;
+    int viewY = 0;
+    bool middlePanning = false;
+    int lastPanMouseX = 0;
+    int lastPanMouseY = 0;
     InputSystem editorInput;
     editorInput.scanConnected();
 
@@ -313,13 +470,20 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         SDL_GetWindowSize(win, &winW, &winH);
         const int margin = 12;
         const int sideW = 240;
-        int cell = std::min((winW - sideW - margin * 3) / std::max(1, gridW), (winH - margin * 2) / std::max(1, gridH));
+        const int gridX = margin;
+        const int gridY = margin;
+        const int panelX = std::max(gridX + 16, winW - margin - sideW);
+        const int gridViewW = std::max(120, panelX - gridX - margin);
+        const int gridViewH = std::max(120, winH - margin * 2);
+        int cell = std::min(gridViewW / std::max(1, gridW), gridViewH / std::max(1, gridH));
         cell = std::max(12, cell);
         const int gridPxW = gridW * cell;
         const int gridPxH = gridH * cell;
-        const int gridX = margin;
-        const int gridY = std::max(margin, (winH - gridPxH) / 2);
-        const int panelX = gridX + gridPxW + margin;
+        const int maxViewX = std::max(0, gridPxW - gridViewW);
+        const int maxViewY = std::max(0, gridPxH - gridViewH);
+        viewX = std::clamp(viewX, 0, maxViewX);
+        viewY = std::clamp(viewY, 0, maxViewY);
+        SDL_Rect gridViewport{gridX, gridY, gridViewW, gridViewH};
         SDL_Rect tileModeBtn{panelX, margin, 76, 30};
         SDL_Rect objectModeBtn{panelX + 84, margin, 76, 30};
         const int paletteStartY = margin + 40;
@@ -334,6 +498,19 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         while (SDL_PollEvent(&e)) {
             editorInput.handleEvent(e);
             if (e.type == SDL_QUIT) { running = false; break; }
+            if (e.type == SDL_MOUSEWHEEL && !paused) {
+                const bool shiftHeld = (SDL_GetModState() & SDL_KMOD_SHIFT) != 0;
+                const int step = std::max(8, cell * 2);
+                if (shiftHeld || e.wheel.x != 0) {
+                    viewX -= e.wheel.x * step;
+                    if (shiftHeld) viewX -= e.wheel.y * step;
+                } else {
+                    viewY -= e.wheel.y * step;
+                }
+                viewX = std::clamp(viewX, 0, maxViewX);
+                viewY = std::clamp(viewY, 0, maxViewY);
+                continue;
+            }
             if (e.type == SDL_FINGERDOWN && activeEditorFinger == 0) {
                 activeEditorFinger = e.tfinger.fingerID;
                 const int tx = (int)std::lround(e.tfinger.x * winW);
@@ -395,9 +572,9 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                         break;
                     }
                 }
-                if (tx >= gridX && ty >= gridY && tx < gridX + gridPxW && ty < gridY + gridPxH) {
-                    const int cx = (tx - gridX) / cell;
-                    const int cy = (ty - gridY) / cell;
+                if (SDL_PointInRect(&pt, &gridViewport)) {
+                    const int cx = ((tx - gridX) + viewX) / cell;
+                    const int cy = ((ty - gridY) + viewY) / cell;
                     applyAt(cx, cy, false);
                     fingerPainting = true;
                 } else {
@@ -409,9 +586,10 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 if (paused || !fingerPainting) continue;
                 const int tx = (int)std::lround(e.tfinger.x * winW);
                 const int ty = (int)std::lround(e.tfinger.y * winH);
-                if (tx >= gridX && ty >= gridY && tx < gridX + gridPxW && ty < gridY + gridPxH) {
-                    const int cx = (tx - gridX) / cell;
-                    const int cy = (ty - gridY) / cell;
+                SDL_Point pt{tx, ty};
+                if (SDL_PointInRect(&pt, &gridViewport)) {
+                    const int cx = ((tx - gridX) + viewX) / cell;
+                    const int cy = ((ty - gridY) + viewY) / cell;
                     applyAt(cx, cy, false);
                 }
                 continue;
@@ -474,6 +652,10 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                     grid[spawnY * gridW + spawnX] = 28;
                     placedObjects.clear();
                 }
+                if (e.key.key == SDLK_LEFT) viewX = std::max(0, viewX - std::max(8, cell * 2));
+                if (e.key.key == SDLK_RIGHT) viewX = std::min(maxViewX, viewX + std::max(8, cell * 2));
+                if (e.key.key == SDLK_UP) viewY = std::max(0, viewY - std::max(8, cell * 2));
+                if (e.key.key == SDLK_DOWN) viewY = std::min(maxViewY, viewY + std::max(8, cell * 2));
                 if (e.key.key == SDLK_s || e.key.key == SDLK_S || e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) {
                     savedPath = writeLocalLevelFile(grid, gridW, gridH, saveTargetPath, placedObjects);
                     if (!savedPath.empty()) {
@@ -564,6 +746,24 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             }
             if (e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEMOTION) {
                 if (paused) continue;
+                if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_MIDDLE) {
+                    SDL_Point pt{(int)e.button.x, (int)e.button.y};
+                    if (SDL_PointInRect(&pt, &gridViewport)) {
+                        middlePanning = true;
+                        lastPanMouseX = e.button.x;
+                        lastPanMouseY = e.button.y;
+                        continue;
+                    }
+                }
+                if (e.type == SDL_MOUSEMOTION && middlePanning) {
+                    const int dx = e.motion.x - lastPanMouseX;
+                    const int dy = e.motion.y - lastPanMouseY;
+                    lastPanMouseX = e.motion.x;
+                    lastPanMouseY = e.motion.y;
+                    viewX = std::clamp(viewX - dx, 0, maxViewX);
+                    viewY = std::clamp(viewY - dy, 0, maxViewY);
+                    continue;
+                }
                 bool dragPaint = (e.type == SDL_MOUSEMOTION) && ((e.motion.state & SDL_BUTTON_LMASK) || (e.motion.state & SDL_BUTTON_RMASK));
                 bool clickPaint = (e.type == SDL_MOUSEBUTTONDOWN) && (e.button.button == SDL_BUTTON_LEFT || e.button.button == SDL_BUTTON_RIGHT);
                 if (!dragPaint && !clickPaint) continue;
@@ -572,11 +772,16 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 bool erase = false;
                 if (e.type == SDL_MOUSEBUTTONDOWN) erase = (e.button.button == SDL_BUTTON_RIGHT);
                 if (e.type == SDL_MOUSEMOTION) erase = (e.motion.state & SDL_BUTTON_RMASK) != 0;
-                if (mx >= gridX && my >= gridY && mx < gridX + gridPxW && my < gridY + gridPxH) {
-                    int cx = (mx - gridX) / cell;
-                    int cy = (my - gridY) / cell;
+                SDL_Point pt{mx, my};
+                if (SDL_PointInRect(&pt, &gridViewport)) {
+                    int cx = ((mx - gridX) + viewX) / cell;
+                    int cy = ((my - gridY) + viewY) / cell;
                     applyAt(cx, cy, erase);
                 }
+            }
+            if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_MIDDLE) {
+                middlePanning = false;
+                continue;
             }
             if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
                 if (paused) continue;
@@ -618,10 +823,14 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         SDL_SetRenderDrawColor(ren, 18, 20, 26, 255);
         SDL_RenderClear(ren);
 
-        for (int y = 0; y < gridH; ++y) {
-            for (int x = 0; x < gridW; ++x) {
+        const int drawX0 = std::max(0, viewX / cell);
+        const int drawY0 = std::max(0, viewY / cell);
+        const int drawX1 = std::min(gridW - 1, (viewX + gridViewW + cell - 1) / cell);
+        const int drawY1 = std::min(gridH - 1, (viewY + gridViewH + cell - 1) / cell);
+        for (int y = drawY0; y <= drawY1; ++y) {
+            for (int x = drawX0; x <= drawX1; ++x) {
                 unsigned short id = grid[y * gridW + x];
-                SDL_Rect rc{gridX + x * cell, gridY + y * cell, cell, cell};
+                SDL_Rect rc{gridX + x * cell - viewX, gridY + y * cell - viewY, cell, cell};
                 const Frame* f = (id < blocksFrameById.size()) ? blocksFrameById[id] : nullptr;
                 if (blocksTex && f) {
                     renderFrame(ren, blocksTex, *f, rc);
@@ -646,7 +855,8 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             const int cx = (int)std::floor(obj.x / (float)kEditorTileSize);
             const int cy = (int)std::floor(obj.y / (float)kEditorTileSize);
             if (cx < 0 || cy < 0 || cx >= gridW || cy >= gridH) continue;
-            SDL_Rect rc{gridX + cx * cell, gridY + cy * cell, cell, cell};
+            SDL_Rect rc{gridX + cx * cell - viewX, gridY + cy * cell - viewY, cell, cell};
+            if (rc.x + rc.w < gridX || rc.y + rc.h < gridY || rc.x > gridX + gridViewW || rc.y > gridY + gridViewH) continue;
             Uint8 r = 220, g = 220, b = 240;
             objectColor(id, r, g, b);
             SDL_SetRenderDrawColor(ren, r, g, b, 200);
@@ -656,22 +866,23 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         }
         // Draw grid lines after tiles so visual cells align exactly with paint hitboxes.
         SDL_SetRenderDrawColor(ren, 34, 40, 56, 255);
-        for (int x = 0; x <= gridW; ++x) {
-            int gx = gridX + x * cell;
-            SDL_RenderLine(ren, (float)gx, (float)gridY, (float)gx, (float)(gridY + gridPxH));
+        for (int x = drawX0; x <= drawX1 + 1; ++x) {
+            int gx = gridX + x * cell - viewX;
+            SDL_RenderLine(ren, (float)gx, (float)gridY, (float)gx, (float)(gridY + gridViewH));
         }
-        for (int y = 0; y <= gridH; ++y) {
-            int gy = gridY + y * cell;
-            SDL_RenderLine(ren, (float)gridX, (float)gy, (float)(gridX + gridPxW), (float)gy);
+        for (int y = drawY0; y <= drawY1 + 1; ++y) {
+            int gy = gridY + y * cell - viewY;
+            SDL_RenderLine(ren, (float)gridX, (float)gy, (float)(gridX + gridViewW), (float)gy);
         }
         SDL_SetRenderDrawColor(ren, 90, 110, 140, 255);
-        SDL_Rect border{gridX - 1, gridY - 1, gridPxW + 2, gridPxH + 2};
+        SDL_Rect border{gridX - 1, gridY - 1, gridViewW + 2, gridViewH + 2};
         SDL_RenderDrawRect(ren, &border);
 
         DrawText(ren, panelX, winH - 96, 2, "S/ENTER: SAVE+PLAY");
         DrawText(ren, panelX, winH - 72, 2, "C: CLEAR");
         DrawText(ren, panelX, winH - 48, 2, "ESC: PAUSE  O: MODE");
         DrawText(ren, panelX, winH - 24, 2, objectMode ? "OBJ MODE: tap obj to remove / RMB erase" : "TILE MODE: LMB paint / RMB erase");
+        DrawText(ren, panelX, winH - 192, 2, "WHEEL/MMB/ARROWS: SCROLL");
         if (!statusText.empty() && SDL_GetTicks() < statusUntil) {
             DrawText(ren, panelX, winH - 168, 2, statusText);
         }
@@ -1206,7 +1417,11 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
             else showStatus("Downloaded to save folder.");
         };
         auto resolveSelectedPath = [&](const LevelEntry& sel) -> std::string {
-            if (sel.path == "__local_editor__") return RunLocalLevelEditor(win, ren);
+            if (sel.path == "__local_editor__") {
+                const NewLevelPromptResult prompt = RunNewLevelPrompt(win, ren);
+                if (!prompt.accepted) return {};
+                return RunLocalLevelEditor(win, ren, "", prompt.name, prompt.width, prompt.height);
+            }
             std::string p = cacheRemoteLevel(sel);
             if (p.empty()) p = sel.path;
             return p;

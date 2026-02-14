@@ -117,6 +117,7 @@
  /home/benno111/Documents/GitHub/DF-New/src/LevelManager.h \
  /home/benno111/Documents/GitHub/DF-New/src/FrontendMenu.h \
  /home/benno111/Documents/GitHub/DF-New/src/GameSupport.h \
+ /home/benno111/Documents/GitHub/DF-New/src/ParallaxRenderer.h \
  /home/benno111/Documents/GitHub/DF-New/src/CrashReporter.h \
  /home/benno111/Documents/GitHub/DF-New/src/AudioSystem.h \
  /home/benno111/Documents/GitHub/DF-New/src/InputSystem.h
@@ -237,6 +238,7 @@
 /home/benno111/Documents/GitHub/DF-New/src/LevelManager.h:
 /home/benno111/Documents/GitHub/DF-New/src/FrontendMenu.h:
 /home/benno111/Documents/GitHub/DF-New/src/GameSupport.h:
+/home/benno111/Documents/GitHub/DF-New/src/ParallaxRenderer.h:
 /home/benno111/Documents/GitHub/DF-New/src/CrashReporter.h:
 /home/benno111/Documents/GitHub/DF-New/src/AudioSystem.h:
 /home/benno111/Documents/GitHub/DF-New/src/InputSystem.h:

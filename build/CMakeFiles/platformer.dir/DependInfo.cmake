@@ -16,6 +16,7 @@ set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "/home/benno111/Documents/GitHub/DF-New/src/LevelLoader.cpp" "CMakeFiles/platformer.dir/src/LevelLoader.cpp.o" "gcc" "CMakeFiles/platformer.dir/src/LevelLoader.cpp.o.d"
   "/home/benno111/Documents/GitHub/DF-New/src/LevelManager.cpp" "CMakeFiles/platformer.dir/src/LevelManager.cpp.o" "gcc" "CMakeFiles/platformer.dir/src/LevelManager.cpp.o.d"
   "/home/benno111/Documents/GitHub/DF-New/src/LevelSelect.cpp" "CMakeFiles/platformer.dir/src/LevelSelect.cpp.o" "gcc" "CMakeFiles/platformer.dir/src/LevelSelect.cpp.o.d"
+  "/home/benno111/Documents/GitHub/DF-New/src/ParallaxRenderer.cpp" "CMakeFiles/platformer.dir/src/ParallaxRenderer.cpp.o" "gcc" "CMakeFiles/platformer.dir/src/ParallaxRenderer.cpp.o.d"
   "/home/benno111/Documents/GitHub/DF-New/src/PlayerController.cpp" "CMakeFiles/platformer.dir/src/PlayerController.cpp.o" "gcc" "CMakeFiles/platformer.dir/src/PlayerController.cpp.o.d"
   "/home/benno111/Documents/GitHub/DF-New/src/TextRenderer.cpp" "CMakeFiles/platformer.dir/src/TextRenderer.cpp.o" "gcc" "CMakeFiles/platformer.dir/src/TextRenderer.cpp.o.d"
   "/home/benno111/Documents/GitHub/DF-New/src/TileMap.cpp" "CMakeFiles/platformer.dir/src/TileMap.cpp.o" "gcc" "CMakeFiles/platformer.dir/src/TileMap.cpp.o.d"

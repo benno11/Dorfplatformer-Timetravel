@@ -43,6 +43,7 @@
 #include "LevelManager.h"
 #include "FrontendMenu.h"
 #include "GameSupport.h"
+#include "ParallaxRenderer.h"
 #include "CrashReporter.h"
 #include "AudioSystem.h"
 #include "InputSystem.h"
@@ -606,16 +607,6 @@ int main(int argc, char** argv) {
         bgFrameByNameWorld6,
         &bgAnimFramesWorld6
     );
-    auto findBgFrameIn = [&](const std::unordered_map<std::string, Frame>& frameByName, const char* name) -> const Frame* {
-        auto it = frameByName.find(name);
-        if (it != frameByName.end()) return &it->second;
-        const std::string s(name ? name : "");
-        if (s.size() > 4 && s.substr(s.size() - 4) == ".png") {
-            auto itNoExt = frameByName.find(s.substr(0, s.size() - 4));
-            if (itNoExt != frameByName.end()) return &itNoExt->second;
-        }
-        return nullptr;
-    };
     SDL_Texture* introCardTex = IMG_LoadTexture(ren, ResolveAssetPath("assets/Sheets/Introcard-uhd.png").c_str());
     if (introCardTex) SDL_SetTextureScaleMode(introCardTex, SDL_SCALEMODE_NEAREST);
     auto introCardFrames = loadPlistFrames("assets/Sheets/Introcard-uhd.plist");
@@ -796,6 +787,7 @@ int main(int argc, char** argv) {
     std::string appVersion = "dev";
     MovementConfig movementCfg{};
     float bossGravity = 0.0f;
+    std::array<float, 3> parallaxLayerScales{{0.80f, 0.80f, 0.80f}};
     {
         const std::string text = ReadTextFile("assets/config.json");
         if (!text.empty()) {
@@ -834,6 +826,17 @@ int main(int argc, char** argv) {
                 readMove("swim_up_speed", movementCfg.swimUpSpeed);
                 readMove("swim_rise", movementCfg.swimRise);
                 readMove("boss_gravity", bossGravity);
+            }
+            if (cfg.contains("background") && cfg["background"].is_object()) {
+                const auto& bg = cfg["background"];
+                if (bg.contains("parallax_layer_scales") && bg["parallax_layer_scales"].is_array()) {
+                    const auto& a = bg["parallax_layer_scales"];
+                    for (int i = 0; i < 3 && i < (int)a.size(); ++i) {
+                        if (a[i].is_number()) {
+                            parallaxLayerScales[i] = std::clamp((float)a[i].get<double>(), 0.1f, 4.0f);
+                        }
+                    }
+                }
             }
         }
     }
@@ -4116,6 +4119,34 @@ int main(int argc, char** argv) {
                 }
             }
             // Bumper objects (id 46): vertical bounce, up/down depending approach.
+            auto applyBumperBounce = [&](float targetY, float launchVy) -> bool {
+                const float oldY = player.y;
+                player.y = targetY;
+
+                // Keep player out of solids near bumpers placed against floor/ceiling.
+                const float nudgeDir = (launchVy < 0.0f) ? 1.0f : -1.0f;
+                int nudgeSteps = 0;
+                while (RectHitsSolid(map, player.x, player.y, player.w, player.h) && nudgeSteps < 64) {
+                    player.y += nudgeDir;
+                    ++nudgeSteps;
+                }
+                if (RectHitsSolid(map, player.x, player.y, player.w, player.h)) {
+                    player.y = oldY;
+                    return false;
+                }
+
+                // If launch direction is immediately blocked, don't force into ceiling/floor.
+                const float probeY = player.y + ((launchVy < 0.0f) ? -2.0f : 2.0f);
+                if (RectHitsSolid(map, player.x, probeY, player.w, player.h)) {
+                    player.vy = 0.0f;
+                    player.onGround = (launchVy > 0.0f);
+                    return false;
+                }
+
+                player.vy = launchVy;
+                player.onGround = false;
+                return true;
+            };
             for (int objIdx = 0; objIdx < (int)objects.size(); ++objIdx) {
                 const auto& obj = objects[objIdx];
                 if (obj.id != "46") continue;
@@ -4131,21 +4162,19 @@ int main(int argc, char** argv) {
                 const float playerCY = player.y + player.h * 0.5f;
                 const float bumperCY = testBy + bh * 0.5f;
                 if (playerCY <= bumperCY && player.vy >= 0.0f) {
-                    player.y = testBy - (float)player.h;
-                    player.vy = -1200.0f;
-                    player.onGround = false;
-                    addMovementReason(MR_BUMPER);
-                    activeBumperIndices.insert(objIdx);
-                    audio.playBumperSfx();
+                    if (applyBumperBounce(testBy - (float)player.h, -1200.0f)) {
+                        addMovementReason(MR_BUMPER);
+                        activeBumperIndices.insert(objIdx);
+                        audio.playBumperSfx();
+                    }
                     break;
                 }
                 if (playerCY > bumperCY && player.vy <= 0.0f) {
-                    player.y = testBy + bh;
-                    player.vy = 1200.0f;
-                    player.onGround = false;
-                    addMovementReason(MR_BUMPER);
-                    activeBumperIndices.insert(objIdx);
-                    audio.playBumperSfx();
+                    if (applyBumperBounce(testBy + bh, 1200.0f)) {
+                        addMovementReason(MR_BUMPER);
+                        activeBumperIndices.insert(objIdx);
+                        audio.playBumperSfx();
+                    }
                     break;
                 }
             }
@@ -4388,91 +4417,22 @@ int main(int argc, char** argv) {
             renderedWorld6AnimatedBg = true;
         }
         if (!renderedWorld3PatternBg && !renderedWorld6AnimatedBg) {
-            // Parallax background (3 layers)
-            SDL_Texture* activeBgTex = bgTexWorld1;
-            const std::unordered_map<std::string, Frame>* activeBgFrames = &bgFrameByNameWorld1;
-            const std::vector<Frame>* activeBgFrameList = &bgFrameListWorld1;
-            const char* layerBackName = "far.png";
-            const char* layerMidName = "middle.png";
-            const char* layerMidAltName = nullptr;
-            if (currentWorldId == 2 && bgTexWorld2) {
-                activeBgTex = bgTexWorld2;
-                activeBgFrames = &bgFrameByNameWorld2;
-                activeBgFrameList = &bgFrameListWorld2;
-                layerBackName = "far.png";
-                layerMidName = "middle.png";
-                layerMidAltName = nullptr;
-            } else if (currentWorldId == 4 && bgTexWorld4) {
-                activeBgTex = bgTexWorld4;
-                activeBgFrames = &bgFrameByNameWorld4;
-                activeBgFrameList = &bgFrameListWorld4;
-                layerBackName = "far.png";
-                layerMidName = "mid.png";
-                layerMidAltName = "middle.png";
-            } else if (currentWorldId == 5 && bgTexWorld5) {
-                activeBgTex = bgTexWorld5;
-                activeBgFrames = &bgFrameByNameWorld5;
-                activeBgFrameList = &bgFrameListWorld5;
-                layerBackName = "far.png";
-                layerMidName = "middle.png";
-                layerMidAltName = nullptr;
-            }
-            const Frame* parallaxLayer0 = findBgFrameIn(*activeBgFrames, layerBackName);
-            const Frame* parallaxLayer1 = findBgFrameIn(*activeBgFrames, layerMidName);
-            if (!parallaxLayer1 && layerMidAltName) {
-                parallaxLayer1 = findBgFrameIn(*activeBgFrames, layerMidAltName);
-            }
-            const Frame* parallaxLayer2 = parallaxLayer1;
-            if ((!parallaxLayer0 || !parallaxLayer1 || !parallaxLayer2) && activeBgFrameList && !activeBgFrameList->empty()) {
-                const size_t n = activeBgFrameList->size();
-                if (!parallaxLayer0) parallaxLayer0 = &(*activeBgFrameList)[0];
-                if (!parallaxLayer1) parallaxLayer1 = &(*activeBgFrameList)[std::min<size_t>(1, n - 1)];
-                if (!parallaxLayer2) parallaxLayer2 = parallaxLayer1;
-            }
-            if (activeBgTex && (parallaxLayer0 || parallaxLayer1 || parallaxLayer2)) {
-                struct Layer {
-                    const Frame* frame;
-                    bool verticalParallax;
-                    Uint8 alpha;
-                    float scale;
-                };
-                Layer layers[3] = {
-                    {parallaxLayer0, false, 255, 0.80f},
-                    {parallaxLayer1, true, 255, 0.80f},
-                    {parallaxLayer2, true, 255, 0.80f}
-                };
-                const float parallaxFactor = 0.5f;
-                SDL_SetTextureBlendMode(activeBgTex, SDL_BLENDMODE_BLEND);
-                for (const auto& layer : layers) {
-                    const Frame* f = layer.frame;
-                    if (!f) continue;
-                    const int srcW = f->rotated ? f->rect.h : f->rect.w;
-                    const int srcH = f->rotated ? f->rect.w : f->rect.h;
-                    const float parallaxScale = layer.scale;
-                    int fw = std::max(1, (int)std::lround((float)srcW * parallaxScale));
-                    int fh = std::max(1, (int)std::lround((float)srcH * parallaxScale));
-                    if (fw <= 0 || fh <= 0) continue;
-                    float ox = std::fmod(camX * parallaxFactor, (float)fw);
-                    float maxCamY = std::max(1.0f, (float)(map.h * map.tileSize - worldViewH));
-                    float parallaxCamY = maxCamY - camY;
-                    float t = std::clamp((parallaxCamY / maxCamY) * parallaxFactor, 0.0f, 1.0f);
-                    if (!layer.verticalParallax) t = 0.0f;
-                    if (ox < 0) ox += fw;
-                    float yF = (float)worldViewH - (float)fh + t * (float)fh;
-                    int y = (int)std::lround(yF);
-                    SDL_SetTextureAlphaMod(activeBgTex, layer.alpha);
-                    for (int x = -1; x <= worldViewW / fw + 1; ++x) {
-                        SDL_Rect dst{
-                            (int)(x * fw - ox),
-                            y,
-                            fw,
-                            fh
-                        };
-                        renderFrame(ren, activeBgTex, *f, dst);
-                    }
-                }
-                SDL_SetTextureAlphaMod(activeBgTex, 255);
-            }
+            RenderParallaxBackground(
+                ren,
+                currentWorldId,
+                camX,
+                camY,
+                map.w,
+                map.h,
+                map.tileSize,
+                worldViewW,
+                worldViewH,
+                parallaxLayerScales,
+                ParallaxWorldAssets{bgTexWorld1, &bgFrameByNameWorld1, &bgFrameListWorld1},
+                ParallaxWorldAssets{bgTexWorld2, &bgFrameByNameWorld2, &bgFrameListWorld2},
+                ParallaxWorldAssets{bgTexWorld4, &bgFrameByNameWorld4, &bgFrameListWorld4},
+                ParallaxWorldAssets{bgTexWorld5, &bgFrameByNameWorld5, &bgFrameListWorld5}
+            );
         }
         if (currentWorldId == 5) {
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
