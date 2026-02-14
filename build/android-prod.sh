@@ -595,6 +595,7 @@ SRC=(
   src/FrontendMenu.cpp
   src/AudioSystem.cpp
   src/ParallaxRenderer.cpp
+  src/World3PatternBackground.cpp
 )
 
 OUT_LIB="$OUT_DIR/libplatformer.so"

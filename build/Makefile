@@ -142,6 +142,30 @@ sheet_config/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/sheet_config.dir/build.make CMakeFiles/sheet_config.dir/build
 .PHONY : sheet_config/fast
 
+src/AndroidEntrypoints.o: src/AndroidEntrypoints.cpp.o
+.PHONY : src/AndroidEntrypoints.o
+
+# target to build an object file
+src/AndroidEntrypoints.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/platformer.dir/build.make CMakeFiles/platformer.dir/src/AndroidEntrypoints.cpp.o
+.PHONY : src/AndroidEntrypoints.cpp.o
+
+src/AndroidEntrypoints.i: src/AndroidEntrypoints.cpp.i
+.PHONY : src/AndroidEntrypoints.i
+
+# target to preprocess a source file
+src/AndroidEntrypoints.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/platformer.dir/build.make CMakeFiles/platformer.dir/src/AndroidEntrypoints.cpp.i
+.PHONY : src/AndroidEntrypoints.cpp.i
+
+src/AndroidEntrypoints.s: src/AndroidEntrypoints.cpp.s
+.PHONY : src/AndroidEntrypoints.s
+
+# target to generate assembly for a file
+src/AndroidEntrypoints.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/platformer.dir/build.make CMakeFiles/platformer.dir/src/AndroidEntrypoints.cpp.s
+.PHONY : src/AndroidEntrypoints.cpp.s
+
 src/AssetPath.o: src/AssetPath.cpp.o
 .PHONY : src/AssetPath.o
 
@@ -237,6 +261,30 @@ src/FrontendMenu.s: src/FrontendMenu.cpp.s
 src/FrontendMenu.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/platformer.dir/build.make CMakeFiles/platformer.dir/src/FrontendMenu.cpp.s
 .PHONY : src/FrontendMenu.cpp.s
+
+src/GameApp.o: src/GameApp.cpp.o
+.PHONY : src/GameApp.o
+
+# target to build an object file
+src/GameApp.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/platformer.dir/build.make CMakeFiles/platformer.dir/src/GameApp.cpp.o
+.PHONY : src/GameApp.cpp.o
+
+src/GameApp.i: src/GameApp.cpp.i
+.PHONY : src/GameApp.i
+
+# target to preprocess a source file
+src/GameApp.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/platformer.dir/build.make CMakeFiles/platformer.dir/src/GameApp.cpp.i
+.PHONY : src/GameApp.cpp.i
+
+src/GameApp.s: src/GameApp.cpp.s
+.PHONY : src/GameApp.s
+
+# target to generate assembly for a file
+src/GameApp.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/platformer.dir/build.make CMakeFiles/platformer.dir/src/GameApp.cpp.s
+.PHONY : src/GameApp.cpp.s
 
 src/GameSupport.o: src/GameSupport.cpp.o
 .PHONY : src/GameSupport.o
@@ -454,6 +502,30 @@ src/TileMap.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/platformer.dir/build.make CMakeFiles/platformer.dir/src/TileMap.cpp.s
 .PHONY : src/TileMap.cpp.s
 
+src/World3PatternBackground.o: src/World3PatternBackground.cpp.o
+.PHONY : src/World3PatternBackground.o
+
+# target to build an object file
+src/World3PatternBackground.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/platformer.dir/build.make CMakeFiles/platformer.dir/src/World3PatternBackground.cpp.o
+.PHONY : src/World3PatternBackground.cpp.o
+
+src/World3PatternBackground.i: src/World3PatternBackground.cpp.i
+.PHONY : src/World3PatternBackground.i
+
+# target to preprocess a source file
+src/World3PatternBackground.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/platformer.dir/build.make CMakeFiles/platformer.dir/src/World3PatternBackground.cpp.i
+.PHONY : src/World3PatternBackground.cpp.i
+
+src/World3PatternBackground.s: src/World3PatternBackground.cpp.s
+.PHONY : src/World3PatternBackground.s
+
+# target to generate assembly for a file
+src/World3PatternBackground.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/platformer.dir/build.make CMakeFiles/platformer.dir/src/World3PatternBackground.cpp.s
+.PHONY : src/World3PatternBackground.cpp.s
+
 src/main.o: src/main.cpp.o
 .PHONY : src/main.o
 
@@ -488,6 +560,9 @@ help:
 	@echo "... rebuild_cache"
 	@echo "... platformer"
 	@echo "... sheet_config"
+	@echo "... src/AndroidEntrypoints.o"
+	@echo "... src/AndroidEntrypoints.i"
+	@echo "... src/AndroidEntrypoints.s"
 	@echo "... src/AssetPath.o"
 	@echo "... src/AssetPath.i"
 	@echo "... src/AssetPath.s"
@@ -500,6 +575,9 @@ help:
 	@echo "... src/FrontendMenu.o"
 	@echo "... src/FrontendMenu.i"
 	@echo "... src/FrontendMenu.s"
+	@echo "... src/GameApp.o"
+	@echo "... src/GameApp.i"
+	@echo "... src/GameApp.s"
 	@echo "... src/GameSupport.o"
 	@echo "... src/GameSupport.i"
 	@echo "... src/GameSupport.s"
@@ -527,6 +605,9 @@ help:
 	@echo "... src/TileMap.o"
 	@echo "... src/TileMap.i"
 	@echo "... src/TileMap.s"
+	@echo "... src/World3PatternBackground.o"
+	@echo "... src/World3PatternBackground.i"
+	@echo "... src/World3PatternBackground.s"
 	@echo "... src/main.o"
 	@echo "... src/main.i"
 	@echo "... src/main.s"

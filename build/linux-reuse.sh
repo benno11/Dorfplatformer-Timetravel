@@ -141,6 +141,7 @@ SRC=(
   src/FrontendMenu.cpp
   src/AudioSystem.cpp
   src/ParallaxRenderer.cpp
+  src/World3PatternBackground.cpp
 )
 
 OBJ_DIR="$ROOT_DIR/.build/linux-reuse/obj"

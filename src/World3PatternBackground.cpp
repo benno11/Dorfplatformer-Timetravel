@@ -1,0 +1,61 @@
+#include "World3PatternBackground.h"
+
+#include <algorithm>
+#include <cmath>
+
+bool RenderWorld3PatternBackground(
+    SDL_Renderer* ren,
+    SDL_Texture* blocksTex,
+    const Frame* const world3PatternFrames[10],
+    int currentLevelId,
+    int mapTileSize,
+    int worldViewW,
+    int worldViewH,
+    float camX,
+    float camY
+) {
+    if (!ren || !blocksTex || !world3PatternFrames) return false;
+
+    const Frame* fallbackFrame = nullptr;
+    for (int i = 0; i < 10; ++i) {
+        const Frame* f = world3PatternFrames[i];
+        if (f) {
+            fallbackFrame = f;
+            break;
+        }
+    }
+    if (!fallbackFrame) return false;
+
+    const int blockW = std::max(16, mapTileSize * 2);
+    const int blockH = std::max(16, mapTileSize * 2);
+    const float world3BgParallaxX = 0.35f;
+    const float world3BgParallaxY = 0.25f;
+    const float bgCamX = camX * world3BgParallaxX;
+    const float bgCamY = camY * world3BgParallaxY;
+    const int bgOffsetX = (int)std::floor(bgCamX) % blockW;
+    const int bgOffsetY = (int)std::floor(bgCamY) % blockH;
+    const int worldBaseGX = (int)std::floor(bgCamX / (float)blockW);
+    const int worldBaseGY = (int)std::floor(bgCamY / (float)blockH);
+
+    SDL_SetTextureColorMod(blocksTex, 150, 150, 150);
+    for (int y = -bgOffsetY - blockH, gy = worldBaseGY - 1; y < worldViewH + blockH; y += blockH, ++gy) {
+        for (int x = -bgOffsetX - blockW, gx = worldBaseGX - 1; x < worldViewW + blockW; x += blockW, ++gx) {
+            unsigned int hash = (unsigned int)(gx * 73856093u) ^ (unsigned int)(gy * 19349663u) ^ 0x9e3779b9u;
+            hash ^= (unsigned int)(currentLevelId * 83492791u);
+            const int frameIndex = (int)(hash % 10u);
+            const Frame* frame = world3PatternFrames[frameIndex];
+            if (!frame) frame = fallbackFrame;
+
+            const int dstLeft = std::max(0, x);
+            const int dstTop = std::max(0, y);
+            const int dstRight = std::min(worldViewW, x + blockW);
+            const int dstBottom = std::min(worldViewH, y + blockH);
+            if (dstLeft >= dstRight || dstTop >= dstBottom) continue;
+
+            SDL_Rect dst{dstLeft, dstTop, dstRight - dstLeft, dstBottom - dstTop};
+            renderFrame(ren, blocksTex, *frame, dst);
+        }
+    }
+    SDL_SetTextureColorMod(blocksTex, 255, 255, 255);
+    return true;
+}

@@ -121,18 +121,7 @@
  /home/benno111/Documents/GitHub/DF-New/src/CrashReporter.h \
  /home/benno111/Documents/GitHub/DF-New/src/AudioSystem.h \
  /home/benno111/Documents/GitHub/DF-New/src/InputSystem.h \
- /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart01.inl \
- /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart02.inl \
- /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart03.inl \
- /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart04.inl \
- /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart05.inl \
- /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart06.inl \
- /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart07.inl \
- /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart08.inl \
- /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart09.inl \
- /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart10.inl \
- /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart11.inl \
- /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart12.inl
+ /home/benno111/Documents/GitHub/DF-New/src/World3PatternBackground.h
 /home/benno111/Documents/GitHub/DF-New/.build/include/sdl3/SDL.h:
 /home/benno111/Documents/GitHub/DF-New/deps/linux-sdl3-src/include/SDL3/SDL_stdinc.h:
 /home/benno111/Documents/GitHub/DF-New/deps/linux-sdl3-src/include/SDL3/SDL_platform_defines.h:
@@ -254,15 +243,4 @@
 /home/benno111/Documents/GitHub/DF-New/src/CrashReporter.h:
 /home/benno111/Documents/GitHub/DF-New/src/AudioSystem.h:
 /home/benno111/Documents/GitHub/DF-New/src/InputSystem.h:
-/home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart01.inl:
-/home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart02.inl:
-/home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart03.inl:
-/home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart04.inl:
-/home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart05.inl:
-/home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart06.inl:
-/home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart07.inl:
-/home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart08.inl:
-/home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart09.inl:
-/home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart10.inl:
-/home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart11.inl:
-/home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart12.inl:
+/home/benno111/Documents/GitHub/DF-New/src/World3PatternBackground.h:

@@ -3854,6 +3854,18 @@ CMakeFiles/platformer.dir/src/main.cpp.o
  /home/benno111/Documents/GitHub/DF-New/src/PlayerController.h
  /home/benno111/Documents/GitHub/DF-New/src/TextRenderer.h
  /home/benno111/Documents/GitHub/DF-New/src/TileMap.h
+ /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart01.inl
+ /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart02.inl
+ /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart03.inl
+ /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart04.inl
+ /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart05.inl
+ /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart06.inl
+ /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart07.inl
+ /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart08.inl
+ /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart09.inl
+ /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart10.inl
+ /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart11.inl
+ /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart12.inl
  /usr/include/alloca.h
  /usr/include/asm-generic/bitsperlong.h
  /usr/include/asm-generic/errno-base.h

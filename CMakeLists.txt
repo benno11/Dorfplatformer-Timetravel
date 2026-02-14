@@ -66,6 +66,7 @@ add_executable(platformer
   src/FrontendMenu.cpp
   src/AudioSystem.cpp
   src/ParallaxRenderer.cpp
+  src/World3PatternBackground.cpp
 )
 message(STATUS "Added target: platformer")
 

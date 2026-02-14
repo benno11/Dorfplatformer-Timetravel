@@ -2777,3 +2777,13 @@ SDL drivers: video=x11 audio=pulseaudio
 audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
 active audio driver: pulseaudio
 connected gamepads: <none>
+=== startup begin ===
+audio preselect: pulseaudio
+init attempt: video+gamepad (env defaults) -> ok
+SDL_Init completed
+audio init attempt (pipewire): mismatch active=pulseaudio expected=pipewire
+audio init attempt (pulseaudio): ok
+SDL drivers: video=x11 audio=pulseaudio
+audio drivers available: pipewire, pulseaudio, alsa, sndio, disk, dummy
+active audio driver: pulseaudio
+connected gamepads: <none>

@@ -388,6 +388,7 @@ PLATFORMER_SOURCES=(
   "$SRC_DIR/FrontendMenu.cpp"
   "$SRC_DIR/AudioSystem.cpp"
   "$SRC_DIR/ParallaxRenderer.cpp"
+  "$SRC_DIR/World3PatternBackground.cpp"
 )
 
 SHEET_SOURCES=(

@@ -3,6 +3,8 @@ platformer: \
   /usr/lib/gcc/x86_64-linux-gnu/14/../../../x86_64-linux-gnu/crti.o \
   /usr/lib/gcc/x86_64-linux-gnu/14/crtbeginS.o \
   CMakeFiles/platformer.dir/src/main.cpp.o \
+  CMakeFiles/platformer.dir/src/GameApp.cpp.o \
+  CMakeFiles/platformer.dir/src/AndroidEntrypoints.cpp.o \
   CMakeFiles/platformer.dir/src/TileMap.cpp.o \
   CMakeFiles/platformer.dir/src/LevelLoader.cpp.o \
   CMakeFiles/platformer.dir/src/TextRenderer.cpp.o \
@@ -15,6 +17,7 @@ platformer: \
   CMakeFiles/platformer.dir/src/FrontendMenu.cpp.o \
   CMakeFiles/platformer.dir/src/AudioSystem.cpp.o \
   CMakeFiles/platformer.dir/src/ParallaxRenderer.cpp.o \
+  CMakeFiles/platformer.dir/src/World3PatternBackground.cpp.o \
   /usr/lib/x86_64-linux-gnu/libSDL3_image.so.0.2.4 \
   /usr/lib/x86_64-linux-gnu/libSDL3_ttf.so.0.2.2 \
   /usr/local/lib/libSDL3_mixer.so.0.1.3 \
@@ -195,6 +198,10 @@ platformer: \
 
 CMakeFiles/platformer.dir/src/main.cpp.o:
 
+CMakeFiles/platformer.dir/src/GameApp.cpp.o:
+
+CMakeFiles/platformer.dir/src/AndroidEntrypoints.cpp.o:
+
 CMakeFiles/platformer.dir/src/TileMap.cpp.o:
 
 CMakeFiles/platformer.dir/src/LevelLoader.cpp.o:
@@ -218,6 +225,8 @@ CMakeFiles/platformer.dir/src/FrontendMenu.cpp.o:
 CMakeFiles/platformer.dir/src/AudioSystem.cpp.o:
 
 CMakeFiles/platformer.dir/src/ParallaxRenderer.cpp.o:
+
+CMakeFiles/platformer.dir/src/World3PatternBackground.cpp.o:
 
 /usr/lib/x86_64-linux-gnu/libSDL3_image.so.0.2.4:
 

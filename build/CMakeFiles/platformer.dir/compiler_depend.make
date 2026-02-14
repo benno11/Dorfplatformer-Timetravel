@@ -3841,6 +3841,18 @@ CMakeFiles/platformer.dir/src/main.cpp.o: /home/benno111/Documents/GitHub/DF-New
   /home/benno111/Documents/GitHub/DF-New/src/PlayerController.h \
   /home/benno111/Documents/GitHub/DF-New/src/TextRenderer.h \
   /home/benno111/Documents/GitHub/DF-New/src/TileMap.h \
+  /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart01.inl \
+  /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart02.inl \
+  /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart03.inl \
+  /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart04.inl \
+  /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart05.inl \
+  /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart06.inl \
+  /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart07.inl \
+  /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart08.inl \
+  /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart09.inl \
+  /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart10.inl \
+  /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart11.inl \
+  /home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart12.inl \
   /usr/include/alloca.h \
   /usr/include/asm-generic/bitsperlong.h \
   /usr/include/asm-generic/errno-base.h \
@@ -4602,8 +4614,6 @@ CMakeFiles/platformer.dir/src/AudioSystem.cpp.o:
 
 /usr/lib/i386-linux-gnu/libbrotlidec.so.1:
 
-/usr/lib/i386-linux-gnu/libatomic.so.1:
-
 /usr/lib/i386-linux-gnu/libLerc.so.4:
 
 /usr/lib/gcc/x86_64-linux-gnu/14/libstdc++.so:
@@ -4690,8 +4700,6 @@ CMakeFiles/platformer.dir/src/AudioSystem.cpp.o:
 
 /lib/i386-linux-gnu/libzstd.so.1:
 
-/lib/i386-linux-gnu/libunistring.so.5:
-
 /lib/i386-linux-gnu/libtasn1.so.6:
 
 /usr/lib/x86_64-linux-gnu/crtn.o:
@@ -4743,6 +4751,30 @@ CMakeFiles/platformer.dir/src/AudioSystem.cpp.o:
 /lib/i386-linux-gnu/libcrypto.so.3:
 
 /lib/i386-linux-gnu/libcom_err.so.2:
+
+/lib/i386-linux-gnu/libbrotlicommon.so.1:
+
+/lib/i386-linux-gnu/libLerc.so.4:
+
+/usr/include/c++/14/iostream:
+
+/usr/include/c++/14/condition_variable:
+
+/home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart12.inl:
+
+/usr/lib/i386-linux-gnu/libatomic.so.1:
+
+/home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart10.inl:
+
+/home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart09.inl:
+
+/home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart08.inl:
+
+/lib/i386-linux-gnu/libunistring.so.5:
+
+/home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart07.inl:
+
+/home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart06.inl:
 
 /usr/lib/i386-linux-gnu/libnghttp3.so.9:
 
@@ -4924,6 +4956,10 @@ CMakeFiles/platformer.dir/src/AssetPath.cpp.o:
 
 /usr/include/linux/types.h:
 
+/lib/i386-linux-gnu/libatomic.so.1:
+
+/usr/include/c++/14/bits/std_abs.h:
+
 /usr/include/x86_64-linux-gnu/bits/pthreadtypes.h:
 
 /usr/local/include/SDL3/SDL_tray.h:
@@ -4987,6 +5023,8 @@ CMakeFiles/platformer.dir/src/AssetPath.cpp.o:
 /usr/include/nlohmann/detail/iterators/iterator_traits.hpp:
 
 /home/benno111/Documents/GitHub/DF-New/src/AudioSystem.cpp:
+
+/home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart05.inl:
 
 /usr/include/c++/14/tr1/hypergeometric.tcc:
 
@@ -5128,8 +5166,6 @@ CMakeFiles/platformer.dir/src/TextRenderer.cpp.o:
 
 /usr/include/x86_64-linux-gnu/bits/stdint-least.h:
 
-/lib/i386-linux-gnu/libLerc.so.4:
-
 /usr/include/c++/14/streambuf:
 
 /usr/include/c++/14/bits/string_view.tcc:
@@ -5163,10 +5199,6 @@ CMakeFiles/platformer.dir/src/TextRenderer.cpp.o:
 /usr/include/x86_64-linux-gnu/bits/types/__mbstate_t.h:
 
 /usr/include/math.h:
-
-/usr/include/c++/14/bits/std_abs.h:
-
-/lib/i386-linux-gnu/libatomic.so.1:
 
 /usr/include/c++/14/bits/basic_string.tcc:
 
@@ -5422,6 +5454,8 @@ include/sdl3/SDL.h:
 
 /usr/include/c++/14/ext/string_conversions.h:
 
+/home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart11.inl:
+
 /usr/include/c++/14/debug/assertions.h:
 
 /usr/include/c++/14/ext/alloc_traits.h:
@@ -5453,6 +5487,8 @@ include/sdl3/SDL.h:
 /usr/include/x86_64-linux-gnu/bits/posix_opt.h:
 
 /usr/include/nlohmann/detail/abi_macros.hpp:
+
+/home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart03.inl:
 
 /usr/include/c++/14/bits/locale_conv.h:
 
@@ -5582,6 +5618,8 @@ include/sdl3/SDL_image.h:
 
 /usr/local/include/SDL3/SDL_loadso.h:
 
+/home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart01.inl:
+
 /usr/local/include/SDL3/SDL_messagebox.h:
 
 /usr/include/x86_64-linux-gnu/bits/siginfo-consts-arch.h:
@@ -5593,6 +5631,8 @@ include/sdl3/SDL_image.h:
 /usr/include/x86_64-linux-gnu/c++/14/bits/cpu_defines.h:
 
 /usr/local/include/SDL3/SDL_platform_defines.h:
+
+/home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart02.inl:
 
 /usr/local/include/SDL3/SDL_rect.h:
 
@@ -5800,6 +5840,8 @@ CMakeFiles/platformer.dir/src/GameSupport.cpp.o:
 
 /usr/include/c++/14/valarray:
 
+/home/benno111/Documents/GitHub/DF-New/src/main_parts/MainPart04.inl:
+
 /usr/include/asm-generic/types.h:
 
 /usr/include/c++/14/version:
@@ -5934,12 +5976,6 @@ CMakeFiles/platformer.dir/src/LevelSelect.cpp.o:
 
 /home/benno111/Documents/GitHub/DF-New/src/TextRenderer.cpp:
 
-/usr/include/c++/14/condition_variable:
-
 /usr/include/c++/14/locale:
 
 include/sdl3/SDL_ttf.h:
-
-/usr/include/c++/14/iostream:
-
-/lib/i386-linux-gnu/libbrotlicommon.so.1:

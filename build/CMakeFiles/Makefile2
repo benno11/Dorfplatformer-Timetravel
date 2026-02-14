@@ -88,12 +88,12 @@ clean: CMakeFiles/sheet_config.dir/clean
 CMakeFiles/platformer.dir/all:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/platformer.dir/build.make CMakeFiles/platformer.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/platformer.dir/build.make CMakeFiles/platformer.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=1,2,3,4,5,6,7,8,9,10,11,12,13,14 "Built target platformer"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17 "Built target platformer"
 .PHONY : CMakeFiles/platformer.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/platformer.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/benno111/Documents/GitHub/DF-New/build/CMakeFiles 14
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/benno111/Documents/GitHub/DF-New/build/CMakeFiles 17
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/platformer.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/benno111/Documents/GitHub/DF-New/build/CMakeFiles 0
 .PHONY : CMakeFiles/platformer.dir/rule
@@ -105,7 +105,7 @@ platformer: CMakeFiles/platformer.dir/rule
 # codegen rule for target.
 CMakeFiles/platformer.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/platformer.dir/build.make CMakeFiles/platformer.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=1,2,3,4,5,6,7,8,9,10,11,12,13,14 "Finished codegen for target platformer"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17 "Finished codegen for target platformer"
 .PHONY : CMakeFiles/platformer.dir/codegen
 
 # clean rule for target.
@@ -120,7 +120,7 @@ CMakeFiles/platformer.dir/clean:
 CMakeFiles/sheet_config.dir/all:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/sheet_config.dir/build.make CMakeFiles/sheet_config.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/sheet_config.dir/build.make CMakeFiles/sheet_config.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=15,16 "Built target sheet_config"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=18,19 "Built target sheet_config"
 .PHONY : CMakeFiles/sheet_config.dir/all
 
 # Build rule for subdir invocation for target.
@@ -137,7 +137,7 @@ sheet_config: CMakeFiles/sheet_config.dir/rule
 # codegen rule for target.
 CMakeFiles/sheet_config.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/sheet_config.dir/build.make CMakeFiles/sheet_config.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=15,16 "Finished codegen for target sheet_config"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=18,19 "Finished codegen for target sheet_config"
 .PHONY : CMakeFiles/sheet_config.dir/codegen
 
 # clean rule for target.

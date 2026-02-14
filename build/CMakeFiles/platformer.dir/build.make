@@ -86,10 +86,38 @@ CMakeFiles/platformer.dir/src/main.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/platformer.dir/src/main.cpp.s"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/benno111/Documents/GitHub/DF-New/src/main.cpp -o CMakeFiles/platformer.dir/src/main.cpp.s
 
+CMakeFiles/platformer.dir/src/GameApp.cpp.o: CMakeFiles/platformer.dir/flags.make
+CMakeFiles/platformer.dir/src/GameApp.cpp.o: /home/benno111/Documents/GitHub/DF-New/src/GameApp.cpp
+CMakeFiles/platformer.dir/src/GameApp.cpp.o: CMakeFiles/platformer.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/platformer.dir/src/GameApp.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/platformer.dir/src/GameApp.cpp.o -MF CMakeFiles/platformer.dir/src/GameApp.cpp.o.d -o CMakeFiles/platformer.dir/src/GameApp.cpp.o -c /home/benno111/Documents/GitHub/DF-New/src/GameApp.cpp
+
+CMakeFiles/platformer.dir/src/GameApp.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/platformer.dir/src/GameApp.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/benno111/Documents/GitHub/DF-New/src/GameApp.cpp > CMakeFiles/platformer.dir/src/GameApp.cpp.i
+
+CMakeFiles/platformer.dir/src/GameApp.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/platformer.dir/src/GameApp.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/benno111/Documents/GitHub/DF-New/src/GameApp.cpp -o CMakeFiles/platformer.dir/src/GameApp.cpp.s
+
+CMakeFiles/platformer.dir/src/AndroidEntrypoints.cpp.o: CMakeFiles/platformer.dir/flags.make
+CMakeFiles/platformer.dir/src/AndroidEntrypoints.cpp.o: /home/benno111/Documents/GitHub/DF-New/src/AndroidEntrypoints.cpp
+CMakeFiles/platformer.dir/src/AndroidEntrypoints.cpp.o: CMakeFiles/platformer.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object CMakeFiles/platformer.dir/src/AndroidEntrypoints.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/platformer.dir/src/AndroidEntrypoints.cpp.o -MF CMakeFiles/platformer.dir/src/AndroidEntrypoints.cpp.o.d -o CMakeFiles/platformer.dir/src/AndroidEntrypoints.cpp.o -c /home/benno111/Documents/GitHub/DF-New/src/AndroidEntrypoints.cpp
+
+CMakeFiles/platformer.dir/src/AndroidEntrypoints.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/platformer.dir/src/AndroidEntrypoints.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/benno111/Documents/GitHub/DF-New/src/AndroidEntrypoints.cpp > CMakeFiles/platformer.dir/src/AndroidEntrypoints.cpp.i
+
+CMakeFiles/platformer.dir/src/AndroidEntrypoints.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/platformer.dir/src/AndroidEntrypoints.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/benno111/Documents/GitHub/DF-New/src/AndroidEntrypoints.cpp -o CMakeFiles/platformer.dir/src/AndroidEntrypoints.cpp.s
+
 CMakeFiles/platformer.dir/src/TileMap.cpp.o: CMakeFiles/platformer.dir/flags.make
 CMakeFiles/platformer.dir/src/TileMap.cpp.o: /home/benno111/Documents/GitHub/DF-New/src/TileMap.cpp
 CMakeFiles/platformer.dir/src/TileMap.cpp.o: CMakeFiles/platformer.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/platformer.dir/src/TileMap.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building CXX object CMakeFiles/platformer.dir/src/TileMap.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/platformer.dir/src/TileMap.cpp.o -MF CMakeFiles/platformer.dir/src/TileMap.cpp.o.d -o CMakeFiles/platformer.dir/src/TileMap.cpp.o -c /home/benno111/Documents/GitHub/DF-New/src/TileMap.cpp
 
 CMakeFiles/platformer.dir/src/TileMap.cpp.i: cmake_force
@@ -103,7 +131,7 @@ CMakeFiles/platformer.dir/src/TileMap.cpp.s: cmake_force
 CMakeFiles/platformer.dir/src/LevelLoader.cpp.o: CMakeFiles/platformer.dir/flags.make
 CMakeFiles/platformer.dir/src/LevelLoader.cpp.o: /home/benno111/Documents/GitHub/DF-New/src/LevelLoader.cpp
 CMakeFiles/platformer.dir/src/LevelLoader.cpp.o: CMakeFiles/platformer.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object CMakeFiles/platformer.dir/src/LevelLoader.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building CXX object CMakeFiles/platformer.dir/src/LevelLoader.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/platformer.dir/src/LevelLoader.cpp.o -MF CMakeFiles/platformer.dir/src/LevelLoader.cpp.o.d -o CMakeFiles/platformer.dir/src/LevelLoader.cpp.o -c /home/benno111/Documents/GitHub/DF-New/src/LevelLoader.cpp
 
 CMakeFiles/platformer.dir/src/LevelLoader.cpp.i: cmake_force
@@ -117,7 +145,7 @@ CMakeFiles/platformer.dir/src/LevelLoader.cpp.s: cmake_force
 CMakeFiles/platformer.dir/src/TextRenderer.cpp.o: CMakeFiles/platformer.dir/flags.make
 CMakeFiles/platformer.dir/src/TextRenderer.cpp.o: /home/benno111/Documents/GitHub/DF-New/src/TextRenderer.cpp
 CMakeFiles/platformer.dir/src/TextRenderer.cpp.o: CMakeFiles/platformer.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building CXX object CMakeFiles/platformer.dir/src/TextRenderer.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Building CXX object CMakeFiles/platformer.dir/src/TextRenderer.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/platformer.dir/src/TextRenderer.cpp.o -MF CMakeFiles/platformer.dir/src/TextRenderer.cpp.o.d -o CMakeFiles/platformer.dir/src/TextRenderer.cpp.o -c /home/benno111/Documents/GitHub/DF-New/src/TextRenderer.cpp
 
 CMakeFiles/platformer.dir/src/TextRenderer.cpp.i: cmake_force
@@ -131,7 +159,7 @@ CMakeFiles/platformer.dir/src/TextRenderer.cpp.s: cmake_force
 CMakeFiles/platformer.dir/src/LevelSelect.cpp.o: CMakeFiles/platformer.dir/flags.make
 CMakeFiles/platformer.dir/src/LevelSelect.cpp.o: /home/benno111/Documents/GitHub/DF-New/src/LevelSelect.cpp
 CMakeFiles/platformer.dir/src/LevelSelect.cpp.o: CMakeFiles/platformer.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building CXX object CMakeFiles/platformer.dir/src/LevelSelect.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Building CXX object CMakeFiles/platformer.dir/src/LevelSelect.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/platformer.dir/src/LevelSelect.cpp.o -MF CMakeFiles/platformer.dir/src/LevelSelect.cpp.o.d -o CMakeFiles/platformer.dir/src/LevelSelect.cpp.o -c /home/benno111/Documents/GitHub/DF-New/src/LevelSelect.cpp
 
 CMakeFiles/platformer.dir/src/LevelSelect.cpp.i: cmake_force
@@ -145,7 +173,7 @@ CMakeFiles/platformer.dir/src/LevelSelect.cpp.s: cmake_force
 CMakeFiles/platformer.dir/src/PlayerController.cpp.o: CMakeFiles/platformer.dir/flags.make
 CMakeFiles/platformer.dir/src/PlayerController.cpp.o: /home/benno111/Documents/GitHub/DF-New/src/PlayerController.cpp
 CMakeFiles/platformer.dir/src/PlayerController.cpp.o: CMakeFiles/platformer.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Building CXX object CMakeFiles/platformer.dir/src/PlayerController.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_8) "Building CXX object CMakeFiles/platformer.dir/src/PlayerController.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/platformer.dir/src/PlayerController.cpp.o -MF CMakeFiles/platformer.dir/src/PlayerController.cpp.o.d -o CMakeFiles/platformer.dir/src/PlayerController.cpp.o -c /home/benno111/Documents/GitHub/DF-New/src/PlayerController.cpp
 
 CMakeFiles/platformer.dir/src/PlayerController.cpp.i: cmake_force
@@ -159,7 +187,7 @@ CMakeFiles/platformer.dir/src/PlayerController.cpp.s: cmake_force
 CMakeFiles/platformer.dir/src/AssetPath.cpp.o: CMakeFiles/platformer.dir/flags.make
 CMakeFiles/platformer.dir/src/AssetPath.cpp.o: /home/benno111/Documents/GitHub/DF-New/src/AssetPath.cpp
 CMakeFiles/platformer.dir/src/AssetPath.cpp.o: CMakeFiles/platformer.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Building CXX object CMakeFiles/platformer.dir/src/AssetPath.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_9) "Building CXX object CMakeFiles/platformer.dir/src/AssetPath.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/platformer.dir/src/AssetPath.cpp.o -MF CMakeFiles/platformer.dir/src/AssetPath.cpp.o.d -o CMakeFiles/platformer.dir/src/AssetPath.cpp.o -c /home/benno111/Documents/GitHub/DF-New/src/AssetPath.cpp
 
 CMakeFiles/platformer.dir/src/AssetPath.cpp.i: cmake_force
@@ -173,7 +201,7 @@ CMakeFiles/platformer.dir/src/AssetPath.cpp.s: cmake_force
 CMakeFiles/platformer.dir/src/LevelManager.cpp.o: CMakeFiles/platformer.dir/flags.make
 CMakeFiles/platformer.dir/src/LevelManager.cpp.o: /home/benno111/Documents/GitHub/DF-New/src/LevelManager.cpp
 CMakeFiles/platformer.dir/src/LevelManager.cpp.o: CMakeFiles/platformer.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_8) "Building CXX object CMakeFiles/platformer.dir/src/LevelManager.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_10) "Building CXX object CMakeFiles/platformer.dir/src/LevelManager.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/platformer.dir/src/LevelManager.cpp.o -MF CMakeFiles/platformer.dir/src/LevelManager.cpp.o.d -o CMakeFiles/platformer.dir/src/LevelManager.cpp.o -c /home/benno111/Documents/GitHub/DF-New/src/LevelManager.cpp
 
 CMakeFiles/platformer.dir/src/LevelManager.cpp.i: cmake_force
@@ -187,7 +215,7 @@ CMakeFiles/platformer.dir/src/LevelManager.cpp.s: cmake_force
 CMakeFiles/platformer.dir/src/GameSupport.cpp.o: CMakeFiles/platformer.dir/flags.make
 CMakeFiles/platformer.dir/src/GameSupport.cpp.o: /home/benno111/Documents/GitHub/DF-New/src/GameSupport.cpp
 CMakeFiles/platformer.dir/src/GameSupport.cpp.o: CMakeFiles/platformer.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_9) "Building CXX object CMakeFiles/platformer.dir/src/GameSupport.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_11) "Building CXX object CMakeFiles/platformer.dir/src/GameSupport.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/platformer.dir/src/GameSupport.cpp.o -MF CMakeFiles/platformer.dir/src/GameSupport.cpp.o.d -o CMakeFiles/platformer.dir/src/GameSupport.cpp.o -c /home/benno111/Documents/GitHub/DF-New/src/GameSupport.cpp
 
 CMakeFiles/platformer.dir/src/GameSupport.cpp.i: cmake_force
@@ -201,7 +229,7 @@ CMakeFiles/platformer.dir/src/GameSupport.cpp.s: cmake_force
 CMakeFiles/platformer.dir/src/CrashReporter.cpp.o: CMakeFiles/platformer.dir/flags.make
 CMakeFiles/platformer.dir/src/CrashReporter.cpp.o: /home/benno111/Documents/GitHub/DF-New/src/CrashReporter.cpp
 CMakeFiles/platformer.dir/src/CrashReporter.cpp.o: CMakeFiles/platformer.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_10) "Building CXX object CMakeFiles/platformer.dir/src/CrashReporter.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_12) "Building CXX object CMakeFiles/platformer.dir/src/CrashReporter.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/platformer.dir/src/CrashReporter.cpp.o -MF CMakeFiles/platformer.dir/src/CrashReporter.cpp.o.d -o CMakeFiles/platformer.dir/src/CrashReporter.cpp.o -c /home/benno111/Documents/GitHub/DF-New/src/CrashReporter.cpp
 
 CMakeFiles/platformer.dir/src/CrashReporter.cpp.i: cmake_force
@@ -215,7 +243,7 @@ CMakeFiles/platformer.dir/src/CrashReporter.cpp.s: cmake_force
 CMakeFiles/platformer.dir/src/FrontendMenu.cpp.o: CMakeFiles/platformer.dir/flags.make
 CMakeFiles/platformer.dir/src/FrontendMenu.cpp.o: /home/benno111/Documents/GitHub/DF-New/src/FrontendMenu.cpp
 CMakeFiles/platformer.dir/src/FrontendMenu.cpp.o: CMakeFiles/platformer.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_11) "Building CXX object CMakeFiles/platformer.dir/src/FrontendMenu.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_13) "Building CXX object CMakeFiles/platformer.dir/src/FrontendMenu.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/platformer.dir/src/FrontendMenu.cpp.o -MF CMakeFiles/platformer.dir/src/FrontendMenu.cpp.o.d -o CMakeFiles/platformer.dir/src/FrontendMenu.cpp.o -c /home/benno111/Documents/GitHub/DF-New/src/FrontendMenu.cpp
 
 CMakeFiles/platformer.dir/src/FrontendMenu.cpp.i: cmake_force
@@ -229,7 +257,7 @@ CMakeFiles/platformer.dir/src/FrontendMenu.cpp.s: cmake_force
 CMakeFiles/platformer.dir/src/AudioSystem.cpp.o: CMakeFiles/platformer.dir/flags.make
 CMakeFiles/platformer.dir/src/AudioSystem.cpp.o: /home/benno111/Documents/GitHub/DF-New/src/AudioSystem.cpp
 CMakeFiles/platformer.dir/src/AudioSystem.cpp.o: CMakeFiles/platformer.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_12) "Building CXX object CMakeFiles/platformer.dir/src/AudioSystem.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_14) "Building CXX object CMakeFiles/platformer.dir/src/AudioSystem.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/platformer.dir/src/AudioSystem.cpp.o -MF CMakeFiles/platformer.dir/src/AudioSystem.cpp.o.d -o CMakeFiles/platformer.dir/src/AudioSystem.cpp.o -c /home/benno111/Documents/GitHub/DF-New/src/AudioSystem.cpp
 
 CMakeFiles/platformer.dir/src/AudioSystem.cpp.i: cmake_force
@@ -243,7 +271,7 @@ CMakeFiles/platformer.dir/src/AudioSystem.cpp.s: cmake_force
 CMakeFiles/platformer.dir/src/ParallaxRenderer.cpp.o: CMakeFiles/platformer.dir/flags.make
 CMakeFiles/platformer.dir/src/ParallaxRenderer.cpp.o: /home/benno111/Documents/GitHub/DF-New/src/ParallaxRenderer.cpp
 CMakeFiles/platformer.dir/src/ParallaxRenderer.cpp.o: CMakeFiles/platformer.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_13) "Building CXX object CMakeFiles/platformer.dir/src/ParallaxRenderer.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_15) "Building CXX object CMakeFiles/platformer.dir/src/ParallaxRenderer.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/platformer.dir/src/ParallaxRenderer.cpp.o -MF CMakeFiles/platformer.dir/src/ParallaxRenderer.cpp.o.d -o CMakeFiles/platformer.dir/src/ParallaxRenderer.cpp.o -c /home/benno111/Documents/GitHub/DF-New/src/ParallaxRenderer.cpp
 
 CMakeFiles/platformer.dir/src/ParallaxRenderer.cpp.i: cmake_force
@@ -254,9 +282,25 @@ CMakeFiles/platformer.dir/src/ParallaxRenderer.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/platformer.dir/src/ParallaxRenderer.cpp.s"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/benno111/Documents/GitHub/DF-New/src/ParallaxRenderer.cpp -o CMakeFiles/platformer.dir/src/ParallaxRenderer.cpp.s
 
+CMakeFiles/platformer.dir/src/World3PatternBackground.cpp.o: CMakeFiles/platformer.dir/flags.make
+CMakeFiles/platformer.dir/src/World3PatternBackground.cpp.o: /home/benno111/Documents/GitHub/DF-New/src/World3PatternBackground.cpp
+CMakeFiles/platformer.dir/src/World3PatternBackground.cpp.o: CMakeFiles/platformer.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_16) "Building CXX object CMakeFiles/platformer.dir/src/World3PatternBackground.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/platformer.dir/src/World3PatternBackground.cpp.o -MF CMakeFiles/platformer.dir/src/World3PatternBackground.cpp.o.d -o CMakeFiles/platformer.dir/src/World3PatternBackground.cpp.o -c /home/benno111/Documents/GitHub/DF-New/src/World3PatternBackground.cpp
+
+CMakeFiles/platformer.dir/src/World3PatternBackground.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/platformer.dir/src/World3PatternBackground.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/benno111/Documents/GitHub/DF-New/src/World3PatternBackground.cpp > CMakeFiles/platformer.dir/src/World3PatternBackground.cpp.i
+
+CMakeFiles/platformer.dir/src/World3PatternBackground.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/platformer.dir/src/World3PatternBackground.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/benno111/Documents/GitHub/DF-New/src/World3PatternBackground.cpp -o CMakeFiles/platformer.dir/src/World3PatternBackground.cpp.s
+
 # Object files for target platformer
 platformer_OBJECTS = \
 "CMakeFiles/platformer.dir/src/main.cpp.o" \
+"CMakeFiles/platformer.dir/src/GameApp.cpp.o" \
+"CMakeFiles/platformer.dir/src/AndroidEntrypoints.cpp.o" \
 "CMakeFiles/platformer.dir/src/TileMap.cpp.o" \
 "CMakeFiles/platformer.dir/src/LevelLoader.cpp.o" \
 "CMakeFiles/platformer.dir/src/TextRenderer.cpp.o" \
@@ -268,12 +312,15 @@ platformer_OBJECTS = \
 "CMakeFiles/platformer.dir/src/CrashReporter.cpp.o" \
 "CMakeFiles/platformer.dir/src/FrontendMenu.cpp.o" \
 "CMakeFiles/platformer.dir/src/AudioSystem.cpp.o" \
-"CMakeFiles/platformer.dir/src/ParallaxRenderer.cpp.o"
+"CMakeFiles/platformer.dir/src/ParallaxRenderer.cpp.o" \
+"CMakeFiles/platformer.dir/src/World3PatternBackground.cpp.o"
 
 # External object files for target platformer
 platformer_EXTERNAL_OBJECTS =
 
 platformer: CMakeFiles/platformer.dir/src/main.cpp.o
+platformer: CMakeFiles/platformer.dir/src/GameApp.cpp.o
+platformer: CMakeFiles/platformer.dir/src/AndroidEntrypoints.cpp.o
 platformer: CMakeFiles/platformer.dir/src/TileMap.cpp.o
 platformer: CMakeFiles/platformer.dir/src/LevelLoader.cpp.o
 platformer: CMakeFiles/platformer.dir/src/TextRenderer.cpp.o
@@ -286,6 +333,7 @@ platformer: CMakeFiles/platformer.dir/src/CrashReporter.cpp.o
 platformer: CMakeFiles/platformer.dir/src/FrontendMenu.cpp.o
 platformer: CMakeFiles/platformer.dir/src/AudioSystem.cpp.o
 platformer: CMakeFiles/platformer.dir/src/ParallaxRenderer.cpp.o
+platformer: CMakeFiles/platformer.dir/src/World3PatternBackground.cpp.o
 platformer: CMakeFiles/platformer.dir/build.make
 platformer: CMakeFiles/platformer.dir/compiler_depend.ts
 platformer: /usr/lib/x86_64-linux-gnu/libSDL3_image.so.0.2.4
@@ -294,7 +342,7 @@ platformer: /usr/local/lib/libSDL3_mixer.so.0.1.3
 platformer: /usr/lib/x86_64-linux-gnu/libcurl.so
 platformer: /usr/local/lib/libSDL3.so.0.4.1
 platformer: CMakeFiles/platformer.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_14) "Linking CXX executable platformer"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/benno111/Documents/GitHub/DF-New/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_17) "Linking CXX executable platformer"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/platformer.dir/link.txt --verbose=$(VERBOSE)
 
 # Rule to build all files generated by this target.
