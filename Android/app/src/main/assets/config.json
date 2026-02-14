@@ -10,6 +10,7 @@
     "friction_ground": 3000.0,
     "gravity_in_water": 900.0,
     "gravity_ground": 2000.0,
+    "boss_gravity": 0.0,
     "swim_up_speed": 380.0,
     "swim_rise": 900.0
   },

@@ -26,6 +26,14 @@ struct MovementConfig {
     float swimRise = 900.0f;
 };
 
+struct KeyboardBindings {
+    SDL_Scancode moveLeft = SDL_SCANCODE_A;
+    SDL_Scancode moveRight = SDL_SCANCODE_D;
+    SDL_Scancode moveDown = SDL_SCANCODE_S;
+    SDL_Scancode jump = SDL_SCANCODE_SPACE;
+    SDL_Scancode pause = SDL_SCANCODE_ESCAPE;
+};
+
 bool RectHitsSolid(const TileMap& map, float x, float y, int w, int h);
 void SetHorizontalWrapCollision(bool enabled);
 void SetVerticalWrapCollision(bool enabled);
@@ -43,6 +51,7 @@ PlayerUpdateResult UpdatePlayerMovement(
     bool gamepadDown,
     bool gamepadJump,
     bool gamepadFreeMove,
+    const KeyboardBindings& keybinds,
     float& inputMove,
     bool& inputDown
 );

@@ -795,6 +795,7 @@ int main(int argc, char** argv) {
     std::string levelServerAuthToken;
     std::string appVersion = "dev";
     MovementConfig movementCfg{};
+    float bossGravity = 0.0f;
     {
         const std::string text = ReadTextFile("assets/config.json");
         if (!text.empty()) {
@@ -832,6 +833,7 @@ int main(int argc, char** argv) {
                 readMove("jump_cut_speed", movementCfg.jumpCutSpeed);
                 readMove("swim_up_speed", movementCfg.swimUpSpeed);
                 readMove("swim_rise", movementCfg.swimRise);
+                readMove("boss_gravity", bossGravity);
             }
         }
     }
@@ -948,6 +950,7 @@ int main(int argc, char** argv) {
     bool powerManagementEnabled = true;
     bool menuMusicEnabled = true;
     bool muteAllAudio = false;
+    KeyboardBindings keybinds{};
     constexpr int kUiScaleMinPercent = 50;
     constexpr int kUiScaleMaxPercent = 200;
     int uiScalePercent = kUiScaleMaxPercent;
@@ -971,6 +974,51 @@ int main(int argc, char** argv) {
     auto saveClientSettings = [&]() {
         nlohmann::json j;
         j["build_uuid"] = buildUuid;
+        nlohmann::json settings;
+        settings["display"] = {
+            {"fullscreen", fullscreen},
+            {"vsync", vsyncEnabled},
+            {"ui_scale_percent", uiScalePercent}
+        };
+        settings["camera"] = {
+            {"clamp_cam_x", clampCamX}
+        };
+        settings["debug"] = {
+            {"show_fps_counter", defaultShowFpsCounter},
+            {"show_detailed_debugger", defaultShowDetailedDebugger},
+            {"show_hitboxes", defaultShowHitboxes},
+            {"show_player_hitbox", defaultShowPlayerHitbox},
+            {"show_debug_view", defaultShowDebugView},
+            {"hide_unknown_object_types", defaultHideUnknownObjectTypes}
+        };
+        settings["audio"] = {
+            {"menu_music_enabled", menuMusicEnabled},
+            {"mute_all_audio", muteAllAudio},
+            {"music_volume", musicVolume},
+            {"sfx_volume", sfxVolume}
+        };
+        settings["controls"] = {
+            {"move_left", (int)keybinds.moveLeft},
+            {"move_right", (int)keybinds.moveRight},
+            {"move_down", (int)keybinds.moveDown},
+            {"jump", (int)keybinds.jump},
+            {"pause", (int)keybinds.pause}
+        };
+        settings["gameplay"] = {
+            {"power_management", powerManagementEnabled},
+            {"fast_travel_delay", fastTravelChangeDelay}
+        };
+        settings["telemetry"] = {
+            {"telemetry_webhook_url", telemetryWebhookUrl}
+        };
+        {
+            nlohmann::json extra = nlohmann::json::array();
+            for (bool v : extraSettings) extra.push_back(v);
+            settings["extra_settings"] = std::move(extra);
+        }
+        j["settings"] = std::move(settings);
+
+        // Legacy flat keys kept for backward compatibility.
         j["fullscreen"] = fullscreen;
         j["vsync"] = vsyncEnabled;
         j["clamp_cam_x"] = clampCamX;
@@ -983,12 +1031,13 @@ int main(int argc, char** argv) {
         j["power_management"] = powerManagementEnabled;
         j["menu_music_enabled"] = menuMusicEnabled;
         j["mute_all_audio"] = muteAllAudio;
+        j["key_move_left"] = (int)keybinds.moveLeft;
+        j["key_move_right"] = (int)keybinds.moveRight;
+        j["key_move_down"] = (int)keybinds.moveDown;
+        j["key_jump"] = (int)keybinds.jump;
+        j["key_pause"] = (int)keybinds.pause;
         j["ui_scale_percent"] = uiScalePercent;
-        {
-            nlohmann::json extra = nlohmann::json::array();
-            for (bool v : extraSettings) extra.push_back(v);
-            j["extra_settings"] = std::move(extra);
-        }
+        j["extra_settings"] = j["settings"]["extra_settings"];
         j["telemetry_webhook_url"] = telemetryWebhookUrl;
         j["fast_travel_delay"] = fastTravelChangeDelay;
         j["music_volume"] = musicVolume;
@@ -1026,13 +1075,76 @@ int main(int argc, char** argv) {
         }
     };
     {
-        std::string text = ReadTextFile(clientSettingsPath);
-        if (text.empty() && clientSettingsPath != localClientSettingsPath) {
-            text = ReadTextFile(localClientSettingsPath);
-        }
-        if (!text.empty()) {
-            nlohmann::json j;
-            try { j = nlohmann::json::parse(text); } catch (...) { j = nlohmann::json(); }
+        auto applyClientSettingsJson = [&](const nlohmann::json& j) {
+            auto parseScancode = [](const nlohmann::json& v, SDL_Scancode fallback) -> SDL_Scancode {
+                if (!v.is_number_integer()) return fallback;
+                const int raw = v.get<int>();
+                if (raw <= (int)SDL_SCANCODE_UNKNOWN || raw >= (int)SDL_SCANCODE_COUNT) return fallback;
+                return (SDL_Scancode)raw;
+            };
+            const bool hasStructured = j.contains("settings") && j["settings"].is_object();
+            if (hasStructured) {
+                const auto& s = j["settings"];
+                if (s.contains("display") && s["display"].is_object()) {
+                    const auto& d = s["display"];
+                    if (d.contains("fullscreen") && d["fullscreen"].is_boolean()) fullscreen = d["fullscreen"].get<bool>();
+                    if (d.contains("vsync") && d["vsync"].is_boolean()) vsyncEnabled = d["vsync"].get<bool>();
+                    if (d.contains("ui_scale_percent") && d["ui_scale_percent"].is_number_integer()) {
+                        uiScalePercent = std::clamp(d["ui_scale_percent"].get<int>(), kUiScaleMinPercent, kUiScaleMaxPercent);
+                    }
+                }
+                if (s.contains("camera") && s["camera"].is_object()) {
+                    const auto& c = s["camera"];
+                    if (c.contains("clamp_cam_x") && c["clamp_cam_x"].is_boolean()) clampCamX = c["clamp_cam_x"].get<bool>();
+                }
+                if (s.contains("debug") && s["debug"].is_object()) {
+                    const auto& d = s["debug"];
+                    if (d.contains("show_fps_counter") && d["show_fps_counter"].is_boolean()) defaultShowFpsCounter = d["show_fps_counter"].get<bool>();
+                    if (d.contains("show_detailed_debugger") && d["show_detailed_debugger"].is_boolean()) defaultShowDetailedDebugger = d["show_detailed_debugger"].get<bool>();
+                    if (d.contains("show_hitboxes") && d["show_hitboxes"].is_boolean()) defaultShowHitboxes = d["show_hitboxes"].get<bool>();
+                    if (d.contains("show_player_hitbox") && d["show_player_hitbox"].is_boolean()) defaultShowPlayerHitbox = d["show_player_hitbox"].get<bool>();
+                    if (d.contains("show_debug_view") && d["show_debug_view"].is_boolean()) defaultShowDebugView = d["show_debug_view"].get<bool>();
+                    if (d.contains("hide_unknown_object_types") && d["hide_unknown_object_types"].is_boolean()) defaultHideUnknownObjectTypes = d["hide_unknown_object_types"].get<bool>();
+                }
+                if (s.contains("audio") && s["audio"].is_object()) {
+                    const auto& a = s["audio"];
+                    if (a.contains("menu_music_enabled") && a["menu_music_enabled"].is_boolean()) menuMusicEnabled = a["menu_music_enabled"].get<bool>();
+                    if (a.contains("mute_all_audio") && a["mute_all_audio"].is_boolean()) muteAllAudio = a["mute_all_audio"].get<bool>();
+                    if (a.contains("music_volume") && a["music_volume"].is_number_integer()) musicVolume = std::clamp(a["music_volume"].get<int>(), 0, 128);
+                    if (a.contains("sfx_volume") && a["sfx_volume"].is_number_integer()) sfxVolume = std::clamp(a["sfx_volume"].get<int>(), 0, 128);
+                }
+                if (s.contains("controls") && s["controls"].is_object()) {
+                    const auto& c = s["controls"];
+                    if (c.contains("move_left")) keybinds.moveLeft = parseScancode(c["move_left"], keybinds.moveLeft);
+                    if (c.contains("move_right")) keybinds.moveRight = parseScancode(c["move_right"], keybinds.moveRight);
+                    if (c.contains("move_down")) keybinds.moveDown = parseScancode(c["move_down"], keybinds.moveDown);
+                    if (c.contains("jump")) keybinds.jump = parseScancode(c["jump"], keybinds.jump);
+                    if (c.contains("pause")) keybinds.pause = parseScancode(c["pause"], keybinds.pause);
+                }
+                if (s.contains("gameplay") && s["gameplay"].is_object()) {
+                    const auto& g = s["gameplay"];
+                    if (g.contains("power_management") && g["power_management"].is_boolean()) powerManagementEnabled = g["power_management"].get<bool>();
+                    if (g.contains("fast_travel_delay") && g["fast_travel_delay"].is_number()) {
+                        // Deprecated: delay removed in favor of immediate smooth transitions.
+                        fastTravelChangeDelay = 0.0f;
+                    }
+                }
+                if (s.contains("telemetry") && s["telemetry"].is_object()) {
+                    const auto& t = s["telemetry"];
+                    if (t.contains("telemetry_webhook_url") && t["telemetry_webhook_url"].is_string()) {
+                        telemetryWebhookUrl = t["telemetry_webhook_url"].get<std::string>();
+                    }
+                }
+                if (s.contains("extra_settings") && s["extra_settings"].is_array()) {
+                    const auto& a = s["extra_settings"];
+                    for (size_t i = 0; i < extraSettings.size() && i < a.size(); ++i) {
+                        if (a[i].is_boolean()) extraSettings[i] = a[i].get<bool>();
+                    }
+                }
+                return;
+            }
+
+            // Legacy flat format fallback.
             if (j.contains("fullscreen") && j["fullscreen"].is_boolean()) fullscreen = j["fullscreen"].get<bool>();
             if (j.contains("vsync") && j["vsync"].is_boolean()) vsyncEnabled = j["vsync"].get<bool>();
             if (j.contains("clamp_cam_x") && j["clamp_cam_x"].is_boolean()) clampCamX = j["clamp_cam_x"].get<bool>();
@@ -1045,6 +1157,11 @@ int main(int argc, char** argv) {
             if (j.contains("power_management") && j["power_management"].is_boolean()) powerManagementEnabled = j["power_management"].get<bool>();
             if (j.contains("menu_music_enabled") && j["menu_music_enabled"].is_boolean()) menuMusicEnabled = j["menu_music_enabled"].get<bool>();
             if (j.contains("mute_all_audio") && j["mute_all_audio"].is_boolean()) muteAllAudio = j["mute_all_audio"].get<bool>();
+            if (j.contains("key_move_left")) keybinds.moveLeft = parseScancode(j["key_move_left"], keybinds.moveLeft);
+            if (j.contains("key_move_right")) keybinds.moveRight = parseScancode(j["key_move_right"], keybinds.moveRight);
+            if (j.contains("key_move_down")) keybinds.moveDown = parseScancode(j["key_move_down"], keybinds.moveDown);
+            if (j.contains("key_jump")) keybinds.jump = parseScancode(j["key_jump"], keybinds.jump);
+            if (j.contains("key_pause")) keybinds.pause = parseScancode(j["key_pause"], keybinds.pause);
             if (j.contains("ui_scale_percent") && j["ui_scale_percent"].is_number_integer()) {
                 uiScalePercent = std::clamp(j["ui_scale_percent"].get<int>(), kUiScaleMinPercent, kUiScaleMaxPercent);
             }
@@ -1063,6 +1180,16 @@ int main(int argc, char** argv) {
             }
             if (j.contains("music_volume") && j["music_volume"].is_number_integer()) musicVolume = std::clamp(j["music_volume"].get<int>(), 0, 128);
             if (j.contains("sfx_volume") && j["sfx_volume"].is_number_integer()) sfxVolume = std::clamp(j["sfx_volume"].get<int>(), 0, 128);
+        };
+
+        std::string text = ReadTextFile(clientSettingsPath);
+        if (text.empty() && clientSettingsPath != localClientSettingsPath) {
+            text = ReadTextFile(localClientSettingsPath);
+        }
+        if (!text.empty()) {
+            nlohmann::json j;
+            try { j = nlohmann::json::parse(text); } catch (...) { j = nlohmann::json(); }
+            applyClientSettingsJson(j);
         } else {
             const std::string placeholderPath = "assets/client_settings.json";
             const std::string placeholderText = ReadTextFile(placeholderPath);
@@ -1071,35 +1198,7 @@ int main(int argc, char** argv) {
                 nlohmann::json j;
                 try { j = nlohmann::json::parse(placeholderText); } catch (...) { j = nlohmann::json(); }
                 if (!j.is_null()) {
-                    if (j.contains("fullscreen") && j["fullscreen"].is_boolean()) fullscreen = j["fullscreen"].get<bool>();
-                    if (j.contains("vsync") && j["vsync"].is_boolean()) vsyncEnabled = j["vsync"].get<bool>();
-                    if (j.contains("clamp_cam_x") && j["clamp_cam_x"].is_boolean()) clampCamX = j["clamp_cam_x"].get<bool>();
-                    if (j.contains("show_fps_counter") && j["show_fps_counter"].is_boolean()) defaultShowFpsCounter = j["show_fps_counter"].get<bool>();
-                    if (j.contains("show_detailed_debugger") && j["show_detailed_debugger"].is_boolean()) defaultShowDetailedDebugger = j["show_detailed_debugger"].get<bool>();
-                    if (j.contains("show_hitboxes") && j["show_hitboxes"].is_boolean()) defaultShowHitboxes = j["show_hitboxes"].get<bool>();
-                    if (j.contains("show_player_hitbox") && j["show_player_hitbox"].is_boolean()) defaultShowPlayerHitbox = j["show_player_hitbox"].get<bool>();
-                    if (j.contains("show_debug_view") && j["show_debug_view"].is_boolean()) defaultShowDebugView = j["show_debug_view"].get<bool>();
-                    if (j.contains("hide_unknown_object_types") && j["hide_unknown_object_types"].is_boolean()) defaultHideUnknownObjectTypes = j["hide_unknown_object_types"].get<bool>();
-                    if (j.contains("power_management") && j["power_management"].is_boolean()) powerManagementEnabled = j["power_management"].get<bool>();
-                    if (j.contains("menu_music_enabled") && j["menu_music_enabled"].is_boolean()) menuMusicEnabled = j["menu_music_enabled"].get<bool>();
-                    if (j.contains("mute_all_audio") && j["mute_all_audio"].is_boolean()) muteAllAudio = j["mute_all_audio"].get<bool>();
-                    if (j.contains("ui_scale_percent") && j["ui_scale_percent"].is_number_integer()) {
-                        uiScalePercent = std::clamp(j["ui_scale_percent"].get<int>(), kUiScaleMinPercent, kUiScaleMaxPercent);
-                    }
-                    if (j.contains("extra_settings") && j["extra_settings"].is_array()) {
-                        const auto& a = j["extra_settings"];
-                        for (size_t i = 0; i < extraSettings.size() && i < a.size(); ++i) {
-                            if (a[i].is_boolean()) extraSettings[i] = a[i].get<bool>();
-                        }
-                    }
-                    if (j.contains("telemetry_webhook_url") && j["telemetry_webhook_url"].is_string()) {
-                        telemetryWebhookUrl = j["telemetry_webhook_url"].get<std::string>();
-                    }
-                    if (j.contains("fast_travel_delay") && j["fast_travel_delay"].is_number()) {
-                        fastTravelChangeDelay = 0.0f;
-                    }
-                    if (j.contains("music_volume") && j["music_volume"].is_number_integer()) musicVolume = std::clamp(j["music_volume"].get<int>(), 0, 128);
-                    if (j.contains("sfx_volume") && j["sfx_volume"].is_number_integer()) sfxVolume = std::clamp(j["sfx_volume"].get<int>(), 0, 128);
+                    applyClientSettingsJson(j);
                     usedPlaceholder = true;
                 }
             }
@@ -1369,6 +1468,11 @@ int main(int argc, char** argv) {
     frontendCtx.powerManagementEnabled = &powerManagementEnabled;
     frontendCtx.menuMusicEnabled = &menuMusicEnabled;
     frontendCtx.muteAllAudio = &muteAllAudio;
+    frontendCtx.keyMoveLeft = &keybinds.moveLeft;
+    frontendCtx.keyMoveRight = &keybinds.moveRight;
+    frontendCtx.keyMoveDown = &keybinds.moveDown;
+    frontendCtx.keyJump = &keybinds.jump;
+    frontendCtx.keyPause = &keybinds.pause;
     frontendCtx.musicVolume = &musicVolume;
     frontendCtx.sfxVolume = &sfxVolume;
     frontendCtx.uiScalePercent = &uiScalePercent;
@@ -1378,6 +1482,7 @@ int main(int argc, char** argv) {
     frontendCtx.selectedLevelPath = &frontendSelectedLevelPath;
     frontendCtx.applyAudioVolumes = applyAudioVolumes;
     frontendCtx.applyMenuMusicToggle = applyMenuMusicToggle;
+    frontendCtx.saveClientSettings = saveClientSettings;
     auto applyDynamicResolutionFromWindow = [&](bool force) -> bool {
         int winW = 0, winH = 0;
         SDL_GetWindowSize(win, &winW, &winH);
@@ -1433,7 +1538,7 @@ int main(int argc, char** argv) {
         std::string selectedLevelPath;
         bool selectedFromUserMenu = false;
         if (reopenUserLevelMenu) {
-            selectedLevelPath = RunCustomLevelSelect(win, ren);
+            selectedLevelPath = RunLevelSelect(win, ren);
             selectedFromUserMenu = true;
             reopenUserLevelMenu = false;
         } else {
@@ -1446,7 +1551,7 @@ int main(int argc, char** argv) {
             if (!selectedLevelPath.empty()) {
                 selectedFromUserMenu = true;
             } else {
-                selectedLevelPath = RunCampaignLevelSelect(win, ren);
+                selectedLevelPath = RunLevelSelect(win, ren);
             }
         }
         if (selectedLevelPath.empty()) {
@@ -2583,7 +2688,7 @@ int main(int argc, char** argv) {
                         }
                     }
                 }
-                if (!levelCompleteActive && (e.key.key == SDLK_ESCAPE || e.key.key == SDLK_AC_BACK)) {
+                if (!levelCompleteActive && (e.key.key == SDLK_AC_BACK || e.key.key == SDL_GetKeyFromScancode(keybinds.pause, SDL_KMOD_NONE, false))) {
                     paused = !paused;
                 }
                 if (paused) {
@@ -3573,6 +3678,7 @@ int main(int argc, char** argv) {
                         player, map, dt, jumpBufferMax, movementCfg,
                         touchMove, touchDown, touchJump,
                         gamepadMove, gamepadDown, gamepadJump, gamepadFreeMove,
+                        keybinds,
                         inputMove, inputDown
                     );
                     if (std::fabs(player.x - beforeNormalX) > 0.01f || std::fabs(player.y - beforeNormalY) > 0.01f) {
@@ -3848,6 +3954,7 @@ int main(int argc, char** argv) {
                 const bool world4RainbowActive = (bossState.sourceWorld == 4 && bossState.rainbowTimer > 0.0f);
                 if (bossCanMoveAndTakeDamage && !world4RainbowActive) {
                     if (bossState.sourceWorld == 7) {
+                        bossState.vy += bossGravity * dt;
                         bossState.y += bossState.vy * dt;
                         if (bossState.y + halfH < arenaTop) {
                             const float minX = arenaLeft + halfW;
@@ -3858,6 +3965,7 @@ int main(int argc, char** argv) {
                             bossState.vy = -std::fabs(bossState.vy);
                         }
                     } else {
+                        bossState.vy += bossGravity * dt;
                         bossState.x += bossState.vx * dt;
                         bossState.y += bossState.vy * dt;
                         if (bossState.x - halfW < arenaLeft) {
@@ -5328,11 +5436,11 @@ int main(int argc, char** argv) {
                     {"fast_travel_enabled", replayInput.fastTravelEnabled},
                     {"demo_enabled", replayInput.demoEnabled},
                     {"keyboard", {
-                        {"left", keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_LEFT]},
-                        {"right", keys[SDL_SCANCODE_D] || keys[SDL_SCANCODE_RIGHT]},
-                        {"up", keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_UP]},
-                        {"down", keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_DOWN]},
-                        {"jump", keys[SDL_SCANCODE_SPACE]},
+                        {"left", keys[keybinds.moveLeft] || keys[SDL_SCANCODE_LEFT]},
+                        {"right", keys[keybinds.moveRight] || keys[SDL_SCANCODE_RIGHT]},
+                        {"up", keys[keybinds.jump] || keys[SDL_SCANCODE_UP]},
+                        {"down", keys[keybinds.moveDown] || keys[SDL_SCANCODE_DOWN]},
+                        {"jump", keys[keybinds.jump]},
                         {"shift", keys[SDL_SCANCODE_LSHIFT] || keys[SDL_SCANCODE_RSHIFT]}
                     }}
                 };

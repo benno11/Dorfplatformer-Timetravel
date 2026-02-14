@@ -97,6 +97,12 @@ static bool rectHasGroundBelow(const TileMap& map, float x, float y, int w, int 
     return false;
 }
 
+static bool keyHeld(const bool* keys, SDL_Scancode sc) {
+    if (!keys) return false;
+    if (sc <= SDL_SCANCODE_UNKNOWN || sc >= SDL_SCANCODE_COUNT) return false;
+    return keys[sc];
+}
+
 PlayerUpdateResult UpdatePlayerMovement(
     Player& player,
     const TileMap& map,
@@ -110,6 +116,7 @@ PlayerUpdateResult UpdatePlayerMovement(
     bool gamepadDown,
     bool gamepadJump,
     bool gamepadFreeMove,
+    const KeyboardBindings& keybinds,
     float& inputMove,
     bool& inputDown
 ) {
@@ -122,10 +129,10 @@ PlayerUpdateResult UpdatePlayerMovement(
         float freeSpeed = 1200.0f;
         float dx = 0.0f;
         float dy = 0.0f;
-        if (keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_LEFT]) dx -= 1.0f;
-        if (keys[SDL_SCANCODE_D] || keys[SDL_SCANCODE_RIGHT]) dx += 1.0f;
-        if (keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_UP]) dy -= 1.0f;
-        if (keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_DOWN]) dy += 1.0f;
+        if (keyHeld(keys, keybinds.moveLeft) || keys[SDL_SCANCODE_LEFT]) dx -= 1.0f;
+        if (keyHeld(keys, keybinds.moveRight) || keys[SDL_SCANCODE_RIGHT]) dx += 1.0f;
+        if (keyHeld(keys, keybinds.jump) || keys[SDL_SCANCODE_UP]) dy -= 1.0f;
+        if (keyHeld(keys, keybinds.moveDown) || keys[SDL_SCANCODE_DOWN]) dy += 1.0f;
         float len = std::sqrt(dx * dx + dy * dy);
         if (len > 0.0f) { dx /= len; dy /= len; }
         player.x += dx * freeSpeed * dt;
@@ -140,10 +147,10 @@ PlayerUpdateResult UpdatePlayerMovement(
     }
 
     float move = touchMove + gamepadMove;
-    if (keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_LEFT]) move -= 1.0f;
-    if (keys[SDL_SCANCODE_D] || keys[SDL_SCANCODE_RIGHT]) move += 1.0f;
+    if (keyHeld(keys, keybinds.moveLeft) || keys[SDL_SCANCODE_LEFT]) move -= 1.0f;
+    if (keyHeld(keys, keybinds.moveRight) || keys[SDL_SCANCODE_RIGHT]) move += 1.0f;
     move = std::clamp(move, -1.0f, 1.0f);
-    bool downHeld = touchDown || gamepadDown || keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_DOWN];
+    bool downHeld = touchDown || gamepadDown || keyHeld(keys, keybinds.moveDown) || keys[SDL_SCANCODE_DOWN];
     inputMove = move;
     inputDown = downHeld;
     const bool insideSolid = RectHitsSolid(map, player.x, player.y, player.w, player.h);
@@ -198,7 +205,7 @@ PlayerUpdateResult UpdatePlayerMovement(
         player.vx = speedSign * (maxSpeed + excess);
     }
 
-    bool jumpDown = touchJump || gamepadJump || keys[SDL_SCANCODE_SPACE] || keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_UP];
+    bool jumpDown = touchJump || gamepadJump || keyHeld(keys, keybinds.jump) || keys[SDL_SCANCODE_UP];
     bool jumpPressed = jumpDown && !player.jumpWasDown;
     bool jumpReleased = !jumpDown && player.jumpWasDown;
     if (jumpDown == false){

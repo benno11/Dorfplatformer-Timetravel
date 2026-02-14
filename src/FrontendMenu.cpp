@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -29,6 +30,11 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     bool& powerManagementEnabled = *ctx.powerManagementEnabled;
     bool& menuMusicEnabled = *ctx.menuMusicEnabled;
     bool& muteAllAudio = *ctx.muteAllAudio;
+    SDL_Scancode& keyMoveLeft = *ctx.keyMoveLeft;
+    SDL_Scancode& keyMoveRight = *ctx.keyMoveRight;
+    SDL_Scancode& keyMoveDown = *ctx.keyMoveDown;
+    SDL_Scancode& keyJump = *ctx.keyJump;
+    SDL_Scancode& keyPause = *ctx.keyPause;
     int& musicVolume = *ctx.musicVolume;
     int& sfxVolume = *ctx.sfxVolume;
     int& uiScalePercent = *ctx.uiScalePercent;
@@ -37,6 +43,40 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     auto uiButtonScale = [&]() -> float {
         return std::clamp((float)uiScalePercent / 100.0f, 0.5f, 2.0f);
     };
+    std::vector<std::string> settingsTabLabels = {
+        "GENERAL", "AUDIO", "DEBUG", "CONTROLS", "ABOUT",
+        "GRAPHICS+", "GAMEPLAY+", "ACCESSIBILITY", "NETWORK+", "PRIVACY+"
+    };
+    std::vector<std::string> controlsLabels = {
+        "MOVE LEFT", "MOVE RIGHT", "MOVE DOWN", "JUMP", "PAUSE", "BACK"
+    };
+    std::vector<std::string> audioLabels = {
+        "MENU MUSIC", "MUTE ALL", "MUSIC", "SFX", "BACK"
+    };
+    std::vector<std::string> debugLabels = {
+        "FPS COUNTER", "DETAILED DEBUGGER", "SHOW HITBOXES", "PLAYER HITBOX",
+        "DEBUG HUD", "HIDE UNKNOWN OBJECT TYPES", "POWER MANAGEMENT", "BACK"
+    };
+    {
+        const std::string menuJsonText = ReadTextFile("assets/menus/settings_menu.json");
+        if (!menuJsonText.empty()) {
+            try {
+                nlohmann::json j = nlohmann::json::parse(menuJsonText);
+                auto readStringArray = [&](const char* key, std::vector<std::string>& out, int expectedMin) {
+                    if (!j.contains(key) || !j[key].is_array()) return;
+                    std::vector<std::string> tmp;
+                    for (const auto& v : j[key]) {
+                        if (v.is_string()) tmp.push_back(v.get<std::string>());
+                    }
+                    if ((int)tmp.size() >= expectedMin) out = std::move(tmp);
+                };
+                readStringArray("tabs", settingsTabLabels, 10);
+                readStringArray("controls_rows", controlsLabels, 6);
+                readStringArray("audio_rows", audioLabels, 5);
+                readStringArray("debug_rows", debugLabels, 8);
+            } catch (...) {}
+        }
+    }
     constexpr float kMenuAuthorW = 960.0f;
     constexpr float kMenuAuthorH = 540.0f;
     auto menuCanvasScale = [&]() -> float {
@@ -91,6 +131,9 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     int settingsTab = 0; // 0 General, 1 Audio, 2 Debug, 3 Controls, 4 About, 5-9 Extra categories
     int settingsSelAudio = 0;
     int settingsSelDebug = 0;
+    int settingsSelControls = 0;
+    bool waitingForControlKey = false;
+    int waitingControlIndex = -1;
     bool pendingSettingsExitCleanup = false;
     Uint64 inputBlockUntilTicks = 0;
     constexpr Uint64 kMenuInputBlockMs = 110;
@@ -217,6 +260,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         sliderDragFinger = 0;
         scrollbarDrag = ScrollbarDragTarget::None;
         scrollbarDragFinger = 0;
+        waitingForControlKey = false;
+        waitingControlIndex = -1;
     };
     Uint64 lastTouchDownTicks = 0;
     int lastTouchDownWinX = -100000;
@@ -234,6 +279,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     const int settingsListBottom = ctx.baseScreenH - 24;
     int settingsScrollY = 0;
     int aboutScrollY = 0;
+    bool showOptionalSidebar = true;
     constexpr int kAboutContentBottomY = 558;
     auto aboutMaxScroll = [&]() -> int {
         return std::max(0, kAboutContentBottomY - settingsListBottom);
@@ -248,10 +294,29 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     auto settingsRowsForTab = [&](int tab) -> int {
         if (tab == 1) return 5;
         if (tab == 2) return 8;
-        if (tab == 3) return 0;
+        if (tab == 3) return 6;
         if (tab == 4) return 0;
         if (isExtraTab(tab)) return extraTabRowCountForTab(tab);
         return kSettingsCount;
+    };
+    auto activeSettingsSelectionRef = [&]() -> int& {
+        if (settingsTab == 1) return settingsSelAudio;
+        if (settingsTab == 2) return settingsSelDebug;
+        if (settingsTab == 3) return settingsSelControls;
+        return settingsSel;
+    };
+    auto keyNameForDisplay = [&](SDL_Scancode sc) -> std::string {
+        const char* n = SDL_GetScancodeName(sc);
+        if (!n || !*n) return "UNBOUND";
+        return n;
+    };
+    auto controlBindingRef = [&](int idx) -> SDL_Scancode* {
+        if (idx == 0) return &keyMoveLeft;
+        if (idx == 1) return &keyMoveRight;
+        if (idx == 2) return &keyMoveDown;
+        if (idx == 3) return &keyJump;
+        if (idx == 4) return &keyPause;
+        return nullptr;
     };
     auto settingsRowWidthPx = [&]() -> int {
         const int scaled = std::max(120, (int)std::lround(280.0f * uiButtonScale()));
@@ -477,6 +542,159 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         }
         clampSettingsScroll();
     };
+    auto settingsPanelRect = [&]() -> SDL_Rect {
+        const std::vector<int> tabs = visibleTabList();
+        SDL_Rect tabsTop = settingsTabBtn(0);
+        SDL_Rect tabsBottom = settingsTabBtn(std::max(0, (int)tabs.size() - 1));
+        SDL_Rect listClip = settingsListClipRect();
+        SDL_Rect scrollbarTrack = settingsScrollbarTrackRect();
+        const int panelPad = std::max(10, (int)std::lround(14.0f * uiButtonScale()));
+        return SDL_Rect{
+            std::min(tabsTop.x, listClip.x) - panelPad,
+            std::min(tabsTop.y, listClip.y) - panelPad,
+            (std::max(tabsBottom.x + tabsBottom.w, scrollbarTrack.x + scrollbarTrack.w) - std::min(tabsTop.x, listClip.x)) + panelPad * 2,
+            (std::max(scrollbarTrack.y + scrollbarTrack.h, listClip.y + listClip.h) - std::min(tabsTop.y, listClip.y)) + panelPad * 2
+        };
+    };
+    auto settingsSidebarToggleRect = [&]() -> SDL_Rect {
+        SDL_Rect panel = settingsPanelRect();
+        const int btnW = std::max(96, (int)std::lround(138.0f * uiButtonScale()));
+        const int btnH = std::max(22, (int)std::lround(30.0f * uiButtonScale()));
+        return SDL_Rect{
+            panel.x + panel.w - btnW - std::max(8, (int)std::lround(10.0f * uiButtonScale())),
+            panel.y + std::max(8, (int)std::lround(10.0f * uiButtonScale())),
+            btnW,
+            btnH
+        };
+    };
+    auto settingsSidebarRect = [&]() -> SDL_Rect {
+        SDL_Rect panel = settingsPanelRect();
+        const int sideW = std::max(150, (int)std::lround(200.0f * uiButtonScale()));
+        const int gap = std::max(10, (int)std::lround(14.0f * uiButtonScale()));
+        const int pad = std::max(8, (int)std::lround(10.0f * uiButtonScale()));
+        const int topPad = std::max(44, (int)std::lround(50.0f * uiButtonScale()));
+        const int bottomPad = std::max(10, (int)std::lround(12.0f * uiButtonScale()));
+        int sideX = panel.x + panel.w + gap;
+        if (sideX + sideW > ctx.baseScreenW - 8) {
+            sideX = panel.x - gap - sideW;
+        }
+        sideX = std::clamp(sideX, 8, std::max(8, ctx.baseScreenW - sideW - 8));
+        return SDL_Rect{
+            sideX,
+            panel.y + topPad,
+            sideW,
+            std::max(20, panel.h - topPad - bottomPad)
+        };
+    };
+    auto resetSelectionForTab = [&](int tab) {
+        if (tab == 1) settingsSelAudio = 0;
+        if (tab == 2) settingsSelDebug = 0;
+        if (tab == 3) settingsSelControls = 0;
+        if (isExtraTab(tab)) settingsSel = 0;
+    };
+    auto openSettingsTab = [&](int tab) {
+        setSettingsTab(tab);
+        resetSelectionForTab(settingsTab);
+        waitingForControlKey = false;
+        waitingControlIndex = -1;
+        settingsScrollY = 0;
+        aboutScrollY = 0;
+    };
+    auto cycleSettingsTab = [&](int delta) {
+        const std::vector<int> tabs = visibleTabList();
+        if (tabs.empty()) return;
+        auto it = std::find(tabs.begin(), tabs.end(), settingsTab);
+        const int idx = (it == tabs.end()) ? 0 : (int)(it - tabs.begin());
+        const int next = (idx + delta + (int)tabs.size()) % (int)tabs.size();
+        openSettingsTab(tabs[next]);
+    };
+    auto navigateSettingsBy = [&](int delta) {
+        if (settingsTab == 4) {
+            scrollAboutBy(delta < 0 ? -24 : 24);
+            return;
+        }
+        const int rows = settingsRowsForTab(settingsTab);
+        if (rows <= 0) return;
+        int& activeSel = activeSettingsSelectionRef();
+        activeSel = (activeSel + delta + rows) % rows;
+        ensureSettingsRowVisible(activeSel);
+    };
+    auto activateCurrentSettingsSelection = [&](int dir) {
+        if (settingsTab == 1) {
+            if (settingsSelAudio == 0) menuMusicEnabled = !menuMusicEnabled;
+            else if (settingsSelAudio == 1) muteAllAudio = !muteAllAudio;
+            else if (settingsSelAudio == 2 && dir != 0) musicVolume = std::clamp(musicVolume + dir * 8, 0, 128);
+            else if (settingsSelAudio == 3 && dir != 0) sfxVolume = std::clamp(sfxVolume + dir * 8, 0, 128);
+            else if (settingsSelAudio == 4) setInSettings(false);
+            if (ctx.applyMenuMusicToggle) ctx.applyMenuMusicToggle();
+            if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
+            return;
+        }
+        if (settingsTab == 2) {
+            if (settingsSelDebug == 0) defaultShowFpsCounter = !defaultShowFpsCounter;
+            else if (settingsSelDebug == 1) defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
+            else if (settingsSelDebug == 2) defaultShowHitboxes = !defaultShowHitboxes;
+            else if (settingsSelDebug == 3) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
+            else if (settingsSelDebug == 4) defaultShowDebugView = !defaultShowDebugView;
+            else if (settingsSelDebug == 5) defaultHideUnknownObjectTypes = !defaultHideUnknownObjectTypes;
+            else if (settingsSelDebug == 6) powerManagementEnabled = !powerManagementEnabled;
+            else if (settingsSelDebug == 7) setInSettings(false);
+            return;
+        }
+        if (settingsTab == 3) {
+            if (settingsSelControls >= 0 && settingsSelControls <= 4) {
+                waitingForControlKey = true;
+                waitingControlIndex = settingsSelControls;
+            } else {
+                setInSettings(false);
+            }
+            return;
+        }
+        if (settingsTab == 4) {
+            setInSettings(false);
+            return;
+        }
+        if (isExtraTab(settingsTab)) {
+            const int extraIdx = extraTabIndex(settingsTab);
+            const int optionIdx = extraTabOptionAtVisibleRow(settingsTab, settingsSel);
+            if (optionIdx >= 0) {
+                bool& v = extraTabValueRef(extraIdx, optionIdx);
+                v = !v;
+            } else {
+                setInSettings(false);
+            }
+            return;
+        }
+#if defined(__ANDROID__)
+        if (settingsSel == IDX_VSYNC) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
+        else if (settingsSel == IDX_CAM_CLAMP) clampCamX = !clampCamX;
+        else if (settingsSel == IDX_UI_SCALE && dir != 0) uiScalePercent = std::clamp(uiScalePercent + dir * 5, kUiScaleMinPercent, kUiScaleMaxPercent);
+        else if (settingsSel == IDX_SHOW_FPS) defaultShowFpsCounter = !defaultShowFpsCounter;
+        else if (settingsSel == IDX_SHOW_DETAILED) defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
+        else if (settingsSel == IDX_SHOW_HITBOXES) defaultShowHitboxes = !defaultShowHitboxes;
+        else if (settingsSel == IDX_SHOW_PLAYER_HITBOX) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
+        else if (settingsSel == IDX_SHOW_DEBUG_VIEW) defaultShowDebugView = !defaultShowDebugView;
+        else if (settingsSel == IDX_MUSIC && dir != 0) musicVolume = std::clamp(musicVolume + dir * 8, 0, 128);
+        else if (settingsSel == IDX_SFX && dir != 0) sfxVolume = std::clamp(sfxVolume + dir * 8, 0, 128);
+        else if (settingsSel == IDX_ABOUT) { openSettingsTab(4); }
+        else setInSettings(false);
+#else
+        if (settingsSel == IDX_FULLSCREEN) { fullscreen = !fullscreen; SDL_SetWindowFullscreen(ctx.win, fullscreen); }
+        else if (settingsSel == IDX_VSYNC) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
+        else if (settingsSel == IDX_CAM_CLAMP) clampCamX = !clampCamX;
+        else if (settingsSel == IDX_UI_SCALE && dir != 0) uiScalePercent = std::clamp(uiScalePercent + dir * 5, kUiScaleMinPercent, kUiScaleMaxPercent);
+        else if (settingsSel == IDX_SHOW_FPS) defaultShowFpsCounter = !defaultShowFpsCounter;
+        else if (settingsSel == IDX_SHOW_DETAILED) defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
+        else if (settingsSel == IDX_SHOW_HITBOXES) defaultShowHitboxes = !defaultShowHitboxes;
+        else if (settingsSel == IDX_SHOW_PLAYER_HITBOX) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
+        else if (settingsSel == IDX_SHOW_DEBUG_VIEW) defaultShowDebugView = !defaultShowDebugView;
+        else if (settingsSel == IDX_MUSIC && dir != 0) musicVolume = std::clamp(musicVolume + dir * 8, 0, 128);
+        else if (settingsSel == IDX_SFX && dir != 0) sfxVolume = std::clamp(sfxVolume + dir * 8, 0, 128);
+        else if (settingsSel == IDX_ABOUT) { openSettingsTab(4); }
+        else setInSettings(false);
+#endif
+        if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
+    };
     SDL_Texture* mainMenuTex = IMG_LoadTexture(ctx.ren, ResolveAssetPath("assets/Sheets/DF_Main_menu-uhd.png").c_str());
     if (mainMenuTex) SDL_SetTextureScaleMode(mainMenuTex, SDL_SCALEMODE_NEAREST);
     auto mainMenuFrames = loadPlistFrames("assets/Sheets/DF_Main_menu-uhd.plist");
@@ -517,10 +735,14 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             renderFrame(ctx.ren, tex, f, dst);
             return;
         }
-        const int srcLeft = (f.rect.w - 1) / 2;
-        const int srcRight = f.rect.w - srcLeft - 1;
-        const int srcTop = (f.rect.h - 1) / 2;
-        const int srcBottom = f.rect.h - srcTop - 1;
+        // Large UI atlas frames (e.g. window/button panels) are authored as 3x3 regions.
+        // Decide per-axis so tall/narrow or wide/short frames still avoid stretch on the long axis.
+        const bool useThirdSplitX = (f.rect.w >= 48);
+        const bool useThirdSplitY = (f.rect.h >= 48);
+        const int srcLeft = useThirdSplitX ? std::max(1, f.rect.w / 3) : (f.rect.w - 1) / 2;
+        const int srcRight = useThirdSplitX ? std::max(1, f.rect.w / 3) : (f.rect.w - srcLeft - 1);
+        const int srcTop = useThirdSplitY ? std::max(1, f.rect.h / 3) : (f.rect.h - 1) / 2;
+        const int srcBottom = useThirdSplitY ? std::max(1, f.rect.h / 3) : (f.rect.h - srcTop - 1);
         if (srcLeft < 1 || srcRight < 1 || srcTop < 1 || srcBottom < 1) {
             renderFrame(ctx.ren, tex, f, dst);
             return;
@@ -537,22 +759,47 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             return;
         }
 
+        const int srcMidW = f.rect.w - srcLeft - srcRight;
+        const int srcMidH = f.rect.h - srcTop - srcBottom;
+        if (srcMidW <= 0 || srcMidH <= 0) {
+            renderFrame(ctx.ren, tex, f, dst);
+            return;
+        }
+
         auto blit = [&](const SDL_Rect& src, const SDL_Rect& out) {
             if (src.w <= 0 || src.h <= 0 || out.w <= 0 || out.h <= 0) return;
-            SDL_RenderCopy(ctx.ren, tex, &src, &out);
+            SDL_RenderTexture(ctx.ren, tex, &src, &out);
+        };
+        auto blitTiled = [&](const SDL_Rect& src, const SDL_Rect& out, bool tileX, bool tileY) {
+            if (src.w <= 0 || src.h <= 0 || out.w <= 0 || out.h <= 0) return;
+            const int stepX = tileX ? src.w : out.w;
+            const int stepY = tileY ? src.h : out.h;
+            for (int y = out.y; y < out.y + out.h; y += std::max(1, stepY)) {
+                const int remH = out.y + out.h - y;
+                const int h = tileY ? std::min(src.h, remH) : out.h;
+                for (int x = out.x; x < out.x + out.w; x += std::max(1, stepX)) {
+                    const int remW = out.x + out.w - x;
+                    const int w = tileX ? std::min(src.w, remW) : out.w;
+                    SDL_Rect s{src.x, src.y, w, h};
+                    SDL_Rect d{x, y, w, h};
+                    SDL_RenderTexture(ctx.ren, tex, &s, &d);
+                    if (!tileX) break;
+                }
+                if (!tileY) break;
+            }
         };
 
         const int cx = f.rect.x + srcLeft;
         const int cy = f.rect.y + srcTop;
         SDL_Rect sTL{f.rect.x, f.rect.y, srcLeft, srcTop};
-        SDL_Rect sT{cx, f.rect.y, 1, srcTop};
-        SDL_Rect sTR{cx + 1, f.rect.y, srcRight, srcTop};
-        SDL_Rect sL{f.rect.x, cy, srcLeft, 1};
-        SDL_Rect sC{cx, cy, 1, 1};
-        SDL_Rect sR{cx + 1, cy, srcRight, 1};
-        SDL_Rect sBL{f.rect.x, cy + 1, srcLeft, srcBottom};
-        SDL_Rect sB{cx, cy + 1, 1, srcBottom};
-        SDL_Rect sBR{cx + 1, cy + 1, srcRight, srcBottom};
+        SDL_Rect sT{cx, f.rect.y, srcMidW, srcTop};
+        SDL_Rect sTR{cx + srcMidW, f.rect.y, srcRight, srcTop};
+        SDL_Rect sL{f.rect.x, cy, srcLeft, srcMidH};
+        SDL_Rect sC{cx, cy, srcMidW, srcMidH};
+        SDL_Rect sR{cx + srcMidW, cy, srcRight, srcMidH};
+        SDL_Rect sBL{f.rect.x, cy + srcMidH, srcLeft, srcBottom};
+        SDL_Rect sB{cx, cy + srcMidH, srcMidW, srcBottom};
+        SDL_Rect sBR{cx + srcMidW, cy + srcMidH, srcRight, srcBottom};
 
         SDL_Rect dTL{dst.x, dst.y, dstLeft, dstTop};
         SDL_Rect dT{dst.x + dstLeft, dst.y, dstMidW, dstTop};
@@ -565,13 +812,13 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         SDL_Rect dBR{dst.x + dst.w - dstRight, dst.y + dst.h - dstBottom, dstRight, dstBottom};
 
         blit(sTL, dTL);
-        blit(sT, dT);
+        blitTiled(sT, dT, true, false);
         blit(sTR, dTR);
-        blit(sL, dL);
-        blit(sC, dC);
-        blit(sR, dR);
+        blitTiled(sL, dL, false, true);
+        blitTiled(sC, dC, true, true);
+        blitTiled(sR, dR, false, true);
         blit(sBL, dBL);
-        blit(sB, dB);
+        blitTiled(sB, dB, true, false);
         blit(sBR, dBR);
     };
     auto renderOpaqueCenterLoopedFrame = [&](SDL_Texture* tex, const Frame& f, const SDL_Rect& dst) {
@@ -596,7 +843,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     };
     auto tryStartCustomLevel = [&]() -> bool {
         if (!ctx.selectedLevelPath) return false;
-        std::string path = RunCustomLevelSelect(ctx.win, ctx.ren);
+        std::string path = RunLevelSelect(ctx.win, ctx.ren);
         if (path.empty()) return false;
         *ctx.selectedLevelPath = path;
         cleanupMenuAssets();
@@ -619,6 +866,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         }
         SetTextScaleMultiplier(std::clamp((float)uiScalePercent / 100.0f, 0.5f, 2.0f));
         applySettingsExitCleanup();
+        // Keep menu music alive even when no audio-settings input occurs.
+        if (ctx.applyMenuMusicToggle) ctx.applyMenuMusicToggle();
         int eventsProcessed = 0;
         while (eventsProcessed < 256 && SDL_PollEvent(&e)) {
             ++eventsProcessed;
@@ -681,16 +930,45 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     continue;
                 }
                 if (isBackBtn) {
+                    if (waitingForControlKey) {
+                        waitingForControlKey = false;
+                        waitingControlIndex = -1;
+                        continue;
+                    }
                     setInSettings(false);
                     continue;
                 }
-                const int selectableRows = std::max(1, settingsRowsForTab(settingsTab));
+                if (e.gbutton.button == SDL_GAMEPAD_BUTTON_WEST ||
+                    e.gbutton.button == SDL_GAMEPAD_BUTTON_NORTH) {
+                    showOptionalSidebar = !showOptionalSidebar;
+                    continue;
+                }
                 if (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_UP) {
-                    settingsSel = (settingsSel + selectableRows - 1) % selectableRows;
+                    navigateSettingsBy(-1);
                     continue;
                 }
                 if (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_DOWN) {
-                    settingsSel = (settingsSel + 1) % selectableRows;
+                    navigateSettingsBy(1);
+                    continue;
+                }
+                if (e.gbutton.button == SDL_GAMEPAD_BUTTON_LEFT_SHOULDER) {
+                    cycleSettingsTab(-1);
+                    continue;
+                }
+                if (e.gbutton.button == SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER) {
+                    cycleSettingsTab(1);
+                    continue;
+                }
+                if (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_LEFT) {
+                    activateCurrentSettingsSelection(-1);
+                    continue;
+                }
+                if (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_RIGHT) {
+                    activateCurrentSettingsSelection(1);
+                    continue;
+                }
+                if (isAcceptBtn) {
+                    activateCurrentSettingsSelection(0);
                     continue;
                 }
             }
@@ -702,10 +980,14 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
 #endif
                     continue;
                 }
+                const bool navLeft = (e.key.key == SDLK_LEFT || e.key.scancode == keyMoveLeft);
+                const bool navRight = (e.key.key == SDLK_RIGHT || e.key.scancode == keyMoveRight);
+                const bool navUp = (e.key.key == SDLK_UP || e.key.scancode == keyJump);
+                const bool navDown = (e.key.key == SDLK_DOWN || e.key.scancode == keyMoveDown);
                 const bool isBackKey = (e.key.key == SDLK_ESCAPE || e.key.key == SDLK_AC_BACK);
                 if (closeMenuOpen) {
-                    if (e.key.key == SDLK_UP || e.key.key == SDLK_w) closeMenuSel = (closeMenuSel + 1) % 2;
-                    if (e.key.key == SDLK_DOWN || e.key.key == SDLK_s) closeMenuSel = (closeMenuSel + 1) % 2;
+                    if (navUp) closeMenuSel = (closeMenuSel + 1) % 2;
+                    if (navDown) closeMenuSel = (closeMenuSel + 1) % 2;
                     if (isBackKey) setCloseMenuOpen(false);
                     if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) {
                         if (closeMenuSel == 0) {
@@ -719,10 +1001,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     continue;
                 }
                 if (!inSettings) {
-                    if (e.key.key == SDLK_LEFT || e.key.key == SDLK_a) menuSel = (menuSel + 2) % 3;
-                    if (e.key.key == SDLK_RIGHT || e.key.key == SDLK_d) menuSel = (menuSel + 1) % 3;
-                    if (e.key.key == SDLK_UP || e.key.key == SDLK_w) menuSel = (menuSel + 2) % 3;
-                    if (e.key.key == SDLK_DOWN || e.key.key == SDLK_s) menuSel = (menuSel + 1) % 3;
+                    if (navLeft) menuSel = (menuSel + 2) % 3;
+                    if (navRight) menuSel = (menuSel + 1) % 3;
+                    if (navUp) menuSel = (menuSel + 2) % 3;
+                    if (navDown) menuSel = (menuSel + 1) % 3;
                     if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) {
                         if (menuSel == 0) setInSettings(true);
                         if (menuSel == 1) {
@@ -738,20 +1020,27 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         closeMenuSel = 0;
                     }
                 } else {
-                    if (e.key.key == SDLK_TAB || e.key.key == SDLK_q || e.key.key == SDLK_e) {
-                        const std::vector<int> tabs = visibleTabList();
-                        int nextTab = settingsTab;
-                        if (!tabs.empty()) {
-                            auto it = std::find(tabs.begin(), tabs.end(), settingsTab);
-                            const int idx = (it == tabs.end()) ? 0 : (int)(it - tabs.begin());
-                            nextTab = tabs[(idx + 1) % (int)tabs.size()];
+                    if (waitingForControlKey) {
+                        if (isBackKey) {
+                            waitingForControlKey = false;
+                            waitingControlIndex = -1;
+                        } else {
+                            SDL_Scancode* bind = controlBindingRef(waitingControlIndex);
+                            if (bind && e.key.scancode > SDL_SCANCODE_UNKNOWN && e.key.scancode < SDL_SCANCODE_COUNT) {
+                                *bind = e.key.scancode;
+                                if (ctx.saveClientSettings) ctx.saveClientSettings();
+                            }
+                            waitingForControlKey = false;
+                            waitingControlIndex = -1;
                         }
-                        setSettingsTab(nextTab);
-                        if (settingsTab == 1) settingsSelAudio = 0;
-                        if (settingsTab == 2) settingsSelDebug = 0;
-                        if (isExtraTab(settingsTab)) settingsSel = 0;
-                        settingsScrollY = 0;
-                        if (settingsTab == 4) aboutScrollY = 0;
+                        continue;
+                    }
+                    if (e.key.key == SDLK_TAB || e.key.key == SDLK_q || e.key.key == SDLK_e) {
+                        cycleSettingsTab(1);
+                        continue;
+                    }
+                    if (e.key.key == SDLK_b) {
+                        showOptionalSidebar = !showOptionalSidebar;
                         continue;
                     }
                     {
@@ -769,23 +1058,18 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         if (digitIdx >= 0) {
                             const std::vector<int> tabs = visibleTabList();
                             if (digitIdx < (int)tabs.size()) {
-                                setSettingsTab(tabs[digitIdx]);
-                                if (settingsTab == 1) settingsSelAudio = 0;
-                                if (settingsTab == 2) settingsSelDebug = 0;
-                                if (isExtraTab(settingsTab)) settingsSel = 0;
-                                settingsScrollY = 0;
-                                if (settingsTab == 4) aboutScrollY = 0;
+                                openSettingsTab(tabs[digitIdx]);
                             }
                             continue;
                         }
                     }
                     if (isExtraTab(settingsTab)) {
                         const int extraRows = settingsRowsForTab(settingsTab);
-                        if (e.key.key == SDLK_UP || e.key.key == SDLK_w) {
+                        if (navUp) {
                             settingsSel = (settingsSel + extraRows - 1) % extraRows;
                             ensureSettingsRowVisible(settingsSel);
                         }
-                        if (e.key.key == SDLK_DOWN || e.key.key == SDLK_s) {
+                        if (navDown) {
                             settingsSel = (settingsSel + 1) % extraRows;
                             ensureSettingsRowVisible(settingsSel);
                         }
@@ -794,23 +1078,16 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                             continue;
                         }
                         if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER ||
-                            e.key.key == SDLK_LEFT || e.key.key == SDLK_RIGHT) {
-                            const int extraIdx = extraTabIndex(settingsTab);
-                            const int optionIdx = extraTabOptionAtVisibleRow(settingsTab, settingsSel);
-                            if (optionIdx >= 0) {
-                                bool& v = extraTabValueRef(extraIdx, optionIdx);
-                                v = !v;
-                            } else {
-                                setInSettings(false);
-                            }
+                            navLeft || navRight) {
+                            activateCurrentSettingsSelection(0);
                         }
                         continue;
                     }
-                    if (e.key.key == SDLK_UP || e.key.key == SDLK_w) {
+                    if (navUp) {
                         settingsSel = (settingsSel + kSettingsCount - 1) % kSettingsCount;
                         ensureSettingsRowVisible(settingsSel);
                     }
-                    if (e.key.key == SDLK_DOWN || e.key.key == SDLK_s) {
+                    if (navDown) {
                         settingsSel = (settingsSel + 1) % kSettingsCount;
                         ensureSettingsRowVisible(settingsSel);
                     }
@@ -825,50 +1102,52 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
 
                     if (settingsTab == 1) {
                         constexpr int kAudioCount = 5;
-                        if (e.key.key == SDLK_UP || e.key.key == SDLK_w) settingsSelAudio = (settingsSelAudio + kAudioCount - 1) % kAudioCount;
-                        if (e.key.key == SDLK_DOWN || e.key.key == SDLK_s) settingsSelAudio = (settingsSelAudio + 1) % kAudioCount;
-                        if (e.key.key == SDLK_UP || e.key.key == SDLK_w || e.key.key == SDLK_DOWN || e.key.key == SDLK_s) {
+                        if (navUp) settingsSelAudio = (settingsSelAudio + kAudioCount - 1) % kAudioCount;
+                        if (navDown) settingsSelAudio = (settingsSelAudio + 1) % kAudioCount;
+                        if (navUp || navDown) {
                             ensureSettingsRowVisible(settingsSelAudio);
                         }
                         if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER ||
-                            e.key.key == SDLK_LEFT || e.key.key == SDLK_RIGHT) {
-                            const int dir = (e.key.key == SDLK_LEFT) ? -1 : (e.key.key == SDLK_RIGHT ? 1 : 0);
-                            if (settingsSelAudio == 0) menuMusicEnabled = !menuMusicEnabled;
-                            else if (settingsSelAudio == 1) muteAllAudio = !muteAllAudio;
-                            else if (settingsSelAudio == 2 && dir != 0) musicVolume = std::clamp(musicVolume + dir * 8, 0, 128);
-                            else if (settingsSelAudio == 3 && dir != 0) sfxVolume = std::clamp(sfxVolume + dir * 8, 0, 128);
-                            else if (settingsSelAudio == 4) setInSettings(false);
-                            if (ctx.applyMenuMusicToggle) ctx.applyMenuMusicToggle();
-                            if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
+                            navLeft || navRight) {
+                            const int dir = navLeft ? -1 : (navRight ? 1 : 0);
+                            activateCurrentSettingsSelection(dir);
                         }
                         continue;
                     }
                     if (settingsTab == 2) {
                         constexpr int kDebugCount = 8;
-                        if (e.key.key == SDLK_UP || e.key.key == SDLK_w) settingsSelDebug = (settingsSelDebug + kDebugCount - 1) % kDebugCount;
-                        if (e.key.key == SDLK_DOWN || e.key.key == SDLK_s) settingsSelDebug = (settingsSelDebug + 1) % kDebugCount;
-                        if (e.key.key == SDLK_UP || e.key.key == SDLK_w || e.key.key == SDLK_DOWN || e.key.key == SDLK_s) {
+                        if (navUp) settingsSelDebug = (settingsSelDebug + kDebugCount - 1) % kDebugCount;
+                        if (navDown) settingsSelDebug = (settingsSelDebug + 1) % kDebugCount;
+                        if (navUp || navDown) {
                             ensureSettingsRowVisible(settingsSelDebug);
                         }
                         if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) {
-                            if (settingsSelDebug == 0) defaultShowFpsCounter = !defaultShowFpsCounter;
-                            else if (settingsSelDebug == 1) defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
-                            else if (settingsSelDebug == 2) defaultShowHitboxes = !defaultShowHitboxes;
-                            else if (settingsSelDebug == 3) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
-                            else if (settingsSelDebug == 4) defaultShowDebugView = !defaultShowDebugView;
-                            else if (settingsSelDebug == 5) defaultHideUnknownObjectTypes = !defaultHideUnknownObjectTypes;
-                            else if (settingsSelDebug == 6) powerManagementEnabled = !powerManagementEnabled;
-                            else if (settingsSelDebug == 7) setInSettings(false);
+                            activateCurrentSettingsSelection(0);
                         }
                         continue;
                     }
                     if (settingsTab == 3) {
-                        if (isBackKey || e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) setInSettings(false);
+                        constexpr int kControlsCount = 6;
+                        if (navUp) {
+                            settingsSelControls = (settingsSelControls + kControlsCount - 1) % kControlsCount;
+                            ensureSettingsRowVisible(settingsSelControls);
+                        }
+                        if (navDown) {
+                            settingsSelControls = (settingsSelControls + 1) % kControlsCount;
+                            ensureSettingsRowVisible(settingsSelControls);
+                        }
+                        if (isBackKey) {
+                            setInSettings(false);
+                            continue;
+                        }
+                        if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) {
+                            activateCurrentSettingsSelection(0);
+                        }
                         continue;
                     }
                     if (settingsTab == 4) {
-                        if (e.key.key == SDLK_UP || e.key.key == SDLK_w) scrollAboutBy(-24);
-                        if (e.key.key == SDLK_DOWN || e.key.key == SDLK_s) scrollAboutBy(24);
+                        if (navUp) scrollAboutBy(-24);
+                        if (navDown) scrollAboutBy(24);
                         if (e.key.key == SDLK_PAGEUP) scrollAboutBy(-96);
                         if (e.key.key == SDLK_PAGEDOWN) scrollAboutBy(96);
                         if (isBackKey || e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) setInSettings(false);
@@ -876,42 +1155,14 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     }
 
                     if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER ||
-                        e.key.key == SDLK_LEFT || e.key.key == SDLK_RIGHT) {
-                        const int dir = (e.key.key == SDLK_LEFT) ? -1 : (e.key.key == SDLK_RIGHT ? 1 : 0);
-#if defined(__ANDROID__)
-                        if (settingsSel == IDX_VSYNC) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
-                        else if (settingsSel == IDX_CAM_CLAMP) clampCamX = !clampCamX;
-                        else if (settingsSel == IDX_UI_SCALE && dir != 0) uiScalePercent = std::clamp(uiScalePercent + dir * 5, kUiScaleMinPercent, kUiScaleMaxPercent);
-                        else if (settingsSel == IDX_SHOW_FPS) defaultShowFpsCounter = !defaultShowFpsCounter;
-                        else if (settingsSel == IDX_SHOW_DETAILED) defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
-                        else if (settingsSel == IDX_SHOW_HITBOXES) defaultShowHitboxes = !defaultShowHitboxes;
-                        else if (settingsSel == IDX_SHOW_PLAYER_HITBOX) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
-                        else if (settingsSel == IDX_SHOW_DEBUG_VIEW) defaultShowDebugView = !defaultShowDebugView;
-                        else if (settingsSel == IDX_MUSIC && dir != 0) musicVolume = std::clamp(musicVolume + dir * 8, 0, 128);
-                        else if (settingsSel == IDX_SFX && dir != 0) sfxVolume = std::clamp(sfxVolume + dir * 8, 0, 128);
-                        else if (settingsSel == IDX_ABOUT) { setSettingsTab(4); settingsScrollY = 0; aboutScrollY = 0; }
-                        else setInSettings(false);
-#else
-                        if (settingsSel == IDX_FULLSCREEN) { fullscreen = !fullscreen; SDL_SetWindowFullscreen(ctx.win, fullscreen); }
-                        else if (settingsSel == IDX_VSYNC) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
-                        else if (settingsSel == IDX_CAM_CLAMP) clampCamX = !clampCamX;
-                        else if (settingsSel == IDX_UI_SCALE && dir != 0) uiScalePercent = std::clamp(uiScalePercent + dir * 5, kUiScaleMinPercent, kUiScaleMaxPercent);
-                        else if (settingsSel == IDX_SHOW_FPS) defaultShowFpsCounter = !defaultShowFpsCounter;
-                        else if (settingsSel == IDX_SHOW_DETAILED) defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
-                        else if (settingsSel == IDX_SHOW_HITBOXES) defaultShowHitboxes = !defaultShowHitboxes;
-                        else if (settingsSel == IDX_SHOW_PLAYER_HITBOX) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
-                        else if (settingsSel == IDX_SHOW_DEBUG_VIEW) defaultShowDebugView = !defaultShowDebugView;
-                        else if (settingsSel == IDX_MUSIC && dir != 0) musicVolume = std::clamp(musicVolume + dir * 8, 0, 128);
-                        else if (settingsSel == IDX_SFX && dir != 0) sfxVolume = std::clamp(sfxVolume + dir * 8, 0, 128);
-                        else if (settingsSel == IDX_ABOUT) { setSettingsTab(4); settingsScrollY = 0; aboutScrollY = 0; }
-                        else setInSettings(false);
-#endif
-                        if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
+                        navLeft || navRight) {
+                        const int dir = navLeft ? -1 : (navRight ? 1 : 0);
+                        activateCurrentSettingsSelection(dir);
                     }
                 }
             }
             if (e.type == SDL_EVENT_MOUSE_WHEEL) {
-                if (inSettings && !closeMenuOpen && settingsTab != 3) {
+                if (inSettings && !closeMenuOpen) {
                     if (settingsTab == 4) scrollAboutBy(-e.wheel.y * 24);
                     else scrollSettingsBy(-e.wheel.y * 24);
                 }
@@ -961,17 +1212,17 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         continue;
                     }
                 } else {
+                    SDL_Rect sidebarToggleBtn = settingsSidebarToggleRect();
+                    if (SDL_PointInRect(&pt, &sidebarToggleBtn)) {
+                        showOptionalSidebar = !showOptionalSidebar;
+                        continue;
+                    }
                     const std::vector<int> tabs = visibleTabList();
                     for (int vi = 0; vi < (int)tabs.size(); ++vi) {
                         const int ti = tabs[vi];
                         SDL_Rect tr = settingsTabBtn(vi);
                         if (SDL_PointInRect(&pt, &tr)) {
-                            setSettingsTab(ti);
-                            settingsScrollY = 0;
-                            aboutScrollY = 0;
-                            if (ti == 1) settingsSelAudio = 0;
-                            if (ti == 2) settingsSelDebug = 0;
-                            if (isExtraTab(ti)) settingsSel = 0;
+                            openSettingsTab(ti);
                             continue;
                         }
                     }
@@ -1001,7 +1252,22 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                             continue;
                         }
                     }
-                    if (settingsTab == 3 || settingsTab == 4) continue;
+                    if (settingsTab == 4) continue;
+                    if (settingsTab == 3) {
+                        for (int i = 0; i < 6; ++i) {
+                            SDL_Rect row = settingsRowBtn(i);
+                            if (!SDL_PointInRect(&pt, &row)) continue;
+                            settingsSelControls = i;
+                            if (i >= 0 && i <= 4) {
+                                waitingForControlKey = true;
+                                waitingControlIndex = i;
+                            } else {
+                                setInSettings(false);
+                            }
+                            break;
+                        }
+                        continue;
+                    }
                     if (isExtraTab(settingsTab)) {
                         const int extraIdx = extraTabIndex(settingsTab);
                         const int extraRows = settingsRowsForTab(settingsTab);
@@ -1095,7 +1361,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     else if (SDL_PointInRect(&pt, &hitBtn)) defaultShowHitboxes = !defaultShowHitboxes;
                     else if (SDL_PointInRect(&pt, &playerHitBtn)) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
                     else if (SDL_PointInRect(&pt, &debugViewBtn)) defaultShowDebugView = !defaultShowDebugView;
-                    else if (SDL_PointInRect(&pt, &aboutBtn)) { setSettingsTab(4); settingsScrollY = 0; aboutScrollY = 0; }
+                    else if (SDL_PointInRect(&pt, &aboutBtn)) { openSettingsTab(4); }
                     else if (SDL_PointInRect(&pt, &backBtn)) setInSettings(false);
 #else
                     SDL_Rect fullBtn = settingsRowBtn(IDX_FULLSCREEN);
@@ -1116,7 +1382,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     else if (SDL_PointInRect(&pt, &hitBtn)) defaultShowHitboxes = !defaultShowHitboxes;
                     else if (SDL_PointInRect(&pt, &playerHitBtn)) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
                     else if (SDL_PointInRect(&pt, &debugViewBtn)) defaultShowDebugView = !defaultShowDebugView;
-                    else if (SDL_PointInRect(&pt, &aboutBtn)) { setSettingsTab(4); settingsScrollY = 0; aboutScrollY = 0; }
+                    else if (SDL_PointInRect(&pt, &aboutBtn)) { openSettingsTab(4); }
                     else if (SDL_PointInRect(&pt, &backBtn)) setInSettings(false);
 #endif
                         if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
@@ -1170,17 +1436,17 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         continue;
                     }
                 } else {
+                    SDL_Rect sidebarToggleBtn = settingsSidebarToggleRect();
+                    if (SDL_PointInRect(&pt, &sidebarToggleBtn)) {
+                        showOptionalSidebar = !showOptionalSidebar;
+                        continue;
+                    }
                     const std::vector<int> tabs = visibleTabList();
                     for (int vi = 0; vi < (int)tabs.size(); ++vi) {
                         const int ti = tabs[vi];
                         SDL_Rect tr = settingsTabBtn(vi);
                         if (SDL_PointInRect(&pt, &tr)) {
-                            setSettingsTab(ti);
-                            settingsScrollY = 0;
-                            aboutScrollY = 0;
-                            if (ti == 1) settingsSelAudio = 0;
-                            if (ti == 2) settingsSelDebug = 0;
-                            if (isExtraTab(ti)) settingsSel = 0;
+                            openSettingsTab(ti);
                             continue;
                         }
                     }
@@ -1212,7 +1478,22 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                             continue;
                         }
                     }
-                    if (settingsTab == 3 || settingsTab == 4) continue;
+                    if (settingsTab == 4) continue;
+                    if (settingsTab == 3) {
+                        for (int i = 0; i < 6; ++i) {
+                            SDL_Rect row = settingsRowBtn(i);
+                            if (!SDL_PointInRect(&pt, &row)) continue;
+                            settingsSelControls = i;
+                            if (i >= 0 && i <= 4) {
+                                waitingForControlKey = true;
+                                waitingControlIndex = i;
+                            } else {
+                                setInSettings(false);
+                            }
+                            break;
+                        }
+                        continue;
+                    }
                     if (isExtraTab(settingsTab)) {
                         const int extraIdx = extraTabIndex(settingsTab);
                         const int extraRows = settingsRowsForTab(settingsTab);
@@ -1308,7 +1589,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     else if (SDL_PointInRect(&pt, &hitBtn)) defaultShowHitboxes = !defaultShowHitboxes;
                     else if (SDL_PointInRect(&pt, &playerHitBtn)) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
                     else if (SDL_PointInRect(&pt, &debugViewBtn)) defaultShowDebugView = !defaultShowDebugView;
-                    else if (SDL_PointInRect(&pt, &aboutBtn)) { setSettingsTab(4); settingsScrollY = 0; }
+                    else if (SDL_PointInRect(&pt, &aboutBtn)) { openSettingsTab(4); }
                     else if (SDL_PointInRect(&pt, &backBtn)) setInSettings(false);
 #else
                     SDL_Rect fullBtn = settingsRowBtn(IDX_FULLSCREEN);
@@ -1329,7 +1610,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     else if (SDL_PointInRect(&pt, &hitBtn)) defaultShowHitboxes = !defaultShowHitboxes;
                     else if (SDL_PointInRect(&pt, &playerHitBtn)) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
                     else if (SDL_PointInRect(&pt, &debugViewBtn)) defaultShowDebugView = !defaultShowDebugView;
-                    else if (SDL_PointInRect(&pt, &aboutBtn)) { setSettingsTab(4); settingsScrollY = 0; }
+                    else if (SDL_PointInRect(&pt, &aboutBtn)) { openSettingsTab(4); }
                     else if (SDL_PointInRect(&pt, &backBtn)) setInSettings(false);
 #endif
                     if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
@@ -1602,6 +1883,31 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 DrawText(ctx.ren, closeBtn.x + (closeBtn.w - MeasureTextWidth(2, "CLOSE")) / 2, closeBtn.y + (closeBtn.h - labelLineH) / 2, 2, "CLOSE");
             }
         } else {
+            const std::vector<int> tabs = visibleTabList();
+            SDL_Rect settingsPanel = settingsPanelRect();
+            const Frame* settingsWindowFrame = nullptr;
+            SDL_Texture* settingsWindowTex = menuFallbackTex;
+            if (settingsWindowTex) {
+                auto itWindow = menuFallbackFrames.find("window");
+                if (itWindow != menuFallbackFrames.end()) settingsWindowFrame = &itWindow->second;
+                if (!settingsWindowFrame) {
+                    auto itWindowPng = menuFallbackFrames.find("window.png");
+                    if (itWindowPng != menuFallbackFrames.end()) settingsWindowFrame = &itWindowPng->second;
+                }
+            }
+            if (settingsWindowFrame && settingsWindowTex) {
+                SDL_SetTextureBlendMode(settingsWindowTex, SDL_BLENDMODE_BLEND);
+                SDL_SetTextureAlphaMod(settingsWindowTex, 236);
+                renderCenterLoopedFrame(settingsWindowTex, *settingsWindowFrame, settingsPanel);
+                SDL_SetTextureAlphaMod(settingsWindowTex, 255);
+            } else {
+                SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_BLEND);
+                SDL_SetRenderDrawColor(ctx.ren, 26, 32, 42, 236);
+                SDL_RenderFillRect(ctx.ren, &settingsPanel);
+                SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_NONE);
+                SDL_SetRenderDrawColor(ctx.ren, 170, 190, 220, 255);
+                SDL_RenderDrawRect(ctx.ren, &settingsPanel);
+            }
             const std::string title = "SETTINGS";
             DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(3, title) / 2, (int)std::lround(84.0f * uiButtonScale()), 3, title);
             SDL_Texture* checkboxActiveTex = nullptr;
@@ -1613,6 +1919,25 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             if (!checkboxInactive) checkboxInactive = getMenuFrame("checkbox_disabled.png", checkboxInactiveTex);
             const Frame* toggleButtonFrame = getMenuFrame("button_genreaic", toggleButtonTex);
             if (!toggleButtonFrame) toggleButtonFrame = getMenuFrame("button_genreaic.png", toggleButtonTex);
+            auto drawChromeButton = [&](const SDL_Rect& r, bool selected) {
+                if (toggleButtonFrame && toggleButtonTex) {
+                    renderOpaqueCenterLoopedFrame(toggleButtonTex, *toggleButtonFrame, r);
+                } else {
+                    SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_NONE);
+                    SDL_SetRenderDrawColor(ctx.ren, selected ? 88 : 60, 92, 110, 255);
+                    SDL_RenderFillRect(ctx.ren, &r);
+                }
+                SDL_SetRenderDrawColor(ctx.ren, selected ? 210 : 180, 200, 230, 255);
+                SDL_RenderDrawRect(ctx.ren, &r);
+            };
+            SDL_Rect sidebarToggleBtn = settingsSidebarToggleRect();
+            drawChromeButton(sidebarToggleBtn, showOptionalSidebar);
+            const std::string sidebarLabel = std::string("SIDEBAR: ") + (showOptionalSidebar ? "ON" : "OFF");
+            DrawText(ctx.ren,
+                     sidebarToggleBtn.x + (sidebarToggleBtn.w - MeasureTextWidth(2, sidebarLabel)) / 2,
+                     sidebarToggleBtn.y + std::max(3, (sidebarToggleBtn.h - std::max(10, (int)std::lround(16.0f * uiButtonScale()))) / 2),
+                     2,
+                     sidebarLabel);
             auto drawToggleHitbox = [&](int rowIdx, bool selected) {
                 SDL_Rect r = settingsRowBtn(rowIdx);
                 if (toggleButtonFrame && toggleButtonTex) {
@@ -1643,16 +1968,34 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_RenderFillRect(ctx.ren, &fill);
                 }
             };
-            const char* tabNames[kSettingsTabCount] = {"GENERAL", "AUDIO", "DEBUG", "CONTROLS", "ABOUT", "GRAPHICS+", "GAMEPLAY+", "ACCESSIBILITY", "NETWORK+", "PRIVACY+"};
-            const std::vector<int> tabs = visibleTabList();
             for (int vi = 0; vi < (int)tabs.size(); ++vi) {
                 const int ti = tabs[vi];
                 SDL_Rect tr = settingsTabBtn(vi);
-                SDL_SetRenderDrawColor(ctx.ren, settingsTab == ti ? 80 : 50, 90, 120, 255);
-                SDL_RenderFillRect(ctx.ren, &tr);
-                SDL_SetRenderDrawColor(ctx.ren, 180, 200, 230, 255);
-                SDL_RenderDrawRect(ctx.ren, &tr);
-                DrawText(ctx.ren, tr.x + (tr.w - MeasureTextWidth(2, tabNames[ti])) / 2, tr.y + 4, 2, tabNames[ti]);
+                drawChromeButton(tr, settingsTab == ti);
+                const std::string& tabLabel = (ti >= 0 && ti < (int)settingsTabLabels.size()) ? settingsTabLabels[ti] : std::string("TAB");
+                DrawText(ctx.ren, tr.x + (tr.w - MeasureTextWidth(2, tabLabel)) / 2, tr.y + 4, 2, tabLabel);
+            }
+            if (showOptionalSidebar) {
+                SDL_Rect side = settingsSidebarRect();
+                if (settingsWindowFrame && settingsWindowTex) {
+                    SDL_SetTextureBlendMode(settingsWindowTex, SDL_BLENDMODE_BLEND);
+                    SDL_SetTextureAlphaMod(settingsWindowTex, 220);
+                    renderCenterLoopedFrame(settingsWindowTex, *settingsWindowFrame, side);
+                    SDL_SetTextureAlphaMod(settingsWindowTex, 255);
+                } else {
+                    SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_BLEND);
+                    SDL_SetRenderDrawColor(ctx.ren, 36, 45, 58, 220);
+                    SDL_RenderFillRect(ctx.ren, &side);
+                    SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_NONE);
+                    SDL_SetRenderDrawColor(ctx.ren, 160, 182, 212, 255);
+                    SDL_RenderDrawRect(ctx.ren, &side);
+                }
+                const std::string tabName = (settingsTab >= 0 && settingsTab < (int)settingsTabLabels.size()) ? settingsTabLabels[settingsTab] : std::string("UNKNOWN");
+                DrawText(ctx.ren, side.x + 10, side.y + 10, 2, "QUICK INFO");
+                DrawText(ctx.ren, side.x + 10, side.y + 34, 2, std::string("TAB: ") + tabName);
+                DrawText(ctx.ren, side.x + 10, side.y + 58, 2, std::string("B: TOGGLE SIDEBAR"));
+                DrawText(ctx.ren, side.x + 10, side.y + 82, 2, std::string("Q/E: NEXT TAB"));
+                DrawText(ctx.ren, side.x + 10, side.y + 106, 2, std::string("ESC: BACK"));
             }
             if (settingsTab == 4) {
                 const int sdlVer = SDL_GetVersion();
@@ -1692,19 +2035,42 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 drawAboutLine(538, 1, ctx.buildUuid);
                 SDL_SetRenderClipRect(ctx.ren, nullptr);
             } else if (settingsTab == 3) {
-                DrawText(ctx.ren, 130, 162, 2, "MOVEMENT:  A/D  or  LEFT/RIGHT");
-                DrawText(ctx.ren, 130, 192, 2, "JUMP:      SPACE/W/UP");
-                DrawText(ctx.ren, 130, 222, 2, "DOWN:      S/DOWN");
-                DrawText(ctx.ren, 130, 252, 2, "PAUSE:     ESC");
+                SDL_Rect listClip = settingsListClipRect();
+                SDL_SetRenderClipRect(ctx.ren, &listClip);
+                std::vector<std::string> rows = {
+                    controlsLabels[0] + std::string(": ") + keyNameForDisplay(keyMoveLeft),
+                    controlsLabels[1] + std::string(": ") + keyNameForDisplay(keyMoveRight),
+                    controlsLabels[2] + std::string(": ") + keyNameForDisplay(keyMoveDown),
+                    controlsLabels[3] + std::string(": ") + keyNameForDisplay(keyJump),
+                    controlsLabels[4] + std::string(": ") + keyNameForDisplay(keyPause),
+                    controlsLabels[5]
+                };
+                for (int i = 0; i < (int)rows.size(); ++i) {
+                    drawToggleHitbox(i, i == settingsSelControls);
+                    int y = settingsRowY(i);
+                    if (i == settingsSelControls) {
+                        SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_BLEND);
+                        SDL_SetRenderDrawColor(ctx.ren, 255, 255, 255, 76);
+                        SDL_Rect hl = settingsRowBtn(i);
+                        SDL_RenderFillRect(ctx.ren, &hl);
+                        SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_NONE);
+                    }
+                    DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(2, rows[i]) / 2, y, 2, rows[i]);
+                }
+                if (waitingForControlKey) {
+                    const std::string waitMsg = "PRESS A KEY (ESC TO CANCEL)";
+                    DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(2, waitMsg) / 2, settingsListTop - 26, 2, waitMsg);
+                }
+                SDL_SetRenderClipRect(ctx.ren, nullptr);
             } else if (settingsTab == 1) {
                 SDL_Rect listClip = settingsListClipRect();
                 SDL_SetRenderClipRect(ctx.ren, &listClip);
                 std::vector<std::string> rows = {
-                    std::string("MENU MUSIC: ") + (menuMusicEnabled ? "ON" : "OFF"),
-                    std::string("MUTE ALL: ") + (muteAllAudio ? "ON" : "OFF"),
-                    std::string("MUSIC: ") + std::to_string((musicVolume * 100) / 128) + "%",
-                    std::string("SFX: ") + std::to_string((sfxVolume * 100) / 128) + "%",
-                    "BACK"
+                    audioLabels[0] + std::string(": ") + (menuMusicEnabled ? "ON" : "OFF"),
+                    audioLabels[1] + std::string(": ") + (muteAllAudio ? "ON" : "OFF"),
+                    audioLabels[2] + std::string(": ") + std::to_string((musicVolume * 100) / 128) + "%",
+                    audioLabels[3] + std::string(": ") + std::to_string((sfxVolume * 100) / 128) + "%",
+                    audioLabels[4]
                 };
                 for (int i = 0; i < (int)rows.size(); ++i) {
                     drawToggleHitbox(i, i == settingsSelAudio);
@@ -1737,14 +2103,14 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 SDL_Rect listClip = settingsListClipRect();
                 SDL_SetRenderClipRect(ctx.ren, &listClip);
                 std::vector<std::string> rows = {
-                    std::string("FPS COUNTER: ") + (defaultShowFpsCounter ? "ON" : "OFF"),
-                    std::string("DETAILED DEBUGGER: ") + (defaultShowDetailedDebugger ? "ON" : "OFF"),
-                    std::string("SHOW HITBOXES: ") + (defaultShowHitboxes ? "ON" : "OFF"),
-                    std::string("PLAYER HITBOX: ") + (defaultShowPlayerHitbox ? "ON" : "OFF"),
-                    std::string("DEBUG HUD: ") + (defaultShowDebugView ? "ON" : "OFF"),
-                    std::string("HIDE UNKNOWN OBJECT TYPES: ") + (defaultHideUnknownObjectTypes ? "ON" : "OFF"),
-                    std::string("POWER MANAGEMENT: ") + (powerManagementEnabled ? "ON" : "OFF"),
-                    "BACK"
+                    debugLabels[0] + std::string(": ") + (defaultShowFpsCounter ? "ON" : "OFF"),
+                    debugLabels[1] + std::string(": ") + (defaultShowDetailedDebugger ? "ON" : "OFF"),
+                    debugLabels[2] + std::string(": ") + (defaultShowHitboxes ? "ON" : "OFF"),
+                    debugLabels[3] + std::string(": ") + (defaultShowPlayerHitbox ? "ON" : "OFF"),
+                    debugLabels[4] + std::string(": ") + (defaultShowDebugView ? "ON" : "OFF"),
+                    debugLabels[5] + std::string(": ") + (defaultHideUnknownObjectTypes ? "ON" : "OFF"),
+                    debugLabels[6] + std::string(": ") + (powerManagementEnabled ? "ON" : "OFF"),
+                    debugLabels[7]
                 };
                 for (int i = 0; i < (int)rows.size(); ++i) {
                     drawToggleHitbox(i, i == settingsSelDebug);
@@ -1862,7 +2228,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 }
                 SDL_SetRenderClipRect(ctx.ren, nullptr);
             }
-            if ((settingsTab != 3 && settingsTab != 4 && settingsMaxScroll(settingsTab) > 0) ||
+            if ((settingsTab != 4 && settingsMaxScroll(settingsTab) > 0) ||
                 (settingsTab == 4 && aboutMaxScroll() > 0)) {
                 SDL_Rect track = settingsScrollbarTrackRect();
                 SDL_Rect thumb = (settingsTab == 4) ? aboutScrollbarThumbRect() : settingsScrollbarThumbRect();

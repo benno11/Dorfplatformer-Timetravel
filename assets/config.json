@@ -1,5 +1,5 @@
 {
-  "version": "2.1.0a6",
+  "version": "2.1.0a7",
   "experimental_render_thread": false,
   "movement": {
     "accel_in_water": 700.0,
@@ -10,6 +10,7 @@
     "friction_ground": 3000.0,
     "gravity_in_water": 900.0,
     "gravity_ground": 2000.0,
+    "boss_gravity": 0.0,
     "swim_up_speed": 380.0,
     "swim_rise": 900.0
   },

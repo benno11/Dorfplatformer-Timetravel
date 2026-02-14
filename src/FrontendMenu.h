@@ -33,6 +33,11 @@ struct FrontendMenuContext {
     bool* powerManagementEnabled = nullptr;
     bool* menuMusicEnabled = nullptr;
     bool* muteAllAudio = nullptr;
+    SDL_Scancode* keyMoveLeft = nullptr;
+    SDL_Scancode* keyMoveRight = nullptr;
+    SDL_Scancode* keyMoveDown = nullptr;
+    SDL_Scancode* keyJump = nullptr;
+    SDL_Scancode* keyPause = nullptr;
     int* musicVolume = nullptr;
     int* sfxVolume = nullptr;
     int* uiScalePercent = nullptr;
@@ -43,6 +48,7 @@ struct FrontendMenuContext {
     std::function<void()> applyAudioVolumes;
     std::function<void()> applyMenuMusicToggle;
     std::function<void()> updateDynamicResolution;
+    std::function<void()> saveClientSettings;
 };
 
 FrontendAction runFrontendMenu(FrontendMenuContext& ctx);

@@ -438,6 +438,28 @@ bool loadLevelBNNLVL(const std::string& path,
         auto defs = loadBlockDefs("assets/blockdefined.txt");
         applyBlockDefsToMaps(map, map.tileIds, defs);
         objects.clear();
+        std::string objHeader;
+        if (in >> objHeader) {
+            if (objHeader == "OBJ") {
+                int objCount = 0;
+                if (in >> objCount) {
+                    objCount = std::clamp(objCount, 0, 200000);
+                    objects.reserve(objCount);
+                    for (int i = 0; i < objCount; ++i) {
+                        int id = 0;
+                        float x = 0.0f;
+                        float y = 0.0f;
+                        if (!(in >> id >> x >> y)) break;
+                        if (id <= 0) continue;
+                        ObjectInstance obj;
+                        obj.id = std::to_string(id);
+                        obj.x = x;
+                        obj.y = y;
+                        objects.push_back(obj);
+                    }
+                }
+            }
+        }
         meta.name = "DFLVL2";
         meta.entitySpawnPos.clear();
         meta.entitySpawnType.clear();

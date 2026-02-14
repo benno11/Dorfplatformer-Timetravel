@@ -63,6 +63,51 @@
  /home/benno111/Documents/GitHub/DF-New/deps/linux-sdl3-src/include/SDL3/SDL_oldnames.h \
  /home/benno111/Documents/GitHub/DF-New/.build/include/sdl3/SDL_image.h \
  /home/benno111/Documents/GitHub/DF-New/deps/linux-sdl3-src/include/SDL3/SDL.h \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/json.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/adl_serializer.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/abi_macros.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/conversions/from_json.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/exceptions.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/value_t.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/macro_scope.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/meta/detected.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/meta/void_t.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/thirdparty/hedley/hedley.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/string_escape.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/input/position_t.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/meta/cpp_future.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/meta/type_traits.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/iterators/iterator_traits.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/meta/call_std/begin.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/meta/call_std/end.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/json_fwd.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/string_concat.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/meta/identity_tag.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/meta/std_fs.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/conversions/to_json.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/iterators/iteration_proxy.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/byte_container_with_subtype.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/hash.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/input/binary_reader.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/input/input_adapters.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/input/json_sax.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/input/lexer.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/meta/is_sax.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/input/parser.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/iterators/internal_iterator.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/iterators/primitive_iterator.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/iterators/iter_impl.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/iterators/json_reverse_iterator.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/json_custom_base_class.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/json_pointer.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/json_ref.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/output/binary_writer.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/output/output_adapters.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/output/serializer.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/conversions/to_chars.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/ordered_map.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/macro_unscope.hpp \
+ /home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/thirdparty/hedley/hedley_undef.hpp \
  /home/benno111/Documents/GitHub/DF-New/src/AssetPath.h \
  /home/benno111/Documents/GitHub/DF-New/src/GameSupport.h \
  /home/benno111/Documents/GitHub/DF-New/src/TileMap.h \
@@ -133,6 +178,51 @@
 /home/benno111/Documents/GitHub/DF-New/deps/linux-sdl3-src/include/SDL3/SDL_oldnames.h:
 /home/benno111/Documents/GitHub/DF-New/.build/include/sdl3/SDL_image.h:
 /home/benno111/Documents/GitHub/DF-New/deps/linux-sdl3-src/include/SDL3/SDL.h:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/json.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/adl_serializer.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/abi_macros.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/conversions/from_json.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/exceptions.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/value_t.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/macro_scope.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/meta/detected.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/meta/void_t.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/thirdparty/hedley/hedley.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/string_escape.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/input/position_t.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/meta/cpp_future.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/meta/type_traits.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/iterators/iterator_traits.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/meta/call_std/begin.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/meta/call_std/end.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/json_fwd.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/string_concat.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/meta/identity_tag.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/meta/std_fs.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/conversions/to_json.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/iterators/iteration_proxy.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/byte_container_with_subtype.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/hash.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/input/binary_reader.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/input/input_adapters.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/input/json_sax.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/input/lexer.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/meta/is_sax.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/input/parser.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/iterators/internal_iterator.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/iterators/primitive_iterator.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/iterators/iter_impl.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/iterators/json_reverse_iterator.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/json_custom_base_class.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/json_pointer.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/json_ref.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/output/binary_writer.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/output/output_adapters.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/output/serializer.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/conversions/to_chars.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/ordered_map.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/detail/macro_unscope.hpp:
+/home/benno111/Documents/GitHub/DF-New/third_party/nlohmann/thirdparty/hedley/hedley_undef.hpp:
 /home/benno111/Documents/GitHub/DF-New/src/AssetPath.h:
 /home/benno111/Documents/GitHub/DF-New/src/GameSupport.h:
 /home/benno111/Documents/GitHub/DF-New/src/TileMap.h:
