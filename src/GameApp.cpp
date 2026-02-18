@@ -1259,6 +1259,7 @@ int RunGameApp(int argc, char** argv) {
         return extraSettings.size() > 44 ? extraSettings[44] : false;
     };
     auto sendDiscordTelemetry = [&](const std::string& event, const nlohmann::json& details) {
+        try {
         if (!telemetryEnabled()) return;
         if (telemetryWebhookUrl.empty()) return;
 #if defined(HAVE_CURL) && HAVE_CURL
@@ -1301,6 +1302,11 @@ int RunGameApp(int argc, char** argv) {
         (void)event;
         (void)details;
 #endif
+        } catch (const std::exception& e) {
+            SDL_Log("telemetry: exception: %s", e.what());
+        } catch (...) {
+            SDL_Log("telemetry: unknown exception");
+        }
     };
     sendDiscordTelemetry("startup", {
         {"build_uuid", buildUuid},
