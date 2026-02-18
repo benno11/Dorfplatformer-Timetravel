@@ -68,7 +68,7 @@ jobs:
       run: |
         $triplet = if ("${{ runner.os }}" -eq "Windows") { "x64-windows" } elseif ("${{ runner.os }}" -eq "macOS") { "x64-osx" } else { "x64-linux" }
         $vcpkgExe = if ("${{ runner.os }}" -eq "Windows") { "$env:VCPKG_ROOT\vcpkg.exe" } else { "$env:VCPKG_ROOT/vcpkg" }
-        & $vcpkgExe install sdl3 sdl3-image sdl3-ttf sdl3-mixer curl nlohmann-json --triplet $triplet
+        & $vcpkgExe install sdl3 sdl3-image sdl3-ttf curl nlohmann-json --triplet $triplet
         "VCPKG_TARGET_TRIPLET=$triplet" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
     - name: Configure CMake

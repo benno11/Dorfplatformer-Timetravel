@@ -158,7 +158,11 @@ if(NOT SDL3_mixer_FOUND)
     endif()
   endforeach()
 endif()
-find_package(SDL3_mixer REQUIRED CONFIG)
+if(SDL3_mixer_FOUND)
+  message(STATUS "Found SDL3_mixer: ${SDL3_mixer_VERSION}")
+else()
+  message(WARNING "SDL3_mixer not found: building without mixer link target (runtime audio falls back accordingly)")
+endif()
 find_package(CURL QUIET)
 find_package(nlohmann_json QUIET)
 if(NOT nlohmann_json_FOUND)
@@ -217,8 +221,13 @@ select_sdl_target(SDL3_TTF_LINK_TARGET "SDL3_ttf" "SDL3_ttf")
 message(STATUS "Using SDL link target: ${SDL3_LINK_TARGET}")
 message(STATUS "Using SDL_image link target: ${SDL3_IMAGE_LINK_TARGET}")
 message(STATUS "Using SDL_ttf link target: ${SDL3_TTF_LINK_TARGET}")
-select_sdl_target(SDL3_MIXER_LINK_TARGET "SDL3_mixer" "SDL3_mixer")
-message(STATUS "Using SDL_mixer link target: ${SDL3_MIXER_LINK_TARGET}")
+set(SDL3_MIXER_LINK_TARGET "")
+if(SDL3_mixer_FOUND)
+  select_sdl_target(SDL3_MIXER_LINK_TARGET "SDL3_mixer" "SDL3_mixer")
+  message(STATUS "Using SDL_mixer link target: ${SDL3_MIXER_LINK_TARGET}")
+else()
+  message(STATUS "SDL_mixer link target disabled")
+endif()
 
 set(SDL_LOWERCASE_INCLUDE_ROOT "${CMAKE_BINARY_DIR}/include")
 if(EXISTS "/usr/include/SDL3/SDL.h")
@@ -246,9 +255,11 @@ target_link_libraries(platformer
   ${SDL3_LINK_TARGET}
   ${SDL3_IMAGE_LINK_TARGET}
   ${SDL3_TTF_LINK_TARGET}
-  ${SDL3_MIXER_LINK_TARGET}
   nlohmann_json::nlohmann_json
 )
+if(SDL3_MIXER_LINK_TARGET)
+  target_link_libraries(platformer ${SDL3_MIXER_LINK_TARGET})
+endif()
 if(ANDROID)
   target_link_libraries(platformer
     OpenSLES
