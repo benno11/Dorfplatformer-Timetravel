@@ -4,7 +4,7 @@
     "display": {
       "fullscreen": false,
       "vsync": false,
-      "ui_scale_percent": 200
+      "ui_scale_percent": 100
     },
     "camera": {
       "clamp_cam_x": true

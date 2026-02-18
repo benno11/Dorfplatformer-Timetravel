@@ -837,7 +837,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     };
     auto tryStartCustomLevel = [&]() -> bool {
         if (!ctx.selectedLevelPath) return false;
-        std::string path = RunLevelSelect(ctx.win, ctx.ren);
+        std::string path = RunCustomLevelSelect(ctx.win, ctx.ren);
         if (path.empty()) return false;
         *ctx.selectedLevelPath = path;
         cleanupMenuAssets();

@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <chrono>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -18,6 +19,9 @@
 #include "GameSupport.h"
 #include "LevelLoader.h"
 #include "InputSystem.h"
+#if defined(HAVE_CURL) && HAVE_CURL
+#include <curl/curl.h>
+#endif
 
 namespace {
 struct LevelEntry {
@@ -32,16 +36,18 @@ struct OnlineLevelsMenuLabels {
     std::string localEditorEntry = "CREATE LOCAL LEVEL (EDITOR)";
     std::string userLevelsHeader = "USER LEVELS";
     std::string downloadButton = "DOWNLOAD (D)";
+    std::string uploadButton = "UPLOAD (U)";
     std::string emptyTitle = "No levels found in this tab.";
     std::string emptyLocalHint = "Use CREATE LOCAL LEVEL (EDITOR).";
     std::string emptyCustomHintAndroid = "Add custom levels to assets/custom_levels/levels.json.";
     std::string emptyCustomHintDesktop = "Use custom_levels/ or assets/custom_levels/.";
     std::string localPanelTitle = "LOCAL LEVEL";
-    std::string localPanelActions = "ENTER/P: PLAY  DEL/X: DELETE  E: EDIT";
+    std::string localPanelActions = "ENTER/P: PLAY  DEL/X: DELETE  E: EDIT  U: UPLOAD";
     std::string localPanelBackHint = "ESC: BACK";
     std::string buttonPlay = "PLAY";
     std::string buttonDelete = "DELETE";
     std::string buttonEdit = "EDIT";
+    std::string buttonUpload = "UPLOAD";
     std::string buttonBack = "BACK";
 };
 
@@ -86,6 +92,10 @@ bool isNumericId(const std::string& s) {
 
 std::string downloadFolderPath();
 std::string localLevelsFolderPath();
+std::string buildFirebaseLevelUploadUrl(const std::string& base,
+                                        const std::string& authToken,
+                                        const std::string& levelId);
+bool uploadLocalLevelToServer(const LevelEntry& level, std::string& statusText);
 
 OnlineLevelsMenuLabels loadOnlineLevelsMenuLabels() {
     OnlineLevelsMenuLabels labels;
@@ -103,6 +113,7 @@ OnlineLevelsMenuLabels loadOnlineLevelsMenuLabels() {
         readString("local_editor_entry", labels.localEditorEntry);
         readString("user_levels_header", labels.userLevelsHeader);
         readString("download_button", labels.downloadButton);
+        readString("upload_button", labels.uploadButton);
         readString("empty_title", labels.emptyTitle);
         readString("empty_local_hint", labels.emptyLocalHint);
         readString("empty_custom_hint_android", labels.emptyCustomHintAndroid);
@@ -113,6 +124,7 @@ OnlineLevelsMenuLabels loadOnlineLevelsMenuLabels() {
         readString("btn_play", labels.buttonPlay);
         readString("btn_delete", labels.buttonDelete);
         readString("btn_edit", labels.buttonEdit);
+        readString("btn_upload", labels.buttonUpload);
         readString("btn_back", labels.buttonBack);
     } catch (...) {}
     return labels;
@@ -240,8 +252,32 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
         SDL_Rect rowName{panel.x + 20, panel.y + 56, panel.w - 40, 38};
         SDL_Rect rowW{panel.x + 20, panel.y + 106, panel.w - 40, 38};
         SDL_Rect rowH{panel.x + 20, panel.y + 156, panel.w - 40, 38};
+        SDL_Rect rowWMinus{rowW.x + rowW.w - 96, rowW.y + 5, 40, rowW.h - 10};
+        SDL_Rect rowWPlus{rowW.x + rowW.w - 46, rowW.y + 5, 40, rowW.h - 10};
+        SDL_Rect rowHMinus{rowH.x + rowH.w - 96, rowH.y + 5, 40, rowH.h - 10};
+        SDL_Rect rowHPlus{rowH.x + rowH.w - 46, rowH.y + 5, 40, rowH.h - 10};
         SDL_Rect createBtn{panel.x + 80, panel.y + 242, 150, 42};
         SDL_Rect cancelBtn{panel.x + 290, panel.y + 242, 150, 42};
+        auto handlePointerDown = [&](int px, int py) {
+            SDL_Point pt{px, py};
+            if (SDL_PointInRect(&pt, &rowWMinus)) { selectedRow = 1; out.width = clampSize(out.width - 1); return; }
+            if (SDL_PointInRect(&pt, &rowWPlus)) { selectedRow = 1; out.width = clampSize(out.width + 1); return; }
+            if (SDL_PointInRect(&pt, &rowHMinus)) { selectedRow = 2; out.height = clampSize(out.height - 1); return; }
+            if (SDL_PointInRect(&pt, &rowHPlus)) { selectedRow = 2; out.height = clampSize(out.height + 1); return; }
+            if (SDL_PointInRect(&pt, &rowName)) { selectedRow = 0; return; }
+            if (SDL_PointInRect(&pt, &rowW)) { selectedRow = 1; return; }
+            if (SDL_PointInRect(&pt, &rowH)) { selectedRow = 2; return; }
+            if (SDL_PointInRect(&pt, &createBtn)) {
+                out.name = trimSpaces(out.name);
+                if (out.name.empty()) out.name = "new_level";
+                out.accepted = true;
+                running = false;
+                return;
+            }
+            if (SDL_PointInRect(&pt, &cancelBtn)) {
+                running = false;
+            }
+        };
 
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
@@ -296,18 +332,12 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
                 }
             }
             if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
-                SDL_Point pt{(int)e.button.x, (int)e.button.y};
-                if (SDL_PointInRect(&pt, &rowName)) selectedRow = 0;
-                else if (SDL_PointInRect(&pt, &rowW)) selectedRow = 1;
-                else if (SDL_PointInRect(&pt, &rowH)) selectedRow = 2;
-                else if (SDL_PointInRect(&pt, &createBtn)) {
-                    out.name = trimSpaces(out.name);
-                    if (out.name.empty()) out.name = "new_level";
-                    out.accepted = true;
-                    running = false;
-                } else if (SDL_PointInRect(&pt, &cancelBtn)) {
-                    running = false;
-                }
+                handlePointerDown((int)e.button.x, (int)e.button.y);
+            }
+            if (e.type == SDL_FINGERDOWN) {
+                const int tx = (int)std::lround(e.tfinger.x * winW);
+                const int ty = (int)std::lround(e.tfinger.y * winH);
+                handlePointerDown(tx, ty);
             }
             if (e.type == SDL_MOUSEWHEEL) {
                 if (selectedRow == 1) out.width = clampSize(out.width + e.wheel.y);
@@ -330,9 +360,20 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
             SDL_RenderDrawRect(ren, &r);
             DrawText(ren, r.x + 10, r.y + 10, 2, text);
         };
+        auto drawAdjustButton = [&](const SDL_Rect& r, const char* label) {
+            SDL_SetRenderDrawColor(ren, 44, 60, 92, 255);
+            SDL_RenderFillRect(ren, &r);
+            SDL_SetRenderDrawColor(ren, 220, 225, 235, 255);
+            SDL_RenderDrawRect(ren, &r);
+            DrawText(ren, r.x + 12, r.y + 6, 2, label);
+        };
         drawRow(rowName, selectedRow == 0, std::string("NAME: ") + out.name);
         drawRow(rowW, selectedRow == 1, std::string("WIDTH: ") + std::to_string(out.width));
         drawRow(rowH, selectedRow == 2, std::string("HEIGHT: ") + std::to_string(out.height));
+        drawAdjustButton(rowWMinus, "-");
+        drawAdjustButton(rowWPlus, "+");
+        drawAdjustButton(rowHMinus, "-");
+        drawAdjustButton(rowHPlus, "+");
 
         SDL_SetRenderDrawColor(ren, selectedRow == 3 ? 70 : 55, selectedRow == 3 ? 110 : 85, selectedRow == 3 ? 90 : 65, 255);
         SDL_RenderFillRect(ren, &createBtn);
@@ -345,7 +386,7 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
         SDL_SetRenderDrawColor(ren, 235, 205, 210, 255);
         SDL_RenderDrawRect(ren, &cancelBtn);
         DrawText(ren, cancelBtn.x + 38, cancelBtn.y + 12, 2, "CANCEL");
-        DrawText(ren, panel.x + 20, panel.y + panel.h - 24, 2, "UP/DOWN select  LEFT/RIGHT change size  ENTER confirm");
+        DrawText(ren, panel.x + 20, panel.y + panel.h - 24, 2, "Touch +/- or use arrows. ENTER confirms.");
 
         SDL_RenderPresent(ren);
         SDL_Delay(16);
@@ -1416,6 +1457,19 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
             if (out.empty()) showStatus("Download failed.");
             else showStatus("Downloaded to save folder.");
         };
+        auto tryUploadLocalAt = [&](int idx) {
+            if (idx < 0 || idx >= (int)localLevels.size()) {
+                showStatus("No local level selected.");
+                return;
+            }
+            std::string uploadStatus;
+            if (uploadLocalLevelToServer(localLevels[idx], uploadStatus)) {
+                showStatus(uploadStatus);
+                customLevels = loadCustomLevels();
+            } else {
+                showStatus(uploadStatus);
+            }
+        };
         auto resolveSelectedPath = [&](const LevelEntry& sel) -> std::string {
             if (sel.path == "__local_editor__") {
                 const NewLevelPromptResult prompt = RunNewLevelPrompt(win, ren);
@@ -1499,11 +1553,12 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
             if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
                 SDL_Point pt{(int)e.button.x, (int)e.button.y};
                 if (localPageOpen && activeTab == localTabIndex) {
-                    SDL_Rect panel{winW / 2 - 190, winH / 2 - 120, 380, 240};
-                    SDL_Rect playBtn{panel.x + 24, panel.y + 140, 100, 40};
-                    SDL_Rect delBtn{panel.x + 140, panel.y + 140, 100, 40};
-                    SDL_Rect editBtn{panel.x + 256, panel.y + 140, 100, 40};
-                    SDL_Rect backBtn{panel.x + 140, panel.y + 188, 100, 36};
+                    SDL_Rect panel{winW / 2 - 230, winH / 2 - 120, 460, 240};
+                    SDL_Rect playBtn{panel.x + 20, panel.y + 140, 96, 40};
+                    SDL_Rect delBtn{panel.x + 130, panel.y + 140, 96, 40};
+                    SDL_Rect editBtn{panel.x + 240, panel.y + 140, 96, 40};
+                    SDL_Rect uploadBtn{panel.x + 350, panel.y + 140, 96, 40};
+                    SDL_Rect backBtn{panel.x + 180, panel.y + 188, 100, 36};
                     if (SDL_PointInRect(&pt, &playBtn)) {
                         chosenPath = resolveLocalPageSelection();
                         if (!chosenPath.empty()) {
@@ -1531,6 +1586,10 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
                             chosen = true;
                             running = false;
                         }
+                        continue;
+                    }
+                    if (SDL_PointInRect(&pt, &uploadBtn)) {
+                        tryUploadLocalAt(localPageIndex);
                         continue;
                     }
                     if (SDL_PointInRect(&pt, &backBtn)) {
@@ -1639,6 +1698,10 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
                         }
                         continue;
                     }
+                    if (e.key.key == SDLK_u || e.key.key == SDLK_U) {
+                        tryUploadLocalAt(localPageIndex);
+                        continue;
+                    }
                 }
                 if (e.key.key == SDLK_ESCAPE || e.key.key == SDLK_AC_BACK) {
                     running = false;
@@ -1718,6 +1781,10 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
                             chosen = true;
                             running = false;
                         }
+                        continue;
+                    }
+                    if (e.gbutton.button == SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER) {
+                        tryUploadLocalAt(localPageIndex);
                         continue;
                     }
                 }
@@ -1829,7 +1896,7 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
         }
 
         if (localPageOpen && activeTab == localTabIndex) {
-            SDL_Rect panel{winW / 2 - 190, winH / 2 - 120, 380, 240};
+            SDL_Rect panel{winW / 2 - 230, winH / 2 - 120, 460, 240};
             SDL_SetRenderDrawColor(ren, 22, 26, 34, 255);
             SDL_RenderFillRect(ren, &panel);
             SDL_SetRenderDrawColor(ren, 180, 200, 230, 255);
@@ -1840,26 +1907,31 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
             DrawText(ren, panel.x + 20, panel.y + 48, textScale, name);
             DrawText(ren, panel.x + 20, panel.y + 80, textScale, menuLabels.localPanelActions);
             DrawText(ren, panel.x + 20, panel.y + 104, textScale, menuLabels.localPanelBackHint);
-            SDL_Rect playBtn{panel.x + 24, panel.y + 140, 100, 40};
-            SDL_Rect delBtn{panel.x + 140, panel.y + 140, 100, 40};
-            SDL_Rect editBtn{panel.x + 256, panel.y + 140, 100, 40};
-            SDL_Rect backBtn{panel.x + 140, panel.y + 188, 100, 36};
+            SDL_Rect playBtn{panel.x + 20, panel.y + 140, 96, 40};
+            SDL_Rect delBtn{panel.x + 130, panel.y + 140, 96, 40};
+            SDL_Rect editBtn{panel.x + 240, panel.y + 140, 96, 40};
+            SDL_Rect uploadBtn{panel.x + 350, panel.y + 140, 96, 40};
+            SDL_Rect backBtn{panel.x + 180, panel.y + 188, 100, 36};
             SDL_SetRenderDrawColor(ren, 55, 90, 60, 255);
             SDL_RenderFillRect(ren, &playBtn);
             SDL_SetRenderDrawColor(ren, 95, 55, 55, 255);
             SDL_RenderFillRect(ren, &delBtn);
             SDL_SetRenderDrawColor(ren, 60, 70, 110, 255);
             SDL_RenderFillRect(ren, &editBtn);
+            SDL_SetRenderDrawColor(ren, 80, 85, 45, 255);
+            SDL_RenderFillRect(ren, &uploadBtn);
             SDL_SetRenderDrawColor(ren, 55, 65, 90, 255);
             SDL_RenderFillRect(ren, &backBtn);
             SDL_SetRenderDrawColor(ren, 220, 220, 230, 255);
             SDL_RenderDrawRect(ren, &playBtn);
             SDL_RenderDrawRect(ren, &delBtn);
             SDL_RenderDrawRect(ren, &editBtn);
+            SDL_RenderDrawRect(ren, &uploadBtn);
             SDL_RenderDrawRect(ren, &backBtn);
-            DrawText(ren, playBtn.x + 30, playBtn.y + 11, textScale, menuLabels.buttonPlay);
-            DrawText(ren, delBtn.x + 18, delBtn.y + 11, textScale, menuLabels.buttonDelete);
-            DrawText(ren, editBtn.x + 30, editBtn.y + 11, textScale, menuLabels.buttonEdit);
+            DrawText(ren, playBtn.x + 24, playBtn.y + 11, textScale, menuLabels.buttonPlay);
+            DrawText(ren, delBtn.x + 14, delBtn.y + 11, textScale, menuLabels.buttonDelete);
+            DrawText(ren, editBtn.x + 24, editBtn.y + 11, textScale, menuLabels.buttonEdit);
+            DrawText(ren, uploadBtn.x + 8, uploadBtn.y + 11, textScale, menuLabels.buttonUpload);
             DrawText(ren, backBtn.x + 30, backBtn.y + 8, textScale, menuLabels.buttonBack);
         }
 
@@ -1874,12 +1946,97 @@ std::string RunLevelSelect(SDL_Window* win, SDL_Renderer* ren) {
     return RunLevelSelectImpl(win, ren, true, true);
 }
 
+std::string buildFirebaseLevelUploadUrl(const std::string& base,
+                                        const std::string& authToken,
+                                        const std::string& levelId) {
+    std::string u = base;
+    while (!u.empty() && u.back() == '/') u.pop_back();
+    u += "/levels/" + sanitizeFilePart(levelId) + ".json";
+    if (!authToken.empty()) {
+        u += "?auth=" + authToken;
+    }
+    return u;
+}
+
+bool uploadLocalLevelToServer(const LevelEntry& level, std::string& statusText) {
+    if (level.path.empty() || level.path == "__local_editor__") {
+        statusText = "No local level selected.";
+        return false;
+    }
+    if (isHttpUrl(level.path)) {
+        statusText = "Only local levels can be uploaded.";
+        return false;
+    }
+    const std::string levelServerUrl = GetLevelServerUrl();
+    if (levelServerUrl.empty()) {
+        statusText = "Level server URL is not configured.";
+        return false;
+    }
+
+    std::ifstream in(level.path, std::ios::binary);
+    if (!in.is_open()) {
+        statusText = "Could not open local level file.";
+        return false;
+    }
+    std::string levelData((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    if (levelData.empty()) {
+        statusText = "Local level file is empty.";
+        return false;
+    }
+
+    const std::string levelId = sanitizeFilePart(level.label) + "_" + std::to_string((unsigned long long)std::time(nullptr));
+    const std::string uploadUrl = buildFirebaseLevelUploadUrl(levelServerUrl, GetLevelServerAuthToken(), levelId);
+    nlohmann::json payload;
+    payload["name"] = level.label;
+    payload["source"] = "local";
+    payload["data"] = levelData;
+    payload["uploaded_at"] = (long long)std::time(nullptr);
+    const std::string body = payload.dump();
+
+#if defined(HAVE_CURL) && HAVE_CURL
+    CURL* curl = curl_easy_init();
+    if (!curl) {
+        statusText = "Upload failed (curl init).";
+        return false;
+    }
+    struct curl_slist* headers = nullptr;
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    curl_easy_setopt(curl, CURLOPT_URL, uploadUrl.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)body.size());
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "DF-New/1.0");
+    const CURLcode rc = curl_easy_perform(curl);
+    long code = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+    if (rc != CURLE_OK || code < 200 || code >= 300) {
+        statusText = "Upload failed.";
+        SDL_Log("NET/UI: upload failed file=%s code=%ld curl=%d", level.path.c_str(), code, (int)rc);
+        return false;
+    }
+    statusText = "Uploaded as " + levelId + ".";
+    SDL_Log("NET/UI: upload ok file=%s id=%s", level.path.c_str(), levelId.c_str());
+    return true;
+#else
+    (void)uploadUrl;
+    (void)body;
+    statusText = "Upload unavailable (curl disabled).";
+    return false;
+#endif
+}
+
 std::string RunCampaignLevelSelect(SDL_Window* win, SDL_Renderer* ren) {
-    return RunLevelSelect(win, ren);
+    return RunLevelSelectImpl(win, ren, true, false);
 }
 
 std::string RunCustomLevelSelect(SDL_Window* win, SDL_Renderer* ren) {
-    return RunLevelSelect(win, ren);
+    return RunLevelSelectImpl(win, ren, false, true);
 }
 
 bool HasCustomLevels() {

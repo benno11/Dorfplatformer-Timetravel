@@ -1558,7 +1558,7 @@ int RunGameApp(int argc, char** argv) {
         std::string selectedLevelPath;
         bool selectedFromUserMenu = false;
         if (reopenUserLevelMenu) {
-            selectedLevelPath = RunLevelSelect(win, ren);
+            selectedLevelPath = RunCustomLevelSelect(win, ren);
             selectedFromUserMenu = true;
             reopenUserLevelMenu = false;
         } else {
@@ -1571,7 +1571,7 @@ int RunGameApp(int argc, char** argv) {
             if (!selectedLevelPath.empty()) {
                 selectedFromUserMenu = true;
             } else {
-                selectedLevelPath = RunLevelSelect(win, ren);
+                selectedLevelPath = RunCampaignLevelSelect(win, ren);
             }
         }
         if (selectedLevelPath.empty()) {
@@ -2505,7 +2505,10 @@ int RunGameApp(int argc, char** argv) {
         bool inputDown = false;
         int screenW = kBaseScreenW;
         int screenH = kBaseScreenH;
-        float uiSize = std::clamp(std::min((float)screenW, (float)screenH) * 0.16f, 110.0f, 190.0f);
+        const float mobileUiScale = std::clamp((float)uiScalePercent / 100.0f, 0.5f, 2.0f);
+        const float minScreenDim = std::min((float)screenW, (float)screenH);
+        const float baseUiSize = std::clamp(minScreenDim * 0.16f, 110.0f, 190.0f);
+        float uiSize = std::clamp(baseUiSize * 2.0f * mobileUiScale, 96.0f, minScreenDim * 0.45f);
         float uiPad = std::clamp(uiSize * 0.22f, 20.0f, 44.0f);
         float uiGap = std::clamp(uiSize * 0.18f, 12.0f, 34.0f);
         SDL_FRect touchLeftBtn{uiPad, screenH - uiPad - uiSize, uiSize, uiSize};
