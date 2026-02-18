@@ -147,6 +147,13 @@ set(SDL3_MIXER_DIR_CANDIDATES
   "/usr/local/lib/cmake/SDL3_mixer"
   "/usr/lib/x86_64-linux-gnu/cmake/SDL3_mixer"
 )
+if(DEFINED SDL3_mixer_DIR)
+  message(STATUS "SDL3_mixer_DIR preset: ${SDL3_mixer_DIR}")
+endif()
+if(DEFINED ENV{SDL3_MIXER_DIR})
+  list(PREPEND SDL3_MIXER_DIR_CANDIDATES "$ENV{SDL3_MIXER_DIR}")
+  message(STATUS "SDL3_MIXER_DIR env candidate: $ENV{SDL3_MIXER_DIR}")
+endif()
 find_package(SDL3_mixer QUIET CONFIG)
 if(NOT SDL3_mixer_FOUND)
   foreach(_dir IN LISTS SDL3_MIXER_DIR_CANDIDATES)

@@ -94,7 +94,10 @@ jobs:
         cmake -S $srcRoot -B $buildDir -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$prefix" -DSDL3_DIR="$sdl3Dir" -DSDLMIXER_VENDORED=ON -DSDLMIXER_SAMPLES=OFF -DSDLMIXER_EXAMPLES=OFF -DSDLMIXER_TESTS=OFF -DSDLMIXER_MOD=OFF -DSDLMIXER_MIDI=OFF
         cmake --build $buildDir --parallel
         cmake --install $buildDir
-        $mixerDir = Join-Path $prefix "lib\cmake\SDL3_mixer"
+        $cfg = Get-ChildItem -Path $prefix -Recurse -Filter "SDL3_mixerConfig.cmake" | Select-Object -First 1
+        if (-not $cfg) { throw "SDL3_mixerConfig.cmake not found under $prefix" }
+        $mixerDir = $cfg.DirectoryName
+        "Detected SDL3_mixer config dir: $mixerDir" | Write-Host
         "SDL3_MIXER_DIR=$mixerDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
     - name: Configure CMake
@@ -165,7 +168,10 @@ jobs:
         cmake -S $srcRoot -B $buildDir -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$prefix" -DSDL3_DIR="$sdl3Dir" -DSDLMIXER_VENDORED=ON -DSDLMIXER_SAMPLES=OFF -DSDLMIXER_EXAMPLES=OFF -DSDLMIXER_TESTS=OFF -DSDLMIXER_MOD=OFF -DSDLMIXER_MIDI=OFF
         cmake --build $buildDir --parallel
         cmake --install $buildDir
-        $mixerDir = Join-Path $prefix "lib\cmake\SDL3_mixer"
+        $cfg = Get-ChildItem -Path $prefix -Recurse -Filter "SDL3_mixerConfig.cmake" | Select-Object -First 1
+        if (-not $cfg) { throw "SDL3_mixerConfig.cmake not found under $prefix" }
+        $mixerDir = $cfg.DirectoryName
+        "Detected SDL3_mixer config dir: $mixerDir" | Write-Host
         "SDL3_MIXER_DIR=$mixerDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
     - name: Configure CMake
