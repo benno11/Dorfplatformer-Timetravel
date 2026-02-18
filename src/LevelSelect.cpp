@@ -92,7 +92,6 @@ bool isNumericId(const std::string& s) {
 
 std::string downloadFolderPath();
 std::string localLevelsFolderPath();
-bool uploadLocalLevelToServer(const LevelEntry& level, std::string& statusText);
 
 OnlineLevelsMenuLabels loadOnlineLevelsMenuLabels() {
     OnlineLevelsMenuLabels labels;
@@ -1335,6 +1334,8 @@ std::vector<LevelEntry> loadCustomLevels() {
 #endif
 }
 }
+
+bool uploadLocalLevelToServer(const LevelEntry& level, std::string& statusText);
 
 static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool includeCampaign, bool includeCustom) {
     const OnlineLevelsMenuLabels menuLabels = loadOnlineLevelsMenuLabels();
