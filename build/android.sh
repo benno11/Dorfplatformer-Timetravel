@@ -265,10 +265,14 @@ CPPFLAGS=(
   -I"$SDL3_MIXER_ROOT/include"
 )
 
-# Compatibility shim for lowercase includes used by game code:
-#   #include <sdl3/SDL.h>, <sdl3/SDL_image.h>, ...
-BUILD_INCLUDE_DIR="$PWD/.build/include/sdl3"
-mkdir -p "$BUILD_INCLUDE_DIR"
+# Compatibility shim for include namespaces expected by source code:
+#   <SDL3/...>, <SDL3_image/...>, <SDL3_ttf/...>, <SDL3_mixer/...>
+BUILD_INCLUDE_ROOT="$PWD/.build/include"
+BUILD_INCLUDE_DIR="$BUILD_INCLUDE_ROOT/sdl3"
+BUILD_SDL3_IMAGE_DIR="$BUILD_INCLUDE_ROOT/SDL3_image"
+BUILD_SDL3_TTF_DIR="$BUILD_INCLUDE_ROOT/SDL3_ttf"
+BUILD_SDL3_MIXER_DIR="$BUILD_INCLUDE_ROOT/SDL3_mixer"
+mkdir -p "$BUILD_INCLUDE_DIR" "$BUILD_SDL3_IMAGE_DIR" "$BUILD_SDL3_TTF_DIR" "$BUILD_SDL3_MIXER_DIR"
 for inc in \
   "$SDL3_ANDROID_ROOT/include/SDL3" \
   "$SDL3_IMAGE_ROOT/include/SDL3" \
@@ -283,9 +287,19 @@ for inc in \
     ln -sf "$h" "$BUILD_INCLUDE_DIR/$(basename "$h")"
   done
 done
+# Map staged flattened headers to namespaced include folders.
+if [ -f "$SDL3_IMAGE_ROOT/include/SDL3/SDL_image.h" ]; then
+  ln -sf "$SDL3_IMAGE_ROOT/include/SDL3/SDL_image.h" "$BUILD_SDL3_IMAGE_DIR/SDL_image.h"
+fi
+if [ -f "$SDL3_TTF_ROOT/include/SDL3/SDL_ttf.h" ]; then
+  ln -sf "$SDL3_TTF_ROOT/include/SDL3/SDL_ttf.h" "$BUILD_SDL3_TTF_DIR/SDL_ttf.h"
+fi
+if [ -f "$SDL3_MIXER_ROOT/include/SDL3/SDL_mixer.h" ]; then
+  ln -sf "$SDL3_MIXER_ROOT/include/SDL3/SDL_mixer.h" "$BUILD_SDL3_MIXER_DIR/SDL_mixer.h"
+fi
 CPPFLAGS+=(
-  -I"$PWD/.build/include"
-  -I"$PWD/.build/include/sdl3"
+  -I"$BUILD_INCLUDE_ROOT"
+  -I"$BUILD_INCLUDE_DIR"
 )
 
 SDL_VERSION_HEADER=""
