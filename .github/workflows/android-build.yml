@@ -22,7 +22,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+        - os: ubuntu-latest
+          triplet: x64-linux
+        - os: windows-latest
+          triplet: x64-windows
+        - os: macos-latest
+          triplet: x64-osx
 
     steps:
     - name: Checkout code
@@ -55,26 +61,31 @@ jobs:
       shell: pwsh
       run: |
         .\vcpkg\bootstrap-vcpkg.bat -disableMetrics
-        "VCPKG_ROOT=$pwd\vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
     - name: Bootstrap vcpkg (Linux/macOS)
       if: runner.os != 'Windows'
       run: |
         ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
-        echo "VCPKG_ROOT=$PWD/vcpkg" >> $GITHUB_ENV
 
     - name: Install desktop dependencies
       shell: pwsh
       run: |
-        $triplet = if ("${{ runner.os }}" -eq "Windows") { "x64-windows" } elseif ("${{ runner.os }}" -eq "macOS") { "x64-osx" } else { "x64-linux" }
-        $vcpkgExe = if ("${{ runner.os }}" -eq "Windows") { "$env:VCPKG_ROOT\vcpkg.exe" } else { "$env:VCPKG_ROOT/vcpkg" }
-        & $vcpkgExe install sdl3 sdl3-image sdl3-ttf curl nlohmann-json --triplet $triplet
-        "VCPKG_TARGET_TRIPLET=$triplet" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+        $vcpkgRoot = Join-Path $env:GITHUB_WORKSPACE "vcpkg"
+        $vcpkgExe = if ("${{ runner.os }}" -eq "Windows") { Join-Path $vcpkgRoot "vcpkg.exe" } else { Join-Path $vcpkgRoot "vcpkg" }
+        & $vcpkgExe install sdl3 sdl3-image sdl3-ttf curl nlohmann-json --triplet ${{ matrix.triplet }}
+
+    - name: Show installed vcpkg packages
+      shell: pwsh
+      run: |
+        $vcpkgRoot = Join-Path $env:GITHUB_WORKSPACE "vcpkg"
+        $vcpkgExe = if ("${{ runner.os }}" -eq "Windows") { Join-Path $vcpkgRoot "vcpkg.exe" } else { Join-Path $vcpkgRoot "vcpkg" }
+        & $vcpkgExe list
 
     - name: Configure CMake
       shell: pwsh
       run: |
-        cmake -S . -B build-${{ runner.os }} -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=$env:VCPKG_TARGET_TRIPLET
+        $vcpkgRoot = Join-Path $env:GITHUB_WORKSPACE "vcpkg"
+        cmake -S . -B build-${{ runner.os }} -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$vcpkgRoot/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }}
 
     - name: Build desktop targets
       shell: pwsh
