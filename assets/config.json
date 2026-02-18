@@ -17,5 +17,6 @@
   "background": {
     "parallax_layer_scales": [0.8, 0.8, 0.8]
   },
-  "level_api_url": "https://timetravel-server-default-rtdb.europe-west1.firebasedatabase.app/"
+  "level_api_url": "https://timetravel-server-default-rtdb.europe-west1.firebasedatabase.app/",
+  "level_server_url": "https://timetravel-server-default-rtdb.europe-west1.firebasedatabase.app/"
 }
