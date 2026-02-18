@@ -10,7 +10,6 @@
 #include <mutex>
 #include <string>
 #include <thread>
-#include <unistd.h>
 
 namespace CrashReporter {
 static std::atomic<bool> running{false};
@@ -43,7 +42,7 @@ static void workerMain() {
             pendingMessage.clear();
         }
         if (sig > 0) {
-            msg = std::string("FATAL SIGNAL: ") + std::to_string(sig) + " (" + ::strsignal(sig) + ")";
+            msg = std::string("FATAL SIGNAL: ") + std::to_string(sig);
         } else if (msg.empty()) {
             msg = "FATAL: unknown terminate";
         }
@@ -57,8 +56,8 @@ static void workerMain() {
 static void signalHandler(int sig) {
     pendingSignal.store(sig, std::memory_order_relaxed);
     pending.store(true, std::memory_order_relaxed);
-    const char* prefix = "FATAL SIGNAL captured\n";
-    (void)!write(2, prefix, std::strlen(prefix));
+    std::fprintf(stderr, "FATAL SIGNAL captured\n");
+    std::fflush(stderr);
     for (volatile int i = 0; i < 5000000; ++i) {}
     std::_Exit(128 + sig);
 }

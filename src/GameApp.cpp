@@ -23,10 +23,12 @@
 #include <cstdio>
 #include <cstring>
 #include <exception>
-#include <unistd.h>
 #include <cstdlib>
 #include <vector>
 #include <fstream>
+#if !defined(_WIN32)
+#include <unistd.h>
+#endif
 #if defined(HAVE_CURL) && HAVE_CURL
 #include <curl/curl.h>
 #endif
@@ -45,6 +47,24 @@
 #include "AudioSystem.h"
 #include "InputSystem.h"
 #include "World3PatternBackground.h"
+
+namespace {
+static void setEnvCompat(const char* name, const char* value) {
+#if defined(_WIN32)
+    _putenv_s(name, value ? value : "");
+#else
+    setenv(name, value ? value : "", 1);
+#endif
+}
+
+static void unsetEnvCompat(const char* name) {
+#if defined(_WIN32)
+    _putenv_s(name, "");
+#else
+    unsetenv(name);
+#endif
+}
+} // namespace
 
 int RunGameApp(int argc, char** argv) {
     CrashReporter::start();
@@ -87,13 +107,13 @@ int RunGameApp(int argc, char** argv) {
     auto applyAudioDriverSelection = [&](const char* driver) {
         if (driver && *driver) {
             SDL_SetHint(SDL_HINT_AUDIO_DRIVER, driver);
-            setenv("SDL_AUDIO_DRIVER", driver, 1);
-            setenv("SDL_AUDIODRIVER", driver, 1); // Legacy compatibility.
+            setEnvCompat("SDL_AUDIO_DRIVER", driver);
+            setEnvCompat("SDL_AUDIODRIVER", driver); // Legacy compatibility.
             return;
         }
         SDL_ResetHint(SDL_HINT_AUDIO_DRIVER);
-        unsetenv("SDL_AUDIO_DRIVER");
-        unsetenv("SDL_AUDIODRIVER");
+        unsetEnvCompat("SDL_AUDIO_DRIVER");
+        unsetEnvCompat("SDL_AUDIODRIVER");
     };
     struct InitAttempt {
         const char* label;
@@ -211,9 +231,9 @@ int RunGameApp(int argc, char** argv) {
     const std::string initialVideoEnv = envOrUnset("SDL_VIDEODRIVER");
     const std::string initialAudioEnv = configuredAudioDriver();
     for (const auto& a : attempts) {
-        if (a.videoDriver) setenv("SDL_VIDEODRIVER", a.videoDriver, 1);
-        else if (initialVideoEnv != "<unset>") setenv("SDL_VIDEODRIVER", initialVideoEnv.c_str(), 1);
-        else unsetenv("SDL_VIDEODRIVER");
+        if (a.videoDriver) setEnvCompat("SDL_VIDEODRIVER", a.videoDriver);
+        else if (initialVideoEnv != "<unset>") setEnvCompat("SDL_VIDEODRIVER", initialVideoEnv.c_str());
+        else unsetEnvCompat("SDL_VIDEODRIVER");
         if (initialAudioEnv != "<unset>") applyAudioDriverSelection(initialAudioEnv.c_str());
         else applyAudioDriverSelection(nullptr);
         SDL_Quit();
