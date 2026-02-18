@@ -1,5 +1,13 @@
 Platformer Engine
 
+Build (separate folder):
+- Configure: `cmake -S . -B .build`
+- Build: `cmake --build .build --config Release`
+
+Microsoft Store update helper (Windows):
+- Run: `powershell -ExecutionPolicy Bypass -File build/force-msstore-update.ps1`
+- Note: this script uses `winget` to refresh sources and apply available Microsoft Store package updates.
+
 Features included:
 - sdl3 C++ 2D platformer
 - sdl3 version required: 3.4.0 or newer

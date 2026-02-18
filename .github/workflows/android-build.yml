@@ -1,4 +1,4 @@
-name: Android Build
+name: Cross Platform Build
 
 on:
   push:
@@ -11,11 +11,70 @@ permissions:
   contents: read
 
 concurrency:
-  group: android-build-${{ github.ref }}
+  group: cross-platform-build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  build-desktop:
+    name: Desktop (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Ninja (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ninja-build
+
+    - name: Install Ninja (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        brew update
+        brew install ninja
+
+    - name: Setup MSVC
+      if: runner.os == 'Windows'
+      uses: ilammy/msvc-dev-cmd@v1
+
+    - name: Setup vcpkg
+      uses: lukka/run-vcpkg@v11
+
+    - name: Install desktop dependencies
+      shell: pwsh
+      run: |
+        $triplet = if ("${{ runner.os }}" -eq "Windows") { "x64-windows" } elseif ("${{ runner.os }}" -eq "macOS") { "x64-osx" } else { "x64-linux" }
+        & "$env:VCPKG_ROOT/vcpkg" install sdl3 sdl3-image sdl3-ttf sdl3-mixer curl nlohmann-json --triplet $triplet
+        "VCPKG_TARGET_TRIPLET=$triplet" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+    - name: Configure CMake
+      shell: pwsh
+      run: |
+        cmake -S . -B build-${{ runner.os }} -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=$env:VCPKG_TARGET_TRIPLET
+
+    - name: Build desktop targets
+      shell: pwsh
+      run: |
+        cmake --build build-${{ runner.os }} --config Release --parallel
+
+    - name: Upload desktop artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: desktop-${{ runner.os }}
+        path: |
+          build-${{ runner.os }}/platformer*
+          build-${{ runner.os }}/sheet_config*
+        if-no-files-found: error
+
   build-android:
+    name: Android (Ubuntu)
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -45,11 +104,16 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y build-essential cmake ninja-build pkg-config git nlohmann-json3-dev
 
-    - name: Setup Android sdl3 libraries
+    - name: Make build scripts executable
+      run: |
+        chmod +x build/*.sh
+        chmod +x Android/gradlew
+
+    - name: Setup Android SDL3 libraries
       run: |
         export ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}
-                        export SDL_REF=release-3.4.x
-                        export SDL_REQUIRED_VERSION=3.4.0
+        export SDL_REF=release-3.4.x
+        export SDL_REQUIRED_VERSION=3.4.0
         export FORCE_REBUILD_SDL=1
         ./build/FullBuildandroid.sh
 
@@ -58,10 +122,6 @@ jobs:
         ABI: arm64-v8a
       run: |
         ./build/update-android-app.sh
-
-    - name: Make Gradle wrapper executable
-      run: |
-        chmod +x Android/gradlew
 
     - name: Setup Gradle cache
       uses: gradle/actions/setup-gradle@v4

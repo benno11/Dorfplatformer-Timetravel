@@ -1619,12 +1619,35 @@ int RunGameApp(int argc, char** argv) {
             size_t replayIndex = 0;
             float replayFrameAcc = 0.0f;
             float rainbowTimer = 0.0f; // world4: teleport/invuln flash window
+            float secretShotTimer = 0.0f; // level59: fireball cadence
+            float secretTouchDamageCooldown = 0.0f; // level59: boss damage debounce on touch
+        };
+        struct SecretFireball {
+            float x = 0.0f;
+            float y = 0.0f;
+            float vx = 0.0f;
+            float vy = 0.0f;
+            float timer = 0.0f;
+            int phase = 0; // 0 = launch up, 1 = scatter + fall
+        };
+        struct SecretExplosion {
+            float x = 0.0f;
+            float y = 0.0f;
+            float radius = 36.0f;
+            float life = 0.24f;
+            bool hitPlayer = false;
+            bool hitBoss = false;
         };
         BossRuntimeState bossState;
+        std::vector<SecretFireball> secretFireballs;
+        std::vector<SecretExplosion> secretExplosions;
         auto resetBossStateForLoadedLevel = [&]() {
             bossState = BossRuntimeState{};
+            secretFireballs.clear();
+            secretExplosions.clear();
             const int world = levelManager.worldId();
             const int bossProfileWorld = (world == 2 || world == 6) ? 1 : std::max(1, world);
+            const int levelId = parseLevelIdFromLevelPath(levelManager.levelPath());
             bossState.active = false;
             bossState.world = bossProfileWorld;
             bossState.sourceWorld = std::max(1, world);
@@ -1669,6 +1692,17 @@ int RunGameApp(int argc, char** argv) {
 
             const float mapW = (float)(map.w * map.tileSize);
             const float mapH = (float)(map.h * map.tileSize);
+            if (levelId == 59) {
+                bossState.active = true;
+                bossState.activationCooldown = 0.0f;
+                bossState.maxHealth = 32;
+                bossState.health = 32;
+                bossState.x = mapW * 0.5f;
+                bossState.y = mapH * 0.5f;
+                bossState.vx = 0.0f;
+                bossState.vy = 0.0f;
+                bossState.secretShotTimer = 0.60f;
+            }
             if (bossProfileWorld == 1) {
                 bossState.x = std::clamp(mapW * 0.72f, 96.0f, std::max(96.0f, mapW - 96.0f));
                 bossState.y = std::clamp(mapH * 0.38f, 96.0f, std::max(96.0f, mapH - 96.0f));
@@ -1696,6 +1730,12 @@ int RunGameApp(int argc, char** argv) {
                 bossState.y = 32.0f + (float)kGameplayViewH + 28.0f;
                 bossState.vx = 0.0f;
                 bossState.vy = -320.0f;
+            }
+            if (levelId == 59) {
+                bossState.x = mapW * 0.5f;
+                bossState.y = mapH * 0.5f;
+                bossState.vx = 0.0f;
+                bossState.vy = 0.0f;
             }
             if (bossState.sourceWorld == 3) {
                 bossState.maxHealth = 8;
@@ -2318,6 +2358,9 @@ int RunGameApp(int argc, char** argv) {
             }
             if (bossState.activationCooldown > 0.0f) {
                 bossState.activationCooldown = std::max(0.0f, bossState.activationCooldown - dt);
+            }
+            if (bossState.secretTouchDamageCooldown > 0.0f) {
+                bossState.secretTouchDamageCooldown = std::max(0.0f, bossState.secretTouchDamageCooldown - dt);
             }
             if (playerInvincibleTimer > 0.0f) {
                 playerInvincibleTimer = std::max(0.0f, playerInvincibleTimer - dt);
@@ -3828,7 +3871,9 @@ int RunGameApp(int argc, char** argv) {
                 goto RENDER_ONLY;
             }
 
-            if (!bossState.active && bossState.activationCooldown <= 0.0f &&
+            const bool isSecretBossLevel = (currentLevelId == 59);
+            if (!isSecretBossLevel &&
+                !bossState.active && bossState.activationCooldown <= 0.0f &&
                 playerTouchesTileId(map, player, 68, 68, gameplayWrapX, gameplayWrapY)) {
                 bossState.active = true;
                 removeTimewarpObjectsAndExit();
@@ -3858,6 +3903,23 @@ int RunGameApp(int argc, char** argv) {
                     audio.playLoseSfx();
                     return true;
                 };
+                auto applyBossDamage = [&](int amount) {
+                    if (amount <= 0 || !bossState.active) return;
+                    const int oldHp = bossState.health;
+                    bossState.health = std::max(0, bossState.health - amount);
+                    if (bossState.health < oldHp) {
+                        bossState.hurtFlash = 0.18f;
+                    }
+                    if (bossState.health <= 0) {
+                        bossState.active = false;
+                        secretFireballs.clear();
+                        secretExplosions.clear();
+                        if (bossState.world == 1) {
+                            clampCamX = false;
+                        }
+                        startLevelCompleteSequence();
+                    }
+                };
 
                 const bool bossUsesFinalAnimation = (bossState.sourceWorld == 7);
                 const float bossBaseSize = bossUsesFinalAnimation ? 56.0f : 28.0f; // normal-animation bosses are 50% smaller
@@ -3865,11 +3927,13 @@ int RunGameApp(int argc, char** argv) {
                 const float bossH = bossBaseSize;
                 const float halfW = bossW * 0.5f;
                 const float halfH = bossH * 0.5f;
+                const float secretCenterX = (float)(map.w * map.tileSize) * 0.5f;
+                const float secretCenterY = (float)(map.h * map.tileSize) * 0.5f;
                 float arenaLeft = (float)map.tileSize * 2.0f;
                 float arenaTop = (float)map.tileSize * 2.0f;
                 float arenaRight = (float)(map.w * map.tileSize) - (float)map.tileSize * 2.0f;
                 float arenaBottom = (float)(map.h * map.tileSize) - (float)map.tileSize * 2.0f;
-                if (bossState.sourceWorld == 3) {
+                if (!isSecretBossLevel && bossState.sourceWorld == 3) {
                     const float playerCenterX = player.x + player.w * 0.5f;
                     const float playerCenterY = player.y + player.h * 0.5f;
                     if (bossState.phase == 0) {
@@ -3916,6 +3980,7 @@ int RunGameApp(int argc, char** argv) {
                     }
                 }
                 const bool hasBossCameraLock =
+                    isSecretBossLevel ||
                     (bossState.sourceWorld == 1 || bossState.sourceWorld == 2) ||
                     (bossState.sourceWorld == 4) ||
                     (bossState.sourceWorld == 5) ||
@@ -3924,7 +3989,10 @@ int RunGameApp(int argc, char** argv) {
                 if (hasBossCameraLock) {
                     float lockCx = 1170.0f;
                     float lockCy = 132.0f;
-                    if (bossState.sourceWorld == 2) {
+                    if (isSecretBossLevel) {
+                        lockCx = secretCenterX;
+                        lockCy = secretCenterY;
+                    } else if (bossState.sourceWorld == 2) {
                         lockCx = 1887.0f;
                         lockCy = 744.0f;
                     } else if (bossState.sourceWorld == 4) {
@@ -3954,7 +4022,12 @@ int RunGameApp(int argc, char** argv) {
                 const bool bossCanMoveAndTakeDamage = !(bossState.sourceWorld == 3 && bossState.phase != 3);
                 const bool world4RainbowActive = (bossState.sourceWorld == 4 && bossState.rainbowTimer > 0.0f);
                 if (bossCanMoveAndTakeDamage && !world4RainbowActive) {
-                    if (bossState.sourceWorld == 7) {
+                    if (isSecretBossLevel) {
+                        bossState.x = secretCenterX;
+                        bossState.y = secretCenterY;
+                        bossState.vx = 0.0f;
+                        bossState.vy = 0.0f;
+                    } else if (bossState.sourceWorld == 7) {
                         bossState.vy += bossGravity * dt;
                         bossState.y += bossState.vy * dt;
                         if (bossState.y + halfH < arenaTop) {
@@ -3987,54 +4060,137 @@ int RunGameApp(int argc, char** argv) {
                         }
                     }
                 }
+                if (isSecretBossLevel) {
+                    bossState.secretShotTimer -= dt;
+                    if (bossState.secretShotTimer <= 0.0f) {
+                        bossState.secretShotTimer += 0.85f;
+                        SecretFireball fb{};
+                        fb.x = bossState.x;
+                        fb.y = bossState.y - halfH - 6.0f;
+                        fb.vx = 0.0f;
+                        fb.vy = -900.0f;
+                        fb.timer = 0.0f;
+                        fb.phase = 0;
+                        secretFireballs.push_back(fb);
+                    }
+                    bool playerKilledByExplosion = false;
+                    for (auto& fb : secretFireballs) {
+                        if (fb.phase == 0) {
+                            fb.timer += dt;
+                            fb.y += fb.vy * dt;
+                            if (fb.timer >= 0.33f) {
+                                const float dir = ((float)std::rand() / (float)RAND_MAX) < 0.5f ? -1.0f : 1.0f;
+                                const float speedX = 220.0f + ((float)std::rand() / (float)RAND_MAX) * 260.0f;
+                                fb.vx = dir * speedX;
+                                fb.vy = -180.0f;
+                                fb.phase = 1;
+                            }
+                        } else {
+                            fb.vy += 1800.0f * dt;
+                            fb.x += fb.vx * dt;
+                            fb.y += fb.vy * dt;
+                            const float toBossX = fb.x - bossState.x;
+                            const float toBossY = fb.y - bossState.y;
+                            const bool hitBoss = (toBossX * toBossX + toBossY * toBossY) <= (halfW + 8.0f) * (halfW + 8.0f);
+                            const bool hitGround = fb.y >= arenaBottom - 2.0f;
+                            if (hitGround || hitBoss) {
+                                SecretExplosion ex{};
+                                ex.x = fb.x;
+                                ex.y = std::min(fb.y, arenaBottom - 2.0f);
+                                secretExplosions.push_back(ex);
+                                fb.timer = -9999.0f;
+                            }
+                        }
+                    }
+                    secretFireballs.erase(
+                        std::remove_if(secretFireballs.begin(), secretFireballs.end(), [&](const SecretFireball& fb) {
+                            return fb.timer < -1000.0f ||
+                                fb.y > arenaBottom + 80.0f ||
+                                fb.x < arenaLeft - 120.0f ||
+                                fb.x > arenaRight + 120.0f;
+                        }),
+                        secretFireballs.end());
+                    for (auto& ex : secretExplosions) {
+                        ex.life -= dt;
+                        const float pCx = player.x + player.w * 0.5f;
+                        const float pCy = player.y + player.h * 0.5f;
+                        const float pDx = pCx - ex.x;
+                        const float pDy = pCy - ex.y;
+                        const bool touchingPlayer = (pDx * pDx + pDy * pDy) <= ex.radius * ex.radius;
+                        if (!ex.hitPlayer && touchingPlayer && playerInvincibleTimer <= 0.0f && levelLoadDeathGraceTimer <= 0.0f) {
+                            ex.hitPlayer = true;
+                            if (applyBossContactDamageToPlayer()) {
+                                playerKilledByExplosion = true;
+                            }
+                        }
+                        const float bDx = bossState.x - ex.x;
+                        const float bDy = bossState.y - ex.y;
+                        const bool touchingBoss = (bDx * bDx + bDy * bDy) <= (ex.radius + halfW) * (ex.radius + halfW);
+                        if (!ex.hitBoss && touchingBoss && bossState.active) {
+                            ex.hitBoss = true;
+                            applyBossDamage(1);
+                        }
+                    }
+                    secretExplosions.erase(
+                        std::remove_if(secretExplosions.begin(), secretExplosions.end(), [](const SecretExplosion& ex) {
+                            return ex.life <= 0.0f;
+                        }),
+                        secretExplosions.end());
+                    if (playerKilledByExplosion) {
+                        continue;
+                    }
+                }
 
                 const float bx = bossState.x - halfW;
                 const float by = bossState.y - halfH;
                 float testBx = bx;
                 float testBy = by;
                 const bool overlap = overlapPlayerWithWrappedRect(bx, by, bossW, bossH, testBx, testBy);
-                if (overlap && playerInvincibleTimer <= 0.0f && levelLoadDeathGraceTimer <= 0.0f) {
-                    if (!bossCanMoveAndTakeDamage) {
-                        if (applyBossContactDamageToPlayer()) continue;
-                    } else {
-                        const float py2 = player.y + (float)player.h;
-                        const bool stomp = (player.vy > 80.0f) && (py2 <= testBy + bossH * 0.55f);
-                        if (stomp) {
-                            player.y = testBy - (float)player.h;
-                            player.vy = -1000.0f;
-                            player.onGround = false;
-                            playerInvincibleTimer = 0.12f;
-                            bossState.health = std::max(0, bossState.health - 1);
-                            bossState.hurtFlash = 0.18f;
-                            if (bossState.sourceWorld == 4) {
-                                bossState.rainbowTimer = 3.0f;
-                                const float pad = 20.0f;
-                                const float minX = std::min(arenaLeft + halfW + pad, arenaRight - halfW - pad);
-                                const float maxX = std::max(arenaLeft + halfW + pad, arenaRight - halfW - pad);
-                                const float minY = std::min(arenaTop + halfH + pad, arenaBottom - halfH - pad);
-                                const float maxY = std::max(arenaTop + halfH + pad, arenaBottom - halfH - pad);
-                                const float rx = (float)std::rand() / (float)RAND_MAX;
-                                const float ry = (float)std::rand() / (float)RAND_MAX;
-                                bossState.x = minX + (maxX - minX) * rx;
-                                bossState.y = minY + (maxY - minY) * ry;
-                            } else if (bossState.sourceWorld == 7) {
-                                const float minX = arenaLeft + halfW;
-                                const float maxX = std::max(minX, arenaRight - halfW);
-                                const float rx = (float)std::rand() / (float)RAND_MAX;
-                                bossState.x = minX + (maxX - minX) * rx;
-                                bossState.y = arenaBottom + halfH + 24.0f;
-                                bossState.vy = -std::fabs(bossState.vy);
-                            }
+                if (overlap) {
+                    if (isSecretBossLevel) {
+                        if (bossState.secretTouchDamageCooldown <= 0.0f) {
+                            applyBossDamage(1);
+                            bossState.secretTouchDamageCooldown = 0.20f;
                             audio.playBumperSfx();
-                            if (bossState.health <= 0) {
-                                bossState.active = false;
-                                if (bossState.world == 1) {
-                                    clampCamX = false;
-                                }
-                                startLevelCompleteSequence();
-                            }
-                        } else {
+                        }
+                        if (playerInvincibleTimer <= 0.0f && levelLoadDeathGraceTimer <= 0.0f) {
                             if (applyBossContactDamageToPlayer()) continue;
+                        }
+                    } else if (playerInvincibleTimer <= 0.0f && levelLoadDeathGraceTimer <= 0.0f) {
+                        if (!bossCanMoveAndTakeDamage) {
+                            if (applyBossContactDamageToPlayer()) continue;
+                        } else {
+                            const float py2 = player.y + (float)player.h;
+                            const bool stomp = (player.vy > 80.0f) && (py2 <= testBy + bossH * 0.55f);
+                            if (stomp) {
+                                player.y = testBy - (float)player.h;
+                                player.vy = -1000.0f;
+                                player.onGround = false;
+                                playerInvincibleTimer = 0.12f;
+                                applyBossDamage(1);
+                                if (bossState.sourceWorld == 4) {
+                                    bossState.rainbowTimer = 3.0f;
+                                    const float pad = 20.0f;
+                                    const float minX = std::min(arenaLeft + halfW + pad, arenaRight - halfW - pad);
+                                    const float maxX = std::max(arenaLeft + halfW + pad, arenaRight - halfW - pad);
+                                    const float minY = std::min(arenaTop + halfH + pad, arenaBottom - halfH - pad);
+                                    const float maxY = std::max(arenaTop + halfH + pad, arenaBottom - halfH - pad);
+                                    const float rx = (float)std::rand() / (float)RAND_MAX;
+                                    const float ry = (float)std::rand() / (float)RAND_MAX;
+                                    bossState.x = minX + (maxX - minX) * rx;
+                                    bossState.y = minY + (maxY - minY) * ry;
+                                } else if (bossState.sourceWorld == 7) {
+                                    const float minX = arenaLeft + halfW;
+                                    const float maxX = std::max(minX, arenaRight - halfW);
+                                    const float rx = (float)std::rand() / (float)RAND_MAX;
+                                    bossState.x = minX + (maxX - minX) * rx;
+                                    bossState.y = arenaBottom + halfH + 24.0f;
+                                    bossState.vy = -std::fabs(bossState.vy);
+                                }
+                                audio.playBumperSfx();
+                            } else {
+                                if (applyBossContactDamageToPlayer()) continue;
+                            }
                         }
                     }
                 }
@@ -4267,13 +4423,15 @@ int RunGameApp(int argc, char** argv) {
 
         const int worldViewW = kGameplayViewW;
         const int worldViewH = kGameplayViewH;
+        const bool renderSecretBossLevel = (renderLevelId == 59);
         const bool lockCameraToEndSign =
             endSignState.triggered &&
             endSignState.objectIndex >= 0 &&
             endSignState.phase != EndSignPhase::Done;
         const bool forceBossCamera =
             bossState.active &&
-            (bossState.sourceWorld == 1 ||
+            (renderSecretBossLevel ||
+             bossState.sourceWorld == 1 ||
              bossState.sourceWorld == 2 ||
              bossState.sourceWorld == 4 ||
              bossState.sourceWorld == 5 ||
@@ -4281,7 +4439,10 @@ int RunGameApp(int argc, char** argv) {
              (bossState.sourceWorld == 3 && bossState.phase == 3));
         float forcedBossCameraX = 1170.0f;
         float forcedBossCameraY = 132.0f;
-        if (bossState.sourceWorld == 2) {
+        if (renderSecretBossLevel) {
+            forcedBossCameraX = (float)(map.w * map.tileSize) * 0.5f;
+            forcedBossCameraY = (float)(map.h * map.tileSize) * 0.5f;
+        } else if (bossState.sourceWorld == 2) {
             forcedBossCameraX = 1887.0f;
             forcedBossCameraY = 744.0f;
         } else if (bossState.sourceWorld == 4) {
@@ -4921,6 +5082,35 @@ int RunGameApp(int argc, char** argv) {
                     DrawText(ren, std::max(8, dst.x - 8), std::max(8, dst.y - 18), 1, hpText);
                 }
             }
+        }
+        if (!secretFireballs.empty() || !secretExplosions.empty()) {
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+            for (const auto& fb : secretFireballs) {
+                const SDL_FRect r{
+                    fb.x - camX - 5.0f,
+                    fb.y - camY - 5.0f,
+                    10.0f,
+                    10.0f
+                };
+                SDL_SetRenderDrawColor(ren, 255, 110, 20, 255);
+                SDL_RenderFillRectF(ren, &r);
+            }
+            for (const auto& ex : secretExplosions) {
+                const float d = ex.radius * 2.0f;
+                const SDL_FRect r{
+                    ex.x - camX - ex.radius,
+                    ex.y - camY - ex.radius,
+                    d,
+                    d
+                };
+                const float t = std::clamp(ex.life / 0.24f, 0.0f, 1.0f);
+                const Uint8 a = (Uint8)std::lround(200.0f * t);
+                SDL_SetRenderDrawColor(ren, 255, 170, 70, a);
+                SDL_RenderFillRectF(ren, &r);
+                SDL_SetRenderDrawColor(ren, 255, 235, 130, a);
+                SDL_RenderDrawRectF(ren, &r);
+            }
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
         }
 
         if (!droppedCoins.empty()) {

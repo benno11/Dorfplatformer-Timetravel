@@ -2,6 +2,12 @@ cmake_minimum_required(VERSION 3.16)
 project(platformer LANGUAGES CXX)
 set(PROJECT_SDL_MIN_VERSION "3.4.0")
 
+# Keep generated files out of the source tree.
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
+  message(FATAL_ERROR
+    "In-source builds are not supported. Use a separate build folder, for example: cmake -S . -B .build")
+endif()
+
 message(STATUS "Configuring ${PROJECT_NAME}")
 message(STATUS "CMake version: ${CMAKE_VERSION}")
 message(STATUS "Generator: ${CMAKE_GENERATOR}")
