@@ -809,9 +809,13 @@ int RunGameApp(int argc, char** argv) {
             }
             if (cfg.contains("level_server_url") && cfg["level_server_url"].is_string()) {
                 levelServerUrl = cfg["level_server_url"].get<std::string>();
+            } else if (cfg.contains("level_api_url") && cfg["level_api_url"].is_string()) {
+                levelServerUrl = cfg["level_api_url"].get<std::string>();
             }
             if (cfg.contains("level_server_auth_token") && cfg["level_server_auth_token"].is_string()) {
                 levelServerAuthToken = cfg["level_server_auth_token"].get<std::string>();
+            } else if (cfg.contains("level_api_auth_token") && cfg["level_api_auth_token"].is_string()) {
+                levelServerAuthToken = cfg["level_api_auth_token"].get<std::string>();
             }
             if (cfg.contains("jump_buffer_seconds") && cfg["jump_buffer_seconds"].is_number()) {
                 jumpBufferMax = (float)cfg["jump_buffer_seconds"].get<double>();
@@ -850,14 +854,6 @@ int RunGameApp(int argc, char** argv) {
                 }
             }
         }
-    }
-    SetLevelServerUrl(levelServerUrl);
-    SetLevelServerAuthToken(levelServerAuthToken);
-    if (!levelServerUrl.empty()) {
-        SDL_Log("Level server: %s", levelServerUrl.c_str());
-    }
-    if (!levelServerAuthToken.empty()) {
-        SDL_Log("Level server auth token configured");
     }
     {
         const std::string text = ReadTextFile("assets/log_settings.json");
@@ -1025,6 +1021,10 @@ int RunGameApp(int argc, char** argv) {
         settings["telemetry"] = {
             {"telemetry_webhook_url", telemetryWebhookUrl}
         };
+        settings["network"] = {
+            {"level_server_url", levelServerUrl},
+            {"level_server_auth_token", levelServerAuthToken}
+        };
         {
             nlohmann::json extra = nlohmann::json::array();
             for (bool v : extraSettings) extra.push_back(v);
@@ -1053,6 +1053,8 @@ int RunGameApp(int argc, char** argv) {
         j["ui_scale_percent"] = uiScalePercent;
         j["extra_settings"] = j["settings"]["extra_settings"];
         j["telemetry_webhook_url"] = telemetryWebhookUrl;
+        j["level_server_url"] = levelServerUrl;
+        j["level_server_auth_token"] = levelServerAuthToken;
         j["fast_travel_delay"] = fastTravelChangeDelay;
         j["music_volume"] = musicVolume;
         j["sfx_volume"] = sfxVolume;
@@ -1149,6 +1151,19 @@ int RunGameApp(int argc, char** argv) {
                         telemetryWebhookUrl = t["telemetry_webhook_url"].get<std::string>();
                     }
                 }
+                if (s.contains("network") && s["network"].is_object()) {
+                    const auto& n = s["network"];
+                    if (n.contains("level_server_url") && n["level_server_url"].is_string()) {
+                        levelServerUrl = n["level_server_url"].get<std::string>();
+                    } else if (n.contains("level_api_url") && n["level_api_url"].is_string()) {
+                        levelServerUrl = n["level_api_url"].get<std::string>();
+                    }
+                    if (n.contains("level_server_auth_token") && n["level_server_auth_token"].is_string()) {
+                        levelServerAuthToken = n["level_server_auth_token"].get<std::string>();
+                    } else if (n.contains("level_api_auth_token") && n["level_api_auth_token"].is_string()) {
+                        levelServerAuthToken = n["level_api_auth_token"].get<std::string>();
+                    }
+                }
                 if (s.contains("extra_settings") && s["extra_settings"].is_array()) {
                     const auto& a = s["extra_settings"];
                     for (size_t i = 0; i < extraSettings.size() && i < a.size(); ++i) {
@@ -1188,6 +1203,16 @@ int RunGameApp(int argc, char** argv) {
             if (j.contains("telemetry_webhook_url") && j["telemetry_webhook_url"].is_string()) {
                 telemetryWebhookUrl = j["telemetry_webhook_url"].get<std::string>();
             }
+            if (j.contains("level_server_url") && j["level_server_url"].is_string()) {
+                levelServerUrl = j["level_server_url"].get<std::string>();
+            } else if (j.contains("level_api_url") && j["level_api_url"].is_string()) {
+                levelServerUrl = j["level_api_url"].get<std::string>();
+            }
+            if (j.contains("level_server_auth_token") && j["level_server_auth_token"].is_string()) {
+                levelServerAuthToken = j["level_server_auth_token"].get<std::string>();
+            } else if (j.contains("level_api_auth_token") && j["level_api_auth_token"].is_string()) {
+                levelServerAuthToken = j["level_api_auth_token"].get<std::string>();
+            }
             if (j.contains("fast_travel_delay") && j["fast_travel_delay"].is_number()) {
                 // Deprecated: delay removed in favor of immediate smooth transitions.
                 fastTravelChangeDelay = 0.0f;
@@ -1221,6 +1246,14 @@ int RunGameApp(int argc, char** argv) {
                 SDL_Log("Initialized client settings from placeholder: %s", placeholderPath.c_str());
             }
         }
+    }
+    SetLevelServerUrl(levelServerUrl);
+    SetLevelServerAuthToken(levelServerAuthToken);
+    if (!levelServerUrl.empty()) {
+        SDL_Log("Level server: %s", levelServerUrl.c_str());
+    }
+    if (!levelServerAuthToken.empty()) {
+        SDL_Log("Level server auth token configured");
     }
     auto applyRenderVsync = [&]() {
 #if SDL_VERSION_ATLEAST(2, 0, 18)
@@ -4168,15 +4201,22 @@ int RunGameApp(int argc, char** argv) {
                 float testBx = bx;
                 float testBy = by;
                 const bool overlap = overlapPlayerWithWrappedRect(bx, by, bossW, bossH, testBx, testBy);
-                if (overlap) {
-                    if (isSecretBossLevel) {
+                bool secretTouchingBoss = overlap;
+                if (isSecretBossLevel && !secretTouchingBoss) {
+                    const float playerCx = player.x + player.w * 0.5f;
+                    const float playerCy = player.y + player.h * 0.5f;
+                    const float dx = playerCx - bossState.x;
+                    const float dy = playerCy - bossState.y;
+                    const float playerRadius = std::max((float)player.w, (float)player.h) * 0.5f;
+                    const float touchRadius = halfW + playerRadius * 0.85f;
+                    secretTouchingBoss = (dx * dx + dy * dy) <= (touchRadius * touchRadius);
+                }
+                if (overlap || (isSecretBossLevel && secretTouchingBoss)) {
+                    if (isSecretBossLevel && secretTouchingBoss) {
                         if (bossState.secretTouchDamageCooldown <= 0.0f) {
                             applyBossDamage(1);
                             bossState.secretTouchDamageCooldown = 0.20f;
                             audio.playBumperSfx();
-                        }
-                        if (playerInvincibleTimer <= 0.0f && levelLoadDeathGraceTimer <= 0.0f) {
-                            if (applyBossContactDamageToPlayer()) continue;
                         }
                     } else if (playerInvincibleTimer <= 0.0f && levelLoadDeathGraceTimer <= 0.0f) {
                         if (!bossCanMoveAndTakeDamage) {
@@ -4657,6 +4697,8 @@ int RunGameApp(int argc, char** argv) {
                     const Frame* frame = nullptr;
                     if (id == 24) {
                         frame = cycleFrames[cycleIndex];
+                    } else if (currentWorldId == 6 && id >= 3 && id <= 11) {
+                        frame = frameByName("6.0");
                     } else {
                         auto tileIt = tileFrameById.find((int)id);
                         if (tileIt != tileFrameById.end()) {

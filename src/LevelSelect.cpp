@@ -92,9 +92,6 @@ bool isNumericId(const std::string& s) {
 
 std::string downloadFolderPath();
 std::string localLevelsFolderPath();
-std::string buildFirebaseLevelUploadUrl(const std::string& base,
-                                        const std::string& authToken,
-                                        const std::string& levelId);
 bool uploadLocalLevelToServer(const LevelEntry& level, std::string& statusText);
 
 OnlineLevelsMenuLabels loadOnlineLevelsMenuLabels() {
