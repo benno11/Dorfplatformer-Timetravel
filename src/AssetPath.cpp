@@ -28,6 +28,14 @@ bool isHttpUrl(const std::string& path) {
     return prefix.rfind("http://", 0) == 0 || prefix.rfind("https://", 0) == 0;
 }
 
+bool shouldLogAssetPath(const std::string& path) {
+    if (path.empty()) return false;
+    if (path.rfind("assets/", 0) == 0) return true;
+    if (path.find("/assets/") != std::string::npos) return true;
+    if (path.find("\\assets\\") != std::string::npos) return true;
+    return false;
+}
+
 std::string joinPath(const std::string& a, const std::string& b) {
     if (a.empty()) return b;
     if (b.empty()) return a;
@@ -100,10 +108,31 @@ std::string ResolveAssetPath(const std::string& path) {
 #endif
     if (path.empty()) return path;
     const std::filesystem::path p(path);
-    if (p.is_absolute()) return path;
-    if (std::filesystem::exists(p)) return path;
+    if (p.is_absolute()) {
+        if (shouldLogAssetPath(path)) {
+            SDL_Log("ASSET PATH: absolute input='%s' exists=%d", path.c_str(),
+                    std::filesystem::exists(p) ? 1 : 0);
+        }
+        return path;
+    }
+    if (std::filesystem::exists(p)) {
+        if (shouldLogAssetPath(path)) {
+            SDL_Log("ASSET PATH: cwd input='%s' resolved='%s' exists=1",
+                    path.c_str(), path.c_str());
+        }
+        return path;
+    }
     const std::string fromBase = resolveFromBasePath(path);
-    if (!fromBase.empty()) return fromBase;
+    if (!fromBase.empty()) {
+        if (shouldLogAssetPath(path)) {
+            SDL_Log("ASSET PATH: base input='%s' resolved='%s' exists=1",
+                    path.c_str(), fromBase.c_str());
+        }
+        return fromBase;
+    }
+    if (shouldLogAssetPath(path)) {
+        SDL_Log("ASSET PATH: unresolved input='%s' (cwd/base not found)", path.c_str());
+    }
     return path;
 }
 
@@ -164,18 +193,39 @@ std::string ReadTextFile(const std::string& path) {
     }
 #endif
     SDL_IOStream* io = SDL_IOFromFile(resolved.c_str(), "rb");
-    if (!io) return {};
+    if (!io) {
+        if (shouldLogAssetPath(path)) {
+            SDL_Log("ASSET READ: failed path='%s' resolved='%s' err='%s'",
+                    path.c_str(), resolved.c_str(), SDL_GetError());
+        }
+        return {};
+    }
 
     const Sint64 sz = SDL_GetIOSize(io);
     if (sz <= 0) {
         SDL_CloseIO(io);
+        if (shouldLogAssetPath(path)) {
+            SDL_Log("ASSET READ: empty/unreadable path='%s' resolved='%s' size=%lld",
+                    path.c_str(), resolved.c_str(), (long long)sz);
+        }
         return {};
     }
 
     std::vector<char> data(static_cast<size_t>(sz));
     const size_t got = static_cast<size_t>(SDL_ReadIO(io, data.data(), data.size()));
     SDL_CloseIO(io);
-    if (got != data.size()) return {};
+    if (got != data.size()) {
+        if (shouldLogAssetPath(path)) {
+            SDL_Log("ASSET READ: short read path='%s' resolved='%s' got=%d expected=%d",
+                    path.c_str(), resolved.c_str(), (int)got, (int)data.size());
+        }
+        return {};
+    }
+
+    if (shouldLogAssetPath(path)) {
+        SDL_Log("ASSET READ: ok path='%s' resolved='%s' bytes=%d",
+                path.c_str(), resolved.c_str(), (int)data.size());
+    }
 
     return std::string(data.begin(), data.end());
 }

@@ -28,7 +28,7 @@ jobs:
         - os: windows-latest
           triplet: x64-windows
         - os: macos-latest
-          triplet: x64-osx
+          triplet: arm64-osx
 
     steps:
     - name: Checkout code
@@ -38,7 +38,7 @@ jobs:
       if: runner.os == 'Linux'
       run: |
         sudo apt-get update
-        sudo apt-get install -y ninja-build autoconf autoconf-archive automake libtool
+        sudo apt-get install -y ninja-build autoconf autoconf-archive automake libtool libltdl-dev
 
     - name: Install Ninja (macOS)
       if: runner.os == 'macOS'
@@ -272,5 +272,5 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: app-release-apk
-        path: Android/app/build/outputs/apk/release/app-release.apk
+        path: Android/app/build/outputs/apk/release/*.apk
         if-no-files-found: error
