@@ -85,6 +85,10 @@ jobs:
       shell: pwsh
       run: |
         $vcpkgRoot = Join-Path $env:GITHUB_WORKSPACE "vcpkg"
+        $buildDir = Join-Path $env:GITHUB_WORKSPACE "build-${{ runner.os }}"
+        if (Test-Path $buildDir) {
+          Remove-Item $buildDir -Recurse -Force
+        }
         cmake -S . -B build-${{ runner.os }} -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$vcpkgRoot/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }}
 
     - name: Build desktop targets
@@ -136,6 +140,10 @@ jobs:
       shell: pwsh
       run: |
         $vcpkgRoot = Join-Path $env:GITHUB_WORKSPACE "vcpkg"
+        $buildDir = Join-Path $env:GITHUB_WORKSPACE "build-Windows"
+        if (Test-Path $buildDir) {
+          Remove-Item $buildDir -Recurse -Force
+        }
         cmake -S . -B build-Windows -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$vcpkgRoot/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows
 
     - name: Build Windows targets
