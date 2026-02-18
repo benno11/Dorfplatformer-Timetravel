@@ -37,13 +37,11 @@ std::string joinPath(const std::string& a, const std::string& b) {
 }
 
 std::string resolveFromBasePath(const std::string& path) {
-    char* basePath = SDL_GetBasePath();
+    const char* basePath = SDL_GetBasePath();
     if (!basePath || !*basePath) {
-        if (basePath) SDL_free(basePath);
         return {};
     }
     const std::string base(basePath);
-    SDL_free(basePath);
     const std::string candidate = joinPath(base, path);
     if (std::filesystem::exists(std::filesystem::path(candidate))) {
         return candidate;
