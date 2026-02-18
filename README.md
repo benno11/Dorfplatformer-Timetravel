@@ -19,6 +19,17 @@ Features included:
 - Level select menu (campaign/custom)
 - Mobile touch controls + editor UI
 
+Level upload API (GitHub Pages):
+- Static client lives in `pages/level-api/` and uploads to Firebase RTDB REST.
+- Deployment workflow: `.github/workflows/level-api-pages.yml`.
+- After Pages is enabled for the repo (GitHub Actions source), the app URL is:
+  - `https://<your-user>.github.io/<your-repo>/`
+- API descriptor JSON:
+  - `https://<your-user>.github.io/<your-repo>/api.json`
+- Upload format written by the app:
+  - `PUT <level_server_url>/levels/<id>.json`
+  - Body includes `data` (raw level text) plus metadata fields (`name`, `author`, timestamps).
+
 Custom levels:
 - Main menu `Play` opens campaign levels
 - Main menu `Editor` opens custom levels

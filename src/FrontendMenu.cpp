@@ -706,14 +706,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     if (menuBgTex) SDL_SetTextureBlendMode(menuBgTex, SDL_BLENDMODE_BLEND);
     auto menuBgFrames = loadPlistFrames("assets/Sheets/DF_Back_1-uhd.plist");
     if (!menuBgTex || menuBgFrames.empty()) {
-        if (menuBgTex) {
-            SDL_DestroyTexture(menuBgTex);
-            menuBgTex = nullptr;
-        }
-        menuBgTex = IMG_LoadTexture(ctx.ren, ResolveAssetPath("assets/Sheets/DF_Background-uhd.png").c_str());
-        if (menuBgTex) SDL_SetTextureScaleMode(menuBgTex, SDL_SCALEMODE_NEAREST);
-        if (menuBgTex) SDL_SetTextureBlendMode(menuBgTex, SDL_BLENDMODE_BLEND);
-        menuBgFrames = loadPlistFrames("assets/Sheets/DF_Background-uhd.plist");
+        SDL_Log("Menu background load incomplete: texture=assets/Sheets/DF_Back_1-uhd.png loaded=%d plist frames=%d",
+                menuBgTex ? 1 : 0, (int)menuBgFrames.size());
     }
     auto getMenuFrame = [&](const char* name, SDL_Texture*& outTex) -> const Frame* {
         auto it = mainMenuFrames.find(name);

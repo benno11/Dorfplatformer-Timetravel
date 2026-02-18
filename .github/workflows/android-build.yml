@@ -81,6 +81,22 @@ jobs:
         $vcpkgExe = if ("${{ runner.os }}" -eq "Windows") { Join-Path $vcpkgRoot "vcpkg.exe" } else { Join-Path $vcpkgRoot "vcpkg" }
         & $vcpkgExe list
 
+    - name: Build SDL3_mixer from source
+      shell: pwsh
+      run: |
+        $srcRoot = Join-Path $env:GITHUB_WORKSPACE "deps-ci\SDL_mixer-${{ runner.os }}"
+        $buildDir = Join-Path $srcRoot "build"
+        $prefix = Join-Path $env:GITHUB_WORKSPACE "deps-ci\install-sdl3-mixer-${{ runner.os }}"
+        if (Test-Path $srcRoot) { Remove-Item $srcRoot -Recurse -Force }
+        if (Test-Path $prefix) { Remove-Item $prefix -Recurse -Force }
+        git clone --depth 1 --recurse-submodules https://github.com/libsdl-org/SDL_mixer.git $srcRoot
+        $sdl3Dir = Join-Path $env:GITHUB_WORKSPACE "vcpkg\installed\${{ matrix.triplet }}\share\sdl3"
+        cmake -S $srcRoot -B $buildDir -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$prefix" -DSDL3_DIR="$sdl3Dir" -DSDLMIXER_VENDORED=ON -DSDLMIXER_SAMPLES=OFF -DSDLMIXER_EXAMPLES=OFF -DSDLMIXER_TESTS=OFF -DSDLMIXER_MOD=OFF -DSDLMIXER_MIDI=OFF
+        cmake --build $buildDir --parallel
+        cmake --install $buildDir
+        $mixerDir = Join-Path $prefix "lib\cmake\SDL3_mixer"
+        "SDL3_MIXER_DIR=$mixerDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
     - name: Configure CMake
       shell: pwsh
       run: |
@@ -89,7 +105,7 @@ jobs:
         if (Test-Path $buildDir) {
           Remove-Item $buildDir -Recurse -Force
         }
-        cmake -S . -B build-${{ runner.os }} -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$vcpkgRoot/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }}
+        cmake -S . -B build-${{ runner.os }} -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$vcpkgRoot/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} -DSDL3_mixer_DIR="$env:SDL3_MIXER_DIR" -DPLATFORMER_REQUIRE_SDL3_MIXER=ON
 
     - name: Build desktop targets
       shell: pwsh
@@ -136,6 +152,22 @@ jobs:
         & $vcpkgExe install sdl3 sdl3-image sdl3-ttf curl nlohmann-json --triplet x64-windows
         & $vcpkgExe list
 
+    - name: Build SDL3_mixer from source
+      shell: pwsh
+      run: |
+        $srcRoot = Join-Path $env:GITHUB_WORKSPACE "deps-ci\SDL_mixer-windows"
+        $buildDir = Join-Path $srcRoot "build"
+        $prefix = Join-Path $env:GITHUB_WORKSPACE "deps-ci\install-sdl3-mixer-windows"
+        if (Test-Path $srcRoot) { Remove-Item $srcRoot -Recurse -Force }
+        if (Test-Path $prefix) { Remove-Item $prefix -Recurse -Force }
+        git clone --depth 1 --recurse-submodules https://github.com/libsdl-org/SDL_mixer.git $srcRoot
+        $sdl3Dir = Join-Path $env:GITHUB_WORKSPACE "vcpkg\installed\x64-windows\share\sdl3"
+        cmake -S $srcRoot -B $buildDir -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$prefix" -DSDL3_DIR="$sdl3Dir" -DSDLMIXER_VENDORED=ON -DSDLMIXER_SAMPLES=OFF -DSDLMIXER_EXAMPLES=OFF -DSDLMIXER_TESTS=OFF -DSDLMIXER_MOD=OFF -DSDLMIXER_MIDI=OFF
+        cmake --build $buildDir --parallel
+        cmake --install $buildDir
+        $mixerDir = Join-Path $prefix "lib\cmake\SDL3_mixer"
+        "SDL3_MIXER_DIR=$mixerDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
     - name: Configure CMake
       shell: pwsh
       run: |
@@ -144,7 +176,7 @@ jobs:
         if (Test-Path $buildDir) {
           Remove-Item $buildDir -Recurse -Force
         }
-        cmake -S . -B build-Windows -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$vcpkgRoot/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows
+        cmake -S . -B build-Windows -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$vcpkgRoot/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DSDL3_mixer_DIR="$env:SDL3_MIXER_DIR" -DPLATFORMER_REQUIRE_SDL3_MIXER=ON
 
     - name: Build Windows targets
       shell: pwsh

@@ -547,8 +547,6 @@ int RunGameApp(int argc, char** argv) {
         }
     }
 
-    const std::string bgTexPathFallback = "assets/Sheets/DF_Background-uhd.png";
-    const std::string bgPlistFallback = "assets/Sheets/DF_Background-uhd.plist";
     SDL_Texture* bgTexWorld1 = nullptr;
     SDL_Texture* bgTexWorld2 = nullptr;
     SDL_Texture* bgTexWorld4 = nullptr;
@@ -573,13 +571,8 @@ int RunGameApp(int argc, char** argv) {
         if (outTex) SDL_SetTextureScaleMode(outTex, SDL_SCALEMODE_NEAREST);
         auto bgFrameList = loadPlistFrameList(plistPrimary);
         if (!outTex || bgFrameList.empty()) {
-            if (outTex) {
-                SDL_DestroyTexture(outTex);
-                outTex = nullptr;
-            }
-            outTex = IMG_LoadTexture(ren, ResolveAssetPath(bgTexPathFallback).c_str());
-            if (outTex) SDL_SetTextureScaleMode(outTex, SDL_SCALEMODE_NEAREST);
-            bgFrameList = loadPlistFrameList(bgPlistFallback);
+            SDL_Log("Background sheet load incomplete: texture='%s' loaded=%d plist='%s' frames=%d",
+                    texPathPrimary.c_str(), outTex ? 1 : 0, plistPrimary.c_str(), (int)bgFrameList.size());
         }
         outFrames.clear();
         outFrames.reserve(bgFrameList.size());
