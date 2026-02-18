@@ -1,6 +1,6 @@
 #include "TextRenderer.h"
 
-#include <sdl3/SDL_ttf.h>
+#include <SDL3_ttf/SDL_ttf.h>
 #include <algorithm>
 #include <cmath>
 #include <deque>
@@ -199,3 +199,4 @@ void DrawDebugNumber(SDL_Renderer* ren, int x, int y, int scale, const std::stri
     }
     DrawText(ren, x + labelW + 8, y, scale, std::to_string(value));
 }
+

@@ -1,6 +1,6 @@
 #include "CrashReporter.h"
 
-#include <sdl3/SDL.h>
+#include <SDL3/SDL.h>
 
 #include <atomic>
 #include <csignal>
@@ -106,3 +106,4 @@ void stop() {
     if (worker.joinable()) worker.join();
 }
 } // namespace CrashReporter
+

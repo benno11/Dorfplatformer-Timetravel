@@ -1,5 +1,5 @@
-#include <sdl3/SDL.h>
-#include <sdl3/SDL_image.h>
+#include <SDL3/SDL.h>
+#include <SDL3_image/SDL_image.h>
 #include <vector>
 #include <string>
 #include <algorithm>
@@ -6068,3 +6068,4 @@ int RunGameApp(int argc, char** argv) {
     SDL_Quit();
     return 0;
 }
+

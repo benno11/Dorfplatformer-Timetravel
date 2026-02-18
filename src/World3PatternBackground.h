@@ -1,6 +1,6 @@
 #pragma once
 
-#include <sdl3/SDL.h>
+#include <SDL3/SDL.h>
 
 #include "GameSupport.h"
 
@@ -15,3 +15,4 @@ bool RenderWorld3PatternBackground(
     float camX,
     float camY
 );
+

@@ -1,0 +1,65 @@
+{
+  "build_uuid": "8f3b2d19-4a61-4f11-a6ce-2f8d7e91c4b7",
+  "settings": {
+    "display": {
+      "fullscreen": false,
+      "vsync": false,
+      "ui_scale_percent": 200
+    },
+    "camera": {
+      "clamp_cam_x": true
+    },
+    "debug": {
+      "show_fps_counter": false,
+      "show_detailed_debugger": false,
+      "show_hitboxes": false,
+      "show_player_hitbox": false,
+      "show_debug_view": false,
+      "hide_unknown_object_types": false
+    },
+    "audio": {
+      "menu_music_enabled": true,
+      "mute_all_audio": false,
+      "music_volume": 96,
+      "sfx_volume": 96
+    },
+    "controls": {
+      "move_left": 4,
+      "move_right": 7,
+      "move_down": 22,
+      "jump": 44,
+      "pause": 41
+    },
+    "gameplay": {
+      "power_management": true,
+      "fast_travel_delay": 0.0
+    },
+    "telemetry": {
+      "telemetry_webhook_url": ""
+    },
+    "extra_settings": []
+  },
+  "fullscreen": false,
+  "vsync": false,
+  "clamp_cam_x": true,
+  "show_fps_counter": false,
+  "show_detailed_debugger": false,
+  "show_hitboxes": false,
+  "show_player_hitbox": false,
+  "show_debug_view": false,
+  "hide_unknown_object_types": false,
+  "power_management": true,
+  "menu_music_enabled": true,
+  "mute_all_audio": false,
+  "key_move_left": 4,
+  "key_move_right": 7,
+  "key_move_down": 22,
+  "key_jump": 44,
+  "key_pause": 41,
+  "ui_scale_percent": 200,
+  "extra_settings": [],
+  "telemetry_webhook_url": "",
+  "fast_travel_delay": 0.0,
+  "music_volume": 96,
+  "sfx_volume": 96
+}

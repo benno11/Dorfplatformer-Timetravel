@@ -1,6 +1,6 @@
 #include "AssetPath.h"
 
-#include <sdl3/SDL.h>
+#include <SDL3/SDL.h>
 
 #include <algorithm>
 #include <cctype>
@@ -9,7 +9,7 @@
 #include <vector>
 #if defined(__ANDROID__)
 #include <jni.h>
-#include <sdl3/SDL_system.h>
+#include <SDL3/SDL_system.h>
 #endif
 #if defined(HAVE_CURL) && HAVE_CURL
 #include <curl/curl.h>
@@ -26,6 +26,29 @@ bool isHttpUrl(const std::string& path) {
     std::transform(path.begin(), path.begin() + prefix.size(), prefix.begin(),
                    [](unsigned char c) { return (char)std::tolower(c); });
     return prefix.rfind("http://", 0) == 0 || prefix.rfind("https://", 0) == 0;
+}
+
+std::string joinPath(const std::string& a, const std::string& b) {
+    if (a.empty()) return b;
+    if (b.empty()) return a;
+    std::filesystem::path p(a);
+    p /= b;
+    return p.lexically_normal().string();
+}
+
+std::string resolveFromBasePath(const std::string& path) {
+    char* basePath = SDL_GetBasePath();
+    if (!basePath || !*basePath) {
+        if (basePath) SDL_free(basePath);
+        return {};
+    }
+    const std::string base(basePath);
+    SDL_free(basePath);
+    const std::string candidate = joinPath(base, path);
+    if (std::filesystem::exists(std::filesystem::path(candidate))) {
+        return candidate;
+    }
+    return {};
 }
 
 #if defined(__ANDROID__)
@@ -77,6 +100,12 @@ std::string ResolveAssetPath(const std::string& path) {
         return path.substr(7);
     }
 #endif
+    if (path.empty()) return path;
+    const std::filesystem::path p(path);
+    if (p.is_absolute()) return path;
+    if (std::filesystem::exists(p)) return path;
+    const std::string fromBase = resolveFromBasePath(path);
+    if (!fromBase.empty()) return fromBase;
     return path;
 }
 
@@ -223,3 +252,4 @@ void SetLevelServerAuthToken(const std::string& token) {
 std::string GetLevelServerAuthToken() {
     return g_levelServerAuthToken;
 }
+

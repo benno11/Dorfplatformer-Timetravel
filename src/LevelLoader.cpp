@@ -1,7 +1,7 @@
 #include "LevelLoader.h"
 #include "AssetPath.h"
 
-#include <sdl3/SDL.h>
+#include <SDL3/SDL.h>
 #include <string>
 #include <vector>
 #include <cctype>
@@ -586,3 +586,4 @@ bool loadLevelBNNLVL(const std::string& path,
     SDL_Log("Legacy load OK: %s tiles=%d objects=%d", path.c_str(), total, (int)objects.size());
     return true;
 }
+

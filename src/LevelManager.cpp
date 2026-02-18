@@ -1,6 +1,6 @@
 #include "LevelManager.h"
 
-#include <sdl3/SDL.h>
+#include <SDL3/SDL.h>
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -356,3 +356,4 @@ void LevelManager::updateLevelMetadata(const TileMap& map) {
         timeId_ = 0;
     }
 }
+

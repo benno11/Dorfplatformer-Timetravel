@@ -1,7 +1,7 @@
 #include "LevelSelect.h"
 #include "AssetPath.h"
 
-#include <sdl3/SDL_image.h>
+#include <SDL3_image/SDL_image.h>
 
 #include <algorithm>
 #include <cmath>
@@ -1885,3 +1885,4 @@ std::string RunCustomLevelSelect(SDL_Window* win, SDL_Renderer* ren) {
 bool HasCustomLevels() {
     return !loadCustomLevels().empty();
 }
+

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <sdl3/SDL.h>
+#include <SDL3/SDL.h>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -64,3 +64,4 @@ SDL_Texture* loadTextureWithColorKey(SDL_Renderer* ren, const std::string& path,
 
 SDL_Rect computePresentRect(int winW, int winH, int baseW, int baseH, float uiScale = 1.0f);
 bool windowToGamePoint(int wx, int wy, int winW, int winH, int baseW, int baseH, int& gx, int& gy, float uiScale = 1.0f);
+

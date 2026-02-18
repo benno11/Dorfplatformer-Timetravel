@@ -1,6 +1,6 @@
 #include "GameSupport.h"
 
-#include <sdl3/SDL_image.h>
+#include <SDL3_image/SDL_image.h>
 
 #include <algorithm>
 #include <cmath>
@@ -244,3 +244,4 @@ bool windowToGamePoint(int wx, int wy, int winW, int winH, int baseW, int baseH,
     gy = std::clamp((int)std::floor(v * baseH), 0, baseH - 1);
     return true;
 }
+

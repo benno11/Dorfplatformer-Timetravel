@@ -1,6 +1,6 @@
 #pragma once
 
-#include <sdl3/SDL.h>
+#include <SDL3/SDL.h>
 
 #include <algorithm>
 #include <cmath>
@@ -185,3 +185,4 @@ private:
     SDL_JoystickID activeId_ = 0;
     SDL_Gamepad* activePad_ = nullptr;
 };
+

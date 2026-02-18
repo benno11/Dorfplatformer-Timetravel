@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "bg": {
+    "1": {
+      "sheet": "tilesSheet",
+      "frame": "bg_stone_0.png"
+    }
+  }
+}

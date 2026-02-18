@@ -38,7 +38,7 @@ jobs:
       if: runner.os == 'Linux'
       run: |
         sudo apt-get update
-        sudo apt-get install -y ninja-build
+        sudo apt-get install -y ninja-build autoconf autoconf-archive automake libtool
 
     - name: Install Ninja (macOS)
       if: runner.os == 'macOS'
@@ -101,6 +101,96 @@ jobs:
           build-${{ runner.os }}/sheet_config*
         if-no-files-found: error
 
+  build-windows-installer:
+    name: Windows Installer
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup MSVC
+      uses: ilammy/msvc-dev-cmd@v1
+
+    - name: Checkout vcpkg
+      uses: actions/checkout@v4
+      with:
+        repository: microsoft/vcpkg
+        path: vcpkg
+
+    - name: Bootstrap vcpkg
+      shell: pwsh
+      run: |
+        .\vcpkg\bootstrap-vcpkg.bat -disableMetrics
+
+    - name: Install Windows dependencies
+      shell: pwsh
+      run: |
+        $vcpkgRoot = Join-Path $env:GITHUB_WORKSPACE "vcpkg"
+        $vcpkgExe = Join-Path $vcpkgRoot "vcpkg.exe"
+        & $vcpkgExe install sdl3 sdl3-image sdl3-ttf curl nlohmann-json --triplet x64-windows
+        & $vcpkgExe list
+
+    - name: Configure CMake
+      shell: pwsh
+      run: |
+        $vcpkgRoot = Join-Path $env:GITHUB_WORKSPACE "vcpkg"
+        cmake -S . -B build-Windows -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$vcpkgRoot/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows
+
+    - name: Build Windows targets
+      shell: pwsh
+      run: |
+        cmake --build build-Windows --config Release --parallel
+
+    - name: Stage installer content
+      shell: pwsh
+      run: |
+        $stageRoot = Join-Path $env:GITHUB_WORKSPACE "dist\windows-installer"
+        $appDir = Join-Path $stageRoot "app"
+        New-Item -ItemType Directory -Force -Path $appDir | Out-Null
+
+        Copy-Item "build-Windows\platformer.exe" -Destination $appDir -Force
+        if (Test-Path "build-Windows\sheet_config.exe") {
+          Copy-Item "build-Windows\sheet_config.exe" -Destination $appDir -Force
+        }
+
+        Copy-Item "assets" -Destination (Join-Path $appDir "assets") -Recurse -Force
+        Copy-Item "LICENSE" -Destination $appDir -Force
+        Copy-Item "README.md" -Destination $appDir -Force
+        if (Test-Path "object_type_map.json") {
+          Copy-Item "object_type_map.json" -Destination $appDir -Force
+        }
+
+        $vcpkgBin = Join-Path $env:GITHUB_WORKSPACE "vcpkg\installed\x64-windows\bin"
+        if (Test-Path $vcpkgBin) {
+          Copy-Item "$vcpkgBin\*.dll" -Destination $appDir -Force
+        }
+
+    - name: Download VC++ Redistributable
+      shell: pwsh
+      run: |
+        $outFile = Join-Path $env:GITHUB_WORKSPACE "dist\windows-installer\vc_redist.x64.exe"
+        Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile $outFile
+
+    - name: Install Inno Setup
+      shell: pwsh
+      run: |
+        choco install innosetup -y --no-progress
+
+    - name: Build installer
+      shell: pwsh
+      run: |
+        $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+        & $iscc "/DMyAppVersion=1.0.${{ github.run_number }}" "installer\windows\df-platformer.iss"
+
+    - name: Upload Windows installer
+      uses: actions/upload-artifact@v4
+      with:
+        name: windows-installer
+        path: dist/windows-installer/output/*.exe
+        if-no-files-found: error
+
   build-android:
     name: Android (Ubuntu)
     runs-on: ubuntu-latest
@@ -138,6 +228,8 @@ jobs:
         chmod +x Android/gradlew
 
     - name: Setup Android SDL3 libraries
+      env:
+        TERM: xterm
       run: |
         export ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}
         export SDL_REF=release-3.4.x

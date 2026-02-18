@@ -1,6 +1,6 @@
 #pragma once
 
-#include <sdl3/SDL.h>
+#include <SDL3/SDL.h>
 
 #include <functional>
 #include <string>
@@ -52,3 +52,4 @@ struct FrontendMenuContext {
 };
 
 FrontendAction runFrontendMenu(FrontendMenuContext& ctx);
+

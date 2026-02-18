@@ -1,6 +1,6 @@
 #include "PlayerController.h"
 
-#include <sdl3/SDL.h>
+#include <SDL3/SDL.h>
 #include <algorithm>
 #include <cmath>
 
@@ -317,3 +317,4 @@ PlayerUpdateResult UpdatePlayerMovement(
 
     return PlayerUpdateResult::Normal;
 }
+

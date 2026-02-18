@@ -1,0 +1,23 @@
+{
+  "world_names": {
+    "1": "Green Field",
+    "2": "Springing Plains",
+    "3": "Underwater Ruins",
+    "4": "Spiky Yard",
+    "5": "Skyclody",
+    "6": "Clockwork",
+    "7": "Final"
+  },
+  "intro_layout": {
+    "world_name": {
+      "x": 500,
+      "y": 230,
+      "scale": 6
+    },
+    "area_id": {
+      "x": 700,
+      "y": 250,
+      "scale": 10
+    }
+  }
+}

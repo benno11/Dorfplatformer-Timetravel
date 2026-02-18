@@ -5,7 +5,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include <sdl3/SDL.h>
+#include <SDL3/SDL.h>
 
 #include "GameSupport.h"
 
@@ -31,4 +31,5 @@ void RenderParallaxBackground(
     const ParallaxWorldAssets& world4,
     const ParallaxWorldAssets& world5
 );
+
 

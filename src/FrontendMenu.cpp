@@ -1,7 +1,7 @@
 #include "FrontendMenu.h"
 
-#include <sdl3/SDL.h>
-#include <sdl3/SDL_image.h>
+#include <SDL3/SDL.h>
+#include <SDL3_image/SDL_image.h>
 
 #include <algorithm>
 #include <cmath>
@@ -2254,3 +2254,4 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     cleanupMenuAssets();
     return FrontendAction::Quit;
 }
+

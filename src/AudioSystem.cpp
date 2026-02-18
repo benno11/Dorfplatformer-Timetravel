@@ -5,13 +5,9 @@
 #include <cstring>
 #include <vector>
 
-#include <sdl3/SDL.h>
+#include <SDL3/SDL.h>
 
-#if __has_include(<sdl3/SDL_mixer.h>)
-#include <sdl3/SDL_mixer.h>
-#define AUDIO_HAS_SDL3_MIXER 1
-#define AUDIO_HAS_SDL_MIXER 1
-#elif __has_include(<SDL3_mixer/SDL_mixer.h>)
+#if __has_include(<SDL3_mixer/SDL_mixer.h>)
 #include <SDL3_mixer/SDL_mixer.h>
 #define AUDIO_HAS_SDL3_MIXER 1
 #define AUDIO_HAS_SDL_MIXER 1
@@ -526,3 +522,4 @@ bool AudioSystem::isChannelPlaying(int channel) const {
     return false;
 #endif
 }
+

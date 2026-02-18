@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
-clear
+if [ -t 1 ] && [ -n "${TERM:-}" ]; then
+  clear
+fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"

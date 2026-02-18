@@ -1,5 +1,5 @@
 #pragma once
-#include <sdl3/SDL.h>
+#include <SDL3/SDL.h>
 #include <vector>
 
 struct TileMap {
@@ -26,3 +26,4 @@ struct TileMap {
     void renderSemiSolid(SDL_Renderer* r, float camX, float camY) const;
     void renderWater(SDL_Renderer* r, float camX, float camY) const;
 };
+
