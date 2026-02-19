@@ -1,47 +1,412 @@
-#!/usr/bin/env bash
-set -euo pipefail
-if [ -t 1 ] && [ -n "${TERM:-}" ]; then
-  clear
-fi
+name: Cross Platform Build
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT_DIR"
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
 
-# Pin SDL source used by setup script unless caller overrides.
-export SDL_REF="${SDL_REF:-release-3.4.x}"
-export SDL_REQUIRED_VERSION="${SDL_REQUIRED_VERSION:-3.4.0}"
-export FORCE_STAGED_SDL_ROOT="${FORCE_STAGED_SDL_ROOT:-1}"
-export FORCE_REBUILD_SDL="${FORCE_REBUILD_SDL:-1}"
+permissions:
+  contents: read
 
-run_step() {
-  local script="$1"
-  if [ ! -f "$script" ]; then
-    echo "[ERROR] Missing script: $script"
-    exit 1
-  fi
-  echo "[STEP] $script"
-  bash "$script"
-}
+concurrency:
+  group: cross-platform-build-${{ github.ref }}
+  cancel-in-progress: true
 
-run_step "build/setup-android-sdl.sh"
+env:
+  VCPKG_ROOT: ${{ github.workspace }}/vcpkg
 
-# Force subsequent steps to use the freshly staged SDL copy from setup step.
-if [ -f "build/android.env" ]; then
-  # shellcheck disable=SC1091
-  . "build/android.env"
-fi
-export SDL3_ANDROID_ROOT="${SDL3_ANDROID_ROOT:-$ROOT_DIR/deps/android}"
-export SDL3_IMAGE_ROOT="${SDL3_IMAGE_ROOT:-$SDL3_ANDROID_ROOT}"
-export SDL3_TTF_ROOT="${SDL3_TTF_ROOT:-$SDL3_ANDROID_ROOT}"
-export SDL3_MIXER_ROOT="${SDL3_MIXER_ROOT:-$SDL3_ANDROID_ROOT}"
-echo "[INFO] Using staged SDL roots:"
-echo "       SDL3_ANDROID_ROOT=$SDL3_ANDROID_ROOT"
-echo "       SDL3_IMAGE_ROOT=$SDL3_IMAGE_ROOT"
-echo "       SDL3_TTF_ROOT=$SDL3_TTF_ROOT"
-echo "       SDL3_MIXER_ROOT=$SDL3_MIXER_ROOT"
+jobs:
+  build-desktop:
+    name: Desktop (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            triplet: x64-linux
+          - os: windows-latest
+            triplet: x64-windows
+          - os: macos-latest
+            triplet: arm64-osx
 
-run_step "build/dep-android.sh"
-run_step "build/android.sh"
-run_step "build/update-android-app.sh"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-echo "[OK] Full Android build pipeline completed."
+      - name: Install build tools (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build autoconf autoconf-archive automake libtool libltdl-dev
+
+      - name: Install build tools (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew update
+          brew install ninja
+
+      - name: Install build tools (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install ninja -y --no-progress
+
+      - name: Setup MSVC
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Checkout vcpkg
+        uses: actions/checkout@v4
+        with:
+          repository: microsoft/vcpkg
+          path: vcpkg
+
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: |
+            vcpkg/downloads
+            vcpkg/buildtrees
+            vcpkg/packages
+            vcpkg/installed
+          key: vcpkg-${{ runner.os }}-${{ matrix.triplet }}-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json', '**/CMakeLists.txt', '.github/workflows/**') }}
+
+      - name: Bootstrap vcpkg (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          .\vcpkg\bootstrap-vcpkg.bat -disableMetrics
+
+      - name: Bootstrap vcpkg (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+
+      - name: Install desktop dependencies
+        shell: pwsh
+        run: |
+          $vcpkgRoot = Join-Path $env:GITHUB_WORKSPACE "vcpkg"
+          $vcpkgExe = if ($env:RUNNER_OS -eq "Windows") { Join-Path $vcpkgRoot "vcpkg.exe" } else { Join-Path $vcpkgRoot "vcpkg" }
+          & $vcpkgExe install sdl3 sdl3-image sdl3-ttf curl nlohmann-json --triplet "${{ matrix.triplet }}"
+
+      - name: Show installed vcpkg packages
+        shell: pwsh
+        run: |
+          $vcpkgRoot = Join-Path $env:GITHUB_WORKSPACE "vcpkg"
+          $vcpkgExe = if ($env:RUNNER_OS -eq "Windows") { Join-Path $vcpkgRoot "vcpkg.exe" } else { Join-Path $vcpkgRoot "vcpkg" }
+          & $vcpkgExe list
+
+      - name: Cache SDL3_mixer install
+        uses: actions/cache@v4
+        with:
+          path: deps-ci/install-sdl3-mixer-${{ runner.os }}-${{ matrix.triplet }}
+          key: sdl3-mixer-${{ runner.os }}-${{ matrix.triplet }}-${{ hashFiles('.github/workflows/**') }}
+
+      - name: Build SDL3_mixer from source (cached)
+        shell: pwsh
+        run: |
+          $depsRoot = Join-Path $env:GITHUB_WORKSPACE "deps-ci"
+          $srcRoot  = Join-Path $depsRoot ("SDL_mixer-" + "${{ runner.os }}" + "-" + "${{ matrix.triplet }}")
+          $buildDir = Join-Path $srcRoot "build"
+          $prefix   = Join-Path $depsRoot ("install-sdl3-mixer-" + "${{ runner.os }}" + "-" + "${{ matrix.triplet }}")
+
+          if (Test-Path $prefix) {
+            $cfg = Get-ChildItem -Path $prefix -Recurse -Filter "SDL3_mixerConfig.cmake" | Select-Object -First 1
+            if ($cfg) {
+              $mixerDir = $cfg.DirectoryName
+              "Using cached SDL3_mixer config dir: $mixerDir" | Write-Host
+              "SDL3_MIXER_DIR=$mixerDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+              exit 0
+            }
+          }
+
+          if (Test-Path $srcRoot) { Remove-Item $srcRoot -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $srcRoot | Out-Null
+
+          git clone --depth 1 --recurse-submodules https://github.com/libsdl-org/SDL_mixer.git $srcRoot
+
+          $sdl3Dir = Join-Path (Join-Path $env:GITHUB_WORKSPACE "vcpkg") (Join-Path "installed" (Join-Path "${{ matrix.triplet }}" "share/sdl3"))
+
+          cmake -S $srcRoot -B $buildDir -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_INSTALL_PREFIX="$prefix" `
+            -DSDL3_DIR="$sdl3Dir" `
+            -DSDLMIXER_VENDORED=ON `
+            -DSDLMIXER_SAMPLES=OFF -DSDLMIXER_EXAMPLES=OFF -DSDLMIXER_TESTS=OFF `
+            -DSDLMIXER_MOD=OFF -DSDLMIXER_MIDI=OFF
+
+          cmake --build $buildDir --parallel
+          cmake --install $buildDir
+
+          $cfg = Get-ChildItem -Path $prefix -Recurse -Filter "SDL3_mixerConfig.cmake" | Select-Object -First 1
+          if (-not $cfg) { throw "SDL3_mixerConfig.cmake not found under $prefix" }
+
+          $mixerDir = $cfg.DirectoryName
+          "Detected SDL3_mixer config dir: $mixerDir" | Write-Host
+          "SDL3_MIXER_DIR=$mixerDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Configure CMake
+        shell: pwsh
+        run: |
+          $vcpkgRoot = Join-Path $env:GITHUB_WORKSPACE "vcpkg"
+          $buildDir = Join-Path $env:GITHUB_WORKSPACE ("build-" + "${{ runner.os }}")
+          if (Test-Path $buildDir) { Remove-Item $buildDir -Recurse -Force }
+
+          cmake -S . -B $buildDir -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_TOOLCHAIN_FILE="$vcpkgRoot/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET="${{ matrix.triplet }}" `
+            -DSDL3_mixer_DIR="$env:SDL3_MIXER_DIR" `
+            -DPLATFORMER_REQUIRE_SDL3_MIXER=ON
+
+      - name: Build desktop targets
+        shell: pwsh
+        run: |
+          $buildDir = Join-Path $env:GITHUB_WORKSPACE ("build-" + "${{ runner.os }}")
+          cmake --build $buildDir --config Release --parallel
+
+      - name: Upload desktop artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ runner.os }}
+          path: |
+            build-${{ runner.os }}/platformer*
+            build-${{ runner.os }}/sheet_config*
+          if-no-files-found: error
+
+  build-windows-installer:
+    name: Windows Installer
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install build tools (Windows)
+        shell: pwsh
+        run: |
+          choco install ninja innosetup -y --no-progress
+
+      - name: Checkout vcpkg
+        uses: actions/checkout@v4
+        with:
+          repository: microsoft/vcpkg
+          path: vcpkg
+
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: |
+            vcpkg/downloads
+            vcpkg/buildtrees
+            vcpkg/packages
+            vcpkg/installed
+          key: vcpkg-windows-x64-windows-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json', '**/CMakeLists.txt', '.github/workflows/**') }}
+
+      - name: Bootstrap vcpkg
+        shell: pwsh
+        run: |
+          .\vcpkg\bootstrap-vcpkg.bat -disableMetrics
+
+      - name: Install Windows dependencies
+        shell: pwsh
+        run: |
+          $vcpkgRoot = Join-Path $env:GITHUB_WORKSPACE "vcpkg"
+          $vcpkgExe = Join-Path $vcpkgRoot "vcpkg.exe"
+          & $vcpkgExe install sdl3 sdl3-image sdl3-ttf curl nlohmann-json --triplet x64-windows
+          & $vcpkgExe list
+
+      - name: Cache SDL3_mixer install (Windows)
+        uses: actions/cache@v4
+        with:
+          path: deps-ci/install-sdl3-mixer-windows-x64-windows
+          key: sdl3-mixer-windows-x64-windows-${{ hashFiles('.github/workflows/**') }}
+
+      - name: Build SDL3_mixer from source (cached)
+        shell: pwsh
+        run: |
+          $depsRoot = Join-Path $env:GITHUB_WORKSPACE "deps-ci"
+          $srcRoot  = Join-Path $depsRoot "SDL_mixer-windows-x64-windows"
+          $buildDir = Join-Path $srcRoot "build"
+          $prefix   = Join-Path $depsRoot "install-sdl3-mixer-windows-x64-windows"
+
+          if (Test-Path $prefix) {
+            $cfg = Get-ChildItem -Path $prefix -Recurse -Filter "SDL3_mixerConfig.cmake" | Select-Object -First 1
+            if ($cfg) {
+              $mixerDir = $cfg.DirectoryName
+              "Using cached SDL3_mixer config dir: $mixerDir" | Write-Host
+              "SDL3_MIXER_DIR=$mixerDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+              exit 0
+            }
+          }
+
+          if (Test-Path $srcRoot) { Remove-Item $srcRoot -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $srcRoot | Out-Null
+
+          git clone --depth 1 --recurse-submodules https://github.com/libsdl-org/SDL_mixer.git $srcRoot
+
+          $sdl3Dir = Join-Path (Join-Path $env:GITHUB_WORKSPACE "vcpkg") "installed\x64-windows\share\sdl3"
+
+          cmake -S $srcRoot -B $buildDir -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_INSTALL_PREFIX="$prefix" `
+            -DSDL3_DIR="$sdl3Dir" `
+            -DSDLMIXER_VENDORED=ON `
+            -DSDLMIXER_SAMPLES=OFF -DSDLMIXER_EXAMPLES=OFF -DSDLMIXER_TESTS=OFF `
+            -DSDLMIXER_MOD=OFF -DSDLMIXER_MIDI=OFF
+
+          cmake --build $buildDir --parallel
+          cmake --install $buildDir
+
+          $cfg = Get-ChildItem -Path $prefix -Recurse -Filter "SDL3_mixerConfig.cmake" | Select-Object -First 1
+          if (-not $cfg) { throw "SDL3_mixerConfig.cmake not found under $prefix" }
+
+          $mixerDir = $cfg.DirectoryName
+          "Detected SDL3_mixer config dir: $mixerDir" | Write-Host
+          "SDL3_MIXER_DIR=$mixerDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Configure CMake
+        shell: pwsh
+        run: |
+          $vcpkgRoot = Join-Path $env:GITHUB_WORKSPACE "vcpkg"
+          $buildDir = Join-Path $env:GITHUB_WORKSPACE "build-Windows"
+          if (Test-Path $buildDir) { Remove-Item $buildDir -Recurse -Force }
+
+          cmake -S . -B $buildDir -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_TOOLCHAIN_FILE="$vcpkgRoot/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows `
+            -DSDL3_mixer_DIR="$env:SDL3_MIXER_DIR" `
+            -DPLATFORMER_REQUIRE_SDL3_MIXER=ON
+
+      - name: Build Windows targets
+        shell: pwsh
+        run: |
+          cmake --build build-Windows --config Release --parallel
+
+      - name: Stage installer content
+        shell: pwsh
+        run: |
+          $stageRoot = Join-Path $env:GITHUB_WORKSPACE "dist\windows-installer"
+          $appDir = Join-Path $stageRoot "app"
+          New-Item -ItemType Directory -Force -Path $appDir | Out-Null
+
+          Copy-Item "build-Windows\platformer.exe" -Destination $appDir -Force
+          if (Test-Path "build-Windows\sheet_config.exe") {
+            Copy-Item "build-Windows\sheet_config.exe" -Destination $appDir -Force
+          }
+
+          Copy-Item "assets" -Destination (Join-Path $appDir "assets") -Recurse -Force
+          Copy-Item "LICENSE" -Destination $appDir -Force
+          Copy-Item "README.md" -Destination $appDir -Force
+          if (Test-Path "object_type_map.json") {
+            Copy-Item "object_type_map.json" -Destination $appDir -Force
+          }
+
+          $vcpkgBin = Join-Path $env:GITHUB_WORKSPACE "vcpkg\installed\x64-windows\bin"
+          if (Test-Path $vcpkgBin) {
+            Copy-Item "$vcpkgBin\*.dll" -Destination $appDir -Force
+          }
+
+      - name: Download VC++ Redistributable
+        shell: pwsh
+        run: |
+          $outFile = Join-Path $env:GITHUB_WORKSPACE "dist\windows-installer\vc_redist.x64.exe"
+          Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile $outFile
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          & $iscc "/DMyAppVersion=1.0.${{ github.run_number }}" "installer\windows\df-platformer.iss"
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: dist/windows-installer/output/*.exe
+          if-no-files-found: error
+
+  build-android:
+    name: Android (Ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android NDK
+        id: setup-ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26d
+          add-to-path: true
+
+      - name: Set NDK environment variable
+        run: |
+          echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build pkg-config git nlohmann-json3-dev
+
+      - name: Make build scripts executable
+        run: |
+          chmod +x build/*.sh
+          chmod +x Android/gradlew
+
+      - name: Cache Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          validate-wrappers: false
+
+      - name: Setup Android SDL3 libraries
+        env:
+          TERM: xterm
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          SDL_REF: release-3.4.x
+          SDL_REQUIRED_VERSION: 3.4.0
+          FORCE_REBUILD_SDL: 1
+        run: |
+          ./build/FullBuildandroid.sh
+
+      - name: Update Android app with native libraries
+        env:
+          ABI: arm64-v8a
+        run: |
+          ./build/update-android-app.sh
+
+      - name: Build Android APKs
+        working-directory: Android
+        run: |
+          ./gradlew --no-daemon assembleDebug assembleRelease --stacktrace
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: Android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-apk
+          path: Android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
