@@ -9,6 +9,15 @@
 #include <fstream>
 #include <sstream>
 #include <cctype>
+#include <cstring>
+
+#if defined(_WIN32)
+#include <windows.h>
+#include <objidl.h>
+#include <ole2.h>
+#include <gdiplus.h>
+#pragma comment(lib, "gdiplus.lib")
+#endif
 
 #include "AssetPath.h"
 
@@ -20,6 +29,88 @@
 
 #ifndef DF_BUILD_CODE_ID
 #define DF_BUILD_CODE_ID "dev"
+#endif
+
+#if defined(_WIN32)
+namespace {
+bool ensureGdiplusStarted() {
+    static ULONG_PTR token = 0;
+    static bool initialized = false;
+    static bool ok = false;
+    if (initialized) return ok;
+    initialized = true;
+    Gdiplus::GdiplusStartupInput input;
+    ok = (Gdiplus::GdiplusStartup(&token, &input, nullptr) == Gdiplus::Ok);
+    return ok;
+}
+
+std::wstring utf8ToWide(const std::string& s) {
+    if (s.empty()) return std::wstring();
+    int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
+    if (n <= 1) return std::wstring();
+    std::wstring out(n - 1, L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, out.data(), n);
+    return out;
+}
+
+SDL_Texture* loadTextureWithGdiPlus(SDL_Renderer* ren, const std::string& resolvedPath, std::string* errorOut) {
+    if (!ensureGdiplusStarted()) {
+        if (errorOut) *errorOut += "; GDI+ startup failed";
+        return nullptr;
+    }
+
+    const std::wstring widePath = utf8ToWide(resolvedPath);
+    if (widePath.empty()) {
+        if (errorOut) *errorOut += "; path UTF-8->UTF-16 conversion failed";
+        return nullptr;
+    }
+
+    Gdiplus::Bitmap src(widePath.c_str());
+    if (src.GetLastStatus() != Gdiplus::Ok) {
+        if (errorOut) *errorOut += "; GDI+ bitmap load failed";
+        return nullptr;
+    }
+
+    const int w = (int)src.GetWidth();
+    const int h = (int)src.GetHeight();
+    if (w <= 0 || h <= 0) {
+        if (errorOut) *errorOut += "; GDI+ bitmap invalid size";
+        return nullptr;
+    }
+
+    SDL_Surface* surf = SDL_CreateSurface(w, h, SDL_PIXELFORMAT_BGRA8888);
+    if (!surf) {
+        if (errorOut) *errorOut += "; SDL_CreateSurface failed";
+        return nullptr;
+    }
+    Uint8* dstBase = static_cast<Uint8*>(surf->pixels);
+    const int dstPitch = surf->pitch;
+    for (int y = 0; y < h; ++y) {
+        Uint8* row = dstBase + y * dstPitch;
+        for (int x = 0; x < w; ++x) {
+            Gdiplus::Color c;
+            if (src.GetPixel(x, y, &c) != Gdiplus::Ok) {
+                SDL_DestroySurface(surf);
+                if (errorOut) *errorOut += "; GDI+ GetPixel failed";
+                return nullptr;
+            }
+            Uint8* px = row + x * 4;
+            px[0] = c.GetBlue();
+            px[1] = c.GetGreen();
+            px[2] = c.GetRed();
+            px[3] = c.GetAlpha();
+        }
+    }
+
+    SDL_Texture* tex = SDL_CreateTextureFromSurface(ren, surf);
+    SDL_DestroySurface(surf);
+    if (!tex) {
+        if (errorOut) *errorOut += "; SDL_CreateTextureFromSurface (GDI+) failed";
+        return nullptr;
+    }
+    return tex;
+}
+} // namespace
 #endif
 
 bool playerTouchesTileId(const TileMap& map, const Player& player, int idA, int idB, bool wrapX, bool wrapY) {
@@ -214,6 +305,44 @@ SDL_Texture* loadTextureWithColorKey(SDL_Renderer* ren, const std::string& path,
     SDL_SetColorKey(surf, SDL_TRUE, key);
     SDL_Texture* tex = SDL_CreateTextureFromSurface(ren, surf);
     SDL_FreeSurface(surf);
+    if (tex) {
+        SDL_SetTextureScaleMode(tex, SDL_SCALEMODE_NEAREST);
+        SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
+    }
+    return tex;
+}
+
+SDL_Texture* loadTextureSafe(SDL_Renderer* ren, const std::string& path, std::string* errorOut) {
+    const std::string resolved = ResolveAssetPath(path);
+    if (errorOut) errorOut->clear();
+
+    SDL_Texture* tex = IMG_LoadTexture(ren, resolved.c_str());
+    if (!tex) {
+        std::string texErr = SDL_GetError() ? SDL_GetError() : "unknown SDL error";
+
+        SDL_Surface* surf = IMG_Load(resolved.c_str());
+        if (surf) {
+            tex = SDL_CreateTextureFromSurface(ren, surf);
+            SDL_FreeSurface(surf);
+            if (!tex && errorOut) {
+                *errorOut = "IMG_LoadTexture failed: " + texErr + "; CreateTextureFromSurface failed: " +
+                            (SDL_GetError() ? SDL_GetError() : "unknown SDL error");
+            }
+        } else if (errorOut) {
+            *errorOut = "IMG_LoadTexture failed: " + texErr + "; IMG_Load failed: " +
+                        (SDL_GetError() ? SDL_GetError() : "unknown SDL error");
+        }
+
+#if defined(_WIN32)
+        if (!tex) {
+            tex = loadTextureWithGdiPlus(ren, resolved, errorOut);
+            if (tex && errorOut && !errorOut->empty()) {
+                *errorOut += "; recovered via GDI+";
+            }
+        }
+#endif
+    }
+
     if (tex) {
         SDL_SetTextureScaleMode(tex, SDL_SCALEMODE_NEAREST);
         SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);

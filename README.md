@@ -1,6 +1,12 @@
 Platformer Engine
 
-Build (separate folder):
+Build locally:
+- Windows PowerShell: `powershell -ExecutionPolicy Bypass -File .\build-local.ps1`
+- Windows PowerShell + run after build: `powershell -ExecutionPolicy Bypass -File .\build-local.ps1 -Run`
+- Linux/macOS: `./build-local.sh`
+- Linux/macOS + run after build: `./build-local.sh --run`
+
+Manual CMake (separate folder):
 - Configure: `cmake -S . -B .build`
 - Build: `cmake --build .build --config Release`
 

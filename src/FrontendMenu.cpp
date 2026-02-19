@@ -701,13 +701,12 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     SDL_Texture* menuFallbackTex = IMG_LoadTexture(ctx.ren, ResolveAssetPath("assets/Sheets/DF_Menus-uhd.png").c_str());
     if (menuFallbackTex) SDL_SetTextureScaleMode(menuFallbackTex, SDL_SCALEMODE_NEAREST);
     auto menuFallbackFrames = loadPlistFrames("assets/Sheets/DF_Menus-uhd.plist");
-    SDL_Texture* menuBgTex = IMG_LoadTexture(ctx.ren, ResolveAssetPath("assets/Sheets/DF_Back_1-uhd.png").c_str());
-    if (menuBgTex) SDL_SetTextureScaleMode(menuBgTex, SDL_SCALEMODE_NEAREST);
-    if (menuBgTex) SDL_SetTextureBlendMode(menuBgTex, SDL_BLENDMODE_BLEND);
+    std::string menuBgErr;
+    SDL_Texture* menuBgTex = loadTextureSafe(ctx.ren, "assets/Sheets/DF_Back_1-uhd.png", &menuBgErr);
     auto menuBgFrames = loadPlistFrames("assets/Sheets/DF_Back_1-uhd.plist");
     if (!menuBgTex || menuBgFrames.empty()) {
-        SDL_Log("Menu background load incomplete: texture=assets/Sheets/DF_Back_1-uhd.png loaded=%d plist frames=%d",
-                menuBgTex ? 1 : 0, (int)menuBgFrames.size());
+        SDL_Log("Menu background load incomplete: texture=assets/Sheets/DF_Back_1-uhd.png loaded=%d plist frames=%d sdl_error='%s'",
+                menuBgTex ? 1 : 0, (int)menuBgFrames.size(), menuBgErr.c_str());
     }
     auto getMenuFrame = [&](const char* name, SDL_Texture*& outTex) -> const Frame* {
         auto it = mainMenuFrames.find(name);

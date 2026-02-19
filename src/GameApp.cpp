@@ -567,12 +567,18 @@ int RunGameApp(int argc, char** argv) {
                            SDL_Texture*& outTex,
                            std::unordered_map<std::string, Frame>& outFrames,
                            std::vector<Frame>* outAnimFrames = nullptr) {
-        outTex = IMG_LoadTexture(ren, ResolveAssetPath(texPathPrimary).c_str());
-        if (outTex) SDL_SetTextureScaleMode(outTex, SDL_SCALEMODE_NEAREST);
+        const std::string resolvedTexPath = ResolveAssetPath(texPathPrimary);
+        std::string loadErr;
+        outTex = loadTextureSafe(ren, texPathPrimary, &loadErr);
         auto bgFrameList = loadPlistFrameList(plistPrimary);
         if (!outTex || bgFrameList.empty()) {
-            SDL_Log("Background sheet load incomplete: texture='%s' loaded=%d plist='%s' frames=%d",
-                    texPathPrimary.c_str(), outTex ? 1 : 0, plistPrimary.c_str(), (int)bgFrameList.size());
+            SDL_Log("Background sheet load incomplete: texture='%s' resolved='%s' loaded=%d plist='%s' frames=%d sdl_error='%s'",
+                    texPathPrimary.c_str(),
+                    resolvedTexPath.c_str(),
+                    outTex ? 1 : 0,
+                    plistPrimary.c_str(),
+                    (int)bgFrameList.size(),
+                    loadErr.c_str());
         }
         outFrames.clear();
         outFrames.reserve(bgFrameList.size());
@@ -909,21 +915,66 @@ int RunGameApp(int argc, char** argv) {
         }
     }
 
-    if (!pauseTex || !blocksTex || !playerTex || pauseFrames.empty() || blocksFrameList.empty() || playerFrameList.empty()) {
-        std::string msg = "Failed to load assets:";
-        if (!pauseTex) msg += "\n- pause texture";
-        if (pauseFrames.empty()) msg += "\n- pause plist";
-        if (!blocksTex) msg += "\n- blocks texture";
-        if (blocksFrameList.empty()) msg += "\n- blocks plist";
-        if (!playerTex) msg += "\n- player texture";
-        if (playerFrameList.empty()) msg += "\n- player plist";
-        reportStartupError("Asset Load Error", msg, win);
-        SDL_DestroyRenderer(ren);
-        SDL_DestroyWindow(win);
-        audio.shutdown();
-        ShutdownTextRenderer();
-        SDL_Quit();
-        return 1;
+    auto createFallbackTexture = [&](Uint8 r, Uint8 g, Uint8 b, Uint8 a = 255) -> SDL_Texture* {
+        SDL_Surface* s = SDL_CreateSurface(8, 8, SDL_PIXELFORMAT_RGBA8888);
+        if (!s) return nullptr;
+        SDL_FillSurfaceRect(s, nullptr, SDL_MapSurfaceRGBA(s, r, g, b, a));
+        SDL_Texture* t = SDL_CreateTextureFromSurface(ren, s);
+        SDL_DestroySurface(s);
+        if (t) {
+            SDL_SetTextureScaleMode(t, SDL_SCALEMODE_NEAREST);
+            SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
+        }
+        return t;
+    };
+    auto ensureTextureAndFrames = [&](const char* label,
+                                      SDL_Texture*& tex,
+                                      std::vector<FrameEntry>& frameList,
+                                      std::unordered_map<std::string, Frame>* frameMap = nullptr) {
+        if (!tex) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Asset fallback: missing %s texture, using placeholder", label);
+            tex = createFallbackTexture(255, 0, 255, 255);
+        }
+        if (frameList.empty()) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Asset fallback: missing %s plist/frames, using full-texture frame", label);
+            float twf = 0.0f, thf = 0.0f;
+            if (tex) SDL_GetTextureSize(tex, &twf, &thf);
+            int tw = std::max(1, (int)std::lround(twf));
+            int th = std::max(1, (int)std::lround(thf));
+            Frame f{};
+            f.rect = SDL_Rect{0, 0, tw, th};
+            f.rotated = false;
+            frameList.push_back(FrameEntry{"fallback", f});
+            if (frameMap) {
+                frameMap->clear();
+                (*frameMap)["fallback"] = f;
+            }
+        }
+    };
+    if (pauseFrames.empty()) {
+        if (pauseTex) {
+            float twf = 0.0f, thf = 0.0f;
+            SDL_GetTextureSize(pauseTex, &twf, &thf);
+            Frame f{};
+            f.rect = SDL_Rect{0, 0, std::max(1, (int)std::lround(twf)), std::max(1, (int)std::lround(thf))};
+            f.rotated = false;
+            pauseFrames["fallback"] = f;
+        }
+    }
+    ensureTextureAndFrames("blocks", blocksTex, blocksFrameList, &blocksFrameByName);
+    ensureTextureAndFrames("player", playerTex, playerFrameList, &playerFramesByName);
+    if (!pauseTex) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Asset fallback: missing pause texture, using placeholder");
+        pauseTex = createFallbackTexture(32, 32, 32, 255);
+    }
+    if (pauseFrames.empty()) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Asset fallback: missing pause plist/frames, using full-texture frame");
+        float twf = 0.0f, thf = 0.0f;
+        if (pauseTex) SDL_GetTextureSize(pauseTex, &twf, &thf);
+        Frame f{};
+        f.rect = SDL_Rect{0, 0, std::max(1, (int)std::lround(twf)), std::max(1, (int)std::lround(thf))};
+        f.rotated = false;
+        pauseFrames["fallback"] = f;
     }
     if (!gameTarget) {
         reportStartupError("Render Target Error", "Failed to create game render target.", win);

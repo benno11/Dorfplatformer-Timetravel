@@ -7,6 +7,83 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$script:PreferredVcvars = ""
+
+function Import-VsDevCmdEnvironment {
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+    if (-not (Test-Path $vswhere)) {
+        return
+    }
+
+    $vsInstall = & $vswhere -latest -products * -property installationPath 2>$null
+    if (-not $vsInstall) {
+        return
+    }
+
+    $vsDevCmd = Join-Path $vsInstall "Common7\Tools\VsDevCmd.bat"
+    if (-not (Test-Path $vsDevCmd)) {
+        return
+    }
+
+    $vcToolsRoot = Join-Path $vsInstall "VC\Tools\MSVC"
+    $preferredVcvars = ""
+    if (Test-Path $vcToolsRoot) {
+        $usable = Get-ChildItem $vcToolsRoot -Directory -ErrorAction SilentlyContinue |
+            Sort-Object Name -Descending |
+            Where-Object {
+                (Test-Path (Join-Path $_.FullName "bin\Hostx64\x64\cl.exe")) -and
+                (Test-Path (Join-Path $_.FullName "lib\x64\msvcrtd.lib"))
+            } |
+            Select-Object -First 1
+        if ($usable) {
+            $parts = $usable.Name.Split(".")
+            if ($parts.Length -ge 2) {
+                $preferredVcvars = "$($parts[0]).$($parts[1])"
+            }
+        }
+    }
+
+    Write-Host "Importing Visual Studio developer environment from: $vsDevCmd"
+    $devArgs = "-arch=x64 -host_arch=x64"
+    if ($preferredVcvars) {
+        $devArgs += " -vcvars_ver=$preferredVcvars"
+        Write-Host "Using MSVC toolset preference: $preferredVcvars"
+    }
+    $envDump = & cmd.exe /s /c """$vsDevCmd"" $devArgs >nul && set"
+    foreach ($line in $envDump) {
+        if ($line -match "^([^=]+)=(.*)$") {
+            [System.Environment]::SetEnvironmentVariable($matches[1], $matches[2], "Process")
+        }
+    }
+}
+
+function Get-PreferredMsvcBinDir {
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+    if (-not (Test-Path $vswhere)) {
+        return ""
+    }
+    $vsInstall = & $vswhere -latest -products * -property installationPath 2>$null
+    if (-not $vsInstall) {
+        return ""
+    }
+    $vcToolsRoot = Join-Path $vsInstall "VC\Tools\MSVC"
+    if (-not (Test-Path $vcToolsRoot)) {
+        return ""
+    }
+
+    $usable = Get-ChildItem $vcToolsRoot -Directory -ErrorAction SilentlyContinue |
+        Sort-Object Name -Descending |
+        Where-Object {
+            (Test-Path (Join-Path $_.FullName "bin\Hostx64\x64\cl.exe")) -and
+            (Test-Path (Join-Path $_.FullName "bin\Hostx64\x64\link.exe")) -and
+            (Test-Path (Join-Path $_.FullName "lib\x64\msvcrtd.lib"))
+        } |
+        Select-Object -First 1
+    if (-not $usable) {
+        return ""
+    }
+    return (Join-Path $usable.FullName "bin\Hostx64\x64")
+}
 
 function Require-Tool([string]$name) {
     if (-not (Get-Command $name -ErrorAction SilentlyContinue)) {
@@ -54,21 +131,48 @@ function Normalize-PathForCompare([string]$p) {
 $buildDirFull = [System.IO.Path]::GetFullPath($BuildDir)
 $sourceDirFull = [System.IO.Path]::GetFullPath(".")
 $cachePath = Join-Path $buildDirFull "CMakeCache.txt"
+$requestedPlatform = ""
+    if ($Generator -and $Generator.Trim() -and ($Generator -like "Visual Studio*")) {
+    $requestedPlatform = "x64"
+}
+if ($Generator -and $Generator.Trim() -and ($Generator -like "Visual Studio*")) {
+    Import-VsDevCmdEnvironment
+    $script:PreferredVcvars = $env:VCToolsVersion
+    if ($script:PreferredVcvars -match '^(\d+\.\d+)') {
+        $script:PreferredVcvars = $matches[1]
+    }
+}
 if (Test-Path $cachePath) {
     $cacheText = Get-Content $cachePath -Raw
     $cachedSource = ""
     $cachedBuild = ""
+    $cachedGenerator = ""
+    $cachedPlatform = ""
+    $cachedToolset = ""
     foreach ($line in ($cacheText -split "`r?`n")) {
         if ($line.StartsWith("CMAKE_HOME_DIRECTORY:INTERNAL=")) {
             $cachedSource = $line.Substring("CMAKE_HOME_DIRECTORY:INTERNAL=".Length)
         } elseif ($line.StartsWith("CMAKE_CACHEFILE_DIR:INTERNAL=")) {
             $cachedBuild = $line.Substring("CMAKE_CACHEFILE_DIR:INTERNAL=".Length)
+        } elseif ($line.StartsWith("CMAKE_GENERATOR:INTERNAL=")) {
+            $cachedGenerator = $line.Substring("CMAKE_GENERATOR:INTERNAL=".Length)
+        } elseif ($line.StartsWith("CMAKE_GENERATOR_PLATFORM:INTERNAL=")) {
+            $cachedPlatform = $line.Substring("CMAKE_GENERATOR_PLATFORM:INTERNAL=".Length)
+        } elseif ($line.StartsWith("CMAKE_GENERATOR_TOOLSET:INTERNAL=")) {
+            $cachedToolset = $line.Substring("CMAKE_GENERATOR_TOOLSET:INTERNAL=".Length)
         }
     }
 
     $sourceMismatch = (Normalize-PathForCompare $cachedSource) -ne (Normalize-PathForCompare $sourceDirFull)
     $buildMismatch = $cachedBuild -and ((Normalize-PathForCompare $cachedBuild) -ne (Normalize-PathForCompare $buildDirFull))
-    if ($sourceMismatch -or $buildMismatch) {
+    $generatorMismatch = $Generator -and $cachedGenerator -and ($cachedGenerator -ne $Generator)
+    $platformMismatch = $requestedPlatform -and ($cachedPlatform -ne $requestedPlatform)
+    $requestedToolset = ""
+    if ($Generator -and ($Generator -like "Visual Studio*") -and $script:PreferredVcvars) {
+        $requestedToolset = "v143,version=$script:PreferredVcvars"
+    }
+    $toolsetMismatch = $requestedToolset -and ($cachedToolset -ne $requestedToolset)
+    if ($sourceMismatch -or $buildMismatch -or $generatorMismatch -or $platformMismatch -or $toolsetMismatch) {
         Write-Host "Detected stale CMake cache from a different path/environment. Resetting cache in $buildDirFull..."
         Remove-Item $cachePath -Force -ErrorAction SilentlyContinue
         $cmakeFilesDir = Join-Path $buildDirFull "CMakeFiles"
@@ -80,9 +184,37 @@ if (Test-Path $cachePath) {
 
 if ($Generator -and $Generator.Trim()) {
     $cmakeArgs += @("-G", $Generator)
+    if ($Generator -like "Visual Studio*") {
+        $cmakeArgs += @("-A", "x64")
+        if ($script:PreferredVcvars) {
+            $cmakeArgs += @("-T", "v143,version=$script:PreferredVcvars")
+        }
+        $preferredMsvcBin = Get-PreferredMsvcBinDir
+        if ($preferredMsvcBin) {
+            $clPath = Join-Path $preferredMsvcBin "cl.exe"
+            $linkPath = Join-Path $preferredMsvcBin "link.exe"
+            $cmakeArgs += @("-DCMAKE_CXX_COMPILER=$clPath")
+            $cmakeArgs += @("-DCMAKE_LINKER=$linkPath")
+            Write-Host "Forcing MSVC compiler: $clPath"
+        }
+        $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+        if (Test-Path $vswhere) {
+            $vsInstall = & $vswhere -latest -products * -property installationPath 2>$null
+            if ($vsInstall) {
+                $cmakeArgs += "-DCMAKE_GENERATOR_INSTANCE=$vsInstall"
+            }
+        }
+    }
 }
 
-$vcpkgRoot = $env:VCPKG_ROOT
+$localVcpkg = Join-Path (Get-Location) "vcpkg"
+$localVcpkgToolchain = Join-Path $localVcpkg "scripts/buildsystems/vcpkg.cmake"
+if (Test-Path $localVcpkgToolchain) {
+    $vcpkgRoot = $localVcpkg
+    $env:VCPKG_ROOT = $localVcpkg
+} else {
+    $vcpkgRoot = $env:VCPKG_ROOT
+}
 $toolchainFile = if ($vcpkgRoot) { Join-Path $vcpkgRoot "scripts/buildsystems/vcpkg.cmake" } else { "" }
 $useVcpkgNow = $UseVcpkg.IsPresent -or (($toolchainFile -ne "") -and (Test-Path $toolchainFile))
 if ($useVcpkgNow) {
@@ -109,7 +241,7 @@ if ($useVcpkgNow) {
 Write-Host "Configuring project..."
 & cmake @cmakeArgs
 if ($LASTEXITCODE -ne 0) {
-    throw "CMake configure failed. If compiler/toolchain is missing, install Visual Studio 2022 Build Tools with C++ workload: winget install -e --id Microsoft.VisualStudio.2022.BuildTools"
+    throw "CMake configure failed. Ensure Visual Studio Build Tools C++ workload is installed and dependencies are available (local vcpkg is auto-detected if present)."
 }
 
 Write-Host "Build environment ready."

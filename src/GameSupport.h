@@ -61,6 +61,7 @@ std::vector<FrameEntry> loadPlistFrameList(const std::string& plistPath);
 void renderFrame(SDL_Renderer* ren, SDL_Texture* tex, const Frame& f, const SDL_Rect& dst);
 void renderFrameEx(SDL_Renderer* ren, SDL_Texture* tex, const Frame& f, const SDL_Rect& dst, SDL_RendererFlip flip);
 SDL_Texture* loadTextureWithColorKey(SDL_Renderer* ren, const std::string& path, Uint8 r, Uint8 g, Uint8 b);
+SDL_Texture* loadTextureSafe(SDL_Renderer* ren, const std::string& path, std::string* errorOut = nullptr);
 
 SDL_Rect computePresentRect(int winW, int winH, int baseW, int baseH, float uiScale = 1.0f);
 bool windowToGamePoint(int wx, int wy, int winW, int winH, int baseW, int baseH, int& gx, int& gy, float uiScale = 1.0f);
