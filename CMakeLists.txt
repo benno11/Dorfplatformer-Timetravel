@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.16)
 project(platformer LANGUAGES CXX)
 set(PROJECT_SDL_MIN_VERSION "3.4.0")
+if(WIN32)
+  enable_language(RC)
+endif()
 
 # Keep generated files out of the source tree.
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
@@ -76,6 +79,17 @@ add_executable(platformer
   src/ParallaxRenderer.cpp
   src/World3PatternBackground.cpp
 )
+if(WIN32)
+  set(PLATFORMER_ICON_FILE "${CMAKE_SOURCE_DIR}/icon.ico")
+  if(EXISTS "${PLATFORMER_ICON_FILE}")
+    set(PLATFORMER_ICON_RC "${CMAKE_CURRENT_BINARY_DIR}/platformer_icon.rc")
+    file(WRITE "${PLATFORMER_ICON_RC}" "IDI_APP_ICON ICON \"${PLATFORMER_ICON_FILE}\"\n")
+    target_sources(platformer PRIVATE "${PLATFORMER_ICON_RC}")
+    message(STATUS "Embedded Windows icon: ${PLATFORMER_ICON_FILE}")
+  else()
+    message(WARNING "Windows icon file not found: ${PLATFORMER_ICON_FILE}")
+  endif()
+endif()
 message(STATUS "Added target: platformer")
 
 set(SDL3_DIR_CANDIDATES
@@ -147,6 +161,48 @@ set(SDL3_MIXER_DIR_CANDIDATES
   "/usr/local/lib/cmake/SDL3_mixer"
   "/usr/lib/x86_64-linux-gnu/cmake/SDL3_mixer"
 )
+if(WIN32)
+  if(DEFINED VCPKG_TARGET_TRIPLET)
+    list(APPEND SDL3_MIXER_DIR_CANDIDATES
+      "${CMAKE_SOURCE_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/share/sdl3-mixer"
+      "${CMAKE_SOURCE_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/share/SDL3_mixer"
+    )
+  endif()
+  if(DEFINED CMAKE_TOOLCHAIN_FILE AND DEFINED VCPKG_TARGET_TRIPLET)
+    get_filename_component(_vcpkg_root_guess "${CMAKE_TOOLCHAIN_FILE}" DIRECTORY)
+    get_filename_component(_vcpkg_root_guess "${_vcpkg_root_guess}" DIRECTORY)
+    list(APPEND SDL3_MIXER_DIR_CANDIDATES
+      "${_vcpkg_root_guess}/installed/${VCPKG_TARGET_TRIPLET}/share/sdl3-mixer"
+      "${_vcpkg_root_guess}/installed/${VCPKG_TARGET_TRIPLET}/share/SDL3_mixer"
+    )
+  endif()
+  if(DEFINED ENV{VCPKG_INSTALLED_DIR} AND DEFINED VCPKG_TARGET_TRIPLET)
+    list(APPEND SDL3_MIXER_DIR_CANDIDATES
+      "$ENV{VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/share/sdl3-mixer"
+      "$ENV{VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/share/SDL3_mixer"
+    )
+  endif()
+  # If SDL3 is already found via a prefix/toolchain, probe common mixer config
+  # locations under those same prefixes.
+  foreach(_prefix IN LISTS CMAKE_PREFIX_PATH)
+    if(_prefix)
+      list(APPEND SDL3_MIXER_DIR_CANDIDATES
+        "${_prefix}/share/sdl3-mixer"
+        "${_prefix}/share/SDL3_mixer"
+        "${_prefix}/lib/cmake/SDL3_mixer"
+        "${_prefix}/cmake/SDL3_mixer"
+      )
+    endif()
+  endforeach()
+  # Also try alongside an explicitly provided SDL3_DIR.
+  if(DEFINED SDL3_DIR)
+    get_filename_component(_sdl3_parent "${SDL3_DIR}" DIRECTORY)
+    list(APPEND SDL3_MIXER_DIR_CANDIDATES
+      "${_sdl3_parent}/SDL3_mixer"
+      "${_sdl3_parent}/sdl3-mixer"
+    )
+  endif()
+endif()
 if(DEFINED SDL3_mixer_DIR)
   message(STATUS "SDL3_mixer_DIR preset: ${SDL3_mixer_DIR}")
 endif()
@@ -154,10 +210,25 @@ if(DEFINED ENV{SDL3_MIXER_DIR})
   list(PREPEND SDL3_MIXER_DIR_CANDIDATES "$ENV{SDL3_MIXER_DIR}")
   message(STATUS "SDL3_MIXER_DIR env candidate: $ENV{SDL3_MIXER_DIR}")
 endif()
+# SDL3_mixer prebuilt VC config expects one SDL_CPU_* flag to be set.
+if(WIN32 AND NOT (DEFINED SDL_CPU_X86 OR DEFINED SDL_CPU_X64 OR DEFINED SDL_CPU_ARM64 OR DEFINED SDL_CPU_ARM64EC))
+  string(TOLOWER "${CMAKE_VS_PLATFORM_NAME}" _vs_platform_name_lc)
+  if(_vs_platform_name_lc MATCHES "arm64ec")
+    set(SDL_CPU_ARM64EC ON)
+  elseif(_vs_platform_name_lc MATCHES "arm64")
+    set(SDL_CPU_ARM64 ON)
+  elseif(CMAKE_SIZEOF_VOID_P EQUAL 8)
+    set(SDL_CPU_X64 ON)
+  else()
+    set(SDL_CPU_X86 ON)
+  endif()
+endif()
 find_package(SDL3_mixer QUIET CONFIG)
 if(NOT SDL3_mixer_FOUND)
   foreach(_dir IN LISTS SDL3_MIXER_DIR_CANDIDATES)
-    if(EXISTS "${_dir}/SDL3_mixerConfig.cmake")
+    if(EXISTS "${_dir}/SDL3_mixerConfig.cmake" OR
+       EXISTS "${_dir}/sdl3-mixer-config.cmake" OR
+       EXISTS "${_dir}/SDL3_mixer-config.cmake")
       set(SDL3_mixer_DIR "${_dir}")
       find_package(SDL3_mixer QUIET CONFIG)
       if(SDL3_mixer_FOUND)
@@ -166,6 +237,46 @@ if(NOT SDL3_mixer_FOUND)
       endif()
     endif()
   endforeach()
+endif()
+if(NOT SDL3_mixer_FOUND)
+  set(_local_vcpkg_exe "")
+  if(WIN32)
+    if(EXISTS "${CMAKE_SOURCE_DIR}/vcpkg/vcpkg.exe")
+      set(_local_vcpkg_exe "${CMAKE_SOURCE_DIR}/vcpkg/vcpkg.exe")
+    endif()
+  else()
+    if(EXISTS "${CMAKE_SOURCE_DIR}/vcpkg/vcpkg")
+      set(_local_vcpkg_exe "${CMAKE_SOURCE_DIR}/vcpkg/vcpkg")
+    endif()
+  endif()
+  if(_local_vcpkg_exe)
+    if(NOT DEFINED VCPKG_TARGET_TRIPLET OR "${VCPKG_TARGET_TRIPLET}" STREQUAL "")
+      if(WIN32)
+        set(VCPKG_TARGET_TRIPLET "x64-windows")
+      elseif(APPLE)
+        set(VCPKG_TARGET_TRIPLET "x64-osx")
+      else()
+        set(VCPKG_TARGET_TRIPLET "x64-linux")
+      endif()
+    endif()
+    message(STATUS "SDL3_mixer not found, attempting auto-install via local vcpkg (${VCPKG_TARGET_TRIPLET})")
+    execute_process(
+      COMMAND "${_local_vcpkg_exe}" install sdl3-mixer "--triplet=${VCPKG_TARGET_TRIPLET}"
+      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/vcpkg"
+      RESULT_VARIABLE _vcpkg_mixer_rc
+      OUTPUT_VARIABLE _vcpkg_mixer_out
+      ERROR_VARIABLE _vcpkg_mixer_err
+    )
+    if(_vcpkg_mixer_rc EQUAL 0)
+      list(PREPEND CMAKE_PREFIX_PATH "${CMAKE_SOURCE_DIR}/vcpkg/installed/${VCPKG_TARGET_TRIPLET}")
+      find_package(SDL3_mixer QUIET CONFIG)
+      if(SDL3_mixer_FOUND)
+        message(STATUS "Resolved SDL3_mixer via local vcpkg auto-install")
+      endif()
+    else()
+      message(WARNING "Auto-install sdl3-mixer failed: ${_vcpkg_mixer_err}")
+    endif()
+  endif()
 endif()
 if(SDL3_mixer_FOUND)
   message(STATUS "Found SDL3_mixer: ${SDL3_mixer_VERSION}")
@@ -299,6 +410,15 @@ target_link_libraries(platformer
 )
 if(SDL3_MIXER_LINK_TARGET)
   target_link_libraries(platformer ${SDL3_MIXER_LINK_TARGET})
+  if(WIN32 AND TARGET "${SDL3_MIXER_LINK_TARGET}")
+    add_custom_command(TARGET platformer POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:${SDL3_MIXER_LINK_TARGET}>"
+        "$<TARGET_FILE_DIR:platformer>"
+      VERBATIM
+    )
+    message(STATUS "Will copy SDL3_mixer runtime DLL next to platformer.exe")
+  endif()
 endif()
 if(ANDROID)
   target_link_libraries(platformer
@@ -313,6 +433,9 @@ endif()
 target_compile_definitions(platformer PRIVATE SDL_ENABLE_OLD_NAMES=1)
 if(WIN32)
   target_compile_definitions(platformer PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+endif()
+if(MSVC)
+  target_compile_options(platformer PRIVATE /EHsc /FS)
 endif()
 if (CURL_FOUND)
   target_link_libraries(platformer CURL::libcurl)
@@ -339,5 +462,8 @@ endif()
 target_compile_definitions(sheet_config PRIVATE SDL_ENABLE_OLD_NAMES=1)
 if(WIN32)
   target_compile_definitions(sheet_config PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+endif()
+if(MSVC)
+  target_compile_options(sheet_config PRIVATE /EHsc /FS)
 endif()
 message(STATUS "Linked sheet_config: ${SDL3_LINK_TARGET}, ${SDL3_IMAGE_LINK_TARGET}")

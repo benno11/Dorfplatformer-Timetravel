@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DF-New Account Manager</title>
+  <style>
+    :root {
+      --bg: #0d1823;
+      --panel: #182735;
+      --panel-2: #1f3041;
+      --text: #e8f1ff;
+      --muted: #97acc5;
+      --ok: #5cd1a1;
+      --warn: #f0cf70;
+      --err: #ff8c8c;
+    }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      color: var(--text);
+      background: radial-gradient(circle at top, #1f3449, var(--bg) 55%);
+    }
+    .wrap { max-width: 920px; margin: 24px auto; padding: 0 14px; }
+    .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+    .panel {
+      background: var(--panel);
+      border: 1px solid #36506a;
+      border-radius: 12px;
+      padding: 14px;
+    }
+    .panel h2 { margin: 0 0 10px; font-size: 18px; }
+    .panel p { margin: 0 0 10px; color: var(--muted); font-size: 13px; }
+    label { display: block; margin: 10px 0 4px; color: var(--muted); font-size: 12px; }
+    input {
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid #496683;
+      border-radius: 8px;
+      background: #102031;
+      color: var(--text);
+      padding: 9px 10px;
+      font-size: 14px;
+    }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    button {
+      border: 1px solid #4f6d89;
+      background: var(--panel-2);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+    }
+    button.primary { background: #245942; border-color: #33956e; }
+    .status {
+      margin-top: 12px;
+      min-height: 18px;
+      font-size: 13px;
+      color: var(--warn);
+    }
+    .ok { color: var(--ok); }
+    .err { color: var(--err); }
+    .mono {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 12px;
+      word-break: break-all;
+      color: #d8e6ff;
+      background: #0f1d2c;
+      border: 1px solid #3f5a75;
+      border-radius: 8px;
+      padding: 8px;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>DF-New Account Manager</h1>
+    <p style="color:#a8bdd6">Create account, sign in, change password, and change username for level uploads.</p>
+
+    <div class="grid">
+      <section class="panel">
+        <h2>Create Account</h2>
+        <label for="createEmail">Email</label>
+        <input id="createEmail" type="email" placeholder="you@example.com">
+
+        <label for="createPassword">Password</label>
+        <input id="createPassword" type="password" placeholder="min 6 chars">
+
+        <label for="createUsername">Username</label>
+        <input id="createUsername" type="text" placeholder="player_one">
+
+        <div class="row">
+          <button id="createAccountBtn" class="primary">Create Account</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Sign In</h2>
+        <label for="loginEmail">Email</label>
+        <input id="loginEmail" type="email" placeholder="you@example.com">
+
+        <label for="loginPassword">Password</label>
+        <input id="loginPassword" type="password" placeholder="password">
+
+        <div class="row">
+          <button id="signInBtn" class="primary">Sign In</button>
+          <button id="signOutBtn">Sign Out</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Account Changes</h2>
+        <label for="newUsername">New Username</label>
+        <input id="newUsername" type="text" placeholder="new_name">
+
+        <label for="newPassword">New Password</label>
+        <input id="newPassword" type="password" placeholder="min 6 chars">
+
+        <div class="row">
+          <button id="changeUsernameBtn">Change Username</button>
+          <button id="changePasswordBtn">Change Password</button>
+        </div>
+      </section>
+    </div>
+
+    <section class="panel" style="margin-top:14px">
+      <h2>Session + Game Fields</h2>
+      <div id="sessionSummary" class="mono">No session.</div>
+      <div class="status" id="status"></div>
+    </section>
+  </div>
+  <script src="./account-manager.js"></script>
+</body>
+</html>

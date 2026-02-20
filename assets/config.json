@@ -1,5 +1,5 @@
 {
-  "version": "2.1.0",
+  "version": "2.1.0-testbuild",
   "experimental_render_thread": false,
   "movement": {
     "accel_in_water": 700.0,
@@ -17,6 +17,9 @@
   "background": {
     "parallax_layer_scales": [0.8, 0.8, 0.8]
   },
-  "level_api_url": "https://timetravel-server-default-rtdb.europe-west1.firebasedatabase.app/",
-  "level_server_url": "https://timetravel-server-default-rtdb.europe-west1.firebasedatabase.app/"
+  "level_api_url": "https://benno111.github.io/Dorfplatformer-API/",
+  "level_server_url": "https://timetravel-server-default-rtdb.europe-west1.firebasedatabase.app/",
+  "account_manager_url": "https://benno111.github.io/Dorfplatformer-API/",
+  "firebase_api_key": "AIzaSyC-lBtzoK98rO6TH6nQV4ugiPsVMbAJ-44",
+  "level_server_account_username": "timetravel-server.firebaseapp.com"
 }

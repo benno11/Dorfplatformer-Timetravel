@@ -9,6 +9,9 @@
 #include <string>
 #include <unordered_set>
 #include <vector>
+#if defined(HAVE_CURL) && HAVE_CURL
+#include <curl/curl.h>
+#endif
 
 #include "AssetPath.h"
 #include "GameSupport.h"
@@ -38,6 +41,16 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     int& musicVolume = *ctx.musicVolume;
     int& sfxVolume = *ctx.sfxVolume;
     int& uiScalePercent = *ctx.uiScalePercent;
+    std::string networkServerUrlLocal;
+    std::string networkAuthTokenLocal;
+    std::string networkUsernameLocal;
+    std::string accountManagerUrlLocal = "https://benno111.github.io/Dorfplatformer-API/";
+    std::string firebaseApiKeyLocal;
+    std::string& levelServerUrl = ctx.levelServerUrl ? *ctx.levelServerUrl : networkServerUrlLocal;
+    std::string& levelServerAuthToken = ctx.levelServerAuthToken ? *ctx.levelServerAuthToken : networkAuthTokenLocal;
+    std::string& levelServerAccountUsername = ctx.levelServerAccountUsername ? *ctx.levelServerAccountUsername : networkUsernameLocal;
+    std::string& accountManagerUrl = ctx.accountManagerUrl ? *ctx.accountManagerUrl : accountManagerUrlLocal;
+    std::string& firebaseApiKey = ctx.firebaseApiKey ? *ctx.firebaseApiKey : firebaseApiKeyLocal;
     constexpr int kUiScaleMinPercent = 50;
     constexpr int kUiScaleMaxPercent = 200;
     auto uiButtonScale = [&]() -> float {
@@ -123,6 +136,36 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         }
 #endif
     };
+    auto applyFullscreen = [&](bool enabled) -> bool {
+#if defined(__ANDROID__)
+        (void)enabled;
+        return false;
+#else
+        static int restoreX = SDL_WINDOWPOS_CENTERED;
+        static int restoreY = SDL_WINDOWPOS_CENTERED;
+        static int restoreW = 1280;
+        static int restoreH = 720;
+        const bool currentlyFullscreen = (SDL_GetWindowFlags(ctx.win) & SDL_WINDOW_FULLSCREEN) != 0;
+        if (enabled && !currentlyFullscreen) {
+            SDL_GetWindowPosition(ctx.win, &restoreX, &restoreY);
+            SDL_GetWindowSize(ctx.win, &restoreW, &restoreH);
+        }
+        if (!SDL_SetWindowFullscreen(ctx.win, enabled)) {
+            SDL_Log("Could not set menu fullscreen=%d: %s", enabled ? 1 : 0, SDL_GetError());
+            return false;
+        }
+        if (!enabled) {
+            if (restoreW <= 0 || restoreH <= 0) {
+                restoreW = std::max(960, ctx.baseScreenW / 2);
+                restoreH = std::max(540, ctx.baseScreenH / 2);
+            }
+            SDL_SetWindowSize(ctx.win, restoreW, restoreH);
+            SDL_SetWindowPosition(ctx.win, restoreX, restoreY);
+        }
+        fullscreen = enabled;
+        return true;
+#endif
+    };
 
     bool inSettings = false;
     bool closeMenuOpen = false;
@@ -132,8 +175,18 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     int settingsSelAudio = 0;
     int settingsSelDebug = 0;
     int settingsSelControls = 0;
+    int settingsSelNetwork = 0;
+    std::string networkLoginEmail;
+    std::string networkLoginPassword;
+    std::string networkLoginStatus;
     bool waitingForControlKey = false;
     int waitingControlIndex = -1;
+    enum class NetworkEditField {
+        None,
+        LoginEmail,
+        LoginPassword
+    };
+    NetworkEditField networkEditField = NetworkEditField::None;
     bool pendingSettingsExitCleanup = false;
     Uint64 inputBlockUntilTicks = 0;
     constexpr Uint64 kMenuInputBlockMs = 110;
@@ -177,6 +230,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         return used + 1; // + BACK
     };
     auto tabIsVisible = [&](int tab) -> bool {
+        if (tab == 8) return true; // NETWORK+ hosts account manager UI.
         if (!isExtraTab(tab)) return true;
         return extraTabUsedOptionCount(tab) > 0;
     };
@@ -203,6 +257,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         if (inSettings != value) {
             blockMenuInput();
             if (!value) pendingSettingsExitCleanup = true;
+        }
+        if (!value && networkEditField != NetworkEditField::None) {
+            networkEditField = NetworkEditField::None;
+            SDL_StopTextInput(ctx.win);
         }
         inSettings = value;
     };
@@ -295,6 +353,14 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         if (tab == 1) return 5;
         if (tab == 2) return 8;
         if (tab == 3) return 6;
+        if (tab == 8) {
+            const bool hasUser = !levelServerAccountUsername.empty();
+            const bool hasToken = !levelServerAuthToken.empty();
+            const bool invalidLogin = (hasUser != hasToken);
+            if (invalidLogin) return 4; // status, repair, open, back
+            if (hasUser && hasToken) return 4; // username, logout, open, back
+            return 5; // email, password, sign in, open, back
+        }
         if (tab == 4) return 0;
         if (isExtraTab(tab)) return extraTabRowCountForTab(tab);
         return kSettingsCount;
@@ -303,12 +369,160 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         if (settingsTab == 1) return settingsSelAudio;
         if (settingsTab == 2) return settingsSelDebug;
         if (settingsTab == 3) return settingsSelControls;
+        if (settingsTab == 8) return settingsSelNetwork;
         return settingsSel;
     };
     auto keyNameForDisplay = [&](SDL_Scancode sc) -> std::string {
         const char* n = SDL_GetScancodeName(sc);
         if (!n || !*n) return "UNBOUND";
         return n;
+    };
+    auto sanitizeAccountUsername = [](const std::string& in) -> std::string {
+        std::string out;
+        out.reserve(in.size());
+        for (char ch : in) {
+            const bool alphaNum = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9');
+            if (alphaNum || ch == '_' || ch == '-') out.push_back(ch);
+        }
+        if (out.size() > 48) out.resize(48);
+        return out;
+    };
+    auto stopNetworkEditing = [&]() {
+        if (networkEditField == NetworkEditField::None) return;
+        networkEditField = NetworkEditField::None;
+        SDL_StopTextInput(ctx.win);
+    };
+    auto beginNetworkEditing = [&](NetworkEditField field) {
+        networkEditField = field;
+        SDL_StartTextInput(ctx.win);
+    };
+    auto appendNetworkInput = [&](const std::string& text) {
+        if (text.empty()) return;
+        if (networkEditField == NetworkEditField::LoginEmail) {
+            std::string next = networkLoginEmail + text;
+            if (next.size() > 256) next.resize(256);
+            networkLoginEmail = next;
+            return;
+        }
+        if (networkEditField == NetworkEditField::LoginPassword) {
+            std::string next = networkLoginPassword + text;
+            if (next.size() > 256) next.resize(256);
+            networkLoginPassword = next;
+        }
+    };
+    auto popNetworkInput = [&]() {
+        std::string* target = nullptr;
+        if (networkEditField == NetworkEditField::LoginEmail) target = &networkLoginEmail;
+        if (networkEditField == NetworkEditField::LoginPassword) target = &networkLoginPassword;
+        if (!target || target->empty()) return;
+        target->pop_back();
+    };
+    auto maskedPassword = [](const std::string& password) -> std::string {
+        if (password.empty()) return "<empty>";
+        return std::string(password.size(), '*');
+    };
+    auto loginWithFirebase = [&](std::string& errOut) -> bool {
+        errOut.clear();
+        const std::string email = networkLoginEmail;
+        const std::string password = networkLoginPassword;
+        SDL_Log("ACCOUNT: sign-in requested email=%s", email.c_str());
+        if (email.empty() || password.empty()) {
+            errOut = "Email/password required.";
+            SDL_Log("ACCOUNT: sign-in rejected (missing email/password)");
+            return false;
+        }
+        std::string effectiveApiKey = firebaseApiKey;
+        if (effectiveApiKey.empty()) {
+            const std::string cfgText = ReadTextFile("assets/config.json");
+            if (!cfgText.empty()) {
+                try {
+                    const nlohmann::json cfgJson = nlohmann::json::parse(cfgText);
+                    if (cfgJson.is_object() && cfgJson.contains("firebase_api_key") && cfgJson["firebase_api_key"].is_string()) {
+                        effectiveApiKey = cfgJson["firebase_api_key"].get<std::string>();
+                        firebaseApiKey = effectiveApiKey;
+                    }
+                } catch (...) {}
+            }
+        }
+        if (effectiveApiKey.empty()) {
+            errOut = "firebase_api_key missing in config.";
+            SDL_Log("ACCOUNT: sign-in rejected (missing firebase_api_key after config fallback)");
+            return false;
+        }
+#if defined(HAVE_CURL) && HAVE_CURL
+        CURL* curl = curl_easy_init();
+        if (!curl) {
+            errOut = "curl init failed.";
+            return false;
+        }
+        const std::string url = "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=" + effectiveApiKey;
+        nlohmann::json req;
+        req["email"] = email;
+        req["password"] = password;
+        req["returnSecureToken"] = true;
+        const std::string body = req.dump();
+        struct curl_slist* headers = nullptr;
+        headers = curl_slist_append(headers, "Content-Type: application/json");
+        std::string respBody;
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+        curl_easy_setopt(curl, CURLOPT_POST, 1L);
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)body.size());
+        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 8L);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 12L);
+        curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, "DF-New/1.0");
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,
+            +[](char* ptr, size_t size, size_t nmemb, void* userdata) -> size_t {
+                std::string* out = static_cast<std::string*>(userdata);
+                out->append(ptr, size * nmemb);
+                return size * nmemb;
+            });
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &respBody);
+        const CURLcode rc = curl_easy_perform(curl);
+        long code = 0;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(curl);
+        if (rc != CURLE_OK || code < 200 || code >= 300) {
+            if (!respBody.empty()) {
+                try {
+                    const nlohmann::json errJson = nlohmann::json::parse(respBody);
+                    if (errJson.is_object() && errJson.contains("error") && errJson["error"].is_object() &&
+                        errJson["error"].contains("message") && errJson["error"]["message"].is_string()) {
+                        errOut = errJson["error"]["message"].get<std::string>();
+                    }
+                } catch (...) {}
+            }
+            if (errOut.empty()) errOut = "Login failed.";
+            SDL_Log("ACCOUNT: sign-in failed email=%s http=%ld curl=%d reason=%s",
+                    email.c_str(), code, (int)rc, errOut.c_str());
+            return false;
+        }
+        nlohmann::json resp;
+        try { resp = nlohmann::json::parse(respBody); } catch (...) { resp = nlohmann::json(); }
+        if (!resp.is_object() || !resp.contains("idToken") || !resp["idToken"].is_string()) {
+            errOut = "Invalid login response.";
+            SDL_Log("ACCOUNT: sign-in failed email=%s reason=%s", email.c_str(), errOut.c_str());
+            return false;
+        }
+        levelServerAuthToken = resp["idToken"].get<std::string>();
+        if (resp.contains("displayName") && resp["displayName"].is_string()) {
+            levelServerAccountUsername = sanitizeAccountUsername(resp["displayName"].get<std::string>());
+        }
+        if (levelServerAccountUsername.empty()) {
+            const std::size_t atPos = email.find('@');
+            const std::string localName = (atPos == std::string::npos) ? email : email.substr(0, atPos);
+            levelServerAccountUsername = sanitizeAccountUsername(localName);
+        }
+        SDL_Log("ACCOUNT: sign-in ok email=%s username=%s", email.c_str(), levelServerAccountUsername.c_str());
+        return true;
+#else
+        errOut = "curl disabled in this build.";
+        SDL_Log("ACCOUNT: sign-in unavailable (curl disabled)");
+        return false;
+#endif
     };
     auto controlBindingRef = [&](int idx) -> SDL_Scancode* {
         if (idx == 0) return &keyMoveLeft;
@@ -590,9 +804,11 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         if (tab == 1) settingsSelAudio = 0;
         if (tab == 2) settingsSelDebug = 0;
         if (tab == 3) settingsSelControls = 0;
+        if (tab == 8) settingsSelNetwork = 0;
         if (isExtraTab(tab)) settingsSel = 0;
     };
     auto openSettingsTab = [&](int tab) {
+        stopNetworkEditing();
         setSettingsTab(tab);
         resetSelectionForTab(settingsTab);
         waitingForControlKey = false;
@@ -650,6 +866,71 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             }
             return;
         }
+        if (settingsTab == 8) {
+            const bool hasUser = !levelServerAccountUsername.empty();
+            const bool hasToken = !levelServerAuthToken.empty();
+            const bool invalidLogin = (hasUser != hasToken);
+            auto openAccountManager = [&]() {
+                if (accountManagerUrl.empty()) {
+                    SDL_Log("ACCOUNT: open account manager skipped (url empty)");
+                    return;
+                }
+                SDL_Log("ACCOUNT: opening account manager url=%s", accountManagerUrl.c_str());
+                if (!SDL_OpenURL(accountManagerUrl.c_str())) {
+                    SDL_Log("ACCOUNT: open account manager failed err=%s", SDL_GetError());
+                } else {
+                    SDL_Log("ACCOUNT: open account manager dispatched");
+                }
+            };
+            if (invalidLogin) {
+                if (settingsSelNetwork == 1) {
+                    levelServerAccountUsername.clear();
+                    levelServerAuthToken.clear();
+                    networkLoginStatus = "Login repaired. Enter credentials.";
+                    SDL_Log("ACCOUNT: login repaired (cleared username/token)");
+                    if (ctx.saveClientSettings) ctx.saveClientSettings();
+                } else if (settingsSelNetwork == 2) {
+                    openAccountManager();
+                } else if (settingsSelNetwork == 3) {
+                    setInSettings(false);
+                }
+                return;
+            }
+            if (hasUser && hasToken) {
+                if (settingsSelNetwork == 1) {
+                    levelServerAccountUsername.clear();
+                    levelServerAuthToken.clear();
+                    networkLoginStatus = "Logged out.";
+                    SDL_Log("ACCOUNT: logged out");
+                    if (ctx.saveClientSettings) ctx.saveClientSettings();
+                } else if (settingsSelNetwork == 2) {
+                    openAccountManager();
+                } else if (settingsSelNetwork == 3) {
+                    setInSettings(false);
+                }
+                return;
+            }
+            if (settingsSelNetwork == 0) {
+                beginNetworkEditing(NetworkEditField::LoginEmail);
+            } else if (settingsSelNetwork == 1) {
+                beginNetworkEditing(NetworkEditField::LoginPassword);
+            } else if (settingsSelNetwork == 2) {
+                std::string err;
+                if (loginWithFirebase(err)) {
+                    stopNetworkEditing();
+                    networkLoginPassword.clear();
+                    networkLoginStatus = std::string("Logged in as ") + levelServerAccountUsername;
+                    if (ctx.saveClientSettings) ctx.saveClientSettings();
+                } else {
+                    networkLoginStatus = err.empty() ? "Login failed." : err;
+                }
+            } else if (settingsSelNetwork == 3) {
+                openAccountManager();
+            } else if (settingsSelNetwork == 4) {
+                setInSettings(false);
+            }
+            return;
+        }
         if (settingsTab == 4) {
             setInSettings(false);
             return;
@@ -679,7 +960,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         else if (settingsSel == IDX_ABOUT) { openSettingsTab(4); }
         else setInSettings(false);
 #else
-        if (settingsSel == IDX_FULLSCREEN) { fullscreen = !fullscreen; SDL_SetWindowFullscreen(ctx.win, fullscreen); }
+        if (settingsSel == IDX_FULLSCREEN) { (void)applyFullscreen(!fullscreen); }
         else if (settingsSel == IDX_VSYNC) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
         else if (settingsSel == IDX_CAM_CLAMP) clampCamX = !clampCamX;
         else if (settingsSel == IDX_UI_SCALE && dir != 0) uiScalePercent = std::clamp(uiScalePercent + dir * 5, kUiScaleMinPercent, kUiScaleMaxPercent);
@@ -695,10 +976,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
 #endif
         if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
     };
-    SDL_Texture* mainMenuTex = IMG_LoadTexture(ctx.ren, ResolveAssetPath("assets/Sheets/DF_Main_menu-uhd.png").c_str());
+    SDL_Texture* mainMenuTex = loadTextureSafe(ctx.ren, "assets/Sheets/DF_Main_menu-uhd.png", nullptr);
     if (mainMenuTex) SDL_SetTextureScaleMode(mainMenuTex, SDL_SCALEMODE_NEAREST);
     auto mainMenuFrames = loadPlistFrames("assets/Sheets/DF_Main_menu-uhd.plist");
-    SDL_Texture* menuFallbackTex = IMG_LoadTexture(ctx.ren, ResolveAssetPath("assets/Sheets/DF_Menus-uhd.png").c_str());
+    SDL_Texture* menuFallbackTex = loadTextureSafe(ctx.ren, "assets/Sheets/DF_Menus-uhd.png", nullptr);
     if (menuFallbackTex) SDL_SetTextureScaleMode(menuFallbackTex, SDL_SCALEMODE_NEAREST);
     auto menuFallbackFrames = loadPlistFrames("assets/Sheets/DF_Menus-uhd.plist");
     std::string menuBgErr;
@@ -965,11 +1246,18 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     continue;
                 }
             }
+            if (e.type == SDL_EVENT_TEXT_INPUT &&
+                inSettings &&
+                settingsTab == 8 &&
+                networkEditField != NetworkEditField::None) {
+                appendNetworkInput(e.text.text ? e.text.text : "");
+                if (ctx.saveClientSettings) ctx.saveClientSettings();
+                continue;
+            }
             if (e.type == SDL_KEYDOWN && e.key.repeat == 0) {
                 if (e.key.key == SDLK_F11) {
 #if !defined(__ANDROID__)
-                    fullscreen = !fullscreen;
-                    SDL_SetWindowFullscreen(ctx.win, fullscreen);
+                    (void)applyFullscreen(!fullscreen);
 #endif
                     continue;
                 }
@@ -1013,6 +1301,29 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         closeMenuSel = 0;
                     }
                 } else {
+                    if (settingsTab == 8 && networkEditField != NetworkEditField::None) {
+                        if (e.key.key == SDLK_ESCAPE) {
+                            stopNetworkEditing();
+                        } else if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) {
+                            if (networkEditField == NetworkEditField::LoginPassword) {
+                                std::string err;
+                                if (loginWithFirebase(err)) {
+                                    stopNetworkEditing();
+                                    networkLoginPassword.clear();
+                                    networkLoginStatus = std::string("Logged in as ") + levelServerAccountUsername;
+                                    if (ctx.saveClientSettings) ctx.saveClientSettings();
+                                } else {
+                                    networkLoginStatus = err.empty() ? "Login failed." : err;
+                                }
+                            } else {
+                                stopNetworkEditing();
+                            }
+                        } else if (e.key.key == SDLK_BACKSPACE) {
+                            popNetworkInput();
+                            if (ctx.saveClientSettings) ctx.saveClientSettings();
+                        }
+                        continue;
+                    }
                     if (waitingForControlKey) {
                         if (isBackKey) {
                             waitingForControlKey = false;
@@ -1055,6 +1366,25 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                             }
                             continue;
                         }
+                    }
+                    if (settingsTab == 8) {
+                        const int kNetworkCount = std::max(1, settingsRowsForTab(settingsTab));
+                        if (navUp) {
+                            settingsSelNetwork = (settingsSelNetwork + kNetworkCount - 1) % kNetworkCount;
+                            ensureSettingsRowVisible(settingsSelNetwork);
+                        }
+                        if (navDown) {
+                            settingsSelNetwork = (settingsSelNetwork + 1) % kNetworkCount;
+                            ensureSettingsRowVisible(settingsSelNetwork);
+                        }
+                        if (isBackKey) {
+                            setInSettings(false);
+                            continue;
+                        }
+                        if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER || navLeft || navRight) {
+                            activateCurrentSettingsSelection(0);
+                        }
+                        continue;
                     }
                     if (isExtraTab(settingsTab)) {
                         const int extraRows = settingsRowsForTab(settingsTab);
@@ -1261,6 +1591,30 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         }
                         continue;
                     }
+                    if (settingsTab == 8) {
+                        const int rows = settingsRowsForTab(settingsTab);
+                        for (int i = 0; i < rows; ++i) {
+                            SDL_Rect row = settingsRowBtn(i);
+                            if (!SDL_PointInRect(&pt, &row)) continue;
+                            settingsSelNetwork = i;
+                            activateCurrentSettingsSelection(0);
+                            if (ctx.saveClientSettings) ctx.saveClientSettings();
+                            break;
+                        }
+                        continue;
+                    }
+                    if (settingsTab == 8) {
+                        const int rows = settingsRowsForTab(settingsTab);
+                        for (int i = 0; i < rows; ++i) {
+                            SDL_Rect row = settingsRowBtn(i);
+                            if (!SDL_PointInRect(&pt, &row)) continue;
+                            settingsSelNetwork = i;
+                            activateCurrentSettingsSelection(0);
+                            if (ctx.saveClientSettings) ctx.saveClientSettings();
+                            break;
+                        }
+                        continue;
+                    }
                     if (isExtraTab(settingsTab)) {
                         const int extraIdx = extraTabIndex(settingsTab);
                         const int extraRows = settingsRowsForTab(settingsTab);
@@ -1366,7 +1720,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_Rect hitBtn = settingsRowBtn(IDX_SHOW_HITBOXES);
                     SDL_Rect playerHitBtn = settingsRowBtn(IDX_SHOW_PLAYER_HITBOX);
                     SDL_Rect debugViewBtn = settingsRowBtn(IDX_SHOW_DEBUG_VIEW);
-                    if (SDL_PointInRect(&pt, &fullBtn)) { fullscreen = !fullscreen; SDL_SetWindowFullscreen(ctx.win, fullscreen); }
+                    if (SDL_PointInRect(&pt, &fullBtn)) { (void)applyFullscreen(!fullscreen); }
                     else if (SDL_PointInRect(&pt, &vsyncBtn)) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
                     else if (SDL_PointInRect(&pt, &camBtn)) clampCamX = !clampCamX;
                     else if (SDL_PointInRect(&pt, &uiScaleBtn)) uiScalePercent = (uiScalePercent >= kUiScaleMaxPercent) ? kUiScaleMinPercent : (uiScalePercent + 5);
@@ -1594,7 +1948,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_Rect hitBtn = settingsRowBtn(IDX_SHOW_HITBOXES);
                     SDL_Rect playerHitBtn = settingsRowBtn(IDX_SHOW_PLAYER_HITBOX);
                     SDL_Rect debugViewBtn = settingsRowBtn(IDX_SHOW_DEBUG_VIEW);
-                    if (SDL_PointInRect(&pt, &fullBtn)) { fullscreen = !fullscreen; SDL_SetWindowFullscreen(ctx.win, fullscreen); }
+                    if (SDL_PointInRect(&pt, &fullBtn)) { (void)applyFullscreen(!fullscreen); }
                     else if (SDL_PointInRect(&pt, &vsyncBtn)) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
                     else if (SDL_PointInRect(&pt, &camBtn)) clampCamX = !clampCamX;
                     else if (SDL_PointInRect(&pt, &uiScaleBtn)) uiScalePercent = (uiScalePercent >= kUiScaleMaxPercent) ? kUiScaleMinPercent : (uiScalePercent + 5);
@@ -1989,6 +2343,15 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 DrawText(ctx.ren, side.x + 10, side.y + 58, 2, std::string("B: TOGGLE SIDEBAR"));
                 DrawText(ctx.ren, side.x + 10, side.y + 82, 2, std::string("Q/E: NEXT TAB"));
                 DrawText(ctx.ren, side.x + 10, side.y + 106, 2, std::string("ESC: BACK"));
+                if (settingsTab == 8) {
+                    const bool hasUser = !levelServerAccountUsername.empty();
+                    const bool hasToken = !levelServerAuthToken.empty();
+                    const bool invalidLogin = (hasUser != hasToken);
+                    std::string status = "LOGGED OUT";
+                    if (invalidLogin) status = "LOGIN NEEDS REPAIR";
+                    else if (hasUser && hasToken) status = "LOGGED IN";
+                    DrawText(ctx.ren, side.x + 10, side.y + 130, 2, std::string("STATUS: ") + status);
+                }
             }
             if (settingsTab == 4) {
                 const int sdlVer = SDL_GetVersion();
@@ -2124,6 +2487,63 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     }
                     DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(2, rows[i]) / 2, y, 2, rows[i]);
                 }
+                SDL_SetRenderClipRect(ctx.ren, nullptr);
+            } else if (settingsTab == 8) {
+                SDL_Rect listClip = settingsListClipRect();
+                SDL_SetRenderClipRect(ctx.ren, &listClip);
+                const bool hasUser = !levelServerAccountUsername.empty();
+                const bool hasToken = !levelServerAuthToken.empty();
+                const bool invalidLogin = (hasUser != hasToken);
+                std::vector<std::string> rows;
+                if (invalidLogin) {
+                    rows = {
+                        "ACCOUNT: INVALID LOGIN",
+                        "REPAIR LOGIN",
+                        "OPEN ACCOUNT MANAGER",
+                        "BACK"
+                    };
+                } else if (hasUser && hasToken) {
+                    rows = {
+                        std::string("ACCOUNT: ") + levelServerAccountUsername,
+                        "LOG OUT",
+                        "OPEN ACCOUNT MANAGER",
+                        "BACK"
+                    };
+                } else {
+                    rows = {
+                        std::string("LOGIN EMAIL: ") + (networkLoginEmail.empty() ? "<empty>" : networkLoginEmail),
+                        std::string("LOGIN PASSWORD: ") + maskedPassword(networkLoginPassword),
+                        "SIGN IN",
+                        "OPEN ACCOUNT MANAGER",
+                        "BACK"
+                    };
+                }
+                for (int i = 0; i < (int)rows.size(); ++i) {
+                    drawToggleHitbox(i, i == settingsSelNetwork);
+                    int y = settingsRowY(i);
+                    if (i == settingsSelNetwork) {
+                        SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_BLEND);
+                        SDL_SetRenderDrawColor(ctx.ren, 255, 255, 255, 76);
+                        SDL_Rect hl = settingsRowBtn(i);
+                        SDL_RenderFillRect(ctx.ren, &hl);
+                        SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_NONE);
+                    }
+                    std::string rowText = rows[i];
+                    if (!hasUser && !hasToken && networkEditField != NetworkEditField::None) {
+                        if ((i == 0 && networkEditField == NetworkEditField::LoginEmail) ||
+                            (i == 1 && networkEditField == NetworkEditField::LoginPassword)) {
+                            rowText += "  [EDITING]";
+                        }
+                    }
+                    DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(2, rowText) / 2, y, 2, rowText);
+                }
+                if (!networkLoginStatus.empty()) {
+                    DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(1, networkLoginStatus) / 2, settingsListBottom - 40, 1, networkLoginStatus);
+                }
+                const std::string hintA = "ENTER: SELECT";
+                const std::string hintB = std::string("ACCOUNT PAGE: ") + (accountManagerUrl.empty() ? "<not configured>" : accountManagerUrl);
+                DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(1, hintA) / 2, settingsListBottom - 26, 1, hintA);
+                DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(1, hintB) / 2, settingsListBottom - 12, 1, hintB);
                 SDL_SetRenderClipRect(ctx.ren, nullptr);
             } else if (isExtraTab(settingsTab)) {
                 SDL_Rect listClip = settingsListClipRect();

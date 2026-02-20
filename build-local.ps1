@@ -234,16 +234,95 @@ function Install-MsvcCompilerIfMissing {
     }
 }
 
+function Get-LocalSdl3MixerPrefix {
+    $searchRoot = Join-Path $PSScriptRoot "deps\windows-sdl3-mixer"
+    if (-not (Test-Path $searchRoot)) { return $null }
+    $cfg = Get-ChildItem -Path $searchRoot -Recurse -Filter "SDL3_mixerConfig.cmake" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $cfg) { return $null }
+    $p1 = Split-Path $cfg.FullName -Parent
+    $p2 = Split-Path $p1 -Parent
+    if ($p2 -and (Test-Path $p2)) { return $p2 }
+    return $null
+}
+
+function Install-Sdl3MixerDevelPackage {
+    $existingPrefix = Get-LocalSdl3MixerPrefix
+    if ($existingPrefix) { return $existingPrefix }
+
+    $installRoot = Join-Path $PSScriptRoot "deps\windows-sdl3-mixer"
+    New-Item -ItemType Directory -Path $installRoot -Force | Out-Null
+    $zipPath = Join-Path $env:TEMP "SDL3_mixer-devel-latest-VC.zip"
+    $downloadUrl = $null
+
+    try {
+        try {
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        } catch { }
+
+        try {
+            $headers = @{ "User-Agent" = "DF-New-Bootstrap" }
+            $rels = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/libsdl-org/SDL_mixer/releases?per_page=20" -UseBasicParsing
+            if ($rels) {
+                foreach ($rel in $rels) {
+                    if (-not $rel.assets) { continue }
+                    $asset = $rel.assets | Where-Object {
+                        $_.name -and $_.name -match "^SDL3_mixer-devel-.*-VC\.zip$"
+                    } | Select-Object -First 1
+                    if ($asset -and $asset.browser_download_url) {
+                        $downloadUrl = $asset.browser_download_url
+                        break
+                    }
+                }
+            }
+        } catch { }
+
+        if (-not $downloadUrl) {
+            Write-Host "Could not resolve latest SDL3_mixer VC package URL."
+            return $null
+        }
+
+        try {
+            Invoke-WebRequest -Uri $downloadUrl -OutFile $zipPath -UseBasicParsing
+        } catch {
+            $curlExe = Get-Command curl.exe -ErrorAction SilentlyContinue
+            if ($curlExe) {
+                & $curlExe.Source -L --retry 3 --fail --output $zipPath $downloadUrl
+            } else {
+                throw
+            }
+        }
+
+        if (-not (Test-Path $zipPath)) {
+            return $null
+        }
+
+        Expand-Archive -Path $zipPath -DestinationPath $installRoot -Force
+        return (Get-LocalSdl3MixerPrefix)
+    } catch {
+        Write-Host "SDL3_mixer devel package install failed: $($_.Exception.Message)"
+        return $null
+    }
+}
+
 function Ensure-ProjectDepsAvailable {
     $triplet = if ([Environment]::Is64BitOperatingSystem) { "x64-windows" } else { "x86-windows" }
     $vcpkgRoot = Join-Path $PSScriptRoot "vcpkg"
     $vcpkgExe = Join-Path $vcpkgRoot "vcpkg.exe"
     $prefix = Join-Path $vcpkgRoot "installed\$triplet"
     $sdlConfig = Join-Path $prefix "share\sdl3\SDL3Config.cmake"
+    $sdlMixerConfigA = Join-Path $prefix "share\sdl3-mixer\SDL3_mixerConfig.cmake"
+    $sdlMixerConfigB = Join-Path $prefix "share\SDL3_mixer\SDL3_mixerConfig.cmake"
+    $hasSdlMixer = (Test-Path $sdlMixerConfigA) -or (Test-Path $sdlMixerConfigB)
+    $localMixerPrefix = Get-LocalSdl3MixerPrefix
 
-    if (Test-Path $sdlConfig) {
-        $env:CMAKE_PREFIX_PATH = if ($env:CMAKE_PREFIX_PATH) { "$prefix;$env:CMAKE_PREFIX_PATH" } else { $prefix }
+    if ((Test-Path $sdlConfig) -and ($hasSdlMixer -or $localMixerPrefix)) {
+        $prefixes = @($prefix)
+        if ($localMixerPrefix) { $prefixes += $localMixerPrefix }
+        $joinedPrefixes = ($prefixes -join ";")
+        $env:SDL3_mixer_DIR = Join-Path $localMixerPrefix "cmake"
+        $env:CMAKE_PREFIX_PATH = if ($env:CMAKE_PREFIX_PATH) { "$joinedPrefixes;$env:CMAKE_PREFIX_PATH" } else { $joinedPrefixes }
         Write-Host "Using dependency prefix: $prefix"
+        if ($localMixerPrefix) { Write-Host "Using SDL3_mixer prefix: $localMixerPrefix" }
         return
     }
 
@@ -251,18 +330,224 @@ function Ensure-ProjectDepsAvailable {
         return
     }
 
-    Write-Host "Missing SDL dev packages. Installing dependencies via local vcpkg..."
-    & $vcpkgExe install sdl3 sdl3-image sdl3-ttf curl nlohmann-json "--triplet=$triplet"
-    if ($LASTEXITCODE -ne 0) {
+    Write-Host "Missing SDL dev packages (including SDL3_mixer). Installing dependencies via local vcpkg..."
+    $depArgs = @("install", "sdl3", "sdl3-image", "sdl3-ttf", "sdl3-mixer", "curl", "nlohmann-json", "--triplet=$triplet")
+    $depArgsNoMixer = @("install", "sdl3", "sdl3-image", "sdl3-ttf", "curl", "nlohmann-json", "--triplet=$triplet")
+    $mixerOptionalMode = $false
+    $oldEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $depOut = & $vcpkgExe @depArgs 2>&1
+        $depRc = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $oldEap
+    }
+    if ($depRc -ne 0) {
+        $depText = ($depOut | Out-String)
+        $missingMixerPort = $depText -match "sdl3-mixer does not exist"
+        if ($missingMixerPort) {
+            $mixerOptionalMode = $true
+            Write-Host "Local vcpkg baseline does not include sdl3-mixer; attempting auto-update and retry..."
+            $gitExe = $null
+            $gitCmd = Get-Command git -ErrorAction SilentlyContinue
+            if ($gitCmd) {
+                $gitExe = $gitCmd.Source
+            } else {
+                $gitCandidates = @(
+                    (Join-Path $env:ProgramFiles "Git\\cmd\\git.exe"),
+                    (Join-Path $env:ProgramFiles "Git\\bin\\git.exe"),
+                    (Join-Path $env:ProgramW6432 "Git\\cmd\\git.exe"),
+                    (Join-Path $env:LocalAppData "Programs\\Git\\cmd\\git.exe")
+                ) | Where-Object { $_ -and $_.Trim().Length -gt 0 }
+                foreach ($candidate in $gitCandidates) {
+                    if (Test-Path $candidate) {
+                        $gitExe = $candidate
+                        break
+                    }
+                }
+            }
+            if ($gitExe) {
+                & $gitExe -C $vcpkgRoot pull --ff-only
+                if ($LASTEXITCODE -eq 0) {
+                    $oldEap = $ErrorActionPreference
+                    $ErrorActionPreference = "Continue"
+                    try {
+                        & $vcpkgExe @depArgs
+                        $depRc = $LASTEXITCODE
+                    } finally {
+                        $ErrorActionPreference = $oldEap
+                    }
+                } else {
+                    Write-Host "vcpkg auto-update failed; continuing with original error."
+                }
+            } else {
+                Write-Host "git is not available to auto-update vcpkg. Attempting to install Git via winget..."
+                $wingetCmd = Get-Command winget -ErrorAction SilentlyContinue
+                $gitInstalledViaWinget = $false
+                if ($wingetCmd) {
+                    & $wingetCmd.Source install --id Git.Git --exact --silent --accept-package-agreements --accept-source-agreements
+                    if ($LASTEXITCODE -eq 0) {
+                        $gitInstalledViaWinget = $true
+                        $gitPostInstallCandidates = @(
+                            (Join-Path $env:ProgramFiles "Git\\cmd\\git.exe"),
+                            (Join-Path $env:ProgramFiles "Git\\bin\\git.exe"),
+                            (Join-Path $env:ProgramW6432 "Git\\cmd\\git.exe"),
+                            (Join-Path $env:LocalAppData "Programs\\Git\\cmd\\git.exe")
+                        ) | Where-Object { $_ -and $_.Trim().Length -gt 0 }
+                        foreach ($candidate in $gitPostInstallCandidates) {
+                            if (Test-Path $candidate) {
+                                $gitExe = $candidate
+                                break
+                            }
+                        }
+                        if ($gitExe) {
+                            Write-Host "Git installed successfully; retrying vcpkg update..."
+                            & $gitExe -C $vcpkgRoot pull --ff-only
+                            if ($LASTEXITCODE -eq 0) {
+                                $oldEap = $ErrorActionPreference
+                                $ErrorActionPreference = "Continue"
+                                try {
+                                    & $vcpkgExe @depArgs
+                                    $depRc = $LASTEXITCODE
+                                } finally {
+                                    $ErrorActionPreference = $oldEap
+                                }
+                            } else {
+                                Write-Host "vcpkg auto-update failed even after installing Git."
+                            }
+                        } else {
+                            Write-Host "Git install reported success, but git.exe was not found in expected paths."
+                        }
+                    } else {
+                        Write-Host "winget failed to install Git."
+                    }
+                }
+                if (-not $gitExe) {
+                    if (-not $wingetCmd) {
+                        Write-Host "winget is not available to install Git automatically."
+                    } elseif ($gitInstalledViaWinget) {
+                        Write-Host "Git installation completed but git.exe was not detected. Trying direct installer..."
+                    }
+                    Write-Host "Attempting direct Git installer download..."
+                    $gitInstaller = Join-Path $env:TEMP "Git-latest-64-bit.exe"
+                    try {
+                        try {
+                            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+                        } catch { }
+                        $gitInstallerUrl = $null
+                        try {
+                            $gitLatest = Invoke-RestMethod -Uri "https://api.github.com/repos/git-for-windows/git/releases/latest" -UseBasicParsing
+                            if ($gitLatest -and $gitLatest.assets) {
+                                $asset = $gitLatest.assets | Where-Object {
+                                    $_.name -and $_.name -match "64-bit\.exe$" -and $_.name -notmatch "Portable"
+                                } | Select-Object -First 1
+                                if ($asset -and $asset.browser_download_url) {
+                                    $gitInstallerUrl = $asset.browser_download_url
+                                }
+                            }
+                        } catch { }
+                        if (-not $gitInstallerUrl) {
+                            $gitInstallerUrl = "https://github.com/git-for-windows/git/releases/latest/download/Git-64-bit.exe"
+                        }
+                        Invoke-WebRequest -Uri $gitInstallerUrl -OutFile $gitInstaller -UseBasicParsing
+                    } catch {
+                        $curlExe = Get-Command curl.exe -ErrorAction SilentlyContinue
+                        if ($curlExe) {
+                            if (-not $gitInstallerUrl) {
+                                $gitInstallerUrl = "https://github.com/git-for-windows/git/releases/latest/download/Git-64-bit.exe"
+                            }
+                            & $curlExe.Source -L --retry 3 --fail --output $gitInstaller $gitInstallerUrl
+                        } else {
+                            throw
+                        }
+                    }
+                    try {
+                        if (Test-Path $gitInstaller) {
+                            $installProc = Start-Process -FilePath $gitInstaller -ArgumentList "/VERYSILENT","/NORESTART","/SP-" -PassThru -Wait
+                            if ($installProc.ExitCode -eq 0) {
+                                $gitPostInstallCandidates = @(
+                                    (Join-Path $env:ProgramFiles "Git\\cmd\\git.exe"),
+                                    (Join-Path $env:ProgramFiles "Git\\bin\\git.exe"),
+                                    (Join-Path $env:ProgramW6432 "Git\\cmd\\git.exe"),
+                                    (Join-Path $env:LocalAppData "Programs\\Git\\cmd\\git.exe")
+                                ) | Where-Object { $_ -and $_.Trim().Length -gt 0 }
+                                foreach ($candidate in $gitPostInstallCandidates) {
+                                    if (Test-Path $candidate) {
+                                        $gitExe = $candidate
+                                        break
+                                    }
+                                }
+                                if ($gitExe) {
+                                    Write-Host "Git installed successfully via direct installer; retrying vcpkg update..."
+                                    & $gitExe -C $vcpkgRoot pull --ff-only
+                                    if ($LASTEXITCODE -eq 0) {
+                                        $oldEap = $ErrorActionPreference
+                                        $ErrorActionPreference = "Continue"
+                                        try {
+                                            & $vcpkgExe @depArgs
+                                            $depRc = $LASTEXITCODE
+                                        } finally {
+                                            $ErrorActionPreference = $oldEap
+                                        }
+                                    } else {
+                                        Write-Host "vcpkg auto-update failed after direct Git install."
+                                    }
+                                } else {
+                                    Write-Host "Direct Git install reported success, but git.exe was not found in expected paths."
+                                }
+                            } else {
+                                Write-Host "Direct Git installer failed with exit code $($installProc.ExitCode)."
+                            }
+                        } else {
+                            Write-Host "Direct Git installer download failed."
+                        }
+                    } catch {
+                        Write-Host "Direct Git installer failed: $($_.Exception.Message)"
+                    }
+                }
+            }
+            if ($depRc -ne 0) {
+                Write-Host "Retrying dependency install without SDL3_mixer (audio mixer support will be disabled)..."
+                $oldEap = $ErrorActionPreference
+                $ErrorActionPreference = "Continue"
+                try {
+                    & $vcpkgExe @depArgsNoMixer
+                    $depRc = $LASTEXITCODE
+                } finally {
+                    $ErrorActionPreference = $oldEap
+                }
+            }
+        }
+    }
+    if ($depRc -ne 0) {
         throw "vcpkg dependency install failed."
     }
 
     if (-not (Test-Path $sdlConfig)) {
         throw "vcpkg finished but SDL3Config.cmake is still missing at $sdlConfig"
     }
+    $hasSdlMixer = (Test-Path $sdlMixerConfigA) -or (Test-Path $sdlMixerConfigB)
+    if (-not $hasSdlMixer) {
+        $localMixerPrefix = Install-Sdl3MixerDevelPackage
+        if ($localMixerPrefix) {
+            Write-Host "Installed SDL3_mixer development package: $localMixerPrefix"
+            $hasSdlMixer = $true
+        }
+    }
 
-    $env:CMAKE_PREFIX_PATH = if ($env:CMAKE_PREFIX_PATH) { "$prefix;$env:CMAKE_PREFIX_PATH" } else { $prefix }
+    if ((-not $mixerOptionalMode) -and (-not $hasSdlMixer)) {
+        throw "vcpkg finished but SDL3_mixerConfig.cmake is still missing under $prefix\\share\\sdl3-mixer"
+    } elseif ($mixerOptionalMode -and (-not $hasSdlMixer)) {
+        Write-Host "SDL3_mixer is unavailable in this local vcpkg baseline; continuing without mixer link target."
+    }
+
+    $prefixes = @($prefix)
+    if ($localMixerPrefix) { $prefixes += $localMixerPrefix }
+    $joinedPrefixes = ($prefixes -join ";")
+    if ($localMixerPrefix) { $env:SDL3_mixer_DIR = Join-Path $localMixerPrefix "cmake" }
+    $env:CMAKE_PREFIX_PATH = if ($env:CMAKE_PREFIX_PATH) { "$joinedPrefixes;$env:CMAKE_PREFIX_PATH" } else { $joinedPrefixes }
     Write-Host "Using dependency prefix: $prefix"
+    if ($localMixerPrefix) { Write-Host "Using SDL3_mixer prefix: $localMixerPrefix" }
 }
 
 if ($NoCompilerAutoInstall) {

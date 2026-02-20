@@ -18,6 +18,7 @@
 namespace {
 std::string g_levelServerUrl;
 std::string g_levelServerAuthToken;
+std::string g_levelServerAccountUsername;
 
 bool isHttpUrl(const std::string& path) {
     if (path.size() < 8) return false;
@@ -299,5 +300,13 @@ void SetLevelServerAuthToken(const std::string& token) {
 
 std::string GetLevelServerAuthToken() {
     return g_levelServerAuthToken;
+}
+
+void SetLevelServerAccountUsername(const std::string& username) {
+    g_levelServerAccountUsername = username;
+}
+
+std::string GetLevelServerAccountUsername() {
+    return g_levelServerAccountUsername;
 }
 

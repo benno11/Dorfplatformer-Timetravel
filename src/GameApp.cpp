@@ -185,11 +185,16 @@ int RunGameApp(int argc, char** argv) {
 #if defined(__ANDROID__)
         if (hasAudioDriver("aaudio")) preselectedAudio = "aaudio";
         else if (hasAudioDriver("openslES")) preselectedAudio = "openslES";
+#elif defined(_WIN32)
+        if (hasAudioDriver("wasapi")) preselectedAudio = "wasapi";
+        else if (hasAudioDriver("directsound")) preselectedAudio = "directsound";
+        else if (hasAudioDriver("xaudio2")) preselectedAudio = "xaudio2";
 #else
         if (hasAudioDriver("pulseaudio")) preselectedAudio = "pulseaudio";
-        else if (hasAudioDriver("dummy")) preselectedAudio = "dummy";
-        else if (hasAudioDriver("alsa")) preselectedAudio = "alsa";
         else if (hasAudioDriver("pipewire")) preselectedAudio = "pipewire";
+        else if (hasAudioDriver("alsa")) preselectedAudio = "alsa";
+        else if (hasAudioDriver("sndio")) preselectedAudio = "sndio";
+        else if (hasAudioDriver("dummy")) preselectedAudio = "dummy";
 #endif
         if (preselectedAudio) {
             applyAudioDriverSelection(preselectedAudio);
@@ -303,10 +308,15 @@ int RunGameApp(int argc, char** argv) {
         if (!driver) return false;
 #if defined(__ANDROID__)
         return std::strcmp(driver, "dummy") != 0;
+#elif defined(_WIN32)
+        return std::strcmp(driver, "wasapi") == 0 ||
+               std::strcmp(driver, "directsound") == 0 ||
+               std::strcmp(driver, "xaudio2") == 0;
 #else
         return std::strcmp(driver, "pipewire") == 0 ||
                std::strcmp(driver, "pulseaudio") == 0 ||
-               std::strcmp(driver, "dummy") == 0;
+               std::strcmp(driver, "alsa") == 0 ||
+               std::strcmp(driver, "sndio") == 0;
 #endif
     };
     bool audioReady = false;
@@ -317,6 +327,12 @@ int RunGameApp(int argc, char** argv) {
         if (!audioReady) audioReady = tryAudioInit("env default", nullptr);
         if (!audioReady && hasAudioDriver("aaudio")) audioReady = tryAudioInit("aaudio", "aaudio");
         if (!audioReady && hasAudioDriver("openslES")) audioReady = tryAudioInit("openslES", "openslES");
+        if (!audioReady && hasAudioDriver("dummy")) audioReady = tryAudioInit("dummy", "dummy");
+#elif defined(_WIN32)
+        if (hasAudioDriver("wasapi")) audioReady = tryAudioInit("wasapi", "wasapi");
+        if (!audioReady && hasAudioDriver("directsound")) audioReady = tryAudioInit("directsound", "directsound");
+        if (!audioReady && hasAudioDriver("xaudio2")) audioReady = tryAudioInit("xaudio2", "xaudio2");
+        if (!audioReady) audioReady = tryAudioInit("env default", nullptr);
         if (!audioReady && hasAudioDriver("dummy")) audioReady = tryAudioInit("dummy", "dummy");
 #else
         if (hasAudioDriver("pipewire")) audioReady = tryAudioInit("pipewire", "pipewire");
@@ -337,6 +353,11 @@ int RunGameApp(int argc, char** argv) {
 #if defined(__ANDROID__)
             if (hasAudioDriver("aaudio")) overridden = tryAudioInit("override aaudio", "aaudio");
             if (!overridden && hasAudioDriver("openslES")) overridden = tryAudioInit("override openslES", "openslES");
+#elif defined(_WIN32)
+            if (hasAudioDriver("wasapi")) overridden = tryAudioInit("override wasapi", "wasapi");
+            if (!overridden && hasAudioDriver("directsound")) overridden = tryAudioInit("override directsound", "directsound");
+            if (!overridden && hasAudioDriver("xaudio2")) overridden = tryAudioInit("override xaudio2", "xaudio2");
+            if (!overridden && hasAudioDriver("dummy")) overridden = tryAudioInit("override dummy", "dummy");
 #else
             if (hasAudioDriver("pipewire")) overridden = tryAudioInit("override pipewire", "pipewire");
             if (!overridden && hasAudioDriver("pulseaudio")) overridden = tryAudioInit("override pulseaudio", "pulseaudio");
@@ -398,6 +419,8 @@ int RunGameApp(int argc, char** argv) {
 
     int kBaseScreenW = 1920;
     int kBaseScreenH = 1080;
+    int detectedDisplayW = 0;
+    int detectedDisplayH = 0;
     {
         const SDL_DisplayID primaryDisplay = SDL_GetPrimaryDisplay();
         const SDL_DisplayMode* displayMode = nullptr;
@@ -406,6 +429,8 @@ int RunGameApp(int argc, char** argv) {
             if (!displayMode) displayMode = SDL_GetDesktopDisplayMode(primaryDisplay);
         }
         if (displayMode && displayMode->w > 0 && displayMode->h > 0) {
+            detectedDisplayW = displayMode->w;
+            detectedDisplayH = displayMode->h;
             float aspect = (float)displayMode->w / (float)displayMode->h;
             // Clamp to practical gameplay targets: 4:3 .. 32:9.
             aspect = std::clamp(aspect, 4.0f / 3.0f, 32.0f / 9.0f);
@@ -421,10 +446,22 @@ int RunGameApp(int argc, char** argv) {
     int kGameplayViewW = std::max(1, (int)std::lround((float)kBaseScreenW / kGameplayZoom));
     int kGameplayViewH = std::max(1, (int)std::lround((float)kBaseScreenH / kGameplayZoom));
 
-    SDL_Window* win = SDL_CreateWindow("Dorfplatformer Timetravel", kBaseScreenW, kBaseScreenH, SDL_WINDOW_RESIZABLE);
+    int startupWindowW = kBaseScreenW;
+    int startupWindowH = kBaseScreenH;
+    if (detectedDisplayW > 0 && detectedDisplayH > 0) {
+        const int maxW = std::max(960, detectedDisplayW - 120);
+        const int maxH = std::max(540, detectedDisplayH - 120);
+        const float sx = (float)maxW / (float)kBaseScreenW;
+        const float sy = (float)maxH / (float)kBaseScreenH;
+        const float s = std::min(1.0f, std::min(sx, sy));
+        startupWindowW = std::max(960, (int)std::lround((float)kBaseScreenW * s));
+        startupWindowH = std::max(540, (int)std::lround((float)kBaseScreenH * s));
+    }
+
+    SDL_Window* win = SDL_CreateWindow("Dorfplatformer Timetravel", startupWindowW, startupWindowH, SDL_WINDOW_RESIZABLE);
     if (!win) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "SDL_CreateWindow(resizable) failed: %s", SDL_GetError());
-        win = SDL_CreateWindow("Dorfplatformer Timetravel", kBaseScreenW, kBaseScreenH, 0);
+        win = SDL_CreateWindow("Dorfplatformer Timetravel", startupWindowW, startupWindowH, 0);
     }
     if (!win) {
         reportStartupError("Window Error", std::string("SDL_CreateWindow failed: ") + SDL_GetError(), nullptr);
@@ -433,12 +470,56 @@ int RunGameApp(int argc, char** argv) {
         SDL_Quit();
         return 1;
     }
+    auto applyFullscreen = [&](bool enabled) -> bool {
+        static int restoreX = SDL_WINDOWPOS_CENTERED;
+        static int restoreY = SDL_WINDOWPOS_CENTERED;
+        static int restoreW = startupWindowW;
+        static int restoreH = startupWindowH;
+        const bool currentlyFullscreen = (SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN) != 0;
+        if (enabled && !currentlyFullscreen) {
+            SDL_GetWindowPosition(win, &restoreX, &restoreY);
+            SDL_GetWindowSize(win, &restoreW, &restoreH);
+        }
+        if (!SDL_SetWindowFullscreen(win, enabled)) {
+            SDL_Log("Could not set fullscreen=%d: %s", enabled ? 1 : 0, SDL_GetError());
+            return false;
+        }
+        if (!enabled) {
+            if (restoreW <= 0 || restoreH <= 0) {
+                restoreW = startupWindowW;
+                restoreH = startupWindowH;
+            }
+            SDL_SetWindowSize(win, restoreW, restoreH);
+            SDL_SetWindowPosition(win, restoreX, restoreY);
+        }
+        return true;
+    };
 
-    SDL_Renderer* ren = SDL_CreateRenderer(win, nullptr);
+    SDL_Renderer* ren = nullptr;
+#if defined(_WIN32)
+    auto createRendererWithPreferredDrivers = [](SDL_Window* targetWin) -> SDL_Renderer* {
+        const char* preferredDrivers[] = {"direct3d12", "direct3d11", "direct3d", nullptr, "software"};
+        for (const char* driver : preferredDrivers) {
+            if (driver) SDL_SetHint(SDL_HINT_RENDER_DRIVER, driver);
+            else SDL_ResetHint(SDL_HINT_RENDER_DRIVER);
+            SDL_Renderer* created = SDL_CreateRenderer(targetWin, driver);
+            if (created) {
+                SDL_Log("Renderer created with driver: %s", driver ? driver : "default");
+                return created;
+            }
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "SDL_CreateRenderer(%s) failed: %s",
+                        driver ? driver : "default", SDL_GetError());
+        }
+        return nullptr;
+    };
+    ren = createRendererWithPreferredDrivers(win);
+#else
+    ren = SDL_CreateRenderer(win, nullptr);
     if (!ren) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "SDL_CreateRenderer(default) failed: %s", SDL_GetError());
         ren = SDL_CreateRenderer(win, "software");
     }
+#endif
     if (!ren) {
         reportStartupError("Renderer Error", std::string("SDL_CreateRenderer failed: ") + SDL_GetError(), win);
         SDL_DestroyWindow(win);
@@ -496,7 +577,7 @@ int RunGameApp(int argc, char** argv) {
     };
 
     std::string pausePlist = texPath("plists", "pause", "assets/Sheets/DF_Pause-uhd.plist");
-    SDL_Texture* pauseTex = IMG_LoadTexture(ren, ResolveAssetPath(texPath("textures", "pause", "assets/Sheets/DF_Pause-uhd.png")).c_str());
+    SDL_Texture* pauseTex = loadTextureSafe(ren, texPath("textures", "pause", "assets/Sheets/DF_Pause-uhd.png"), nullptr);
     if (pauseTex) SDL_SetTextureScaleMode(pauseTex, SDL_SCALEMODE_NEAREST);
     auto pauseFrames = loadPlistFrames(pausePlist);
 
@@ -624,10 +705,10 @@ int RunGameApp(int argc, char** argv) {
         bgFrameByNameWorld6,
         &bgAnimFramesWorld6
     );
-    SDL_Texture* introCardTex = IMG_LoadTexture(ren, ResolveAssetPath("assets/Sheets/Introcard-uhd.png").c_str());
+    SDL_Texture* introCardTex = loadTextureSafe(ren, "assets/Sheets/Introcard-uhd.png", nullptr);
     if (introCardTex) SDL_SetTextureScaleMode(introCardTex, SDL_SCALEMODE_NEAREST);
     auto introCardFrames = loadPlistFrames("assets/Sheets/Introcard-uhd.plist");
-    SDL_Texture* endSignTex = IMG_LoadTexture(ren, ResolveAssetPath("assets/Sheets/end_sign-uhd.png").c_str());
+    SDL_Texture* endSignTex = loadTextureSafe(ren, "assets/Sheets/end_sign-uhd.png", nullptr);
     if (endSignTex) SDL_SetTextureScaleMode(endSignTex, SDL_SCALEMODE_NEAREST);
     auto endSignFrames = loadPlistFrames("assets/Sheets/end_sign-uhd.plist");
     const Frame* defaultEndSignFrame = nullptr;
@@ -636,7 +717,7 @@ int RunGameApp(int argc, char** argv) {
         if (it == endSignFrames.end()) it = endSignFrames.find("SignPost9.png");
         if (it != endSignFrames.end()) defaultEndSignFrame = &it->second;
     }
-    SDL_Texture* bossesTex = IMG_LoadTexture(ren, ResolveAssetPath("assets/Sheets/DF_Bosses-uhd.png").c_str());
+    SDL_Texture* bossesTex = loadTextureSafe(ren, "assets/Sheets/DF_Bosses-uhd.png", nullptr);
     if (bossesTex) SDL_SetTextureScaleMode(bossesTex, SDL_SCALEMODE_NEAREST);
     auto bossesFrames = loadPlistFrames("assets/Sheets/DF_Bosses-uhd.plist");
     const Frame* bossNormalFrame = nullptr;
@@ -655,7 +736,7 @@ int RunGameApp(int argc, char** argv) {
     }
 
     const std::string entitiesPlist = "assets/Sheets/DF_Enitys-uhd.plist";
-    SDL_Texture* entitiesTex = IMG_LoadTexture(ren, ResolveAssetPath("assets/Sheets/DF_Enitys-uhd.png").c_str());
+    SDL_Texture* entitiesTex = loadTextureSafe(ren, "assets/Sheets/DF_Enitys-uhd.png", nullptr);
     if (entitiesTex) SDL_SetTextureScaleMode(entitiesTex, SDL_SCALEMODE_NEAREST);
     auto entitiesFrameList = loadPlistFrameList(entitiesPlist);
     std::unordered_map<std::string, Frame> entitiesFrameByName;
@@ -687,12 +768,21 @@ int RunGameApp(int argc, char** argv) {
     }
 
     std::string playerPlist = texPath("plists", "player", "assets/Sheets/DF_Player1-uhd.plist");
-    SDL_Texture* playerTex = IMG_LoadTexture(ren, ResolveAssetPath(texPath("textures", "player", "assets/Sheets/DF_Player1-uhd.png")).c_str());
+    SDL_Texture* playerTex = loadTextureSafe(ren, texPath("textures", "player", "assets/Sheets/DF_Player1-uhd.png"), nullptr);
     if (playerTex) SDL_SetTextureScaleMode(playerTex, SDL_SCALEMODE_NEAREST);
     auto playerFrameList = loadPlistFrameList(playerPlist);
     std::unordered_map<std::string, Frame> playerFramesByName;
     playerFramesByName.reserve(playerFrameList.size());
     for (const auto& e : playerFrameList) playerFramesByName[e.name] = e.frame;
+    if (playerFrameList.empty() && playerTex) {
+        float twf = 0.0f, thf = 0.0f;
+        SDL_GetTextureSize(playerTex, &twf, &thf);
+        Frame f{};
+        f.rect = SDL_Rect{0, 0, std::max(1, (int)std::lround(twf)), std::max(1, (int)std::lround(thf))};
+        f.rotated = false;
+        playerFrameList.push_back(FrameEntry{"fallback", f});
+        playerFramesByName["fallback"] = f;
+    }
     const Frame* fallbackPlayerFrame = !playerFrameList.empty() ? &playerFrameList[0].frame : nullptr;
     audio.loadGlobalAssets();
     std::unordered_map<int, std::string> worldNamesById;
@@ -736,10 +826,32 @@ int RunGameApp(int argc, char** argv) {
         }
     }
 
+    auto normalizeFrameName = [](std::string s) {
+        const size_t dot = s.find_last_of('.');
+        if (dot != std::string::npos) {
+            std::string ext = s.substr(dot);
+            for (char& ch : ext) ch = (char)std::tolower((unsigned char)ch);
+            if (ext == ".png" || ext == ".bmp" || ext == ".jpg" || ext == ".jpeg" || ext == ".webp") {
+                s = s.substr(0, dot);
+            }
+        }
+        for (char& ch : s) ch = (char)std::tolower((unsigned char)ch);
+        return s;
+    };
     auto getPlayerFrame = [&](const std::string& name) -> const Frame* {
         auto it = playerFramesByName.find(name);
-        if (it == playerFramesByName.end()) return fallbackPlayerFrame;
-        return &it->second;
+        if (it != playerFramesByName.end()) return &it->second;
+        auto itPng = playerFramesByName.find(name + ".png");
+        if (itPng != playerFramesByName.end()) return &itPng->second;
+
+        const std::string want = normalizeFrameName(name);
+        for (const auto& kv : playerFramesByName) {
+            if (normalizeFrameName(kv.first) == want) return &kv.second;
+        }
+        if (!fallbackPlayerFrame && !playerFramesByName.empty()) {
+            fallbackPlayerFrame = &playerFramesByName.begin()->second;
+        }
+        return fallbackPlayerFrame;
     };
 
     struct AnimConfig {
@@ -801,6 +913,9 @@ int RunGameApp(int argc, char** argv) {
     float jumpBufferMax = 0.12f;
     std::string levelServerUrl;
     std::string levelServerAuthToken;
+    std::string levelServerAccountUsername;
+    std::string accountManagerUrl = "https://benno111.github.io/Dorfplatformer-API/";
+    std::string firebaseApiKey;
     std::string appVersion = "dev";
     MovementConfig movementCfg{};
     float bossGravity = 0.0f;
@@ -822,6 +937,17 @@ int RunGameApp(int argc, char** argv) {
                 levelServerAuthToken = cfg["level_server_auth_token"].get<std::string>();
             } else if (cfg.contains("level_api_auth_token") && cfg["level_api_auth_token"].is_string()) {
                 levelServerAuthToken = cfg["level_api_auth_token"].get<std::string>();
+            }
+            if (cfg.contains("level_server_account_username") && cfg["level_server_account_username"].is_string()) {
+                levelServerAccountUsername = cfg["level_server_account_username"].get<std::string>();
+            } else if (cfg.contains("level_api_account_username") && cfg["level_api_account_username"].is_string()) {
+                levelServerAccountUsername = cfg["level_api_account_username"].get<std::string>();
+            }
+            if (cfg.contains("account_manager_url") && cfg["account_manager_url"].is_string()) {
+                accountManagerUrl = cfg["account_manager_url"].get<std::string>();
+            }
+            if (cfg.contains("firebase_api_key") && cfg["firebase_api_key"].is_string()) {
+                firebaseApiKey = cfg["firebase_api_key"].get<std::string>();
             }
             if (cfg.contains("jump_buffer_seconds") && cfg["jump_buffer_seconds"].is_number()) {
                 jumpBufferMax = (float)cfg["jump_buffer_seconds"].get<double>();
@@ -1074,7 +1200,9 @@ int RunGameApp(int argc, char** argv) {
         };
         settings["network"] = {
             {"level_server_url", levelServerUrl},
-            {"level_server_auth_token", levelServerAuthToken}
+            {"level_server_auth_token", levelServerAuthToken},
+            {"level_server_account_username", levelServerAccountUsername},
+            {"firebase_api_key", firebaseApiKey}
         };
         {
             nlohmann::json extra = nlohmann::json::array();
@@ -1106,6 +1234,8 @@ int RunGameApp(int argc, char** argv) {
         j["telemetry_webhook_url"] = telemetryWebhookUrl;
         j["level_server_url"] = levelServerUrl;
         j["level_server_auth_token"] = levelServerAuthToken;
+        j["level_server_account_username"] = levelServerAccountUsername;
+        j["firebase_api_key"] = firebaseApiKey;
         j["fast_travel_delay"] = fastTravelChangeDelay;
         j["music_volume"] = musicVolume;
         j["sfx_volume"] = sfxVolume;
@@ -1202,18 +1332,21 @@ int RunGameApp(int argc, char** argv) {
                         telemetryWebhookUrl = t["telemetry_webhook_url"].get<std::string>();
                     }
                 }
+                auto applyNonEmptyNetworkString = [](const nlohmann::json& obj, const char* key, std::string& out) {
+                    if (!obj.contains(key) || !obj[key].is_string()) return;
+                    const std::string value = obj[key].get<std::string>();
+                    if (!value.empty()) out = value;
+                };
                 if (s.contains("network") && s["network"].is_object()) {
                     const auto& n = s["network"];
-                    if (n.contains("level_server_url") && n["level_server_url"].is_string()) {
-                        levelServerUrl = n["level_server_url"].get<std::string>();
-                    } else if (n.contains("level_api_url") && n["level_api_url"].is_string()) {
-                        levelServerUrl = n["level_api_url"].get<std::string>();
-                    }
-                    if (n.contains("level_server_auth_token") && n["level_server_auth_token"].is_string()) {
-                        levelServerAuthToken = n["level_server_auth_token"].get<std::string>();
-                    } else if (n.contains("level_api_auth_token") && n["level_api_auth_token"].is_string()) {
-                        levelServerAuthToken = n["level_api_auth_token"].get<std::string>();
-                    }
+                    applyNonEmptyNetworkString(n, "level_server_url", levelServerUrl);
+                    if (levelServerUrl.empty()) applyNonEmptyNetworkString(n, "level_api_url", levelServerUrl);
+                    applyNonEmptyNetworkString(n, "level_server_auth_token", levelServerAuthToken);
+                    if (levelServerAuthToken.empty()) applyNonEmptyNetworkString(n, "level_api_auth_token", levelServerAuthToken);
+                    applyNonEmptyNetworkString(n, "level_server_account_username", levelServerAccountUsername);
+                    if (levelServerAccountUsername.empty()) applyNonEmptyNetworkString(n, "level_api_account_username", levelServerAccountUsername);
+                    applyNonEmptyNetworkString(n, "firebase_api_key", firebaseApiKey);
+                    if (firebaseApiKey.empty()) applyNonEmptyNetworkString(n, "level_api_key", firebaseApiKey);
                 }
                 if (s.contains("extra_settings") && s["extra_settings"].is_array()) {
                     const auto& a = s["extra_settings"];
@@ -1254,16 +1387,19 @@ int RunGameApp(int argc, char** argv) {
             if (j.contains("telemetry_webhook_url") && j["telemetry_webhook_url"].is_string()) {
                 telemetryWebhookUrl = j["telemetry_webhook_url"].get<std::string>();
             }
-            if (j.contains("level_server_url") && j["level_server_url"].is_string()) {
-                levelServerUrl = j["level_server_url"].get<std::string>();
-            } else if (j.contains("level_api_url") && j["level_api_url"].is_string()) {
-                levelServerUrl = j["level_api_url"].get<std::string>();
-            }
-            if (j.contains("level_server_auth_token") && j["level_server_auth_token"].is_string()) {
-                levelServerAuthToken = j["level_server_auth_token"].get<std::string>();
-            } else if (j.contains("level_api_auth_token") && j["level_api_auth_token"].is_string()) {
-                levelServerAuthToken = j["level_api_auth_token"].get<std::string>();
-            }
+            auto applyNonEmptyLegacyNetworkString = [](const nlohmann::json& obj, const char* key, std::string& out) {
+                if (!obj.contains(key) || !obj[key].is_string()) return;
+                const std::string value = obj[key].get<std::string>();
+                if (!value.empty()) out = value;
+            };
+            applyNonEmptyLegacyNetworkString(j, "level_server_url", levelServerUrl);
+            if (levelServerUrl.empty()) applyNonEmptyLegacyNetworkString(j, "level_api_url", levelServerUrl);
+            applyNonEmptyLegacyNetworkString(j, "level_server_auth_token", levelServerAuthToken);
+            if (levelServerAuthToken.empty()) applyNonEmptyLegacyNetworkString(j, "level_api_auth_token", levelServerAuthToken);
+            applyNonEmptyLegacyNetworkString(j, "level_server_account_username", levelServerAccountUsername);
+            if (levelServerAccountUsername.empty()) applyNonEmptyLegacyNetworkString(j, "level_api_account_username", levelServerAccountUsername);
+            applyNonEmptyLegacyNetworkString(j, "firebase_api_key", firebaseApiKey);
+            if (firebaseApiKey.empty()) applyNonEmptyLegacyNetworkString(j, "level_api_key", firebaseApiKey);
             if (j.contains("fast_travel_delay") && j["fast_travel_delay"].is_number()) {
                 // Deprecated: delay removed in favor of immediate smooth transitions.
                 fastTravelChangeDelay = 0.0f;
@@ -1300,11 +1436,15 @@ int RunGameApp(int argc, char** argv) {
     }
     SetLevelServerUrl(levelServerUrl);
     SetLevelServerAuthToken(levelServerAuthToken);
+    SetLevelServerAccountUsername(levelServerAccountUsername);
     if (!levelServerUrl.empty()) {
         SDL_Log("Level server: %s", levelServerUrl.c_str());
     }
     if (!levelServerAuthToken.empty()) {
         SDL_Log("Level server auth token configured");
+    }
+    if (!levelServerAccountUsername.empty()) {
+        SDL_Log("Level server account username: %s", levelServerAccountUsername.c_str());
     }
     auto applyRenderVsync = [&]() {
 #if SDL_VERSION_ATLEAST(2, 0, 18)
@@ -1317,10 +1457,7 @@ int RunGameApp(int argc, char** argv) {
     };
 #if !defined(__ANDROID__)
     if (fullscreen) {
-        if (!SDL_SetWindowFullscreen(win, true)) {
-            SDL_Log("Could not apply startup fullscreen setting: %s", SDL_GetError());
-            fullscreen = false;
-        }
+        if (!applyFullscreen(true)) fullscreen = false;
     }
 #endif
     applyRenderVsync();
@@ -1580,6 +1717,11 @@ int RunGameApp(int argc, char** argv) {
     frontendCtx.musicVolume = &musicVolume;
     frontendCtx.sfxVolume = &sfxVolume;
     frontendCtx.uiScalePercent = &uiScalePercent;
+    frontendCtx.levelServerUrl = &levelServerUrl;
+    frontendCtx.levelServerAuthToken = &levelServerAuthToken;
+    frontendCtx.levelServerAccountUsername = &levelServerAccountUsername;
+    frontendCtx.accountManagerUrl = &accountManagerUrl;
+    frontendCtx.firebaseApiKey = &firebaseApiKey;
     frontendCtx.extraSettings = extraSettings.data();
     frontendCtx.extraSettingsCount = (int)extraSettings.size();
     std::string frontendSelectedLevelPath;
@@ -2083,7 +2225,13 @@ int RunGameApp(int argc, char** argv) {
                                         560, 760,
                                         SDL_WINDOW_RESIZABLE);
             if (debugWin) {
+                #if defined(_WIN32)
+                debugRen = SDL_CreateRenderer(debugWin, "direct3d11");
+                if (!debugRen) debugRen = SDL_CreateRenderer(debugWin, "direct3d");
+                if (!debugRen) debugRen = SDL_CreateRenderer(debugWin, nullptr);
+                #else
                 debugRen = SDL_CreateRenderer(debugWin, nullptr);
+                #endif
                 if (!debugRen) {
                     SDL_DestroyWindow(debugWin);
                     debugWin = nullptr;
@@ -2102,8 +2250,58 @@ int RunGameApp(int argc, char** argv) {
         bool verticalWrapActive = false;
         float camXClampBlend = 1.0f; // 1 = fully clamped, 0 = free-follow.
         float camYClampBlend = 1.0f; // 1 = fully clamped, 0 = free-follow.
-        int detailedDebugSubmenu = 0; // 0 Overview, 1 Objects, 2 Performance, 3 Player Status
+        constexpr int kDetailedDebugTabCount = 5;
+        int detailedDebugSubmenu = 0; // 0 Overview, 1 Objects, 2 Performance, 3 Player Status, 4 Texture Inspector
         int detailedDebugObjectIndex = 0;
+        int detailedDebugTextureIndex = 0;
+        struct DebugTextureEntry {
+            const char* name = "";
+            SDL_Texture* tex = nullptr;
+            int frameCount = 0;
+            int sampleW = 0;
+            int sampleH = 0;
+        };
+        auto makeTextureInspectorEntries = [&]() {
+            std::vector<DebugTextureEntry> out;
+            out.reserve(11);
+            auto addFromList = [&](const char* name, SDL_Texture* tex, const std::vector<FrameEntry>& frames) {
+                DebugTextureEntry e{};
+                e.name = name;
+                e.tex = tex;
+                e.frameCount = (int)frames.size();
+                if (!frames.empty()) {
+                    const Frame& f = frames[0].frame;
+                    e.sampleW = std::max(0, f.rotated ? f.rect.h : f.rect.w);
+                    e.sampleH = std::max(0, f.rotated ? f.rect.w : f.rect.h);
+                }
+                out.push_back(e);
+            };
+            auto addFromMap = [&](const char* name, SDL_Texture* tex, const std::unordered_map<std::string, Frame>& frames) {
+                DebugTextureEntry e{};
+                e.name = name;
+                e.tex = tex;
+                e.frameCount = (int)frames.size();
+                if (!frames.empty()) {
+                    const Frame& f = frames.begin()->second;
+                    e.sampleW = std::max(0, f.rotated ? f.rect.h : f.rect.w);
+                    e.sampleH = std::max(0, f.rotated ? f.rect.w : f.rect.h);
+                }
+                out.push_back(e);
+            };
+            addFromList("Blocks", blocksTex, blocksFrameList);
+            addFromList("Player", playerTex, playerFrameList);
+            addFromMap("Pause", pauseTex, pauseFrames);
+            addFromList("Entities", entitiesTex, entitiesFrameList);
+            addFromMap("Bosses", bossesTex, bossesFrames);
+            addFromMap("End Sign", endSignTex, endSignFrames);
+            addFromMap("Intro Card", introCardTex, introCardFrames);
+            addFromMap("BG World 1", bgTexWorld1, bgFrameByNameWorld1);
+            addFromMap("BG World 2", bgTexWorld2, bgFrameByNameWorld2);
+            addFromMap("BG World 4", bgTexWorld4, bgFrameByNameWorld4);
+            addFromMap("BG World 5", bgTexWorld5, bgFrameByNameWorld5);
+            addFromMap("BG World 6", bgTexWorld6, bgFrameByNameWorld6);
+            return out;
+        };
         std::vector<SDL_FRect> solidHitboxes;
         std::vector<SDL_FRect> semiHitboxes;
         std::vector<SDL_FRect> waterHitboxes;
@@ -2112,6 +2310,10 @@ int RunGameApp(int argc, char** argv) {
         int pauseSelection = 0; // 0 = Resume, 1 = Restart, 2 = Quit
         bool returnToSelect = false;
         std::unordered_map<SDL_FingerID, SDL_FPoint> activeTouches;
+        bool hasTouchScreenDevice = false;
+#if defined(__ANDROID__)
+        hasTouchScreenDevice = true;
+#endif
         struct ReplayInputSnapshot {
             float touchMove = 0.0f;
             bool touchDown = false;
@@ -2308,7 +2510,13 @@ int RunGameApp(int argc, char** argv) {
                                             560, 760,
                                             SDL_WINDOW_RESIZABLE);
                 if (debugWin) {
+                    #if defined(_WIN32)
+                    debugRen = SDL_CreateRenderer(debugWin, "direct3d11");
+                    if (!debugRen) debugRen = SDL_CreateRenderer(debugWin, "direct3d");
+                    if (!debugRen) debugRen = SDL_CreateRenderer(debugWin, nullptr);
+                    #else
                     debugRen = SDL_CreateRenderer(debugWin, nullptr);
+                    #endif
                     if (!debugRen) {
                         SDL_DestroyWindow(debugWin);
                         debugWin = nullptr;
@@ -2333,10 +2541,11 @@ int RunGameApp(int argc, char** argv) {
         };
         auto handleDetailedDebuggerTap = [&](int mx, int my) -> bool {
             if (!showDetailedDebugger) return false;
-            SDL_Rect tab0{12, 38, 130, 36};
-            SDL_Rect tab1{152, 38, 130, 36};
-            SDL_Rect tab2{292, 38, 130, 36};
-            SDL_Rect tab3{432, 38, 130, 36};
+            SDL_Rect tab0{12, 38, 104, 36};
+            SDL_Rect tab1{120, 38, 104, 36};
+            SDL_Rect tab2{228, 38, 104, 36};
+            SDL_Rect tab3{336, 38, 104, 36};
+            SDL_Rect tab4{444, 38, 104, 36};
             SDL_Rect closeBtn{500, 8, 52, 24};
             SDL_Point pt{mx, my};
             bool handled = false;
@@ -2344,12 +2553,18 @@ int RunGameApp(int argc, char** argv) {
             else if (SDL_PointInRect(&pt, &tab1)) { detailedDebugSubmenu = 1; handled = true; }
             else if (SDL_PointInRect(&pt, &tab2)) { detailedDebugSubmenu = 2; handled = true; }
             else if (SDL_PointInRect(&pt, &tab3)) { detailedDebugSubmenu = 3; handled = true; }
+            else if (SDL_PointInRect(&pt, &tab4)) { detailedDebugSubmenu = 4; handled = true; }
             else if (SDL_PointInRect(&pt, &closeBtn)) { toggleDetailedDebugger(); handled = true; }
             if (detailedDebugSubmenu == 1) {
                 SDL_Rect prevBtn{12, 92, 120, 34};
                 SDL_Rect nextBtn{142, 92, 120, 34};
                 if (SDL_PointInRect(&pt, &prevBtn)) { detailedDebugObjectIndex--; handled = true; }
                 if (SDL_PointInRect(&pt, &nextBtn)) { detailedDebugObjectIndex++; handled = true; }
+            } else if (detailedDebugSubmenu == 4) {
+                SDL_Rect prevBtn{12, 92, 120, 34};
+                SDL_Rect nextBtn{142, 92, 120, 34};
+                if (SDL_PointInRect(&pt, &prevBtn)) { detailedDebugTextureIndex--; handled = true; }
+                if (SDL_PointInRect(&pt, &nextBtn)) { detailedDebugTextureIndex++; handled = true; }
             }
             return handled;
         };
@@ -2719,6 +2934,7 @@ int RunGameApp(int argc, char** argv) {
                 }
                 if (!consumedByDebugger &&
                     (e.tfinger.windowID == mainWindowId || e.tfinger.windowID == 0)) {
+                    hasTouchScreenDevice = true;
                     activeTouches[e.tfinger.fingerID] = SDL_FPoint{e.tfinger.x, e.tfinger.y};
                 }
             }
@@ -2743,8 +2959,8 @@ int RunGameApp(int argc, char** argv) {
             if (e.type == SDL_KEYDOWN && e.key.repeat == 0) {
                 if (e.key.key == SDLK_F11) {
 #if !defined(__ANDROID__)
-                    fullscreen = !fullscreen;
-                    SDL_SetWindowFullscreen(win, fullscreen);
+                    const bool nextFullscreen = !fullscreen;
+                    if (applyFullscreen(nextFullscreen)) fullscreen = nextFullscreen;
 #endif
                 }
                 if (e.key.key == SDLK_F12) {
@@ -2772,11 +2988,15 @@ int RunGameApp(int argc, char** argv) {
                     toggleDetailedDebugger();
                 }
                 if (e.key.key == SDLK_F4) {
-                    detailedDebugSubmenu = (detailedDebugSubmenu + 1) % 4;
+                    detailedDebugSubmenu = (detailedDebugSubmenu + 1) % kDetailedDebugTabCount;
                 }
                 if (showDetailedDebugger && detailedDebugSubmenu == 1) {
                     if (e.key.key == SDLK_UP) detailedDebugObjectIndex--;
                     if (e.key.key == SDLK_DOWN) detailedDebugObjectIndex++;
+                }
+                if (showDetailedDebugger && detailedDebugSubmenu == 4) {
+                    if (e.key.key == SDLK_UP || e.key.key == SDLK_LEFT) detailedDebugTextureIndex--;
+                    if (e.key.key == SDLK_DOWN || e.key.key == SDLK_RIGHT) detailedDebugTextureIndex++;
                 }
                 if (e.key.key == SDLK_F9) {
                     if (allowNextLevelProgression) {
@@ -5769,7 +5989,8 @@ int RunGameApp(int argc, char** argv) {
             int touchDeviceCount = 0;
             SDL_TouchID* touchDevices = SDL_GetTouchDevices(&touchDeviceCount);
             if (touchDevices) SDL_free(touchDevices);
-            bool showMobileUi = (touchDeviceCount > 0) || !activeTouches.empty();
+            if (touchDeviceCount > 0) hasTouchScreenDevice = true;
+            bool showMobileUi = hasTouchScreenDevice;
             if (showMobileUi) {
                 auto drawTouchBtn = [&](const SDL_FRect& r, bool active) {
                     SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
@@ -5807,13 +6028,14 @@ int RunGameApp(int argc, char** argv) {
             SDL_RenderDrawRect(ren, &panel);
 
             DrawText(ren, 12, 10, 2, "DETAILED DEBUGGER (F5)");
-            SDL_Rect tab0{12, 38, 130, 36};
-            SDL_Rect tab1{152, 38, 130, 36};
-            SDL_Rect tab2{292, 38, 130, 36};
-            SDL_Rect tab3{432, 38, 130, 36};
-            SDL_Rect tabs[4] = {tab0, tab1, tab2, tab3};
-            const char* tabNames[4] = {"OVERVIEW", "OBJECT INDEX", "PERF", "PLAYER"};
-            for (int i = 0; i < 4; ++i) {
+            SDL_Rect tab0{12, 38, 104, 36};
+            SDL_Rect tab1{120, 38, 104, 36};
+            SDL_Rect tab2{228, 38, 104, 36};
+            SDL_Rect tab3{336, 38, 104, 36};
+            SDL_Rect tab4{444, 38, 104, 36};
+            SDL_Rect tabs[kDetailedDebugTabCount] = {tab0, tab1, tab2, tab3, tab4};
+            const char* tabNames[kDetailedDebugTabCount] = {"OVERVIEW", "OBJECTS", "PERF", "PLAYER", "TEXTURES"};
+            for (int i = 0; i < kDetailedDebugTabCount; ++i) {
                 SDL_SetRenderDrawColor(ren, i == detailedDebugSubmenu ? 70 : 45, 85, 120, i == detailedDebugSubmenu ? 180 : 120);
                 SDL_RenderFillRect(ren, &tabs[i]);
                 SDL_SetRenderDrawColor(ren, 180, 200, 230, 255);
@@ -5861,11 +6083,53 @@ int RunGameApp(int argc, char** argv) {
                 DrawText(ren, 12, y, 2, std::string("Frame ms: ") + std::to_string((int)std::lround(dt * 1000.0f))); y += 20;
                 DrawText(ren, 12, y, 2, "Target: <16ms (60 FPS)"); y += 20;
                 DrawText(ren, 12, y, 2, "Use submenu for full perf details on desktop"); y += 20;
-            } else {
+            } else if (detailedDebugSubmenu == 3) {
                 DrawText(ren, 12, y, 2, std::string("Position: ") + std::to_string((int)player.x) + ", " + std::to_string((int)player.y)); y += 20;
                 DrawText(ren, 12, y, 2, std::string("Velocity: ") + std::to_string((int)player.vx) + ", " + std::to_string((int)player.vy)); y += 20;
                 DrawText(ren, 12, y, 2, std::string("Facing: ") + (player.facing < 0 ? "LEFT" : "RIGHT")); y += 20;
                 DrawText(ren, 12, y, 2, std::string("Anim: ") + std::to_string(player.anim)); y += 20;
+            } else {
+                auto entries = makeTextureInspectorEntries();
+                if (entries.empty()) {
+                    detailedDebugTextureIndex = 0;
+                    DrawText(ren, 12, y, 2, "No texture entries");
+                } else {
+                    detailedDebugTextureIndex = std::clamp(detailedDebugTextureIndex, 0, (int)entries.size() - 1);
+                    SDL_Rect prevBtn{12, 92, 120, 34};
+                    SDL_Rect nextBtn{142, 92, 120, 34};
+                    SDL_SetRenderDrawColor(ren, 55, 70, 95, 180);
+                    SDL_RenderFillRect(ren, &prevBtn);
+                    SDL_RenderFillRect(ren, &nextBtn);
+                    SDL_SetRenderDrawColor(ren, 180, 200, 230, 255);
+                    SDL_RenderDrawRect(ren, &prevBtn);
+                    SDL_RenderDrawRect(ren, &nextBtn);
+                    DrawText(ren, prevBtn.x + 12, prevBtn.y + 7, 2, "PREV");
+                    DrawText(ren, nextBtn.x + 12, nextBtn.y + 7, 2, "NEXT");
+                    y = 134;
+                    const DebugTextureEntry& sel = entries[detailedDebugTextureIndex];
+                    DrawText(ren, 12, y, 2, std::string("Selected: ") + std::to_string(detailedDebugTextureIndex + 1) + "/" + std::to_string((int)entries.size())); y += 20;
+                    DrawText(ren, 12, y, 2, std::string("Name: ") + sel.name); y += 20;
+                    DrawText(ren, 12, y, 2, std::string("Loaded: ") + (sel.tex ? "1" : "0")); y += 20;
+                    float tw = 0.0f, th = 0.0f;
+                    if (sel.tex) SDL_GetTextureSize(sel.tex, &tw, &th);
+                    DrawText(ren, 12, y, 2, std::string("Texture Size: ") + std::to_string((int)std::lround(tw)) + "x" + std::to_string((int)std::lround(th))); y += 20;
+                    DrawText(ren, 12, y, 2, std::string("Frames: ") + std::to_string(sel.frameCount)); y += 20;
+                    DrawText(ren, 12, y, 2, std::string("Sample Frame: ") + std::to_string(sel.sampleW) + "x" + std::to_string(sel.sampleH)); y += 20;
+
+                    SDL_Rect previewRect{350, 92, 196, 196};
+                    SDL_SetRenderDrawColor(ren, 36, 44, 58, 255);
+                    SDL_RenderDrawRect(ren, &previewRect);
+                    if (sel.tex && tw > 0.0f && th > 0.0f) {
+                        const float fit = std::min((previewRect.w - 8) / tw, (previewRect.h - 8) / th);
+                        SDL_Rect dst{
+                            previewRect.x + (previewRect.w - (int)std::lround(tw * fit)) / 2,
+                            previewRect.y + (previewRect.h - (int)std::lround(th * fit)) / 2,
+                            std::max(1, (int)std::lround(tw * fit)),
+                            std::max(1, (int)std::lround(th * fit))
+                        };
+                        SDL_RenderCopy(ren, sel.tex, nullptr, &dst);
+                    }
+                }
             }
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
         }
@@ -5900,13 +6164,14 @@ int RunGameApp(int argc, char** argv) {
 
             int y = 10;
             DrawText(debugRen, 12, y, 2, "DETAILED DEBUGGER (F5)"); y += 24;
-            SDL_Rect tab0{12, 38, 130, 36};
-            SDL_Rect tab1{152, 38, 130, 36};
-            SDL_Rect tab2{292, 38, 130, 36};
-            SDL_Rect tab3{432, 38, 130, 36};
-            SDL_Rect tabs[4] = {tab0, tab1, tab2, tab3};
-            const char* tabNames[4] = {"OVERVIEW", "OBJECT INDEX", "PERFORMANCE", "PLAYER STATUS"};
-            for (int i = 0; i < 4; ++i) {
+            SDL_Rect tab0{12, 38, 104, 36};
+            SDL_Rect tab1{120, 38, 104, 36};
+            SDL_Rect tab2{228, 38, 104, 36};
+            SDL_Rect tab3{336, 38, 104, 36};
+            SDL_Rect tab4{444, 38, 104, 36};
+            SDL_Rect tabs[kDetailedDebugTabCount] = {tab0, tab1, tab2, tab3, tab4};
+            const char* tabNames[kDetailedDebugTabCount] = {"OVERVIEW", "OBJECTS", "PERF", "PLAYER", "TEXTURES"};
+            for (int i = 0; i < kDetailedDebugTabCount; ++i) {
                 SDL_SetRenderDrawBlendMode(debugRen, SDL_BLENDMODE_BLEND);
                 SDL_SetRenderDrawColor(debugRen, i == detailedDebugSubmenu ? 70 : 45, 85, 120, i == detailedDebugSubmenu ? 180 : 120);
                 SDL_RenderFillRect(debugRen, &tabs[i]);
@@ -5916,7 +6181,7 @@ int RunGameApp(int argc, char** argv) {
                 DrawText(debugRen, tabs[i].x + (tabs[i].w - MeasureTextWidth(2, tabNames[i])) / 2, tabs[i].y + 8, 2, tabNames[i]);
             }
             y = 84;
-            const char* submenuNames[4] = {"OVERVIEW", "OBJECT INDEX", "PERFORMANCE", "PLAYER STATUS"};
+            const char* submenuNames[kDetailedDebugTabCount] = {"OVERVIEW", "OBJECT INDEX", "PERFORMANCE", "PLAYER STATUS", "TEXTURE INSPECTOR"};
             DrawText(debugRen, 12, y, 2, std::string("SUBMENU (F4): ") + submenuNames[detailedDebugSubmenu]); y += 20;
             if (detailedDebugSubmenu == 0) {
                 long rssKB = -1, vmKB = -1;
@@ -6106,7 +6371,7 @@ int RunGameApp(int argc, char** argv) {
                 }
                 DrawText(debugRen, graphX + 8, memGraphY + 8, 2, "Memory RSS History");
                 DrawText(debugRen, graphX + 8, memGraphY + 28, 2, std::string("Peak MB: ") + std::to_string((int)std::lround(maxMem)));
-            } else {
+            } else if (detailedDebugSubmenu == 3) {
                 DrawText(debugRen, 12, y, 2, "PLAYER STATUS"); y += 24;
                 DrawText(debugRen, 12, y, 2, std::string("Position: ") + std::to_string((int)player.x) + ", " + std::to_string((int)player.y)); y += 20;
                 DrawText(debugRen, 12, y, 2, std::string("Velocity: ") + std::to_string((int)player.vx) + ", " + std::to_string((int)player.vy)); y += 20;
@@ -6120,6 +6385,55 @@ int RunGameApp(int argc, char** argv) {
                 DrawText(debugRen, 12, y, 2, std::string("JumpHoldTime: ") + std::to_string((int)std::lround(player.jumpHoldTime * 1000.0f)) + "ms"); y += 20;
                 DrawText(debugRen, 12, y, 2, std::string("JumpBuffer: ") + std::to_string((int)std::lround(player.jumpBufferTime * 1000.0f)) + "ms"); y += 20;
                 DrawText(debugRen, 12, y, 2, std::string("DrownTimer: ") + std::to_string((int)std::lround(player.drownTimer * 1000.0f)) + "ms"); y += 20;
+            } else {
+                auto entries = makeTextureInspectorEntries();
+                if (entries.empty()) {
+                    detailedDebugTextureIndex = 0;
+                    DrawText(debugRen, 12, y, 2, "No texture entries");
+                } else {
+                    detailedDebugTextureIndex = std::clamp(detailedDebugTextureIndex, 0, (int)entries.size() - 1);
+                    SDL_Rect prevBtn{12, 92, 120, 34};
+                    SDL_Rect nextBtn{142, 92, 120, 34};
+                    SDL_SetRenderDrawBlendMode(debugRen, SDL_BLENDMODE_BLEND);
+                    SDL_SetRenderDrawColor(debugRen, 55, 70, 95, 180);
+                    SDL_RenderFillRect(debugRen, &prevBtn);
+                    SDL_RenderFillRect(debugRen, &nextBtn);
+                    SDL_SetRenderDrawBlendMode(debugRen, SDL_BLENDMODE_NONE);
+                    SDL_SetRenderDrawColor(debugRen, 180, 200, 230, 255);
+                    SDL_RenderDrawRect(debugRen, &prevBtn);
+                    SDL_RenderDrawRect(debugRen, &nextBtn);
+                    DrawText(debugRen, prevBtn.x + 12, prevBtn.y + 7, 2, "PREV");
+                    DrawText(debugRen, nextBtn.x + 12, nextBtn.y + 7, 2, "NEXT");
+                    y = 134;
+                    const DebugTextureEntry& sel = entries[detailedDebugTextureIndex];
+                    DrawText(debugRen, 12, y, 2, std::string("Selected: ") + std::to_string(detailedDebugTextureIndex + 1) + "/" + std::to_string((int)entries.size())); y += 20;
+                    DrawText(debugRen, 12, y, 2, std::string("Name: ") + sel.name); y += 20;
+                    DrawText(debugRen, 12, y, 2, std::string("Loaded: ") + (sel.tex ? "1" : "0")); y += 20;
+                    float tw = 0.0f, th = 0.0f;
+                    if (sel.tex) SDL_GetTextureSize(sel.tex, &tw, &th);
+                    DrawText(debugRen, 12, y, 2, std::string("Texture Size: ") + std::to_string((int)std::lround(tw)) + "x" + std::to_string((int)std::lround(th))); y += 20;
+                    DrawText(debugRen, 12, y, 2, std::string("Frames: ") + std::to_string(sel.frameCount)); y += 20;
+                    DrawText(debugRen, 12, y, 2, std::string("Sample Frame: ") + std::to_string(sel.sampleW) + "x" + std::to_string(sel.sampleH)); y += 20;
+                    DrawText(debugRen, 12, y, 2, "Keys: UP/DOWN or LEFT/RIGHT"); y += 20;
+
+                    const int previewX = 320;
+                    const int previewY = 98;
+                    const int previewW = std::max(180, dbgW - previewX - 12);
+                    const int previewH = std::max(180, dbgH - previewY - 12);
+                    SDL_Rect previewRect{previewX, previewY, previewW, previewH};
+                    SDL_SetRenderDrawColor(debugRen, 36, 44, 58, 255);
+                    SDL_RenderDrawRect(debugRen, &previewRect);
+                    if (sel.tex && tw > 0.0f && th > 0.0f) {
+                        const float fit = std::min((previewRect.w - 8) / tw, (previewRect.h - 8) / th);
+                        SDL_Rect dst{
+                            previewRect.x + (previewRect.w - (int)std::lround(tw * fit)) / 2,
+                            previewRect.y + (previewRect.h - (int)std::lround(th * fit)) / 2,
+                            std::max(1, (int)std::lround(tw * fit)),
+                            std::max(1, (int)std::lround(th * fit))
+                        };
+                        SDL_RenderCopy(debugRen, sel.tex, nullptr, &dst);
+                    }
+                }
             }
 
             SDL_RenderPresent(debugRen);

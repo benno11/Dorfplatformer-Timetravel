@@ -46,10 +46,14 @@ bool ensureGdiplusStarted() {
 
 std::wstring utf8ToWide(const std::string& s) {
     if (s.empty()) return std::wstring();
-    int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
+    const int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
     if (n <= 1) return std::wstring();
-    std::wstring out(n - 1, L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, out.data(), n);
+
+    // MultiByteToWideChar with -1 includes the null terminator in n.
+    std::wstring out((size_t)n, L'\0');
+    const int written = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, out.data(), n);
+    if (written <= 1) return std::wstring();
+    out.pop_back();
     return out;
 }
 
@@ -78,29 +82,41 @@ SDL_Texture* loadTextureWithGdiPlus(SDL_Renderer* ren, const std::string& resolv
         return nullptr;
     }
 
-    SDL_Surface* surf = SDL_CreateSurface(w, h, SDL_PIXELFORMAT_BGRA8888);
+    SDL_Surface* surf = SDL_CreateSurface(w, h, SDL_PIXELFORMAT_RGBA8888);
     if (!surf) {
         if (errorOut) *errorOut += "; SDL_CreateSurface failed";
         return nullptr;
     }
+
+    Gdiplus::Rect lockRect(0, 0, w, h);
+    Gdiplus::BitmapData data{};
+    if (src.LockBits(&lockRect, Gdiplus::ImageLockModeRead, PixelFormat32bppARGB, &data) != Gdiplus::Ok) {
+        SDL_DestroySurface(surf);
+        if (errorOut) *errorOut += "; GDI+ LockBits failed";
+        return nullptr;
+    }
+
+    const Uint8* srcBase = static_cast<const Uint8*>(data.Scan0);
+    const int srcPitch = data.Stride;
+    const int srcAbsPitch = (srcPitch < 0) ? -srcPitch : srcPitch;
     Uint8* dstBase = static_cast<Uint8*>(surf->pixels);
     const int dstPitch = surf->pitch;
     for (int y = 0; y < h; ++y) {
-        Uint8* row = dstBase + y * dstPitch;
+        const Uint8* srcRow = (srcPitch >= 0)
+            ? (srcBase + y * srcPitch)
+            : (srcBase + (h - 1 - y) * srcAbsPitch);
+        Uint8* dstRow = dstBase + y * dstPitch;
         for (int x = 0; x < w; ++x) {
-            Gdiplus::Color c;
-            if (src.GetPixel(x, y, &c) != Gdiplus::Ok) {
-                SDL_DestroySurface(surf);
-                if (errorOut) *errorOut += "; GDI+ GetPixel failed";
-                return nullptr;
-            }
-            Uint8* px = row + x * 4;
-            px[0] = c.GetBlue();
-            px[1] = c.GetGreen();
-            px[2] = c.GetRed();
-            px[3] = c.GetAlpha();
+            const Uint8 b = srcRow[x * 4 + 0];
+            const Uint8 g = srcRow[x * 4 + 1];
+            const Uint8 r = srcRow[x * 4 + 2];
+            const Uint8 a = srcRow[x * 4 + 3];
+            const Uint32 pixel = SDL_MapSurfaceRGBA(surf, r, g, b, a);
+            std::memcpy(dstRow + x * 4, &pixel, sizeof(pixel));
         }
     }
+
+    src.UnlockBits(&data);
 
     SDL_Texture* tex = SDL_CreateTextureFromSurface(ren, surf);
     SDL_DestroySurface(surf);
@@ -206,13 +222,64 @@ static std::string extractBetween(const std::string& s, const std::string& a, co
     return s.substr(p, q - p);
 }
 
+static bool parseIntsFromString(const std::string& s, int* out, int count) {
+    if (!out || count <= 0) return false;
+    int found = 0;
+    const char* p = s.c_str();
+    while (*p && found < count) {
+        while (*p && !std::isdigit((unsigned char)*p) && *p != '-') ++p;
+        if (!*p) break;
+        char* end = nullptr;
+        long v = std::strtol(p, &end, 10);
+        if (end == p) {
+            ++p;
+            continue;
+        }
+        out[found++] = (int)v;
+        p = end;
+    }
+    return found == count;
+}
+
 static bool parseTextureRect(const std::string& s, SDL_Rect& out) {
-    int x = 0, y = 0, w = 0, h = 0;
-    if (std::sscanf(s.c_str(), "{{%d,%d},{%d,%d}}", &x, &y, &w, &h) == 4) {
+    int vals[4] = {0, 0, 0, 0};
+    if (parseIntsFromString(s, vals, 4)) {
+        const int x = vals[0];
+        const int y = vals[1];
+        const int w = vals[2];
+        const int h = vals[3];
         out.x = x; out.y = y; out.w = w; out.h = h;
         return true;
     }
     return false;
+}
+
+static bool parseSizePair(const std::string& s, int& w, int& h) {
+    int vals[2] = {0, 0};
+    if (!parseIntsFromString(s, vals, 2)) return false;
+    w = vals[0];
+    h = vals[1];
+    return true;
+}
+
+static bool hasKnownFrameImageExtension(const std::string& key) {
+    if (key.empty()) return false;
+    const size_t dot = key.find_last_of('.');
+    if (dot == std::string::npos) return false;
+    std::string ext = key.substr(dot);
+    for (char& ch : ext) ch = (char)std::tolower((unsigned char)ch);
+    return ext == ".png" || ext == ".bmp" || ext == ".jpg" || ext == ".jpeg" || ext == ".webp";
+}
+
+static std::string normalizeFrameKey(const std::string& key) {
+    const size_t dot = key.find_last_of('.');
+    if (dot == std::string::npos) return key;
+    std::string ext = key.substr(dot);
+    for (char& ch : ext) ch = (char)std::tolower((unsigned char)ch);
+    if (ext == ".png" || ext == ".bmp" || ext == ".jpg" || ext == ".jpeg" || ext == ".webp") {
+        return key.substr(0, dot);
+    }
+    return key;
 }
 
 std::unordered_map<std::string, Frame> loadPlistFrames(const std::string& plistPath) {
@@ -221,28 +288,86 @@ std::unordered_map<std::string, Frame> loadPlistFrames(const std::string& plistP
     if (text.empty()) return frames;
     std::istringstream in(text);
     std::string line, currentName;
-    bool expectTextureRect = false, expectRotated = false;
+    bool expectTextureRect = false, expectRotated = false, expectSpriteSize = false;
+    bool expectFramesDict = false;
+    bool inFramesDict = false;
+    int framesDictDepth = 0;
     Frame pending{};
-    while (std::getline(in, line)) {
-        std::string key = extractBetween(line, "<key>", "</key>");
-        if (!key.empty() && key.size() > 4 && key.substr(key.size() - 4) == ".png") {
-            currentName = key.substr(0, key.size() - 4);
-            pending = Frame{};
+    bool haveRect = false;
+    int spriteW = 0, spriteH = 0;
+    auto finalizeCurrent = [&]() {
+        if (currentName.empty()) return;
+        Frame f = pending;
+        if ((!haveRect || f.rect.w <= 0 || f.rect.h <= 0) && spriteW > 0 && spriteH > 0) {
+            f.rect.x = 0;
+            f.rect.y = 0;
+            f.rect.w = spriteW;
+            f.rect.h = spriteH;
         }
+        if (f.rect.w > 0 && f.rect.h > 0) frames[currentName] = f;
+    };
+    while (std::getline(in, line)) {
+        if (!inFramesDict) {
+            if (line.find("<key>frames</key>") != std::string::npos) {
+                expectFramesDict = true;
+                continue;
+            }
+            if (expectFramesDict && line.find("<dict>") != std::string::npos) {
+                inFramesDict = true;
+                framesDictDepth = 1;
+                expectFramesDict = false;
+                continue;
+            }
+            if (expectFramesDict && line.find("<dict>") == std::string::npos) {
+                expectFramesDict = false;
+            }
+            continue;
+        }
+
+        std::string key = extractBetween(line, "<key>", "</key>");
+        if (framesDictDepth == 1 && hasKnownFrameImageExtension(key)) {
+            finalizeCurrent();
+            currentName = normalizeFrameKey(key);
+            pending = Frame{};
+            haveRect = false;
+            spriteW = 0;
+            spriteH = 0;
+        }
+        if (line.find("<key>spriteSize</key>") != std::string::npos) { expectSpriteSize = true; continue; }
         if (line.find("<key>textureRect</key>") != std::string::npos) { expectTextureRect = true; continue; }
         if (line.find("<key>textureRotated</key>") != std::string::npos) { expectRotated = true; continue; }
+        if (expectSpriteSize) {
+            std::string val = extractBetween(line, "<string>", "</string>");
+            if (!val.empty()) parseSizePair(val, spriteW, spriteH);
+            expectSpriteSize = false;
+        }
         if (expectTextureRect) {
             std::string val = extractBetween(line, "<string>", "</string>");
-            if (!val.empty()) parseTextureRect(val, pending.rect);
+            if (!val.empty()) haveRect = parseTextureRect(val, pending.rect);
             expectTextureRect = false;
         }
         if (expectRotated) {
             if (line.find("<true/>") != std::string::npos) pending.rotated = true;
             if (line.find("<false/>") != std::string::npos) pending.rotated = false;
-            if (!currentName.empty()) frames[currentName] = pending;
+            finalizeCurrent();
             expectRotated = false;
         }
+
+        if (line.find("<dict>") != std::string::npos) ++framesDictDepth;
+        if (line.find("</dict>") != std::string::npos) {
+            --framesDictDepth;
+            if (framesDictDepth <= 0) {
+                finalizeCurrent();
+                inFramesDict = false;
+                framesDictDepth = 0;
+                currentName.clear();
+                expectTextureRect = false;
+                expectRotated = false;
+                expectSpriteSize = false;
+            }
+        }
     }
+    finalizeCurrent();
     return frames;
 }
 
@@ -252,28 +377,86 @@ std::vector<FrameEntry> loadPlistFrameList(const std::string& plistPath) {
     if (text.empty()) return frames;
     std::istringstream in(text);
     std::string line, currentName;
-    bool expectTextureRect = false, expectRotated = false;
+    bool expectTextureRect = false, expectRotated = false, expectSpriteSize = false;
+    bool expectFramesDict = false;
+    bool inFramesDict = false;
+    int framesDictDepth = 0;
     Frame pending{};
-    while (std::getline(in, line)) {
-        std::string key = extractBetween(line, "<key>", "</key>");
-        if (!key.empty() && key.size() > 4 && key.substr(key.size() - 4) == ".png") {
-            currentName = key.substr(0, key.size() - 4);
-            pending = Frame{};
+    bool haveRect = false;
+    int spriteW = 0, spriteH = 0;
+    auto finalizeCurrent = [&]() {
+        if (currentName.empty()) return;
+        Frame f = pending;
+        if ((!haveRect || f.rect.w <= 0 || f.rect.h <= 0) && spriteW > 0 && spriteH > 0) {
+            f.rect.x = 0;
+            f.rect.y = 0;
+            f.rect.w = spriteW;
+            f.rect.h = spriteH;
         }
+        if (f.rect.w > 0 && f.rect.h > 0) frames.push_back(FrameEntry{currentName, f});
+    };
+    while (std::getline(in, line)) {
+        if (!inFramesDict) {
+            if (line.find("<key>frames</key>") != std::string::npos) {
+                expectFramesDict = true;
+                continue;
+            }
+            if (expectFramesDict && line.find("<dict>") != std::string::npos) {
+                inFramesDict = true;
+                framesDictDepth = 1;
+                expectFramesDict = false;
+                continue;
+            }
+            if (expectFramesDict && line.find("<dict>") == std::string::npos) {
+                expectFramesDict = false;
+            }
+            continue;
+        }
+
+        std::string key = extractBetween(line, "<key>", "</key>");
+        if (framesDictDepth == 1 && hasKnownFrameImageExtension(key)) {
+            finalizeCurrent();
+            currentName = normalizeFrameKey(key);
+            pending = Frame{};
+            haveRect = false;
+            spriteW = 0;
+            spriteH = 0;
+        }
+        if (line.find("<key>spriteSize</key>") != std::string::npos) { expectSpriteSize = true; continue; }
         if (line.find("<key>textureRect</key>") != std::string::npos) { expectTextureRect = true; continue; }
         if (line.find("<key>textureRotated</key>") != std::string::npos) { expectRotated = true; continue; }
+        if (expectSpriteSize) {
+            std::string val = extractBetween(line, "<string>", "</string>");
+            if (!val.empty()) parseSizePair(val, spriteW, spriteH);
+            expectSpriteSize = false;
+        }
         if (expectTextureRect) {
             std::string val = extractBetween(line, "<string>", "</string>");
-            if (!val.empty()) parseTextureRect(val, pending.rect);
+            if (!val.empty()) haveRect = parseTextureRect(val, pending.rect);
             expectTextureRect = false;
         }
         if (expectRotated) {
             if (line.find("<true/>") != std::string::npos) pending.rotated = true;
             if (line.find("<false/>") != std::string::npos) pending.rotated = false;
-            if (!currentName.empty()) frames.push_back(FrameEntry{currentName, pending});
+            finalizeCurrent();
             expectRotated = false;
         }
+
+        if (line.find("<dict>") != std::string::npos) ++framesDictDepth;
+        if (line.find("</dict>") != std::string::npos) {
+            --framesDictDepth;
+            if (framesDictDepth <= 0) {
+                finalizeCurrent();
+                inFramesDict = false;
+                framesDictDepth = 0;
+                currentName.clear();
+                expectTextureRect = false;
+                expectRotated = false;
+                expectSpriteSize = false;
+            }
+        }
     }
+    finalizeCurrent();
     return frames;
 }
 
@@ -300,7 +483,10 @@ void renderFrameEx(SDL_Renderer* ren, SDL_Texture* tex, const Frame& f, const SD
 SDL_Texture* loadTextureWithColorKey(SDL_Renderer* ren, const std::string& path, Uint8 r, Uint8 g, Uint8 b) {
     const std::string resolved = ResolveAssetPath(path);
     SDL_Surface* surf = IMG_Load(resolved.c_str());
-    if (!surf) return nullptr;
+    if (!surf) {
+        // Fallback path (not color-keyed) for platforms/decoders where IMG_Load fails.
+        return loadTextureSafe(ren, path, nullptr);
+    }
     Uint32 key = SDL_MapSurfaceRGB(surf, r, g, b);
     SDL_SetColorKey(surf, SDL_TRUE, key);
     SDL_Texture* tex = SDL_CreateTextureFromSurface(ren, surf);

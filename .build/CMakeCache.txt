@@ -219,7 +219,7 @@ SDL3_DIR:PATH=C:/Users/Benno111/Documents/GitHub/DF-New/vcpkg/installed/x64-wind
 SDL3_image_DIR:PATH=C:/Users/Benno111/Documents/GitHub/DF-New/vcpkg/installed/x64-windows/share/SDL3_image
 
 //The directory containing a CMake configuration file for SDL3_mixer.
-SDL3_mixer_DIR:PATH=SDL3_mixer_DIR-NOTFOUND
+SDL3_mixer_DIR:PATH=C:/Users/Benno111/Documents/GitHub/DF-New/deps/windows-sdl3-mixer/SDL3_mixer-3.1.2/cmake
 
 //The directory containing a CMake configuration file for SDL3_ttf.
 SDL3_ttf_DIR:PATH=C:/Users/Benno111/Documents/GitHub/DF-New/vcpkg/installed/x64-windows/share/sdl3_ttf

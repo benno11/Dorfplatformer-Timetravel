@@ -209,10 +209,22 @@ static bool audioDriverAvailable(const char* driver) {
     return false;
 }
 
+static bool setAudioDriverEnv(const char* driver) {
+    if (!driver || !*driver) return false;
+#if defined(_WIN32)
+    const errno_t a = _putenv_s("SDL_AUDIO_DRIVER", driver);
+    const errno_t b = _putenv_s("SDL_AUDIODRIVER", driver);
+    return a == 0 && b == 0;
+#else
+    return setenv("SDL_AUDIO_DRIVER", driver, 1) == 0 &&
+           setenv("SDL_AUDIODRIVER", driver, 1) == 0;
+#endif
+}
+
 static bool reinitAudioSubsystemWithDriver(const char* driver) {
     if (!driver || !*driver) return false;
     SDL_SetHint(SDL_HINT_AUDIO_DRIVER, driver);
-    if (setenv("SDL_AUDIO_DRIVER", driver, 1) != 0 || setenv("SDL_AUDIODRIVER", driver, 1) != 0) {
+    if (!setAudioDriverEnv(driver)) {
         SDL_Log("Audio mixer retry: could not set audio driver env to %s", driver);
         return false;
     }
@@ -268,8 +280,10 @@ bool AudioSystem::initialize() {
         const char* retryDrivers[] = {
 #if defined(__ANDROID__)
             "aaudio", "openslES", "dummy"
+#elif defined(_WIN32)
+            "wasapi", "directsound", "xaudio2", "dummy"
 #else
-            "pipewire", "pulseaudio", "dummy", "alsa", "sndio"
+            "pipewire", "pulseaudio", "alsa", "sndio", "dummy"
 #endif
         };
         for (const char* driver : retryDrivers) {

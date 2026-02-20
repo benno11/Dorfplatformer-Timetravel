@@ -34,7 +34,7 @@ Level upload API (GitHub Pages):
   - `https://<your-user>.github.io/<your-repo>/api.json`
 - Upload format written by the app:
   - `PUT <level_server_url>/levels/<id>.json`
-  - Body includes `data` (raw level text) plus metadata fields (`name`, `author`, timestamps).
+  - Body includes `data` (raw level text) plus metadata fields (`name`, `owner`, `level_id`, timestamps).
 
 Custom levels:
 - Main menu `Play` opens campaign levels
@@ -42,10 +42,16 @@ Custom levels:
 - Desktop: put `.txt` or `.bnnlvl` files in `custom_levels/` or `assets/custom_levels/`
 - Android/assets-based: provide `assets/custom_levels/levels.json` with a `levels` array
 - Realtime DB: set `level_server_url` in `assets/config.json` (and Android asset config) to your Firebase RTDB base URL.
-  - Optional for protected DB rules: `level_server_auth_token`
+  - For authenticated writes: `level_server_auth_token`
+  - Account username for uploads: `level_server_account_username`
   - Supported remote list endpoints:
     - Firebase Realtime Database REST API is used (`.json` endpoints, `shallow=true` for ID listing).
     - `<level_server_url>/levels.json` (object keys are IDs; each level read from `/levels/<id>/data.json`)
     - `<level_server_url>/custom_levels/levels.json` with `{ "levels": ["level_a.txt", ...] }`
     - `<level_server_url>/custom_levels.json` with `{ "levels": ["https://.../file.txt", ...] }`
   - Remote user levels are downloaded and cached into the app save folder under `user_levels/`.
+  - Upload IDs are now written as `username-levelname`.
+
+Firebase Realtime Database rules:
+- Use `firebase-realtime-database.rules.json` for RTDB rules.
+- These rules require authenticated writes and enforce upload payload shape for `/levels/<username-levelname>`.

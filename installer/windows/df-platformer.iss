@@ -1,15 +1,15 @@
 #define MyAppName "Dorfplatformer Timetravel"
 #ifndef MyAppVersion
-  #define MyAppVersion "2.1.0"
+  #define MyAppVersion "2.1.0-test"
 #endif
-#define MyAppPublisher "DF-New"
+#define MyAppPublisher "Benno111"
 #define MyAppExeName "platformer.exe"
 
 [Setup]
 AppId={{D1BE0AE1-0D76-4A53-B02D-1CC6C36AB3AB}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
-AppPublisher={#MyAppPublisher}
+AppPublisher={#MyAppPublisher}  // Display a message box
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 UninstallDisplayIcon={app}\{#MyAppExeName}

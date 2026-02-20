@@ -439,7 +439,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
     InputSystem editorInput;
     editorInput.scanConnected();
 
-    SDL_Texture* blocksTex = IMG_LoadTexture(ren, ResolveAssetPath("assets/Sheets/DF_Blocks-uhd.png").c_str());
+    SDL_Texture* blocksTex = loadTextureSafe(ren, "assets/Sheets/DF_Blocks-uhd.png", nullptr);
     if (blocksTex) SDL_SetTextureScaleMode(blocksTex, SDL_SCALEMODE_NEAREST);
     auto blocksFrameList = loadPlistFrameList("assets/Sheets/DF_Blocks-uhd.plist");
     std::unordered_map<std::string, Frame> blocksFrameByName;
@@ -1956,6 +1956,84 @@ std::string buildFirebaseLevelUploadUrl(const std::string& base,
     return u;
 }
 
+bool resolveAccountUsernameFromToken(const std::string& authToken, std::string& accountUsernameOut) {
+    accountUsernameOut.clear();
+    if (authToken.empty()) return false;
+#if defined(HAVE_CURL) && HAVE_CURL
+    std::string apiKey;
+    const std::string cfgText = ReadTextFile("assets/config.json");
+    if (!cfgText.empty()) {
+        try {
+            const nlohmann::json cfgJson = nlohmann::json::parse(cfgText);
+            if (cfgJson.is_object()) {
+                if (cfgJson.contains("firebase_api_key") && cfgJson["firebase_api_key"].is_string()) {
+                    apiKey = cfgJson["firebase_api_key"].get<std::string>();
+                } else if (cfgJson.contains("level_api_key") && cfgJson["level_api_key"].is_string()) {
+                    apiKey = cfgJson["level_api_key"].get<std::string>();
+                }
+            }
+        } catch (...) {}
+    }
+    if (apiKey.empty()) return false;
+
+    CURL* curl = curl_easy_init();
+    if (!curl) return false;
+    const std::string url = "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" + apiKey;
+    nlohmann::json req;
+    req["idToken"] = authToken;
+    const std::string body = req.dump();
+    struct curl_slist* headers = nullptr;
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    std::string respBody;
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_POST, 1L);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)body.size());
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "DF-New/1.0");
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,
+        +[](char* ptr, size_t size, size_t nmemb, void* userdata) -> size_t {
+            std::string* out = static_cast<std::string*>(userdata);
+            out->append(ptr, size * nmemb);
+            return size * nmemb;
+        });
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &respBody);
+    const CURLcode rc = curl_easy_perform(curl);
+    long code = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+    if (rc != CURLE_OK || code < 200 || code >= 300) return false;
+
+    try {
+        const nlohmann::json resp = nlohmann::json::parse(respBody);
+        if (!resp.is_object() || !resp.contains("users") || !resp["users"].is_array() || resp["users"].empty()) return false;
+        const nlohmann::json& user = resp["users"][0];
+        std::string candidate;
+        if (user.contains("displayName") && user["displayName"].is_string()) {
+            candidate = user["displayName"].get<std::string>();
+        }
+        if (candidate.empty() && user.contains("email") && user["email"].is_string()) {
+            const std::string email = user["email"].get<std::string>();
+            const std::size_t atPos = email.find('@');
+            candidate = (atPos == std::string::npos) ? email : email.substr(0, atPos);
+        }
+        candidate = sanitizeFilePart(candidate);
+        if (candidate.empty()) return false;
+        accountUsernameOut = candidate;
+        return true;
+    } catch (...) {
+        return false;
+    }
+#else
+    (void)authToken;
+    return false;
+#endif
+}
+
 bool uploadLocalLevelToServer(const LevelEntry& level, std::string& statusText) {
     if (level.path.empty() || level.path == "__local_editor__") {
         statusText = "No local level selected.";
@@ -1970,6 +2048,21 @@ bool uploadLocalLevelToServer(const LevelEntry& level, std::string& statusText) 
         statusText = "Level server URL is not configured.";
         return false;
     }
+    const std::string authToken = GetLevelServerAuthToken();
+    std::string accountUsernameRaw = GetLevelServerAccountUsername();
+    if (accountUsernameRaw.empty() && !authToken.empty()) {
+        std::string resolvedUsername;
+        if (resolveAccountUsernameFromToken(authToken, resolvedUsername) && !resolvedUsername.empty()) {
+            accountUsernameRaw = resolvedUsername;
+            SetLevelServerAccountUsername(accountUsernameRaw);
+            SDL_Log("NET/UI: upload resolved username from token username=%s", accountUsernameRaw.c_str());
+        }
+    }
+    if (accountUsernameRaw.empty()) {
+        statusText = "Sign in before upload.";
+        return false;
+    }
+    const std::string accountUsername = sanitizeFilePart(accountUsernameRaw);
 
     std::ifstream in(level.path, std::ios::binary);
     if (!in.is_open()) {
@@ -1982,10 +2075,13 @@ bool uploadLocalLevelToServer(const LevelEntry& level, std::string& statusText) 
         return false;
     }
 
-    const std::string levelId = sanitizeFilePart(level.label) + "_" + std::to_string((unsigned long long)std::time(nullptr));
-    const std::string uploadUrl = buildFirebaseLevelUploadUrl(levelServerUrl, GetLevelServerAuthToken(), levelId);
+    const std::string levelName = sanitizeFilePart(level.label);
+    const std::string levelId = accountUsername + "-" + levelName;
+    const std::string uploadUrl = buildFirebaseLevelUploadUrl(levelServerUrl, authToken, levelId);
     nlohmann::json payload;
     payload["name"] = level.label;
+    payload["level_id"] = levelId;
+    payload["owner"] = accountUsername;
     payload["source"] = "local";
     payload["data"] = levelData;
     payload["uploaded_at"] = (long long)std::time(nullptr);

@@ -1,0 +1,17 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "levels": {
+      ".read": true,
+      "$levelId": {
+        ".write": "auth != null",
+        ".validate": "newData.hasChildren(['data','name','owner','uploaded_at','level_id']) && newData.child('data').isString() && newData.child('name').isString() && newData.child('owner').isString() && newData.child('uploaded_at').isNumber() && newData.child('level_id').isString() && newData.child('level_id').val() === $levelId && $levelId.matches(/^[A-Za-z0-9_-]+-[A-Za-z0-9_-]+$/)"
+      }
+    },
+    "custom_levels": {
+      ".read": true,
+      ".write": "auth != null"
+    }
+  }
+}

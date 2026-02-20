@@ -1,0 +1,36 @@
+{
+  "name": "DF-New Level Upload API",
+  "type": "client-side",
+  "host": "GitHub Pages",
+  "storage": "Firebase Realtime Database REST API",
+  "firebase": {
+    "api_key": "AIzaSyC-lBtzoK98rO6TH6nQV4ugiPsVMbAJ-44",
+    "level_server_url": "https://timetravel-server-default-rtdb.europe-west1.firebasedatabase.app"
+  },
+  "level_read_contract": {
+    "list_ids": "/levels.json?shallow=true",
+    "fetch_level_data": "/levels/<id>/data.json"
+  },
+  "level_write_contract": {
+    "put_level_object": "/levels/<id>.json",
+    "id_format": "username-levelname",
+    "required_fields": [
+      "data",
+      "name",
+      "owner",
+      "level_id",
+      "uploaded_at"
+    ]
+  },
+  "account_contract": {
+    "account_field": "owner",
+    "username_source": "Firebase ID token via accounts:lookup (fallback: accountUsername, then author)",
+    "auth": "Firebase auth token via ?auth=<token> for Realtime Database writes/reads"
+  },
+  "notes": [
+    "This is a static web client, not a server runtime.",
+    "Database auth depends on your Firebase rules; pass token via UI if required.",
+    "Uploaded level IDs are generated as username-levelname.",
+    "Account manager page: /account-manager.html"
+  ]
+}

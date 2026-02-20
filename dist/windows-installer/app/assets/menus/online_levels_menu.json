@@ -5,15 +5,17 @@
   "local_editor_entry": "CREATE LOCAL LEVEL (EDITOR)",
   "user_levels_header": "USER LEVELS",
   "download_button": "DOWNLOAD (D)",
+  "upload_button": "UPLOAD (U)",
   "empty_title": "No levels found in this tab.",
   "empty_local_hint": "Use CREATE LOCAL LEVEL (EDITOR).",
   "empty_custom_hint_android": "Add custom levels to assets/custom_levels/levels.json.",
   "empty_custom_hint_desktop": "Use custom_levels/ or assets/custom_levels/.",
   "local_panel_title": "LOCAL LEVEL",
-  "local_panel_actions": "ENTER/P: PLAY  DEL/X: DELETE  E: EDIT",
+  "local_panel_actions": "ENTER/P: PLAY  DEL/X: DELETE  E: EDIT  U: UPLOAD",
   "local_panel_back_hint": "ESC: BACK",
   "btn_play": "PLAY",
   "btn_delete": "DELETE",
   "btn_edit": "EDIT",
+  "btn_upload": "UPLOAD",
   "btn_back": "BACK"
 }

@@ -10,3 +10,5 @@ void SetLevelServerUrl(const std::string& url);
 std::string GetLevelServerUrl();
 void SetLevelServerAuthToken(const std::string& token);
 std::string GetLevelServerAuthToken();
+void SetLevelServerAccountUsername(const std::string& username);
+std::string GetLevelServerAccountUsername();
