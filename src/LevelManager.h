@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "LevelLoader.h"
@@ -18,6 +19,7 @@ public:
     std::string nextLevelPath() const;
 
     int collectCoinsAtPlayer(TileMap& map, const Player& player, bool wrapX = false, bool wrapY = false);
+    int activateButtonsAtPlayer(TileMap& map, const Player& player, bool wrapX = false, bool wrapY = false);
     void updateTimeWarpIdAtPlayer(const TileMap& map, const Player& player, bool wrapX = false, bool wrapY = false);
     void setTileAt(TileMap& map, int idx, unsigned short tileId) const;
 
@@ -32,6 +34,10 @@ public:
     std::string musicPath() const;
     bool hasLevelCode(int code) const;
     std::string levelPathByCode(int code) const;
+    std::string levelPathByWorldAreaTime(int world, int area, int time) const;
+    std::vector<int> activeButtonWorldAreas() const;
+    void setButtonAreaActiveForDebug(int world, int area, bool active);
+    void clearButtonAreasForDebug();
 
 private:
     static std::vector<int> loadLevelNumberList(const std::string& path);
@@ -39,6 +45,8 @@ private:
     static int nextLevelId(int currentLevelId);
     static std::string levelPathFromId(int levelId);
     static std::vector<char> loadBlockDefs(const std::string& path);
+    bool isButtonAreaActive(int worldId, int areaId) const;
+    bool areButtonsActiveUpToArea(int worldId, int areaId) const;
 
     void applyBlockDefAt(TileMap& map, int idx, unsigned short tileId) const;
     void updateLevelMetadata(const TileMap& map);
@@ -51,4 +59,7 @@ private:
     int worldId_ = 0;
     int levelPartId_ = 0;
     int timeId_ = 0;
+    std::unordered_set<int> activeButtonWorldAreas_;
+    std::unordered_set<int> buttonWorldAreasWithButtons_;
 };
+

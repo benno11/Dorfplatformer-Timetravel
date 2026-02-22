@@ -71,6 +71,11 @@ std::string androidHttpGetViaJava(const std::string& url, int timeoutMs) {
     }
     jmethodID mid = env->GetStaticMethodID(cls, "httpGet", "(Ljava/lang/String;I)Ljava/lang/String;");
     if (!mid) {
+        if (env->ExceptionCheck()) {
+            env->ExceptionDescribe();
+            env->ExceptionClear();
+        }
+        SDL_Log("NET: Java fallback missing MainActivity.httpGet(String,int)");
         env->DeleteLocalRef(cls);
         env->DeleteLocalRef(activity);
         return {};
@@ -82,6 +87,15 @@ std::string androidHttpGetViaJava(const std::string& url, int timeoutMs) {
         return {};
     }
     jstring jout = static_cast<jstring>(env->CallStaticObjectMethod(cls, mid, jurl, (jint)timeoutMs));
+    if (env->ExceptionCheck()) {
+        env->ExceptionDescribe();
+        env->ExceptionClear();
+        SDL_Log("NET: Java fallback exception in MainActivity.httpGet");
+        env->DeleteLocalRef(jurl);
+        env->DeleteLocalRef(cls);
+        env->DeleteLocalRef(activity);
+        return {};
+    }
     std::string out;
     if (jout) {
         const char* chars = env->GetStringUTFChars(jout, nullptr);

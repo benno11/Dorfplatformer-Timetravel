@@ -1,0 +1,26 @@
+{
+  "version": "2.1.1",
+  "experimental_render_thread": false,
+  "movement": {
+    "accel_in_water": 700.0,
+    "accel_ground": 900.0,
+    "max_speed_in_water": 400.0,
+    "max_speed_ground": 700.0,
+    "friction_in_water": 900.0,
+    "friction_ground": 3000.0,
+    "gravity_in_water": 900.0,
+    "gravity_ground": 2000.0,
+    "boss_gravity": 13.0,
+    "swim_up_speed": 380.0,
+    "swim_rise": 900.0
+  },
+  "background": {
+    "parallax_layer_scales": [0.8, 0.8, 0.8]
+  },
+  "level_api_url": "https://benno111.github.io/Dorfplatformer-API/",
+  "level_server_url": "https://timetravel-server-default-rtdb.europe-west1.firebasedatabase.app/",
+  "account_manager_url": "https://benno111.github.io/Dorfplatformer-API/",
+  "firebase_api_key": "AIzaSyC-lBtzoK98rO6TH6nQV4ugiPsVMbAJ-44",
+  "level_server_account_username": "",
+  "level_server_auth_token": ""
+}

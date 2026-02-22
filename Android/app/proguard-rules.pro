@@ -5,21 +5,17 @@
 # For more details, see
 #   http://developer.android.com/guide/developing/tools/proguard.html
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
-
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
-
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
-
-# SDL Java bridge classes are looked up from native JNI_OnLoad.
+# Keep SDL bridge classes and method names used by JNI_OnLoad registration.
 -keep class org.libsdl.app.** { *; }
--keep class org.libsdl.app.SDLInputConnection { *; }
+
+# Preserve all native method signatures so JNI lookups cannot break in release builds.
+-keepclassmembers class * {
+    native <methods>;
+}
+
+# Methods looked up explicitly via JNI GetStaticMethodID from native code.
+-keepclassmembers class com.Benno111.dorfplatformertimetravel.MainActivity {
+    public static java.lang.String httpGet(java.lang.String, int);
+    public static boolean showSoftKeyboard(int, int, int, int);
+    public static void hideSoftKeyboard();
+}

@@ -25,6 +25,10 @@
   var changeUsernameBtn = q("changeUsernameBtn");
   var changePasswordBtn = q("changePasswordBtn");
 
+  var createPanelEl = q("createPanel");
+  var loginPanelEl = q("loginPanel");
+  var usernamePanelEl = q("usernamePanel");
+
   var statusEl = q("status");
   var sessionSummaryEl = q("sessionSummary");
 
@@ -44,6 +48,7 @@
   }
 
   function setStatus(msg, type) {
+    if (!statusEl) return;
     statusEl.textContent = msg;
     statusEl.className = "status";
     if (type === "ok") statusEl.classList.add("ok");
@@ -63,6 +68,7 @@
   }
 
   function renderSummary() {
+    if (!sessionSummaryEl) return;
     var lines = [];
     lines.push("email: " + (session.email || "<none>"));
     lines.push("localId: " + (session.localId || "<none>"));
@@ -71,6 +77,17 @@
     lines.push("token: " + (session.level_server_auth_token ? "configured" : "<none>"));
     lines.push("api_key: " + (session.api_key && session.api_key !== "REPLACE_WITH_FIREBASE_WEB_API_KEY" ? "configured" : "<placeholder>"));
     sessionSummaryEl.textContent = lines.join("\n");
+  }
+
+  function isLoggedIn() {
+    return !!(session.idToken && session.level_server_auth_token);
+  }
+
+  function renderAuthSections() {
+    var loggedIn = isLoggedIn();
+    if (createPanelEl) createPanelEl.style.display = loggedIn ? "none" : "";
+    if (loginPanelEl) loginPanelEl.style.display = loggedIn ? "none" : "";
+    if (usernamePanelEl) usernamePanelEl.style.display = loggedIn ? "" : "none";
   }
 
   function getApiKey() {
@@ -128,6 +145,7 @@
     session.level_server_auth_token = session.idToken || "";
     persist();
     renderSummary();
+    renderAuthSections();
   }
 
   async function createAccount() {
@@ -199,6 +217,7 @@
     session.level_server_auth_token = "";
     persist();
     renderSummary();
+    renderAuthSections();
     setStatus("Signed out locally.", "ok");
   }
 
@@ -230,7 +249,7 @@
   }
 
   async function changePassword() {
-    var nextPassword = newPasswordEl.value || "";
+    var nextPassword = newPasswordEl ? (newPasswordEl.value || "") : "";
     if (!session.idToken) {
       setStatus("Sign in first.", "err");
       return;
@@ -247,6 +266,7 @@
         returnSecureToken: true
       });
       applyAuthResponse(update);
+      if (newPasswordEl) newPasswordEl.value = "";
       persist();
       renderSummary();
       setStatus("Password changed.", "ok");
@@ -255,11 +275,65 @@
     }
   }
 
-  createAccountBtn.addEventListener("click", createAccount);
-  signInBtn.addEventListener("click", signIn);
-  signOutBtn.addEventListener("click", signOut);
-  changeUsernameBtn.addEventListener("click", changeUsername);
-  changePasswordBtn.addEventListener("click", changePassword);
+  function setupTouchInputInteractions() {
+    var inputs = [
+      createEmailEl, createPasswordEl, createUsernameEl,
+      loginEmailEl, loginPasswordEl,
+      newUsernameEl, newPasswordEl
+    ].filter(Boolean);
+
+    function focusInput(el) {
+      if (!el) return;
+      el.focus({ preventScroll: true });
+      setTimeout(function () {
+        try {
+          el.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+        } catch (_) {
+          el.scrollIntoView(true);
+        }
+      }, 80);
+    }
+
+    inputs.forEach(function (el) {
+      el.addEventListener("touchstart", function () {
+        focusInput(el);
+      }, { passive: true });
+
+      el.addEventListener("focus", function () {
+        setTimeout(function () { focusInput(el); }, 50);
+      });
+
+      el.addEventListener("keydown", function (ev) {
+        if (ev.key !== "Enter") return;
+        if (el === createEmailEl || el === createPasswordEl || el === createUsernameEl) {
+          ev.preventDefault();
+          createAccount();
+          return;
+        }
+        if (el === loginEmailEl || el === loginPasswordEl) {
+          ev.preventDefault();
+          signIn();
+          return;
+        }
+        if (el === newUsernameEl) {
+          ev.preventDefault();
+          changeUsername();
+          return;
+        }
+        if (el === newPasswordEl) {
+          ev.preventDefault();
+          changePassword();
+        }
+      });
+    });
+  }
+
+  if (createAccountBtn) createAccountBtn.addEventListener("click", createAccount);
+  if (signInBtn) signInBtn.addEventListener("click", signIn);
+  if (signOutBtn) signOutBtn.addEventListener("click", signOut);
+  if (changeUsernameBtn) changeUsernameBtn.addEventListener("click", changeUsername);
+  if (changePasswordBtn) changePasswordBtn.addEventListener("click", changePassword);
+  setupTouchInputInteractions();
 
   var initial = readStored();
   (async function init() {
@@ -271,6 +345,7 @@
     session.api_key = FIREBASE_API_KEY;
     persist();
     renderSummary();
+    renderAuthSections();
     setStatus("Ready.");
   })();
 })();

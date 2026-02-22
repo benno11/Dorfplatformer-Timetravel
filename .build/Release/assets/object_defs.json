@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "defs": {
+    "spawn": {
+      "sheet": "tilesSheet",
+      "defaultAnim": "idle",
+      "hitbox": {
+        "x": -8,
+        "y": -16,
+        "w": 16,
+        "h": 32
+      },
+      "anims": {
+        "idle": {
+          "fps": 1,
+          "loop": true,
+          "frames": [
+            "bg_stone_0.png"
+          ]
+        }
+      },
+      "secondaryHitboxes": {}
+    }
+  }
+}

@@ -14,6 +14,10 @@
 #include <unordered_map>
 #include <vector>
 #include <nlohmann/json.hpp>
+#if defined(__ANDROID__)
+#include <jni.h>
+#include <SDL3/SDL_system.h>
+#endif
 
 #include "TextRenderer.h"
 #include "GameSupport.h"
@@ -50,6 +54,38 @@ struct OnlineLevelsMenuLabels {
     std::string buttonUpload = "UPLOAD";
     std::string buttonBack = "BACK";
 };
+
+#if defined(__ANDROID__)
+void ShowAndroidSoftKeyboard(int x, int y, int w, int h) {
+    JNIEnv* env = static_cast<JNIEnv*>(SDL_GetAndroidJNIEnv());
+    if (!env) return;
+    jclass cls = env->FindClass("com/Benno111/dorfplatformertimetravel/MainActivity");
+    if (!cls) return;
+    jmethodID mid = env->GetStaticMethodID(cls, "showSoftKeyboard", "(IIII)Z");
+    if (mid) {
+        (void)env->CallStaticBooleanMethod(cls, mid, (jint)x, (jint)y, (jint)w, (jint)h);
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+        }
+    }
+    env->DeleteLocalRef(cls);
+}
+
+void HideAndroidSoftKeyboard() {
+    JNIEnv* env = static_cast<JNIEnv*>(SDL_GetAndroidJNIEnv());
+    if (!env) return;
+    jclass cls = env->FindClass("com/Benno111/dorfplatformertimetravel/MainActivity");
+    if (!cls) return;
+    jmethodID mid = env->GetStaticMethodID(cls, "hideSoftKeyboard", "()V");
+    if (mid) {
+        env->CallStaticVoidMethod(cls, mid);
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+        }
+    }
+    env->DeleteLocalRef(cls);
+}
+#endif
 
 bool isHttpUrl(const std::string& path) {
     std::string p = path;
@@ -233,12 +269,60 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
     NewLevelPromptResult out;
     bool running = true;
     int selectedRow = 0; // 0 name, 1 width, 2 height, 3 create, 4 cancel
-    SDL_StartTextInput(win);
+    bool promptTextInputActive = false;
+    auto setPromptTextInput = [&](bool active, int winW = 0, int winH = 0) {
+        if (active == promptTextInputActive) return;
+        promptTextInputActive = active;
+        if (active) {
+            SDL_StartTextInput(win);
+#if defined(__ANDROID__)
+            if (winW <= 0 || winH <= 0) SDL_GetWindowSize(win, &winW, &winH);
+            ShowAndroidSoftKeyboard(0, 0, std::max(1, winW), std::max(1, winH));
+#endif
+        } else {
+            SDL_StopTextInput(win);
+#if defined(__ANDROID__)
+            HideAndroidSoftKeyboard();
+#endif
+        }
+    };
+    auto setSelectedRow = [&](int row, int winW = 0, int winH = 0) {
+        selectedRow = std::clamp(row, 0, 4);
+        if (selectedRow == 0) {
+            setPromptTextInput(true, winW, winH);
+#if defined(__ANDROID__)
+            if (winW <= 0 || winH <= 0) SDL_GetWindowSize(win, &winW, &winH);
+            ShowAndroidSoftKeyboard(0, 0, std::max(1, winW), std::max(1, winH));
+#endif
+        }
+    };
+    setPromptTextInput(true);
     auto clampSize = [](int v) { return std::clamp(v, 5, 400); };
     auto trimSpaces = [](std::string s) {
         while (!s.empty() && std::isspace((unsigned char)s.front())) s.erase(s.begin());
         while (!s.empty() && std::isspace((unsigned char)s.back())) s.pop_back();
         return s;
+    };
+    auto isTextInputEventType = [](Uint32 t) -> bool {
+        if (t == SDL_TEXTINPUT) return true;
+#if defined(SDL_EVENT_TEXT_INPUT)
+        if (t == SDL_EVENT_TEXT_INPUT) return true;
+#endif
+        return false;
+    };
+    auto isKeyDownEventType = [](Uint32 t) -> bool {
+        if (t == SDL_KEYDOWN) return true;
+#if defined(SDL_EVENT_KEY_DOWN)
+        if (t == SDL_EVENT_KEY_DOWN) return true;
+#endif
+        return false;
+    };
+    auto isFingerDownEventType = [](Uint32 t) -> bool {
+        if (t == SDL_FINGERDOWN) return true;
+#if defined(SDL_EVENT_FINGER_DOWN)
+        if (t == SDL_EVENT_FINGER_DOWN) return true;
+#endif
+        return false;
     };
 
     while (running) {
@@ -256,21 +340,27 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
         SDL_Rect cancelBtn{panel.x + 290, panel.y + 242, 150, 42};
         auto handlePointerDown = [&](int px, int py) {
             SDL_Point pt{px, py};
-            if (SDL_PointInRect(&pt, &rowWMinus)) { selectedRow = 1; out.width = clampSize(out.width - 1); return; }
-            if (SDL_PointInRect(&pt, &rowWPlus)) { selectedRow = 1; out.width = clampSize(out.width + 1); return; }
-            if (SDL_PointInRect(&pt, &rowHMinus)) { selectedRow = 2; out.height = clampSize(out.height - 1); return; }
-            if (SDL_PointInRect(&pt, &rowHPlus)) { selectedRow = 2; out.height = clampSize(out.height + 1); return; }
-            if (SDL_PointInRect(&pt, &rowName)) { selectedRow = 0; return; }
-            if (SDL_PointInRect(&pt, &rowW)) { selectedRow = 1; return; }
-            if (SDL_PointInRect(&pt, &rowH)) { selectedRow = 2; return; }
-            if (SDL_PointInRect(&pt, &createBtn)) {
+            auto inPadded = [&](const SDL_Rect& r, int pad = 10) -> bool {
+                SDL_Rect rr{r.x - pad, r.y - pad, r.w + pad * 2, r.h + pad * 2};
+                return SDL_PointInRect(&pt, &rr);
+            };
+            if (inPadded(rowWMinus, 12)) { setSelectedRow(1, winW, winH); out.width = clampSize(out.width - 1); return; }
+            if (inPadded(rowWPlus, 12)) { setSelectedRow(1, winW, winH); out.width = clampSize(out.width + 1); return; }
+            if (inPadded(rowHMinus, 12)) { setSelectedRow(2, winW, winH); out.height = clampSize(out.height - 1); return; }
+            if (inPadded(rowHPlus, 12)) { setSelectedRow(2, winW, winH); out.height = clampSize(out.height + 1); return; }
+            if (inPadded(rowName, 14)) { setSelectedRow(0, winW, winH); return; }
+            if (inPadded(rowW, 10)) { setSelectedRow(1, winW, winH); return; }
+            if (inPadded(rowH, 10)) { setSelectedRow(2, winW, winH); return; }
+            if (inPadded(createBtn, 10)) {
+                setSelectedRow(3, winW, winH);
                 out.name = trimSpaces(out.name);
                 if (out.name.empty()) out.name = "new_level";
                 out.accepted = true;
                 running = false;
                 return;
             }
-            if (SDL_PointInRect(&pt, &cancelBtn)) {
+            if (inPadded(cancelBtn, 10)) {
+                setSelectedRow(4, winW, winH);
                 running = false;
             }
         };
@@ -278,23 +368,23 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) { running = false; break; }
-            if (e.type == SDL_TEXTINPUT && selectedRow == 0) {
+            if (isTextInputEventType(e.type) && selectedRow == 0) {
                 if (out.name.size() < 48) {
                     out.name += e.text.text;
                 }
                 continue;
             }
-            if (e.type == SDL_KEYDOWN && e.key.repeat == 0) {
+            if (isKeyDownEventType(e.type) && e.key.repeat == 0) {
                 if (e.key.key == SDLK_ESCAPE || e.key.key == SDLK_AC_BACK) {
                     running = false;
                     break;
                 }
                 if (e.key.key == SDLK_UP) {
-                    selectedRow = (selectedRow + 4) % 5;
+                    setSelectedRow((selectedRow + 4) % 5, winW, winH);
                     continue;
                 }
                 if (e.key.key == SDLK_DOWN || e.key.key == SDLK_TAB) {
-                    selectedRow = (selectedRow + 1) % 5;
+                    setSelectedRow((selectedRow + 1) % 5, winW, winH);
                     continue;
                 }
                 if ((e.key.key == SDLK_BACKSPACE || e.key.key == SDLK_DELETE) && selectedRow == 0) {
@@ -322,7 +412,7 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
                     } else if (selectedRow == 4) {
                         running = false;
                     } else {
-                        selectedRow = (selectedRow + 1) % 5;
+                        setSelectedRow((selectedRow + 1) % 5, winW, winH);
                     }
                     continue;
                 }
@@ -330,7 +420,7 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
             if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
                 handlePointerDown((int)e.button.x, (int)e.button.y);
             }
-            if (e.type == SDL_FINGERDOWN) {
+            if (isFingerDownEventType(e.type)) {
                 const int tx = (int)std::lround(e.tfinger.x * winW);
                 const int ty = (int)std::lround(e.tfinger.y * winH);
                 handlePointerDown(tx, ty);
@@ -388,7 +478,7 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
         SDL_Delay(16);
     }
 
-    SDL_StopTextInput(win);
+    setPromptTextInput(false);
     return out;
 }
 
@@ -417,12 +507,22 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         grid[spawnY * gridW + spawnX] = 28;
     }
 
-    const std::vector<unsigned short> palette{2, 12, 13, 24, 29, 30, 28};
-    const std::vector<int> objectPalette{31, 46, 67};
+    const std::vector<unsigned short> palette{
+        2, 7, 12, 13,
+        14, 15, 16, 17, 18, 19, 20,
+        24, 29, 30, 41, 49,
+        51, 52, 53, 54, 55,
+        83, 84, 85, 86, 87, 88,
+        28
+    };
+    const std::vector<int> objectPalette{31, 46, 57, 58, 59, 60, 61, 67};
     int selectedPalette = 1;
     int selectedObjectPalette = 0;
+    int tilePaletteScroll = 0;
+    int objectPaletteScroll = 0;
     bool objectMode = false;
     bool running = true;
+    const Uint64 inputBlockUntilTicks = SDL_GetTicks() + 1000;
     bool paused = false;
     int pauseSel = 0; // 0 Resume, 1 Save, 2 Exit
     std::string savedPath;
@@ -431,6 +531,10 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
     Uint64 statusUntil = 0;
     SDL_FingerID activeEditorFinger = 0;
     bool fingerPainting = false;
+    bool fingerPaletteScroll = false;
+    bool fingerPaletteMoved = false;
+    int fingerPaletteLastY = 0;
+    float fingerPaletteScrollAccum = 0.0f;
     int viewX = 0;
     int viewY = 0;
     bool middlePanning = false;
@@ -466,9 +570,72 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         if (id == 68) { r = 150; g = 100; b = 255; return; }
         r = 180; g = 180; b = 180;
     };
+    auto isAutoTileId = [](unsigned short id) -> bool {
+        return (id >= 3 && id <= 11) || (id >= 38 && id <= 40);
+    };
+    auto autoTileForCell = [&](int cx, int cy) -> unsigned short {
+        auto occupied = [&](int x, int y) -> bool {
+            // Treat outside-map space as connected so auto-tiles extend through borders.
+            if (x < 0 || y < 0 || x >= gridW || y >= gridH) return true;
+            return isAutoTileId(grid[y * gridW + x]);
+        };
+        const bool u = occupied(cx, cy - 1);
+        const bool d = occupied(cx, cy + 1);
+        const bool l = occupied(cx - 1, cy);
+        const bool r = occupied(cx + 1, cy);
+
+        // One-block-height strip variant.
+        if (!u && !d) {
+            if (!l && r) return 39;   // left end
+            if (l && !r) return 40;   // right end
+            return 38;                // middle / single
+        }
+        // Top edge variants.
+        if (!u) {
+            if (!l) return 9;         // up-left
+            if (!r) return 11;        // up-right
+            return 10;                // up-middle
+        }
+        // Bottom edge variants.
+        if (!d) {
+            if (!l) return 3;         // bottom-left
+            if (!r) return 5;         // bottom-right
+            return 4;                 // bottom-middle
+        }
+        // Vertical middle variants.
+        if (!l) return 6;             // left-middle
+        if (!r) return 8;             // right-middle
+        return 7;                     // middle
+    };
+    auto refreshAutoTileAround = [&](int cx, int cy) {
+        for (int y = cy - 1; y <= cy + 1; ++y) {
+            for (int x = cx - 1; x <= cx + 1; ++x) {
+                if (x < 0 || y < 0 || x >= gridW || y >= gridH) continue;
+                const int idx = y * gridW + x;
+                if (!isAutoTileId(grid[idx])) continue;
+                grid[idx] = autoTileForCell(x, y);
+            }
+        }
+    };
     auto paintAt = [&](int cx, int cy, bool erase) {
         if (cx < 0 || cy < 0 || cx >= gridW || cy >= gridH) return;
-        grid[cy * gridW + cx] = erase ? 2 : palette[selectedPalette];
+        const int idx = cy * gridW + cx;
+        const unsigned short chosen = palette[selectedPalette];
+        const bool paintAutoTile = isAutoTileId(chosen);
+        if (erase) {
+            grid[idx] = 2;
+            refreshAutoTileAround(cx, cy);
+            return;
+        }
+        if (paintAutoTile) {
+            // Seed with a center tile then resolve neighborhood variants.
+            grid[idx] = 7;
+            refreshAutoTileAround(cx, cy);
+            return;
+        }
+        grid[idx] = chosen;
+        // Keep neighboring auto-tiles valid on every tile placement.
+        refreshAutoTileAround(cx, cy);
     };
     auto objectCellX = [&](const ObjectInstance& obj) -> int {
         return (int)std::floor(obj.x / (float)kEditorTileSize);
@@ -526,6 +693,14 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         const int paletteStartY = margin + 40;
         SDL_Rect saveBtn{panelX, winH - 140, 160, 36};
         SDL_Rect cancelBtn{panelX, winH - 96, 160, 36};
+        const int paletteRowH = 44;
+        const int paletteBottomY = saveBtn.y - 8;
+        const int paletteViewRows = std::max(1, (paletteBottomY - paletteStartY) / paletteRowH);
+        const int paletteCountNow = objectMode ? (int)objectPalette.size() : (int)palette.size();
+        int& activePaletteScroll = objectMode ? objectPaletteScroll : tilePaletteScroll;
+        const int maxPaletteScroll = std::max(0, paletteCountNow - paletteViewRows);
+        activePaletteScroll = std::clamp(activePaletteScroll, 0, maxPaletteScroll);
+        SDL_Rect paletteViewport{panelX, paletteStartY, 160, paletteViewRows * paletteRowH};
         SDL_Rect pausePanel{winW / 2 - 180, winH / 2 - 120, 360, 240};
         SDL_Rect pauseResumeBtn{pausePanel.x + 24, pausePanel.y + 150, 96, 40};
         SDL_Rect pauseSaveBtn{pausePanel.x + 132, pausePanel.y + 150, 96, 40};
@@ -535,7 +710,16 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         while (SDL_PollEvent(&e)) {
             editorInput.handleEvent(e);
             if (e.type == SDL_QUIT) { running = false; break; }
+            if (SDL_GetTicks() < inputBlockUntilTicks) continue;
             if (e.type == SDL_MOUSEWHEEL && !paused) {
+                float mx = 0.0f, my = 0.0f;
+                SDL_GetMouseState(&mx, &my);
+                SDL_Point pt{(int)std::lround(mx), (int)std::lround(my)};
+                if (SDL_PointInRect(&pt, &paletteViewport)) {
+                    const int wheelY = (int)std::lround(e.wheel.y);
+                    activePaletteScroll = std::clamp(activePaletteScroll - wheelY, 0, maxPaletteScroll);
+                    continue;
+                }
                 const bool shiftHeld = (SDL_GetModState() & SDL_KMOD_SHIFT) != 0;
                 const int step = std::max(8, cell * 2);
                 if (shiftHeld || e.wheel.x != 0) {
@@ -599,9 +783,22 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                     fingerPainting = false;
                     continue;
                 }
+                if (SDL_PointInRect(&pt, &paletteViewport)) {
+                    fingerPainting = false;
+                    fingerPaletteScroll = true;
+                    fingerPaletteMoved = false;
+                    fingerPaletteLastY = ty;
+                    fingerPaletteScrollAccum = 0.0f;
+                    continue;
+                }
                 const int paletteCount = objectMode ? (int)objectPalette.size() : (int)palette.size();
-                for (int i = 0; i < paletteCount; ++i) {
-                    SDL_Rect r{panelX, paletteStartY + i * 44, 160, 36};
+                int& paletteScroll = objectMode ? objectPaletteScroll : tilePaletteScroll;
+                const int maxScroll = std::max(0, paletteCount - paletteViewRows);
+                paletteScroll = std::clamp(paletteScroll, 0, maxScroll);
+                for (int row = 0; row < paletteViewRows; ++row) {
+                    const int i = paletteScroll + row;
+                    if (i >= paletteCount) break;
+                    SDL_Rect r{panelX, paletteStartY + row * paletteRowH, 160, 36};
                     if (SDL_PointInRect(&pt, &r)) {
                         if (objectMode) selectedObjectPalette = i;
                         else selectedPalette = i;
@@ -620,10 +817,25 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 continue;
             }
             if (e.type == SDL_FINGERMOTION && e.tfinger.fingerID == activeEditorFinger) {
-                if (paused || !fingerPainting) continue;
                 const int tx = (int)std::lround(e.tfinger.x * winW);
                 const int ty = (int)std::lround(e.tfinger.y * winH);
                 SDL_Point pt{tx, ty};
+                if (fingerPaletteScroll) {
+                    const int dy = fingerPaletteLastY - ty;
+                    fingerPaletteLastY = ty;
+                    if (std::abs(dy) >= 2) fingerPaletteMoved = true;
+                    fingerPaletteScrollAccum += (float)dy / (float)paletteRowH;
+                    int steps = (int)std::trunc(fingerPaletteScrollAccum);
+                    if (steps != 0) {
+                        const int paletteCount = objectMode ? (int)objectPalette.size() : (int)palette.size();
+                        int& paletteScroll = objectMode ? objectPaletteScroll : tilePaletteScroll;
+                        const int maxScroll = std::max(0, paletteCount - paletteViewRows);
+                        paletteScroll = std::clamp(paletteScroll + steps, 0, maxScroll);
+                        fingerPaletteScrollAccum -= (float)steps;
+                    }
+                    continue;
+                }
+                if (paused || !fingerPainting) continue;
                 if (SDL_PointInRect(&pt, &gridViewport)) {
                     const int cx = ((tx - gridX) + viewX) / cell;
                     const int cy = ((ty - gridY) + viewY) / cell;
@@ -632,6 +844,30 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 continue;
             }
             if (e.type == SDL_FINGERUP && e.tfinger.fingerID == activeEditorFinger) {
+                if (fingerPaletteScroll) {
+                    const int tx = (int)std::lround(e.tfinger.x * winW);
+                    const int ty = (int)std::lround(e.tfinger.y * winH);
+                    SDL_Point pt{tx, ty};
+                    if (!fingerPaletteMoved && SDL_PointInRect(&pt, &paletteViewport)) {
+                        const int paletteCount = objectMode ? (int)objectPalette.size() : (int)palette.size();
+                        int& paletteScroll = objectMode ? objectPaletteScroll : tilePaletteScroll;
+                        const int maxScroll = std::max(0, paletteCount - paletteViewRows);
+                        paletteScroll = std::clamp(paletteScroll, 0, maxScroll);
+                        for (int row = 0; row < paletteViewRows; ++row) {
+                            const int i = paletteScroll + row;
+                            if (i >= paletteCount) break;
+                            SDL_Rect r{panelX, paletteStartY + row * paletteRowH, 160, 36};
+                            if (SDL_PointInRect(&pt, &r)) {
+                                if (objectMode) selectedObjectPalette = i;
+                                else selectedPalette = i;
+                                break;
+                            }
+                        }
+                    }
+                }
+                fingerPaletteScroll = false;
+                fingerPaletteMoved = false;
+                fingerPaletteScrollAccum = 0.0f;
                 activeEditorFinger = 0;
                 fingerPainting = false;
                 continue;
@@ -847,8 +1083,13 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                     break;
                 }
                 const int paletteCount = objectMode ? (int)objectPalette.size() : (int)palette.size();
-                for (int i = 0; i < paletteCount; ++i) {
-                    SDL_Rect r{panelX, paletteStartY + i * 44, 160, 36};
+                int& paletteScroll = objectMode ? objectPaletteScroll : tilePaletteScroll;
+                const int maxScroll = std::max(0, paletteCount - paletteViewRows);
+                paletteScroll = std::clamp(paletteScroll, 0, maxScroll);
+                for (int row = 0; row < paletteViewRows; ++row) {
+                    const int i = paletteScroll + row;
+                    if (i >= paletteCount) break;
+                    SDL_Rect r{panelX, paletteStartY + row * paletteRowH, 160, 36};
                     if (mx >= r.x && my >= r.y && mx < r.x + r.w && my < r.y + r.h) {
                         if (objectMode) selectedObjectPalette = i;
                         else selectedPalette = i;
@@ -882,8 +1123,32 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         auto objectColor = [](int id, Uint8& r, Uint8& g, Uint8& b) {
             if (id == 31) { r = 110; g = 230; b = 140; return; }
             if (id == 46) { r = 240; g = 110; b = 120; return; }
+            if (id == 57) { r = 120; g = 240; b = 255; return; } // fast travel up
+            if (id == 58) { r = 120; g = 220; b = 200; return; } // fast travel down
+            if (id == 59) { r = 255; g = 210; b = 120; return; } // fast travel left
+            if (id == 60) { r = 255; g = 170; b = 120; return; } // fast travel right
+            if (id == 61) { r = 210; g = 150; b = 255; return; } // fast travel exit
             if (id == 67) { r = 120; g = 180; b = 255; return; }
             r = 220; g = 220; b = 240;
+        };
+        auto objectLabel = [](int id) -> std::string {
+            if (id == 31) return "SPRING (31)";
+            if (id == 46) return "BUMPER (46)";
+            if (id == 57) return "FAST UP (57)";
+            if (id == 58) return "FAST DOWN (58)";
+            if (id == 59) return "FAST LEFT (59)";
+            if (id == 60) return "FAST RIGHT (60)";
+            if (id == 61) return "FAST EXIT (61)";
+            if (id == 67) return "END SIGN (67)";
+            return std::string("Obj ") + std::to_string(id);
+        };
+        auto objectTag = [](int id) -> const char* {
+            if (id == 57) return "UP";
+            if (id == 58) return "DN";
+            if (id == 59) return "LT";
+            if (id == 60) return "RT";
+            if (id == 61) return "EX";
+            return "";
         };
         for (const auto& obj : placedObjects) {
             int id = 0;
@@ -900,6 +1165,13 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             SDL_Rect in{rc.x + std::max(2, cell / 6), rc.y + std::max(2, cell / 6), std::max(4, cell - std::max(4, cell / 3)), std::max(4, cell - std::max(4, cell / 3))};
             SDL_RenderFillRect(ren, &in);
             DrawText(ren, rc.x + 3, rc.y + 3, std::max(1, cell / 24), std::to_string(id));
+            const char* tag = objectTag(id);
+            if (tag[0] != '\0') {
+                const int tagScale = std::max(1, cell / 24);
+                const int tx = rc.x + rc.w - 4 - MeasureTextWidth(tagScale, tag);
+                const int ty = rc.y + rc.h - 12;
+                DrawText(ren, tx, ty, tagScale, tag);
+            }
         }
         // Draw grid lines after tiles so visual cells align exactly with paint hitboxes.
         SDL_SetRenderDrawColor(ren, 34, 40, 56, 255);
@@ -946,9 +1218,14 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         DrawText(ren, objectModeBtn.x + 18, objectModeBtn.y + 8, 2, "OBJ");
 
         const int paletteCount = objectMode ? (int)objectPalette.size() : (int)palette.size();
-        for (int i = 0; i < paletteCount; ++i) {
+        int& paletteScroll = objectMode ? objectPaletteScroll : tilePaletteScroll;
+        const int paletteMaxScroll = std::max(0, paletteCount - paletteViewRows);
+        paletteScroll = std::clamp(paletteScroll, 0, paletteMaxScroll);
+        for (int row = 0; row < paletteViewRows; ++row) {
+            const int i = paletteScroll + row;
+            if (i >= paletteCount) break;
             const bool selected = objectMode ? (i == selectedObjectPalette) : (i == selectedPalette);
-            SDL_Rect r{panelX, paletteStartY + i * 44, 160, 36};
+            SDL_Rect r{panelX, paletteStartY + row * paletteRowH, 160, 36};
             SDL_SetRenderDrawColor(ren, selected ? 70 : 45, selected ? 100 : 65, selected ? 160 : 95, 255);
             SDL_RenderFillRect(ren, &r);
             SDL_SetRenderDrawColor(ren, 220, 220, 230, 255);
@@ -965,7 +1242,11 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                     SDL_SetRenderDrawColor(ren, tr, tg, tb, 255);
                     SDL_RenderFillRect(ren, &sw);
                 }
-                DrawText(ren, r.x + 38, r.y + 8, 2, std::string("Tile ") + std::to_string((int)pid));
+                if (pid == 7) {
+                    DrawText(ren, r.x + 38, r.y + 8, 2, "Main Ground Tiles");
+                } else {
+                    DrawText(ren, r.x + 38, r.y + 8, 2, std::string("Tile ") + std::to_string((int)pid));
+                }
             } else {
                 const int oid = objectPalette[i];
                 Uint8 tr = 220, tg = 220, tb = 240;
@@ -973,11 +1254,21 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 SDL_SetRenderDrawColor(ren, tr, tg, tb, 255);
                 SDL_Rect sw{r.x + 6, r.y + 6, 24, 24};
                 SDL_RenderFillRect(ren, &sw);
-                DrawText(ren, r.x + 38, r.y + 8, 2, std::string("Obj ") + std::to_string(oid));
+                DrawText(ren, r.x + 38, r.y + 8, 2, objectLabel(oid));
             }
         }
+        if (paletteCount > paletteViewRows) {
+            SDL_Rect track{panelX + 164, paletteStartY, 8, paletteViewRows * paletteRowH - 8};
+            SDL_SetRenderDrawColor(ren, 40, 46, 62, 255);
+            SDL_RenderFillRect(ren, &track);
+            const int thumbH = std::max(16, (track.h * paletteViewRows) / std::max(1, paletteCount));
+            const int thumbY = track.y + ((track.h - thumbH) * paletteScroll) / std::max(1, paletteCount - paletteViewRows);
+            SDL_Rect thumb{track.x, thumbY, track.w, thumbH};
+            SDL_SetRenderDrawColor(ren, 120, 150, 210, 255);
+            SDL_RenderFillRect(ren, &thumb);
+        }
 
-        DrawText(ren, panelX, paletteStartY + paletteCount * 44 + 14, 2, "LEVEL EDITOR");
+        DrawText(ren, panelX, paletteStartY + paletteViewRows * paletteRowH + 14, 2, "LEVEL EDITOR");
         if (paused) {
             SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
             SDL_Rect dim{0, 0, winW, winH};
@@ -1237,24 +1528,32 @@ std::vector<LevelEntry> loadLevelListFromDir(const std::string& dirPath, bool pr
     std::vector<LevelEntry> out;
     namespace fs = std::filesystem;
     fs::path dir(dirPath);
-    if (!fs::exists(dir)) return out;
-    for (const auto& entry : fs::recursive_directory_iterator(dir)) {
-        if (!entry.is_regular_file()) continue;
-        auto p = entry.path();
-        const auto ext = p.extension().string();
-        if (!ext.empty() && ext != ".txt" && ext != ".bnnlvl" && ext != ".bin") continue;
-        std::string label = p.stem().string();
-        if (label.empty()) label = p.filename().string();
-        const std::string relParent = p.parent_path().lexically_relative(dir).generic_string();
-        if (!relParent.empty() && relParent != ".") {
-            label = relParent + "/" + label;
-        }
-        if (prettyLabel) {
-            for (char& ch : label) {
-                if (ch == '_') ch = ' ';
+    std::error_code ec;
+    if (!fs::exists(dir, ec) || ec) return out;
+    fs::recursive_directory_iterator it(dir, fs::directory_options::skip_permission_denied, ec);
+    fs::recursive_directory_iterator end;
+    while (!ec && it != end) {
+        const auto entry = *it;
+        std::error_code typeEc;
+        if (entry.is_regular_file(typeEc) && !typeEc) {
+            auto p = entry.path();
+            const auto ext = p.extension().string();
+            if (ext.empty() || ext == ".txt" || ext == ".bnnlvl" || ext == ".bin") {
+                std::string label = p.stem().string();
+                if (label.empty()) label = p.filename().string();
+                const std::string relParent = p.parent_path().lexically_relative(dir).generic_string();
+                if (!relParent.empty() && relParent != ".") {
+                    label = relParent + "/" + label;
+                }
+                if (prettyLabel) {
+                    for (char& ch : label) {
+                        if (ch == '_') ch = ' ';
+                    }
+                }
+                out.push_back(LevelEntry{label, p.string()});
             }
         }
-        out.push_back(LevelEntry{label, p.string()});
+        it.increment(ec);
     }
     std::sort(out.begin(), out.end(), [](const LevelEntry& a, const LevelEntry& b) { return a.label < b.label; });
     return out;
@@ -1357,13 +1656,16 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
     int selected[3] = {0, 0, 0};
     int scrollY[3] = {0, 0, 0};
     bool running = true;
+    const Uint64 inputBlockUntilTicks = SDL_GetTicks() + 1000;
     bool chosen = false;
     std::string chosenPath;
     std::string statusText;
     Uint64 statusUntilTicks = 0;
     bool draggingScrollbar = false;
+    bool draggingScrollbarTouch = false;
     int dragOffsetY = 0;
     SDL_FingerID activeFinger = 0;
+    SDL_FingerID scrollbarFinger = 0;
     float lastFingerY = 0.0f;
     float fingerDownY = 0.0f;
     bool fingerMoved = false;
@@ -1409,16 +1711,21 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
 
         int contentH = (int)levels.size() * rowH;
         int viewportH = std::max(1, winH - listTop - pad);
+        int listBottom = listTop + viewportH;
         int maxScroll = std::max(0, contentH - viewportH);
         scroll = std::clamp(scroll, 0, maxScroll);
 
-        int barW = std::max(8, (int)std::lround(10.0f * uiScale));
+        int barW = std::max(10, (int)std::lround(14.0f * uiScale));
         SDL_Rect track{winW - pad - barW, listTop, barW, viewportH};
         float visibleRatio = (contentH > 0) ? std::clamp((float)viewportH / (float)contentH, 0.0f, 1.0f) : 1.0f;
-        int thumbH = std::max(std::max(16, (int)std::lround(28.0f * uiScale)), (int)std::lround(track.h * visibleRatio));
+        int thumbH = std::max(std::max(24, (int)std::lround(36.0f * uiScale)), (int)std::lround(track.h * visibleRatio));
         int thumbTravel = std::max(1, track.h - thumbH);
         int thumbY = track.y + ((maxScroll > 0) ? (int)std::lround((float)scroll / (float)maxScroll * thumbTravel) : 0);
         SDL_Rect thumb{track.x, thumbY, barW, thumbH};
+        const int sliderHitPadX = std::max(6, (int)std::lround(8.0f * uiScale));
+        const int sliderHitPadY = std::max(4, (int)std::lround(6.0f * uiScale));
+        SDL_Rect trackHit{track.x - sliderHitPadX, track.y - sliderHitPadY, track.w + sliderHitPadX * 2, track.h + sliderHitPadY * 2};
+        SDL_Rect thumbHit{thumb.x - sliderHitPadX, thumb.y - sliderHitPadY, thumb.w + sliderHitPadX * 2, thumb.h + sliderHitPadY * 2};
         const int tabW = 170;
         const int tabGap = 10;
         std::vector<SDL_Rect> tabRects;
@@ -1493,16 +1800,42 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
                 running = false;
                 break;
             }
+            if (SDL_GetTicks() < inputBlockUntilTicks) continue;
             if (e.type == SDL_MOUSEWHEEL) {
                 scroll -= e.wheel.y * rowH;
                 if (scroll < 0) scroll = 0;
                 if (scroll > maxScroll) scroll = maxScroll;
             }
             if (e.type == SDL_FINGERDOWN && activeFinger == 0) {
+                const int fx = (int)std::lround(e.tfinger.x * winW);
+                const int fy = (int)std::lround(e.tfinger.y * winH);
+                SDL_Point fpt{fx, fy};
+                if (maxScroll > 0 && SDL_PointInRect(&fpt, &trackHit)) {
+                    draggingScrollbarTouch = true;
+                    scrollbarFinger = e.tfinger.fingerID;
+                    dragOffsetY = fy - thumb.y;
+                    if (SDL_PointInRect(&fpt, &thumbHit)) {
+                        int newThumbY = std::clamp(fy - dragOffsetY, track.y, track.y + track.h - thumbH);
+                        float t = (float)(newThumbY - track.y) / (float)std::max(1, track.h - thumbH);
+                        scroll = (int)std::lround(t * maxScroll);
+                    } else {
+                        int newThumbY = std::clamp(fy - thumbH / 2, track.y, track.y + track.h - thumbH);
+                        float t = (float)(newThumbY - track.y) / (float)std::max(1, track.h - thumbH);
+                        scroll = (int)std::lround(t * maxScroll);
+                    }
+                    continue;
+                }
                 activeFinger = e.tfinger.fingerID;
                 lastFingerY = e.tfinger.y * winH;
                 fingerDownY = lastFingerY;
                 fingerMoved = false;
+            }
+            if (e.type == SDL_FINGERMOTION && draggingScrollbarTouch && e.tfinger.fingerID == scrollbarFinger) {
+                const int fy = (int)std::lround(e.tfinger.y * winH);
+                int newThumbY = std::clamp(fy - dragOffsetY, track.y, track.y + track.h - thumbH);
+                float t = (float)(newThumbY - track.y) / (float)std::max(1, track.h - thumbH);
+                scroll = (int)std::lround(t * maxScroll);
+                continue;
             }
             if (e.type == SDL_FINGERMOTION && e.tfinger.fingerID == activeFinger) {
                 float y = e.tfinger.y * winH;
@@ -1512,6 +1845,11 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
                 scroll -= (int)std::lround(dy);
                 if (scroll < 0) scroll = 0;
                 if (scroll > maxScroll) scroll = maxScroll;
+            }
+            if (e.type == SDL_FINGERUP && draggingScrollbarTouch && e.tfinger.fingerID == scrollbarFinger) {
+                draggingScrollbarTouch = false;
+                scrollbarFinger = 0;
+                continue;
             }
             if (e.type == SDL_FINGERUP && e.tfinger.fingerID == activeFinger) {
                 const int tapX = (int)std::lround(e.tfinger.x * winW);
@@ -1525,7 +1863,7 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
                         continue;
                     }
                     int localY = tapY - listTop + scroll;
-                    if (localY >= 0) {
+                    if (tapY >= listTop && tapY < listBottom && localY >= 0) {
                         int idx = localY / rowH;
                         if (idx >= 0 && idx < (int)levels.size()) {
                             if (selectedIndex == idx) {
@@ -1547,6 +1885,11 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
                 }
                 activeFinger = 0;
                 fingerMoved = false;
+            }
+            if (e.type == SDL_EVENT_FINGER_CANCELED && draggingScrollbarTouch && e.tfinger.fingerID == scrollbarFinger) {
+                draggingScrollbarTouch = false;
+                scrollbarFinger = 0;
+                continue;
             }
             if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
                 SDL_Point pt{(int)e.button.x, (int)e.button.y};
@@ -1611,12 +1954,12 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
                     tryDownloadSelected();
                     continue;
                 }
-                if (SDL_PointInRect(&pt, &thumb)) {
+                if (maxScroll > 0 && SDL_PointInRect(&pt, &thumbHit)) {
                     draggingScrollbar = true;
                     dragOffsetY = (int)e.button.y - thumb.y;
                     continue;
                 }
-                if (SDL_PointInRect(&pt, &track)) {
+                if (maxScroll > 0 && SDL_PointInRect(&pt, &trackHit)) {
                     int newThumbY = std::clamp((int)e.button.y - thumbH / 2, track.y, track.y + track.h - thumbH);
                     float t = (float)(newThumbY - track.y) / (float)std::max(1, track.h - thumbH);
                     scroll = (int)std::lround(t * maxScroll);
@@ -1633,7 +1976,7 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
             }
             if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
                 int y = (int)e.button.y - listTop + scroll;
-                if (y >= 0) {
+                if ((int)e.button.y >= listTop && (int)e.button.y < listBottom && y >= 0) {
                     int idx = y / rowH;
                     if (idx >= 0 && idx < (int)levels.size()) {
                         selectedIndex = idx;
@@ -1853,6 +2196,8 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
             DrawText(ren, downloadBtn.x + 12, downloadBtn.y + 8, textScale, menuLabels.downloadButton);
         }
 
+        SDL_Rect listClip{pad, listTop, winW - pad * 3 - barW, viewportH};
+        SDL_SetRenderClipRect(ren, &listClip);
         if (levels.empty()) {
             DrawText(ren, pad, listTop + 8, textScale, menuLabels.emptyTitle);
             if (activeTab == localTabIndex) {
@@ -1888,6 +2233,7 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
                 SDL_RenderFillRect(ren, &thumb);
             }
         }
+        SDL_SetRenderClipRect(ren, nullptr);
 
         if (!statusText.empty() && SDL_GetTicks() < statusUntilTicks) {
             DrawText(ren, pad, winH - pad - std::max(16, (int)std::lround(18.0f * uiScale)), textScale, statusText);

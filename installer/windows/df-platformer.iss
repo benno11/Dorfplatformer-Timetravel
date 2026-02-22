@@ -1,6 +1,6 @@
 #define MyAppName "Dorfplatformer Timetravel"
 #ifndef MyAppVersion
-  #define MyAppVersion "2.1.0-test"
+  #define MyAppVersion "2.1.1"
 #endif
 #define MyAppPublisher "Benno111"
 #define MyAppExeName "platformer.exe"
@@ -15,7 +15,7 @@ DefaultGroupName={#MyAppName}
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma
 SolidCompression=yes
-WizardStyle=modern
+WizardStyle=classic
 ArchitecturesInstallIn64BitMode=x64
 PrivilegesRequired=admin
 OutputDir=..\..\dist\windows-installer\output

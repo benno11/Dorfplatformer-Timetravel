@@ -1,0 +1,14 @@
+{
+  "name": "df-new-test-server",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "test-server": "node test-server.js",
+    "build:account-manager": "node build/minify-account-manager.js"
+  },
+  "devDependencies": {
+    "clean-css": "^5.3.3",
+    "html-minifier-terser": "^7.2.0",
+    "terser": "^5.39.0"
+  }
+}

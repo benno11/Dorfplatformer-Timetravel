@@ -8,8 +8,8 @@
     "GRAPHICS+",
     "GAMEPLAY+",
     "ACCESSIBILITY",
-    "NETWORK+",
-    "PRIVACY+"
+    "ACCOUNT",
+    "PRIVACY"
   ],
   "controls_rows": [
     "MOVE LEFT",

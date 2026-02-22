@@ -30,6 +30,7 @@ struct FrontendMenuContext {
     bool* defaultShowPlayerHitbox = nullptr;
     bool* defaultShowDebugView = nullptr;
     bool* defaultHideUnknownObjectTypes = nullptr;
+    bool* debugModeEnabled = nullptr;
     bool* powerManagementEnabled = nullptr;
     bool* menuMusicEnabled = nullptr;
     bool* muteAllAudio = nullptr;
@@ -49,6 +50,7 @@ struct FrontendMenuContext {
     bool* extraSettings = nullptr; // flattened [5 categories * 11 options]
     int extraSettingsCount = 0;
     std::string* selectedLevelPath = nullptr;
+    bool* devToolsEnabled = nullptr;
 
     std::function<void()> applyAudioVolumes;
     std::function<void()> applyMenuMusicToggle;

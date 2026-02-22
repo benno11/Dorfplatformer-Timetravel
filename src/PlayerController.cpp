@@ -254,8 +254,12 @@ PlayerUpdateResult UpdatePlayerMovement(
 
     if (inWater) {
         if (jumpDown) {
-            player.vy -= swimRise * dt;
-            if (player.vy < -swimUpSpeed) player.vy = -swimUpSpeed;
+            // Preserve stronger jump impulses so the player can break out of water.
+            // Swim rise only assists up to the normal swim-up cap.
+            if (player.vy > -swimUpSpeed) {
+                player.vy -= swimRise * dt;
+                if (player.vy < -swimUpSpeed) player.vy = -swimUpSpeed;
+            }
         }
         if (player.vy > 420.0f) player.vy = 420.0f;
     }

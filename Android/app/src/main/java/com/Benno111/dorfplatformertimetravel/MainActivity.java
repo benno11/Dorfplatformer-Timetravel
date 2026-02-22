@@ -11,6 +11,9 @@ import android.view.WindowManager;
 import android.os.Build;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
+import android.view.inputmethod.InputMethodManager;
+import android.text.InputType;
+import android.content.Context;
 
 import org.libsdl.app.SDLActivity;
 
@@ -22,6 +25,22 @@ import java.nio.charset.StandardCharsets;
 
 public class MainActivity extends SDLActivity {
     private static final String TAG = "MainActivity";
+    private static volatile boolean softKeyboardActive = false;
+    private static volatile boolean preloadAttempted = false;
+
+    private static synchronized void preloadNativeLibraries() {
+        if (preloadAttempted) return;
+        preloadAttempted = true;
+        try {
+            System.loadLibrary("platformer");
+        } catch (Throwable t) {
+            Log.e(TAG, "Failed to preload platformer library", t);
+        }
+    }
+
+    static {
+        preloadNativeLibraries();
+    }
     private GestureDetector gestureDetector;
     private final View.OnSystemUiVisibilityChangeListener systemUiListener =
             visibility -> applyImmersiveMode();
@@ -62,11 +81,103 @@ public class MainActivity extends SDLActivity {
         }
     }
 
+    public static boolean showSoftKeyboard(int x, int y, int w, int h) {
+        try {
+            final SDLActivity activity = mSingleton;
+            if (activity == null) return false;
+            softKeyboardActive = true;
+            activity.runOnUiThread(() -> {
+                try {
+                    final int safeW = Math.max(1, w);
+                    final int safeH = Math.max(1, h);
+                    SDLActivity.showTextInput(
+                            InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS,
+                            x, y, safeW, safeH);
+                    // SDLActivity.showTextInput posts internally; wait until mTextEdit exists.
+                    activity.getWindow().getDecorView().postDelayed(
+                            () -> requestImeForSdlEdit(activity, 0), 50L);
+                } catch (Throwable t) {
+                    Log.i(TAG, "showSoftKeyboard ui failed", t);
+                }
+            });
+            return true;
+        } catch (Throwable t) {
+            Log.i(TAG, "showSoftKeyboard failed", t);
+            return false;
+        }
+    }
+
+    public static void hideSoftKeyboard() {
+        try {
+            final SDLActivity activity = mSingleton;
+            if (activity == null) return;
+            softKeyboardActive = false;
+            activity.runOnUiThread(() -> {
+                try {
+                    View focus = mTextEdit != null ? mTextEdit : activity.getCurrentFocus();
+                    if (focus == null) focus = activity.getWindow().getDecorView();
+                    InputMethodManager imm = (InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
+                    if (imm != null && focus != null) {
+                        imm.hideSoftInputFromWindow(focus.getWindowToken(), 0);
+                        focus.clearFocus();
+                    }
+                } catch (Throwable t) {
+                    Log.i(TAG, "hideSoftKeyboard ui failed", t);
+                }
+            });
+        } catch (Throwable t) {
+            Log.i(TAG, "hideSoftKeyboard failed", t);
+        }
+    }
+
+    private static void requestImeForSdlEdit(SDLActivity activity, int attempt) {
+        if (activity == null) return;
+        final View root = activity.getWindow().getDecorView();
+        final View focus = mTextEdit;
+        if (focus == null) {
+            if (attempt < 8) {
+                root.postDelayed(() -> requestImeForSdlEdit(activity, attempt + 1), 40L);
+            } else {
+                Log.i(TAG, "showSoftKeyboard: SDL text edit view not ready");
+            }
+            return;
+        }
+        try {
+            InputMethodManager imm = (InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
+            focus.setFocusable(true);
+            focus.setFocusableInTouchMode(true);
+            focus.requestFocus();
+            if (imm != null) {
+                imm.restartInput(focus);
+                if (!imm.showSoftInput(focus, InputMethodManager.SHOW_IMPLICIT)) {
+                    imm.toggleSoftInput(InputMethodManager.SHOW_IMPLICIT, 0);
+                }
+            }
+        } catch (Throwable t) {
+            Log.i(TAG, "showSoftKeyboard requestImeForSdlEdit failed", t);
+        }
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
+        preloadNativeLibraries();
+        // Guard against stale recreate flags before SDL native thread exists.
+        if (mSDLThread == null) {
+            mActivityCreated = false;
+            mSDLMainFinished = false;
+        }
+        try {
+            super.onCreate(savedInstanceState);
+        } catch (UnsatisfiedLinkError e) {
+            Log.e(TAG, "SDL onCreate failed; retrying after preload/reset", e);
+            preloadNativeLibraries();
+            if (mSDLThread == null) {
+                mActivityCreated = false;
+                mSDLMainFinished = false;
+            }
+            super.onCreate(savedInstanceState);
+        }
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         getWindow().getDecorView().setOnSystemUiVisibilityChangeListener(systemUiListener);
         applyImmersiveMode();
         setupTouchDebuggerToggle();
@@ -87,7 +198,7 @@ public class MainActivity extends SDLActivity {
     }
 
     private void applyImmersiveMode() {
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+        if (softKeyboardActive) return;
         View decorView = getWindow().getDecorView();
         if (Build.VERSION.SDK_INT >= 30) {
             WindowInsetsController controller = decorView.getWindowInsetsController();

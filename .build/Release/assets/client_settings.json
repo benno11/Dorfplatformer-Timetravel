@@ -1,0 +1,53 @@
+{
+  "settings": {
+    "display": {
+      "fullscreen": true,
+      "vsync": true,
+      "ui_scale_percent": 100
+    },
+    "camera": {
+      "clamp_cam_x": true
+    },
+    "debug": {
+      "show_fps_counter": false,
+      "show_detailed_debugger": false,
+      "show_hitboxes": false,
+      "show_player_hitbox": false,
+      "show_debug_view": false,
+      "hide_unknown_object_types": true
+    },
+    "audio": {
+      "menu_music_enabled": true,
+      "mute_all_audio": false,
+      "music_volume": 96,
+      "sfx_volume": 96
+    },
+    "controls": {
+      "move_left": 4,
+      "move_right": 7,
+      "move_down": 22,
+      "jump": 26,
+      "pause": 41
+    },
+    "gameplay": {
+      "power_management": true,
+      "debug_mode_enabled": false
+    },
+    "network": {
+      "level_server_url": "https://timetravel-server-default-rtdb.europe-west1.firebasedatabase.app/",
+      "level_server_auth_token": "",
+      "level_server_account_username": "",
+      "firebase_api_key": "AIzaSyC-lBtzoK98rO6TH6nQV4ugiPsVMbAJ-44"
+    },
+    "telemetry": {
+      "telemetry_webhook_url": ""
+    },
+    "extra_settings": [
+      false, false, false, false, false, false, false, false, false, false,
+      false, false, false, false, false, false, false, false, false, false,
+      false, false, false, false, false, false, false, false, false, false,
+      false, false, false, false, false, false, false, false, false, false,
+      false, false, false, false, false
+    ]
+  }
+}

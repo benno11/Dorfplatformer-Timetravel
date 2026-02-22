@@ -365,7 +365,13 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
 
         /* Control activity re-creation */
         if (mSDLMainFinished || mActivityCreated) {
-              boolean allow_recreate = SDLActivity.nativeAllowRecreateActivity();
+              boolean allow_recreate = true;
+              try {
+                  allow_recreate = SDLActivity.nativeAllowRecreateActivity();
+              } catch (UnsatisfiedLinkError e) {
+                  Log.w(TAG, "nativeAllowRecreateActivity missing; defaulting to allow recreate", e);
+                  allow_recreate = true;
+              }
               if (mSDLMainFinished) {
                   Log.v(TAG, "SDL main() finished");
               }
@@ -441,7 +447,13 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         {
             int run_count = SDLActivity.nativeCheckSDLThreadCounter(); /* get and increment a native counter */
             if (run_count != 0) {
-                boolean allow_recreate = SDLActivity.nativeAllowRecreateActivity();
+                boolean allow_recreate = true;
+                try {
+                    allow_recreate = SDLActivity.nativeAllowRecreateActivity();
+                } catch (UnsatisfiedLinkError e) {
+                    Log.w(TAG, "nativeAllowRecreateActivity missing; defaulting to allow recreate", e);
+                    allow_recreate = true;
+                }
                 if (allow_recreate) {
                     Log.v(TAG, "activity re-created // run_count: " + run_count);
                 } else {

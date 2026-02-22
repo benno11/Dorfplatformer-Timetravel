@@ -24,6 +24,9 @@
 #include <cstring>
 #include <exception>
 #include <cstdlib>
+#if defined(_WIN32)
+#include <windows.h>
+#endif
 #include <vector>
 #include <fstream>
 #if !defined(_WIN32)
@@ -68,6 +71,50 @@ static void unsetEnvCompat(const char* name) {
 
 int RunGameApp(int argc, char** argv) {
     CrashReporter::start();
+    bool enableGameLog = false;
+    bool allowDevTools = false;
+    for (int i = 1; i < argc; ++i) {
+        const char* arg = argv[i];
+        if (!arg) continue;
+        if (std::strcmp(arg, "--enable-game-log") == 0 ||
+            std::strcmp(arg, "--enable-gamelog") == 0) {
+            enableGameLog = true;
+        }
+        if (std::strcmp(arg, "--enable-dev-tools") == 0 ||
+            std::strcmp(arg, "--enable-devtools") == 0) {
+            allowDevTools = true;
+        }
+    }
+#if defined(_WIN32)
+    bool hasParentConsole = false;
+    if (GetConsoleWindow() != nullptr) {
+        DWORD consolePids[2] = {0, 0};
+        const DWORD n = GetConsoleProcessList(consolePids, 2);
+        hasParentConsole = (n > 1);
+    }
+    if (!hasParentConsole) {
+        HWND consoleHwnd = GetConsoleWindow();
+        if (consoleHwnd) {
+            ShowWindow(consoleHwnd, SW_HIDE);
+        }
+    }
+    if (enableGameLog) {
+        if (!hasParentConsole) {
+            std::filesystem::create_directories("build");
+            FILE* out = nullptr;
+            FILE* err = nullptr;
+            freopen_s(&out, "build\\game.log", "a", stdout);
+            freopen_s(&err, "build\\game.log", "a", stderr);
+        }
+    }
+#endif
+    if (!enableGameLog) {
+        SDL_LogSetAllPriority(SDL_LOG_PRIORITY_CRITICAL);
+    }
+    allowDevTools = false;// disable when a debugger is needed else a to prevent players from cheating ingame using a debuger
+    //allowDevTools = true;// enable for debuging
+
+    
     // Keep existing terminal output (e.g. compile script logs) visible.
     const std::string buildUuid = makeBuildUuid();
     auto reportStartupError = [](const char* title, const std::string& msg, SDL_Window* parent) {
@@ -85,12 +132,18 @@ int RunGameApp(int argc, char** argv) {
         if (e && *e) return std::string(e);
         return "unknown error";
     };
-    std::ofstream startupLog("build/startup.log", std::ios::app);
+    std::ofstream startupLog;
+    if (enableGameLog) {
+        startupLog.open("build/startup.log", std::ios::app);
+    }
     auto logStartup = [&](const std::string& line) {
+        if (!enableGameLog) return;
         SDL_Log("%s", line.c_str());
         if (startupLog.is_open()) startupLog << line << "\n";
     };
-    logStartup("=== startup begin ===");
+    if (enableGameLog) {
+        logStartup("=== startup begin ===");
+    }
     auto envOrUnset = [](const char* name) -> std::string {
         const char* v = std::getenv(name);
         return (v && *v) ? std::string(v) : std::string("<unset>");
@@ -987,7 +1040,7 @@ int RunGameApp(int argc, char** argv) {
             }
         }
     }
-    {
+    if (enableGameLog) {
         const std::string text = ReadTextFile("assets/log_settings.json");
         if (!text.empty()) {
             nlohmann::json logCfg;
@@ -1134,6 +1187,7 @@ int RunGameApp(int argc, char** argv) {
     bool defaultShowPlayerHitbox = false;
     bool defaultShowDebugView = false;
     bool defaultHideUnknownObjectTypes = false;
+    bool debugModeEnabled = false;
     bool powerManagementEnabled = true;
     bool menuMusicEnabled = true;
     bool muteAllAudio = false;
@@ -1193,6 +1247,7 @@ int RunGameApp(int argc, char** argv) {
         };
         settings["gameplay"] = {
             {"power_management", powerManagementEnabled},
+            {"debug_mode_enabled", debugModeEnabled},
             {"fast_travel_delay", fastTravelChangeDelay}
         };
         settings["telemetry"] = {
@@ -1222,6 +1277,7 @@ int RunGameApp(int argc, char** argv) {
         j["show_debug_view"] = defaultShowDebugView;
         j["hide_unknown_object_types"] = defaultHideUnknownObjectTypes;
         j["power_management"] = powerManagementEnabled;
+        j["debug_mode_enabled"] = debugModeEnabled;
         j["menu_music_enabled"] = menuMusicEnabled;
         j["mute_all_audio"] = muteAllAudio;
         j["key_move_left"] = (int)keybinds.moveLeft;
@@ -1321,6 +1377,7 @@ int RunGameApp(int argc, char** argv) {
                 if (s.contains("gameplay") && s["gameplay"].is_object()) {
                     const auto& g = s["gameplay"];
                     if (g.contains("power_management") && g["power_management"].is_boolean()) powerManagementEnabled = g["power_management"].get<bool>();
+                    if (g.contains("debug_mode_enabled") && g["debug_mode_enabled"].is_boolean()) debugModeEnabled = g["debug_mode_enabled"].get<bool>();
                     if (g.contains("fast_travel_delay") && g["fast_travel_delay"].is_number()) {
                         // Deprecated: delay removed in favor of immediate smooth transitions.
                         fastTravelChangeDelay = 0.0f;
@@ -1368,6 +1425,7 @@ int RunGameApp(int argc, char** argv) {
             if (j.contains("show_debug_view") && j["show_debug_view"].is_boolean()) defaultShowDebugView = j["show_debug_view"].get<bool>();
             if (j.contains("hide_unknown_object_types") && j["hide_unknown_object_types"].is_boolean()) defaultHideUnknownObjectTypes = j["hide_unknown_object_types"].get<bool>();
             if (j.contains("power_management") && j["power_management"].is_boolean()) powerManagementEnabled = j["power_management"].get<bool>();
+            if (j.contains("debug_mode_enabled") && j["debug_mode_enabled"].is_boolean()) debugModeEnabled = j["debug_mode_enabled"].get<bool>();
             if (j.contains("menu_music_enabled") && j["menu_music_enabled"].is_boolean()) menuMusicEnabled = j["menu_music_enabled"].get<bool>();
             if (j.contains("mute_all_audio") && j["mute_all_audio"].is_boolean()) muteAllAudio = j["mute_all_audio"].get<bool>();
             if (j.contains("key_move_left")) keybinds.moveLeft = parseScancode(j["key_move_left"], keybinds.moveLeft);
@@ -1445,6 +1503,15 @@ int RunGameApp(int argc, char** argv) {
     }
     if (!levelServerAccountUsername.empty()) {
         SDL_Log("Level server account username: %s", levelServerAccountUsername.c_str());
+    }
+    debugModeEnabled = false; //disable for prod
+    if (!debugModeEnabled) {
+        defaultShowFpsCounter = false;
+        defaultShowDetailedDebugger = false;
+        defaultShowHitboxes = false;
+        defaultShowPlayerHitbox = false;
+        defaultShowDebugView = false;
+        defaultHideUnknownObjectTypes = true;
     }
     auto applyRenderVsync = [&]() {
 #if SDL_VERSION_ATLEAST(2, 0, 18)
@@ -1706,6 +1773,7 @@ int RunGameApp(int argc, char** argv) {
     frontendCtx.defaultShowPlayerHitbox = &defaultShowPlayerHitbox;
     frontendCtx.defaultShowDebugView = &defaultShowDebugView;
     frontendCtx.defaultHideUnknownObjectTypes = &defaultHideUnknownObjectTypes;
+    frontendCtx.debugModeEnabled = &debugModeEnabled;
     frontendCtx.powerManagementEnabled = &powerManagementEnabled;
     frontendCtx.menuMusicEnabled = &menuMusicEnabled;
     frontendCtx.muteAllAudio = &muteAllAudio;
@@ -1724,6 +1792,7 @@ int RunGameApp(int argc, char** argv) {
     frontendCtx.firebaseApiKey = &firebaseApiKey;
     frontendCtx.extraSettings = extraSettings.data();
     frontendCtx.extraSettingsCount = (int)extraSettings.size();
+    frontendCtx.devToolsEnabled = &allowDevTools;
     std::string frontendSelectedLevelPath;
     frontendCtx.selectedLevelPath = &frontendSelectedLevelPath;
     frontendCtx.applyAudioVolumes = applyAudioVolumes;
@@ -1797,7 +1866,8 @@ int RunGameApp(int argc, char** argv) {
             if (!selectedLevelPath.empty()) {
                 selectedFromUserMenu = true;
             } else {
-                selectedLevelPath = RunCampaignLevelSelect(win, ren);
+                selectedLevelPath = debugModeEnabled ? RunCampaignLevelSelect(win, ren)
+                                                     : std::string("assets/levels/level_001.txt");
             }
         }
         if (selectedLevelPath.empty()) {
@@ -1847,6 +1917,7 @@ int RunGameApp(int argc, char** argv) {
             bool lockPlayerRight = false;
         };
         EndSignRuntimeState endSignState;
+        std::vector<ObjectInstance> endSignTemplates;
         struct BossRuntimeState {
             bool active = false;
             int world = 0;
@@ -1995,7 +2066,7 @@ int RunGameApp(int argc, char** argv) {
                 }
                 bossState.vx = 280.0f;
                 bossState.vy = 220.0f;
-                bossState.active = true;
+                bossState.active = false;
             }
             if (bossState.sourceWorld == 4) {
                 bossState.rainbowTimer = 0.0f;
@@ -2032,6 +2103,18 @@ int RunGameApp(int argc, char** argv) {
         float levelCompleteCameraY = 0.0f;
         bool endSignCameraLocked = false;
         float endSignCameraX = 0.0f;
+        float minCamXOverride = -1.0f;
+        bool checkpointActive = false;
+        std::string checkpointLevelPath;
+        int checkpointTileX = -1;
+        int checkpointTileY = -1;
+        auto normalizeLevelPath = [](std::string path) {
+            std::replace(path.begin(), path.end(), '\\', '/');
+            std::transform(path.begin(), path.end(), path.begin(), [](unsigned char c) {
+                return (char)std::tolower(c);
+            });
+            return path;
+        };
         enum FastTravelDir {
             FT_UP = 0,
             FT_DOWN = 1,
@@ -2115,24 +2198,33 @@ int RunGameApp(int argc, char** argv) {
             levelCompleteCameraY = 0.0f;
             endSignCameraLocked = false;
             endSignCameraX = 0.0f;
+            minCamXOverride = -1.0f;
             endSignState = EndSignRuntimeState{};
-            float nearestAheadDist = 1e30f;
-            int fallbackSignIndex = -1;
-            for (int i = 0; i < (int)objects.size(); ++i) {
-                if (objects[i].id != "67") continue;
-                if (fallbackSignIndex < 0) fallbackSignIndex = i;
-                const float dx = objects[i].x - player.x;
-                if (dx >= 0.0f && dx < nearestAheadDist) {
-                    nearestAheadDist = dx;
-                    endSignState.objectIndex = i;
+            endSignTemplates.clear();
+            for (const auto& obj : objects) {
+                if (obj.id == "67") endSignTemplates.push_back(obj);
+            }
+            auto refreshEndSignState = [&]() {
+                endSignState = EndSignRuntimeState{};
+                float nearestAheadDist = 1e30f;
+                int fallbackSignIndex = -1;
+                for (int i = 0; i < (int)objects.size(); ++i) {
+                    if (objects[i].id != "67") continue;
+                    if (fallbackSignIndex < 0) fallbackSignIndex = i;
+                    const float dx = objects[i].x - player.x;
+                    if (dx >= 0.0f && dx < nearestAheadDist) {
+                        nearestAheadDist = dx;
+                        endSignState.objectIndex = i;
+                    }
                 }
-            }
-            if (endSignState.objectIndex < 0) endSignState.objectIndex = fallbackSignIndex;
-            if (endSignState.objectIndex >= 0 && endSignState.objectIndex < (int)objects.size()) {
-                endSignState.present = true;
-                endSignState.objectX = objects[endSignState.objectIndex].x;
-                endSignState.objectY = objects[endSignState.objectIndex].y;
-            }
+                if (endSignState.objectIndex < 0) endSignState.objectIndex = fallbackSignIndex;
+                if (endSignState.objectIndex >= 0 && endSignState.objectIndex < (int)objects.size()) {
+                    endSignState.present = true;
+                    endSignState.objectX = objects[endSignState.objectIndex].x;
+                    endSignState.objectY = objects[endSignState.objectIndex].y;
+                }
+            };
+            refreshEndSignState();
             resetBossStateForLoadedLevel();
             demoState.jumpCooldown = 0.0f;
             demoState.jumpHoldTimer = 0.0f;
@@ -2155,6 +2247,25 @@ int RunGameApp(int argc, char** argv) {
             currentAreaIdText = buildAreaIdText();
             levelReloadTitleTimer = 2.0f;
             currentLevelId = parseLevelIdFromLevelPath(levelManager.levelPath());
+            const std::string activeLevelPath = levelManager.levelPath();
+            const std::string normalizedActiveLevelPath = normalizeLevelPath(activeLevelPath);
+            if (checkpointActive && checkpointLevelPath == normalizedActiveLevelPath) {
+                if (checkpointTileX >= 0 && checkpointTileX < map.w &&
+                    checkpointTileY >= 0 && checkpointTileY < map.h) {
+                    for (int i = 0; i < (int)map.tileIds.size(); ++i) {
+                        if ((int)map.tileIds[i] == 50) levelManager.setTileAt(map, i, 49);
+                    }
+                    const int cpIdx = checkpointTileY * map.w + checkpointTileX;
+                    levelManager.setTileAt(map, cpIdx, 50);
+                    player.x = (float)(checkpointTileX * map.tileSize);
+                    player.y = (float)(checkpointTileY * map.tileSize - player.h);
+                } else {
+                    checkpointActive = false;
+                    checkpointLevelPath.clear();
+                    checkpointTileX = -1;
+                    checkpointTileY = -1;
+                }
+            }
             playerInvincibleTimer = std::max(playerInvincibleTimer, kPlayerSpawnInvincibleDuration);
             levelLoadDeathGraceTimer = kLevelLoadDeathGraceDuration;
             playerSpawnLockX = player.x;
@@ -2208,6 +2319,13 @@ int RunGameApp(int argc, char** argv) {
             int value = 1;
         };
         std::vector<DroppedCoin> droppedCoins;
+        auto transitionToLevelPath = [&](const std::string& path) -> bool {
+            if (path.empty()) return false;
+            levelManager.setLevelPath(path);
+            droppedCoins.clear();
+            reloadLevel();
+            return true;
+        };
         float fastTravelCooldown = 0.0f;
         bool showHitboxes = defaultShowHitboxes;
         bool showPlayerHitbox = defaultShowPlayerHitbox;
@@ -2215,8 +2333,19 @@ int RunGameApp(int argc, char** argv) {
         bool showDemoPath = false;
         bool hideUnknownObjectTypes = defaultHideUnknownObjectTypes;
         bool showFpsCounter = defaultShowFpsCounter;
-        showDetailedDebugger = defaultShowDetailedDebugger;
-        if (showDetailedDebugger && !debugWin) {
+        if (!allowDevTools) {
+            defaultShowDetailedDebugger = false;
+            showDetailedDebugger = false;
+            if (debugWin) {
+#if !defined(__ANDROID__)
+                SDL_DestroyRenderer(debugRen);
+                SDL_DestroyWindow(debugWin);
+#endif
+                debugRen = nullptr;
+                debugWin = nullptr;
+            }
+        }
+        if (allowDevTools && showDetailedDebugger && !debugWin) {
 #if defined(__ANDROID__)
             debugWin = win;
             debugRen = ren;
@@ -2254,6 +2383,58 @@ int RunGameApp(int argc, char** argv) {
         int detailedDebugSubmenu = 0; // 0 Overview, 1 Objects, 2 Performance, 3 Player Status, 4 Texture Inspector
         int detailedDebugObjectIndex = 0;
         int detailedDebugTextureIndex = 0;
+        int detailedDebugButtonWorld = std::max(1, levelManager.worldId());
+        int detailedDebugButtonArea = std::max(1, levelManager.levelPartId());
+        enum class DebugButtonEditField {
+            None,
+            World,
+            Area
+        };
+        DebugButtonEditField debugButtonEditField = DebugButtonEditField::None;
+        std::string debugButtonEditBuffer;
+        auto buildDebugButtonEditorRects = [&](int anchorY,
+                                               SDL_Rect& worldMinusBtn,
+                                               SDL_Rect& worldPlusBtn,
+                                               SDL_Rect& areaMinusBtn,
+                                               SDL_Rect& areaPlusBtn,
+                                               SDL_Rect& addBtn,
+                                               SDL_Rect& removeBtn,
+                                               SDL_Rect& clearBtn) {
+            worldMinusBtn = SDL_Rect{12, anchorY, 40, 28};
+            worldPlusBtn = SDL_Rect{184, anchorY, 40, 28};
+            areaMinusBtn = SDL_Rect{12, anchorY + 34, 40, 28};
+            areaPlusBtn = SDL_Rect{184, anchorY + 34, 40, 28};
+            addBtn = SDL_Rect{12, anchorY + 68, 84, 30};
+            removeBtn = SDL_Rect{102, anchorY + 68, 84, 30};
+            clearBtn = SDL_Rect{192, anchorY + 68, 84, 30};
+        };
+        constexpr int kDebugButtonEditorAnchorY = 402;
+        auto stopDebugButtonEditing = [&]() {
+            debugButtonEditField = DebugButtonEditField::None;
+            debugButtonEditBuffer.clear();
+            SDL_StopTextInput(win);
+        };
+        auto beginDebugButtonEditing = [&](DebugButtonEditField field) {
+            debugButtonEditField = field;
+            debugButtonEditBuffer = (field == DebugButtonEditField::World)
+                ? std::to_string(detailedDebugButtonWorld)
+                : std::to_string(detailedDebugButtonArea);
+            SDL_StartTextInput(win);
+        };
+        auto applyDebugButtonEditBuffer = [&]() {
+            if (debugButtonEditBuffer.empty()) return;
+            int value = 0;
+            try {
+                value = std::stoi(debugButtonEditBuffer);
+            } catch (...) {
+                return;
+            }
+            if (debugButtonEditField == DebugButtonEditField::World) {
+                detailedDebugButtonWorld = std::clamp(value, 1, 99);
+            } else if (debugButtonEditField == DebugButtonEditField::Area) {
+                detailedDebugButtonArea = std::clamp(value, 1, 9);
+            }
+        };
         struct DebugTextureEntry {
             const char* name = "";
             SDL_Texture* tex = nullptr;
@@ -2500,8 +2681,12 @@ int RunGameApp(int argc, char** argv) {
             }
         };
         auto toggleDetailedDebugger = [&]() {
+            if (!allowDevTools) {
+                showDetailedDebugger = false;
+                return;
+            }
             showDetailedDebugger = !showDetailedDebugger;
-            if (showDetailedDebugger && !debugWin) {
+            if (allowDevTools && showDetailedDebugger && !debugWin) {
 #if defined(__ANDROID__)
                 debugWin = win;
                 debugRen = ren;
@@ -2548,23 +2733,68 @@ int RunGameApp(int argc, char** argv) {
             SDL_Rect tab4{444, 38, 104, 36};
             SDL_Rect closeBtn{500, 8, 52, 24};
             SDL_Point pt{mx, my};
+            auto pointInPaddedRect = [&](const SDL_Rect& r, int pad = 8) -> bool {
+                SDL_Rect rr{r.x - pad, r.y - pad, r.w + pad * 2, r.h + pad * 2};
+                return SDL_PointInRect(&pt, &rr);
+            };
             bool handled = false;
-            if (SDL_PointInRect(&pt, &tab0)) { detailedDebugSubmenu = 0; handled = true; }
-            else if (SDL_PointInRect(&pt, &tab1)) { detailedDebugSubmenu = 1; handled = true; }
-            else if (SDL_PointInRect(&pt, &tab2)) { detailedDebugSubmenu = 2; handled = true; }
-            else if (SDL_PointInRect(&pt, &tab3)) { detailedDebugSubmenu = 3; handled = true; }
-            else if (SDL_PointInRect(&pt, &tab4)) { detailedDebugSubmenu = 4; handled = true; }
-            else if (SDL_PointInRect(&pt, &closeBtn)) { toggleDetailedDebugger(); handled = true; }
+            if (pointInPaddedRect(tab0)) { detailedDebugSubmenu = 0; handled = true; }
+            else if (pointInPaddedRect(tab1)) { detailedDebugSubmenu = 1; handled = true; }
+            else if (pointInPaddedRect(tab2)) { detailedDebugSubmenu = 2; handled = true; }
+            else if (pointInPaddedRect(tab3)) { detailedDebugSubmenu = 3; handled = true; }
+            else if (pointInPaddedRect(tab4)) { detailedDebugSubmenu = 4; handled = true; }
+            else if (pointInPaddedRect(closeBtn, 10)) {
+                stopDebugButtonEditing();
+                toggleDetailedDebugger();
+                handled = true;
+            }
+            if (detailedDebugSubmenu == 0) {
+                SDL_Rect worldMinusBtn{};
+                SDL_Rect worldPlusBtn{};
+                SDL_Rect areaMinusBtn{};
+                SDL_Rect areaPlusBtn{};
+                SDL_Rect addBtn{};
+                SDL_Rect removeBtn{};
+                SDL_Rect clearBtn{};
+                SDL_Rect worldValueBox{58, kDebugButtonEditorAnchorY, 120, 28};
+                SDL_Rect areaValueBox{58, kDebugButtonEditorAnchorY + 34, 120, 28};
+                buildDebugButtonEditorRects(
+                    kDebugButtonEditorAnchorY,
+                    worldMinusBtn, worldPlusBtn,
+                    areaMinusBtn, areaPlusBtn,
+                    addBtn, removeBtn, clearBtn);
+                if (pointInPaddedRect(worldMinusBtn, 10)) { stopDebugButtonEditing(); detailedDebugButtonWorld = std::max(1, detailedDebugButtonWorld - 1); handled = true; }
+                else if (pointInPaddedRect(worldPlusBtn, 10)) { stopDebugButtonEditing(); detailedDebugButtonWorld = std::min(99, detailedDebugButtonWorld + 1); handled = true; }
+                else if (pointInPaddedRect(areaMinusBtn, 10)) { stopDebugButtonEditing(); detailedDebugButtonArea = std::max(1, detailedDebugButtonArea - 1); handled = true; }
+                else if (pointInPaddedRect(areaPlusBtn, 10)) { stopDebugButtonEditing(); detailedDebugButtonArea = std::min(9, detailedDebugButtonArea + 1); handled = true; }
+                else if (pointInPaddedRect(worldValueBox, 8)) { beginDebugButtonEditing(DebugButtonEditField::World); handled = true; }
+                else if (pointInPaddedRect(areaValueBox, 8)) { beginDebugButtonEditing(DebugButtonEditField::Area); handled = true; }
+                else if (pointInPaddedRect(addBtn, 10)) {
+                    stopDebugButtonEditing();
+                    levelManager.setButtonAreaActiveForDebug(detailedDebugButtonWorld, detailedDebugButtonArea, true);
+                    handled = true;
+                } else if (pointInPaddedRect(removeBtn, 10)) {
+                    stopDebugButtonEditing();
+                    levelManager.setButtonAreaActiveForDebug(detailedDebugButtonWorld, detailedDebugButtonArea, false);
+                    handled = true;
+                } else if (pointInPaddedRect(clearBtn, 10)) {
+                    stopDebugButtonEditing();
+                    levelManager.clearButtonAreasForDebug();
+                    handled = true;
+                }
+            } else if (debugButtonEditField != DebugButtonEditField::None) {
+                stopDebugButtonEditing();
+            }
             if (detailedDebugSubmenu == 1) {
                 SDL_Rect prevBtn{12, 92, 120, 34};
                 SDL_Rect nextBtn{142, 92, 120, 34};
-                if (SDL_PointInRect(&pt, &prevBtn)) { detailedDebugObjectIndex--; handled = true; }
-                if (SDL_PointInRect(&pt, &nextBtn)) { detailedDebugObjectIndex++; handled = true; }
+                if (pointInPaddedRect(prevBtn, 10)) { detailedDebugObjectIndex--; handled = true; }
+                if (pointInPaddedRect(nextBtn, 10)) { detailedDebugObjectIndex++; handled = true; }
             } else if (detailedDebugSubmenu == 4) {
                 SDL_Rect prevBtn{12, 92, 120, 34};
                 SDL_Rect nextBtn{142, 92, 120, 34};
-                if (SDL_PointInRect(&pt, &prevBtn)) { detailedDebugTextureIndex--; handled = true; }
-                if (SDL_PointInRect(&pt, &nextBtn)) { detailedDebugTextureIndex++; handled = true; }
+                if (pointInPaddedRect(prevBtn, 10)) { detailedDebugTextureIndex--; handled = true; }
+                if (pointInPaddedRect(nextBtn, 10)) { detailedDebugTextureIndex++; handled = true; }
             }
             return handled;
         };
@@ -2596,11 +2826,7 @@ int RunGameApp(int argc, char** argv) {
             }
         };
         auto removeTimewarpObjectsAndExit = [&]() {
-            objects.erase(std::remove_if(objects.begin(), objects.end(), [](const ObjectInstance& obj) {
-                int objId = 0;
-                try { objId = std::stoi(obj.id); } catch (...) { return false; }
-                return objId >= 57 && objId <= 61;
-            }), objects.end());
+            // Keep map objects intact when a boss starts (do not destroy end post or other markers).
             setFastTravelActiveDir(-1, "boss_start_disable_timewarp");
             fastTravelOverlapWasActive = false;
             fastTravelBlendVx = 0.0f;
@@ -2608,8 +2834,48 @@ int RunGameApp(int argc, char** argv) {
             fastTravelCooldown = std::max(fastTravelCooldown, 0.30f);
             timeTravelTriggerCooldown = std::max(timeTravelTriggerCooldown, 0.50f);
         };
+        auto restoreEndPostsFromRawLevel = [&]() {
+            TileMap rawMap;
+            std::vector<ObjectInstance> rawObjects;
+            LevelMeta rawMeta;
+            if (!loadLevelBNNLVL(levelManager.levelPath(), rawMap, rawObjects, rawMeta)) {
+                SDL_Log("endpost.restore: failed to load raw level data: %s", levelManager.levelPath().c_str());
+                return;
+            }
+
+            for (const auto& rawObj : rawObjects) {
+                if (rawObj.id != "67") continue;
+                bool exists = false;
+                for (const auto& curObj : objects) {
+                    if (curObj.id != "67") continue;
+                    if (std::fabs(curObj.x - rawObj.x) <= 0.5f && std::fabs(curObj.y - rawObj.y) <= 0.5f) {
+                        exists = true;
+                        break;
+                    }
+                }
+                if (!exists) {
+                    objects.push_back(rawObj);
+                }
+            }
+
+            for (int idx = 0; idx < (int)rawMap.tileIds.size(); ++idx) {
+                if ((int)rawMap.tileIds[idx] != 30) continue;
+                if (rawMap.w <= 0) continue;
+                const int tx = idx % rawMap.w;
+                const int ty = idx / rawMap.w;
+                if (tx < 0 || ty < 0 || tx >= map.w || ty >= map.h) continue;
+                const int dstIdx = ty * map.w + tx;
+                if ((int)map.tileIds[dstIdx] != 30) {
+                    levelManager.setTileAt(map, dstIdx, 30);
+                }
+            }
+        };
 
         while (levelRunning) {
+            if (!allowDevTools && debugWin && debugWin != win) {
+                showDetailedDebugger = false;
+                SDL_HideWindow(debugWin);
+            }
             recoverAudioIfNeeded(true);
             applyDynamicResolutionFromWindow(false);
             Uint32 now = SDL_GetTicks();
@@ -2690,7 +2956,8 @@ int RunGameApp(int argc, char** argv) {
                 auto tileSolidAt = [&](float wx, float wy) -> bool {
                     const int tx = (int)std::floor(wx / map.tileSize);
                     const int ty = (int)std::floor(wy / map.tileSize);
-                    if (tx < 0 || ty < 0 || tx >= map.w || ty >= map.h) return true;
+                    if (ty >= map.h) return false; // allow dropped coins to fall out of the level
+                    if (tx < 0 || ty < 0 || tx >= map.w) return true;
                     const int tidx = ty * map.w + tx;
                     return map.solid[tidx] != 0 || map.semisolid[tidx] != 0;
                 };
@@ -2746,6 +3013,7 @@ int RunGameApp(int argc, char** argv) {
                 const float py2 = player.y + player.h;
                 droppedCoins.erase(std::remove_if(droppedCoins.begin(), droppedCoins.end(), [&](const DroppedCoin& c) {
                     if (c.life <= 0.0f) return true;
+                    if (c.y - coinR > (float)(map.h * map.tileSize) + 128.0f) return true;
                     const bool touched = (c.noPickupTimer <= 0.0f) &&
                                          (c.x + coinR > px1 && c.x - coinR < px2 && c.y + coinR > py1 && c.y - coinR < py2);
                     if (!touched) return false;
@@ -2789,10 +3057,7 @@ int RunGameApp(int argc, char** argv) {
                 }
                 if (levelCompleteCoinBonus <= 0 && levelCompleteTimeScore <= 0) {
                     if (!levelCompleteNextPath.empty()) {
-                        levelManager.setLevelPath(levelCompleteNextPath);
-                        droppedCoins.clear();
-                        reloadLevel();
-                        continue;
+                        if (transitionToLevelPath(levelCompleteNextPath)) continue;
                     }
                     returnToSelect = true;
                     levelRunning = false;
@@ -2906,6 +3171,24 @@ int RunGameApp(int argc, char** argv) {
                 e.window.windowID == mainWindowId) {
                 applyDynamicResolutionFromWindow(false);
             }
+            const bool isTextInputEvent =
+#if defined(SDL_EVENT_TEXT_INPUT)
+                (e.type == SDL_EVENT_TEXT_INPUT) ||
+#endif
+                (e.type == SDL_TEXTINPUT);
+            if (isTextInputEvent &&
+                showDetailedDebugger &&
+                detailedDebugSubmenu == 0 &&
+                debugButtonEditField != DebugButtonEditField::None) {
+                const char* txt = e.text.text ? e.text.text : "";
+                for (const char* p = txt; *p; ++p) {
+                    if (*p < '0' || *p > '9') continue;
+                    if (debugButtonEditBuffer.size() >= 3) break;
+                    debugButtonEditBuffer.push_back(*p);
+                }
+                applyDebugButtonEditBuffer();
+                continue;
+            }
             if (e.type == SDL_EVENT_FINGER_DOWN) {
                 bool consumedByDebugger = false;
                 if (embeddedDetailedDebugger &&
@@ -2925,7 +3208,7 @@ int RunGameApp(int argc, char** argv) {
                     const int my = (int)std::lround(e.tfinger.y * dbgH);
                     consumedByDebugger = handleDetailedDebuggerTap(mx, my);
                 }
-                if (!consumedByDebugger && e.tfinger.windowID == mainWindowId) {
+                if (allowDevTools && !consumedByDebugger && e.tfinger.windowID == mainWindowId) {
                     // Touch hotspot (top-right) to toggle detailed debugger on mobile.
                     if (e.tfinger.x >= 0.92f && e.tfinger.y <= 0.10f) {
                         toggleDetailedDebugger();
@@ -2956,43 +3239,81 @@ int RunGameApp(int argc, char** argv) {
                     activeTouches.erase(e.tfinger.fingerID);
                 }
             }
-            if (e.type == SDL_KEYDOWN && e.key.repeat == 0) {
+            const bool isKeyDownEvent =
+#if defined(SDL_EVENT_KEY_DOWN)
+                (e.type == SDL_EVENT_KEY_DOWN) ||
+#endif
+                (e.type == SDL_KEYDOWN);
+            if (isKeyDownEvent && e.key.repeat == 0) {
                 if (e.key.key == SDLK_F11) {
 #if !defined(__ANDROID__)
                     const bool nextFullscreen = !fullscreen;
                     if (applyFullscreen(nextFullscreen)) fullscreen = nextFullscreen;
 #endif
                 }
-                if (e.key.key == SDLK_F12) {
+                if (allowDevTools && e.key.key == SDLK_F12) {
                     showHitboxes = !showHitboxes;
                 }
-                if (e.key.key == SDLK_F8) {
+                if (allowDevTools && e.key.key == SDLK_F8) {
                     const bool next = !(showHitboxes && showPlayerHitbox && showDebugView);
                     showHitboxes = next;
                     showPlayerHitbox = next;
                     showDebugView = next;
                 }
-                if (e.key.key == SDLK_F7) {
+                if (allowDevTools && e.key.key == SDLK_F7) {
                     showDebugView = !showDebugView;
                 }
-                if (e.key.key == SDLK_p) {
+                if (allowDevTools && e.key.key == SDLK_p) {
                     showDemoPath = !showDemoPath;
                 }
-                if (e.key.key == SDLK_F6) {
+                if (allowDevTools && e.key.key == SDLK_F6) {
                     showFpsCounter = !showFpsCounter;
                 }
                 if (e.key.key == SDLK_F10) {
                     clampCamX = !clampCamX;
                 }
-                if (e.key.key == SDLK_F5) {
+                if (allowDevTools && e.key.key == SDLK_F5) {
+                    stopDebugButtonEditing();
                     toggleDetailedDebugger();
                 }
-                if (e.key.key == SDLK_F4) {
+                if (allowDevTools && e.key.key == SDLK_F4) {
                     detailedDebugSubmenu = (detailedDebugSubmenu + 1) % kDetailedDebugTabCount;
+                    if (detailedDebugSubmenu != 0) stopDebugButtonEditing();
+                }
+                if (showDetailedDebugger &&
+                    detailedDebugSubmenu == 0 &&
+                    debugButtonEditField != DebugButtonEditField::None) {
+                    if (e.key.key == SDLK_BACKSPACE || e.key.key == SDLK_DELETE) {
+                        if (!debugButtonEditBuffer.empty()) {
+                            debugButtonEditBuffer.pop_back();
+                            applyDebugButtonEditBuffer();
+                        }
+                        continue;
+                    }
+                    if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER || e.key.key == SDLK_ESCAPE) {
+                        applyDebugButtonEditBuffer();
+                        stopDebugButtonEditing();
+                        continue;
+                    }
                 }
                 if (showDetailedDebugger && detailedDebugSubmenu == 1) {
                     if (e.key.key == SDLK_UP) detailedDebugObjectIndex--;
                     if (e.key.key == SDLK_DOWN) detailedDebugObjectIndex++;
+                }
+                if (showDetailedDebugger && detailedDebugSubmenu == 0) {
+                    if (e.key.key == SDLK_u) detailedDebugButtonWorld = std::max(1, detailedDebugButtonWorld - 1);
+                    if (e.key.key == SDLK_o) detailedDebugButtonWorld = std::min(99, detailedDebugButtonWorld + 1);
+                    if (e.key.key == SDLK_j) detailedDebugButtonArea = std::max(1, detailedDebugButtonArea - 1);
+                    if (e.key.key == SDLK_l) detailedDebugButtonArea = std::min(9, detailedDebugButtonArea + 1);
+                    if (e.key.key == SDLK_EQUALS || e.key.key == SDLK_KP_PLUS) {
+                        levelManager.setButtonAreaActiveForDebug(detailedDebugButtonWorld, detailedDebugButtonArea, true);
+                    }
+                    if (e.key.key == SDLK_MINUS || e.key.key == SDLK_KP_MINUS) {
+                        levelManager.setButtonAreaActiveForDebug(detailedDebugButtonWorld, detailedDebugButtonArea, false);
+                    }
+                    if (e.key.key == SDLK_0 || e.key.key == SDLK_KP_0) {
+                        levelManager.clearButtonAreasForDebug();
+                    }
                 }
                 if (showDetailedDebugger && detailedDebugSubmenu == 4) {
                     if (e.key.key == SDLK_UP || e.key.key == SDLK_LEFT) detailedDebugTextureIndex--;
@@ -3001,14 +3322,10 @@ int RunGameApp(int argc, char** argv) {
                 if (e.key.key == SDLK_F9) {
                     if (allowNextLevelProgression) {
                         std::string nextPath = levelManager.nextLevelPath();
-                        if (!nextPath.empty()) {
-                            levelManager.setLevelPath(nextPath);
-                            droppedCoins.clear();
-                            reloadLevel();
-                        }
+                        (void)transitionToLevelPath(nextPath);
                     }
                 }
-                if (e.key.key == SDLK_F3) {
+                if (allowDevTools && e.key.key == SDLK_F3) {
                     demoState.enabled = !demoState.enabled;
                     demoState.jumpCooldown = 0.0f;
                     demoState.jumpHoldTimer = 0.0f;
@@ -3020,7 +3337,7 @@ int RunGameApp(int argc, char** argv) {
                     demoState.startTileSet = false;
                     SDL_Log("demo autoplay: %s", demoState.enabled ? "enabled" : "disabled");
                 }
-                if (e.key.key == SDLK_F2) {
+                if (allowDevTools && e.key.key == SDLK_F2) {
                     if (replayRecorder.enabled) {
                         stopReplayRecording("user_toggle_off");
                         SDL_Log("replay recording: disabled");
@@ -3029,7 +3346,7 @@ int RunGameApp(int argc, char** argv) {
                         SDL_Log("replay recording: enabled (%s)", replayRecorder.path.c_str());
                     }
                 }
-                if (e.key.key == SDLK_F1) {
+                if (allowDevTools && e.key.key == SDLK_F1) {
                     if (replayPlayback.active) {
                         stopReplayPlayback();
                         SDL_Log("replay playback: disabled");
@@ -3044,9 +3361,7 @@ int RunGameApp(int argc, char** argv) {
                             if (loadReplayForPlayback(replayPath, replayLevelPath)) {
                                 stopReplayRecording("playback_started");
                                 if (!replayLevelPath.empty() && replayLevelPath != levelManager.levelPath()) {
-                                    levelManager.setLevelPath(replayLevelPath);
-                                    droppedCoins.clear();
-                                    reloadLevel();
+                                    (void)transitionToLevelPath(replayLevelPath);
                                 }
                                 SDL_Log("replay playback: enabled (%s, frames=%d)",
                                         replayPath.c_str(), (int)replayPlayback.frames.size());
@@ -3184,6 +3499,12 @@ int RunGameApp(int argc, char** argv) {
                 while ((wrapped + centerOffset - anchor) < -wrapSize * 0.5f) wrapped += wrapSize;
                 while ((wrapped + centerOffset - anchor) > wrapSize * 0.5f) wrapped -= wrapSize;
                 return wrapped;
+            };
+            auto wrapDeltaNear = [&](float delta, float wrapSize, bool wrapEnabled) -> float {
+                if (!wrapEnabled || wrapSize <= 0.0f) return delta;
+                while (delta < -wrapSize * 0.5f) delta += wrapSize;
+                while (delta > wrapSize * 0.5f) delta -= wrapSize;
+                return delta;
             };
             auto overlapPlayerWithWrappedRect = [&](float rx, float ry, float rw, float rh, float& outRx, float& outRy) -> bool {
                 const float playerCX = player.x + (float)player.w * 0.5f;
@@ -3904,8 +4225,8 @@ int RunGameApp(int argc, char** argv) {
                     try { objId = std::stoi(obj.id); } catch (...) { continue; }
                     const float objCenterX = obj.x;
                     const float objCenterY = obj.y;
-                    const float dx = objCenterX - playerCenterX;
-                    const float dy = objCenterY - playerCenterY;
+                    const float dx = wrapDeltaNear(objCenterX - playerCenterX, mapWrapW, gameplayWrapX);
+                    const float dy = wrapDeltaNear(objCenterY - playerCenterY, mapWrapH, gameplayWrapY);
                     const float aheadDist = dx * ((demoState.dir > 0.0f) ? 1.0f : -1.0f);
                     if (objId == 46) {
                         if (aheadDist >= -8.0f && aheadDist <= (float)t * 3.0f && std::fabs(dy) <= (float)t * 1.5f) {
@@ -3941,7 +4262,7 @@ int RunGameApp(int argc, char** argv) {
 
                 if (springAhead) {
                     // Line up with spring and let spring impulse handle the vertical movement.
-                    const float springDeltaX = nearestSpringCenterX - playerCenterX;
+                    const float springDeltaX = wrapDeltaNear(nearestSpringCenterX - playerCenterX, mapWrapW, gameplayWrapX);
                     if (std::fabs(springDeltaX) > 4.0f) {
                         touchMove = (springDeltaX > 0.0f) ? 1.0f : -1.0f;
                         demoState.dir = touchMove;
@@ -3958,7 +4279,7 @@ int RunGameApp(int argc, char** argv) {
 
                 if (fastTravelAhead) {
                     touchMove = demoState.dir;
-                    const float targetXDelta = nearestFastTravelCenterX - playerCenterX;
+                    const float targetXDelta = wrapDeltaNear(nearestFastTravelCenterX - playerCenterX, mapWrapW, gameplayWrapX);
                     if (std::fabs(targetXDelta) > 6.0f) {
                         touchMove = (targetXDelta > 0.0f) ? 1.0f : -1.0f;
                         demoState.dir = touchMove;
@@ -3970,7 +4291,8 @@ int RunGameApp(int argc, char** argv) {
                         shouldJump = false;
                     }
                     // Safety: avoid entering nearby fast-travel if already close to route end-sign zone.
-                    if (endSignState.present && std::fabs(endSignState.objectX - playerCenterX) < (float)t * 10.0f) {
+                    if (endSignState.present &&
+                        std::fabs(wrapDeltaNear(endSignState.objectX - playerCenterX, mapWrapW, gameplayWrapX)) < (float)t * 10.0f) {
                         fastTravelAhead = false;
                         demoDown = false;
                         touchMove = demoState.dir;
@@ -4077,28 +4399,28 @@ int RunGameApp(int argc, char** argv) {
                 bool wrappedX = false;
                 bool wrappedY = false;
                 const bool horizontalWrapActive = gameplayWrapX;
-                const bool verticalWrapNow = isVerticalWrapEnabledAtX(player.x);
-                verticalWrapActive = verticalWrapNow;
-                if (verticalWrapNow) {
-                    const float mapHeightPx = (float)(map.h * map.tileSize);
-                    while (player.y + (float)player.h < 0.0f) {
-                        player.y += mapHeightPx;
-                        wrappedY = true;
-                    }
-                    while (player.y >= mapHeightPx) {
-                        player.y -= mapHeightPx;
-                        wrappedY = true;
-                    }
-                }
                 if (horizontalWrapActive) {
                     const float mapWidthPx = (float)(map.w * map.tileSize);
-                    while (player.x + (float)player.w < 0.0f) {
+                    while (player.x + (float)player.w <= 0.0f) {
                         player.x += mapWidthPx;
                         wrappedX = true;
                     }
                     while (player.x >= mapWidthPx) {
                         player.x -= mapWidthPx;
                         wrappedX = true;
+                    }
+                }
+                const bool verticalWrapNow = isVerticalWrapEnabledAtX(player.x);
+                verticalWrapActive = verticalWrapNow;
+                if (verticalWrapNow) {
+                    const float mapHeightPx = (float)(map.h * map.tileSize);
+                    while (player.y + (float)player.h <= 0.0f) {
+                        player.y += mapHeightPx;
+                        wrappedY = true;
+                    }
+                    while (player.y >= mapHeightPx) {
+                        player.y -= mapHeightPx;
+                        wrappedY = true;
                     }
                 }
                 if ((wrappedX || wrappedY) && RectHitsSolid(map, player.x, player.y, player.w, player.h)) {
@@ -4173,13 +4495,8 @@ int RunGameApp(int argc, char** argv) {
                             } else {
                                 targetTime = 2;
                             }
-                            std::string pitPath = levelManager.levelPathByCode(world * 100 + area * 10 + targetTime);
-                            if (!pitPath.empty()) {
-                                    levelManager.setLevelPath(pitPath);
-                                    droppedCoins.clear();
-                                    reloadLevel();
-                                    continue;
-                            }
+                            std::string pitPath = levelManager.levelPathByWorldAreaTime(world, area, targetTime);
+                            if (transitionToLevelPath(pitPath)) continue;
                         }
                     }
                 }
@@ -4198,11 +4515,17 @@ int RunGameApp(int argc, char** argv) {
             }
 
             const bool isSecretBossLevel = (currentLevelId == 59);
+            const bool preserveObjectsForLevel = (currentLevelId == 9 || currentLevelId == 10);
             if (!isSecretBossLevel &&
                 !bossState.active && bossState.activationCooldown <= 0.0f &&
                 playerTouchesTileId(map, player, 68, 68, gameplayWrapX, gameplayWrapY)) {
                 bossState.active = true;
-                removeTimewarpObjectsAndExit();
+                if (bossState.sourceWorld != 1 && !preserveObjectsForLevel) {
+                    removeTimewarpObjectsAndExit();
+                } else {
+                    // World 1 boss start: keep all map objects intact.
+                    setFastTravelActiveDir(-1, "boss_start_world1_keep_objects");
+                }
             }
 
             if (bossState.active && bossState.activationCooldown <= 0.0f && !levelCompleteActive) {
@@ -4240,8 +4563,33 @@ int RunGameApp(int argc, char** argv) {
                         bossState.active = false;
                         secretFireballs.clear();
                         secretExplosions.clear();
-                        if (bossState.world == 1) {
-                            clampCamX = false;
+                        // Boss ended: remove all activator tiles and restore end signs.
+                        for (int i = 0; i < (int)map.tileIds.size(); ++i) {
+                            if ((int)map.tileIds[i] == 68) levelManager.setTileAt(map, i, 2);
+                        }
+                        restoreEndPostsFromRawLevel();
+                        endSignState = EndSignRuntimeState{};
+                        float nearestAheadDist = 1e30f;
+                        int fallbackSignIndex = -1;
+                        for (int i = 0; i < (int)objects.size(); ++i) {
+                            if (objects[i].id != "67") continue;
+                            if (fallbackSignIndex < 0) fallbackSignIndex = i;
+                            const float dx = wrapDeltaNear(objects[i].x - player.x, mapWrapW, gameplayWrapX);
+                            if (dx >= 0.0f && dx < nearestAheadDist) {
+                                nearestAheadDist = dx;
+                                endSignState.objectIndex = i;
+                            }
+                        }
+                        if (endSignState.objectIndex < 0) endSignState.objectIndex = fallbackSignIndex;
+                        if (endSignState.objectIndex >= 0 && endSignState.objectIndex < (int)objects.size()) {
+                            endSignState.present = true;
+                            endSignState.objectX = objects[endSignState.objectIndex].x;
+                            endSignState.objectY = objects[endSignState.objectIndex].y;
+                        }
+                        if (bossState.sourceWorld == 1) {
+                            clampCamX = true;
+                            minCamXOverride = std::max((float)map.tileSize, 1170.0f - (float)kGameplayViewW * 0.5f);
+                            return;
                         }
                         startLevelCompleteSequence();
                     }
@@ -4300,7 +4648,9 @@ int RunGameApp(int argc, char** argv) {
                             bossState.health = bossState.maxHealth;
                             bossState.vx = 280.0f;
                             bossState.vy = 220.0f;
-                            removeTimewarpObjectsAndExit();
+                            if (!preserveObjectsForLevel) {
+                                removeTimewarpObjectsAndExit();
+                            }
                             SDL_Log("boss.w3: phase 2 -> 3 (fight active)");
                         }
                     }
@@ -4334,6 +4684,16 @@ int RunGameApp(int argc, char** argv) {
                         lockCx = 2528.0f + kGameplayViewW * 0.5f;
                         lockCy = 976.0f + kGameplayViewH * 0.5f;
                     }
+                    const float bossMinCamX = (minCamXOverride >= 0.0f)
+                        ? std::max((float)map.tileSize, minCamXOverride)
+                        : (float)map.tileSize;
+                    const float bossMaxCamX = map.w * map.tileSize - kGameplayViewW - map.tileSize;
+                    const float bossMinCamY = (float)map.tileSize;
+                    const float bossMaxCamY = map.h * map.tileSize - kGameplayViewH;
+                    const float bossCamX = std::clamp(lockCx - kGameplayViewW * 0.5f, bossMinCamX, std::max(bossMinCamX, bossMaxCamX));
+                    const float bossCamY = std::clamp(lockCy - kGameplayViewH * 0.5f, bossMinCamY, std::max(bossMinCamY, bossMaxCamY));
+                    lockCx = bossCamX + kGameplayViewW * 0.5f;
+                    lockCy = bossCamY + kGameplayViewH * 0.5f;
                     const float lockLeft = lockCx - kGameplayViewW * 0.5f + halfW + 8.0f;
                     const float lockRight = lockCx + kGameplayViewW * 0.5f - halfW - 8.0f;
                     const float lockTop = lockCy - kGameplayViewH * 0.5f + halfH + 8.0f;
@@ -4342,6 +4702,30 @@ int RunGameApp(int argc, char** argv) {
                     arenaRight = std::min(arenaRight, lockRight);
                     arenaTop = std::max(arenaTop, lockTop);
                     arenaBottom = std::min(arenaBottom, lockBottom);
+                    // Keep player inside the locked camera viewport during boss fights.
+                    const float viewLeft = lockCx - kGameplayViewW * 0.5f;
+                    const float viewRight = lockCx + kGameplayViewW * 0.5f;
+                    const float viewTop = lockCy - kGameplayViewH * 0.5f;
+                    const float viewBottom = lockCy + kGameplayViewH * 0.5f;
+                    const float minPlayerX = viewLeft + 4.0f;
+                    const float maxPlayerX = std::max(minPlayerX, viewRight - (float)player.w - 4.0f);
+                    const float minPlayerY = viewTop + 4.0f;
+                    const float maxPlayerY = std::max(minPlayerY, viewBottom - (float)player.h - 4.0f);
+                    if (player.x < minPlayerX) {
+                        player.x = minPlayerX;
+                        if (player.vx < 0.0f) player.vx = 0.0f;
+                    } else if (player.x > maxPlayerX) {
+                        player.x = maxPlayerX;
+                        if (player.vx > 0.0f) player.vx = 0.0f;
+                    }
+                    if (player.y < minPlayerY) {
+                        player.y = minPlayerY;
+                        if (player.vy < 0.0f) player.vy = 0.0f;
+                    } else if (player.y > maxPlayerY) {
+                        player.y = maxPlayerY;
+                        if (player.vy > 0.0f) player.vy = 0.0f;
+                        player.onGround = true; // treat boss-screen bottom as floor
+                    }
                 }
                 if (arenaLeft > arenaRight) std::swap(arenaLeft, arenaRight);
                 if (arenaTop > arenaBottom) std::swap(arenaTop, arenaBottom);
@@ -4354,8 +4738,15 @@ int RunGameApp(int argc, char** argv) {
                         bossState.vx = 0.0f;
                         bossState.vy = 0.0f;
                     } else if (bossState.sourceWorld == 7) {
+                        const int bossHitW = (int)std::lround(bossW);
+                        const int bossHitH = (int)std::lround(bossH);
+                        const float prevY = bossState.y;
                         bossState.vy += bossGravity * dt;
                         bossState.y += bossState.vy * dt;
+                        if (RectHitsSolid(map, bossState.x - halfW, bossState.y - halfH, bossHitW, bossHitH)) {
+                            bossState.y = prevY;
+                            bossState.vy = -bossState.vy;
+                        }
                         if (bossState.y + halfH < arenaTop) {
                             const float minX = arenaLeft + halfW;
                             const float maxX = std::max(minX, arenaRight - halfW);
@@ -4365,9 +4756,21 @@ int RunGameApp(int argc, char** argv) {
                             bossState.vy = -std::fabs(bossState.vy);
                         }
                     } else {
+                        const int bossHitW = (int)std::lround(bossW);
+                        const int bossHitH = (int)std::lround(bossH);
                         bossState.vy += bossGravity * dt;
-                        bossState.x += bossState.vx * dt;
-                        bossState.y += bossState.vy * dt;
+                        const float nextX = bossState.x + bossState.vx * dt;
+                        if (!RectHitsSolid(map, nextX - halfW, bossState.y - halfH, bossHitW, bossHitH)) {
+                            bossState.x = nextX;
+                        } else {
+                            bossState.vx = -bossState.vx;
+                        }
+                        const float nextY = bossState.y + bossState.vy * dt;
+                        if (!RectHitsSolid(map, bossState.x - halfW, nextY - halfH, bossHitW, bossHitH)) {
+                            bossState.y = nextY;
+                        } else {
+                            bossState.vy = -bossState.vy;
+                        }
                         if (bossState.x - halfW < arenaLeft) {
                             bossState.x = arenaLeft + halfW;
                             bossState.vx = std::fabs(bossState.vx);
@@ -4493,8 +4896,24 @@ int RunGameApp(int argc, char** argv) {
                         if (!bossCanMoveAndTakeDamage) {
                             if (applyBossContactDamageToPlayer()) continue;
                         } else {
+                            if (bossState.sourceWorld == 1) {
+                                player.y = testBy - (float)player.h;
+                                player.vy = -1000.0f;
+                                player.onGround = false;
+                                playerInvincibleTimer = 0.12f;
+                                applyBossDamage(1);
+                                audio.playBumperSfx();
+                                continue;
+                            }
                             const float py2 = player.y + (float)player.h;
-                            const bool stomp = (player.vy > 80.0f) && (py2 <= testBy + bossH * 0.55f);
+                            const float prevPy2 = frameStartY + (float)player.h;
+                            const float playerCy = player.y + (float)player.h * 0.5f;
+                            const float bossCy = testBy + bossH * 0.5f;
+                            const bool stomp =
+                                (player.vy > 120.0f) &&
+                                (prevPy2 <= testBy + bossH * 0.35f) &&
+                                (py2 <= testBy + bossH * 0.45f) &&
+                                (playerCy <= bossCy);
                             if (stomp) {
                                 player.y = testBy - (float)player.h;
                                 player.vy = -1000.0f;
@@ -4549,6 +4968,16 @@ int RunGameApp(int argc, char** argv) {
                         levelManager.setTileAt(map, idx, 21);
                         levelManager.addCoins(5);
                         audio.playCoinSfx();
+                    } else if (standingTileId == 49) {
+                        for (int i = 0; i < (int)map.tileIds.size(); ++i) {
+                            if ((int)map.tileIds[i] == 50) levelManager.setTileAt(map, i, 49);
+                        }
+                        levelManager.setTileAt(map, idx, 50);
+                        checkpointActive = true;
+                        checkpointLevelPath = normalizeLevelPath(levelManager.levelPath());
+                        checkpointTileX = tx;
+                        checkpointTileY = ty;
+                        audio.playCoinSfx();
                     } else if (standingTileId == 13 && playerInvincibleTimer <= 0.0f && levelLoadDeathGraceTimer <= 0.0f) {
                         const bool hasCoins = levelManager.coinCount() > 0;
                         if (hasCoins) {
@@ -4577,6 +5006,7 @@ int RunGameApp(int argc, char** argv) {
             if (collectedNow > 0) {
                 audio.playCoinSfx();
             }
+            levelManager.activateButtonsAtPlayer(map, player, gameplayWrapX, gameplayWrapY);
             if (timeTravelTriggerCooldown <= 0.0f) {
                 levelManager.updateTimeWarpIdAtPlayer(map, player, gameplayWrapX, gameplayWrapY);
             }
@@ -4738,8 +5168,8 @@ int RunGameApp(int argc, char** argv) {
             }
         }
 
-        const bool renderWrapX = true;
-        const bool renderWrapY = true;
+        const bool renderWrapX = gameplayWrapX;
+        const bool renderWrapY = verticalWrapActive;
         const int renderLevelId = currentLevelId;
         const bool cameraWrapX = (renderLevelId == 39 || renderLevelId == 40);
         bool cameraWrapY = false;
@@ -4791,6 +5221,18 @@ int RunGameApp(int argc, char** argv) {
             forcedBossCameraX = 2528.0f + kGameplayViewW * 0.5f;
             forcedBossCameraY = 976.0f + kGameplayViewH * 0.5f;
         }
+        if (forceBossCamera) {
+            const float bossMinCamX = (minCamXOverride >= 0.0f)
+                ? std::max((float)map.tileSize, minCamXOverride)
+                : (float)map.tileSize;
+            const float bossMaxCamX = map.w * map.tileSize - worldViewW - map.tileSize;
+            const float bossMinCamY = (float)map.tileSize;
+            const float bossMaxCamY = map.h * map.tileSize - worldViewH;
+            const float forcedCamX = std::clamp(forcedBossCameraX - worldViewW * 0.5f, bossMinCamX, std::max(bossMinCamX, bossMaxCamX));
+            const float forcedCamY = std::clamp(forcedBossCameraY - worldViewH * 0.5f, bossMinCamY, std::max(bossMinCamY, bossMaxCamY));
+            forcedBossCameraX = forcedCamX + worldViewW * 0.5f;
+            forcedBossCameraY = forcedCamY + worldViewH * 0.5f;
+        }
         const bool forceBossCameraActive = forceBossCamera && !lockCameraToEndSign;
         const float cameraTargetX = forceBossCameraActive
             ? forcedBossCameraX
@@ -4804,7 +5246,10 @@ int RunGameApp(int argc, char** argv) {
         float camY = freeCamY;
         float maxCamX = map.w * map.tileSize - worldViewW - map.tileSize;
         float maxCamY = map.h * map.tileSize - worldViewH;
-        const float clampedCamX = std::clamp(freeCamX, (float)map.tileSize, std::max((float)map.tileSize, maxCamX));
+        const float minCamX = (minCamXOverride >= 0.0f)
+            ? std::max((float)map.tileSize, minCamXOverride)
+            : (float)map.tileSize;
+        const float clampedCamX = std::clamp(freeCamX, minCamX, std::max(minCamX, maxCamX));
         const float clampXTarget = cameraWrapX ? 0.0f : 1.0f;
         const float clampLerpSpeed = 7.5f;
         const float clampBlendStep = 1.0f - std::exp(-clampLerpSpeed * std::max(0.0f, dt));
@@ -5202,7 +5647,8 @@ int RunGameApp(int argc, char** argv) {
             }
             if (!of && isEndSign) of = defaultEndSignFrame;
             if (!of) of = defaultEntityFrame;
-            if (!isFastTravelChanger && !isBumper && !isEndSign && hideUnknownObjectTypes && !objectTypeKnown) {
+            if (!isFastTravelChanger && !isBumper && !isEndSign && hideUnknownObjectTypes &&
+                currentLevelId != 9 && currentLevelId != 10 && !objectTypeKnown) {
                 continue;
             }
 
@@ -5986,11 +6432,8 @@ int RunGameApp(int argc, char** argv) {
         }
 
         if (!paused) {
-            int touchDeviceCount = 0;
-            SDL_TouchID* touchDevices = SDL_GetTouchDevices(&touchDeviceCount);
-            if (touchDevices) SDL_free(touchDevices);
-            if (touchDeviceCount > 0) hasTouchScreenDevice = true;
-            bool showMobileUi = hasTouchScreenDevice;
+            bool showMobileUi = false;
+            showMobileUi = hasTouchScreenDevice;
             if (showMobileUi) {
                 auto drawTouchBtn = [&](const SDL_FRect& r, bool active) {
                     SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
@@ -6201,6 +6644,75 @@ int RunGameApp(int argc, char** argv) {
                 DrawText(debugRen, 12, y, 2, std::string("Objects: ") + std::to_string((int)objects.size())); y += 20;
                 DrawText(debugRen, 12, y, 2, std::string("Level IDs (W/P/T): ") + std::to_string(levelManager.worldId()) + "/" + std::to_string(levelManager.levelPartId()) + "/" + std::to_string(levelManager.timeId())); y += 20;
                 DrawText(debugRen, 12, y, 2, std::string("TimeWarpId: ") + std::string(1, levelManager.timeWarpId())); y += 20;
+                {
+                    const std::vector<int> activeButtons = levelManager.activeButtonWorldAreas();
+                    std::string line = "Buttons Active: ";
+                    if (activeButtons.empty()) {
+                        line += "(none)";
+                    } else {
+                        for (size_t i = 0; i < activeButtons.size(); ++i) {
+                            const int key = activeButtons[i];
+                            const int w = key / 10;
+                            const int a = key % 10;
+                            if (i > 0) line += ", ";
+                            line += std::to_string(w) + "." + std::to_string(a);
+                        }
+                    }
+                    DrawText(debugRen, 12, y, 2, line); y += 20;
+                }
+                DrawText(debugRen, 12, y, 2, "Button Editor (U/O=World J/L=Area +=Add -=Remove 0=Clear)"); y += 18;
+                SDL_Rect worldMinusBtn{};
+                SDL_Rect worldPlusBtn{};
+                SDL_Rect areaMinusBtn{};
+                SDL_Rect areaPlusBtn{};
+                SDL_Rect addBtn{};
+                SDL_Rect removeBtn{};
+                SDL_Rect clearBtn{};
+                SDL_Rect worldValueBox{58, kDebugButtonEditorAnchorY, 120, 28};
+                SDL_Rect areaValueBox{58, kDebugButtonEditorAnchorY + 34, 120, 28};
+                buildDebugButtonEditorRects(
+                    kDebugButtonEditorAnchorY,
+                    worldMinusBtn, worldPlusBtn,
+                    areaMinusBtn, areaPlusBtn,
+                    addBtn, removeBtn, clearBtn);
+                SDL_SetRenderDrawBlendMode(debugRen, SDL_BLENDMODE_BLEND);
+                SDL_SetRenderDrawColor(debugRen, 55, 70, 95, 180);
+                SDL_RenderFillRect(debugRen, &worldMinusBtn);
+                SDL_RenderFillRect(debugRen, &worldPlusBtn);
+                SDL_RenderFillRect(debugRen, &areaMinusBtn);
+                SDL_RenderFillRect(debugRen, &areaPlusBtn);
+                SDL_RenderFillRect(debugRen, &addBtn);
+                SDL_RenderFillRect(debugRen, &removeBtn);
+                SDL_RenderFillRect(debugRen, &clearBtn);
+                SDL_RenderFillRect(debugRen, &worldValueBox);
+                SDL_RenderFillRect(debugRen, &areaValueBox);
+                SDL_SetRenderDrawBlendMode(debugRen, SDL_BLENDMODE_NONE);
+                SDL_SetRenderDrawColor(debugRen, 180, 200, 230, 255);
+                SDL_RenderDrawRect(debugRen, &worldMinusBtn);
+                SDL_RenderDrawRect(debugRen, &worldPlusBtn);
+                SDL_RenderDrawRect(debugRen, &areaMinusBtn);
+                SDL_RenderDrawRect(debugRen, &areaPlusBtn);
+                SDL_RenderDrawRect(debugRen, &addBtn);
+                SDL_RenderDrawRect(debugRen, &removeBtn);
+                SDL_RenderDrawRect(debugRen, &clearBtn);
+                SDL_RenderDrawRect(debugRen, &worldValueBox);
+                SDL_RenderDrawRect(debugRen, &areaValueBox);
+                DrawText(debugRen, worldMinusBtn.x + 14, worldMinusBtn.y + 6, 2, "-");
+                DrawText(debugRen, worldPlusBtn.x + 14, worldPlusBtn.y + 6, 2, "+");
+                DrawText(debugRen, areaMinusBtn.x + 14, areaMinusBtn.y + 6, 2, "-");
+                DrawText(debugRen, areaPlusBtn.x + 14, areaPlusBtn.y + 6, 2, "+");
+                DrawText(debugRen, addBtn.x + 14, addBtn.y + 8, 2, "ADD");
+                DrawText(debugRen, removeBtn.x + 6, removeBtn.y + 8, 2, "REMOVE");
+                DrawText(debugRen, clearBtn.x + 12, clearBtn.y + 8, 2, "CLEAR");
+                const std::string worldText = (debugButtonEditField == DebugButtonEditField::World)
+                    ? std::string("WORLD: ") + debugButtonEditBuffer + "_"
+                    : std::string("WORLD: ") + std::to_string(detailedDebugButtonWorld);
+                const std::string areaText = (debugButtonEditField == DebugButtonEditField::Area)
+                    ? std::string("AREA: ") + debugButtonEditBuffer + "_"
+                    : std::string("AREA: ") + std::to_string(detailedDebugButtonArea);
+                DrawText(debugRen, worldValueBox.x + 6, worldValueBox.y + 6, 2, worldText);
+                DrawText(debugRen, areaValueBox.x + 6, areaValueBox.y + 6, 2, areaText);
+                y += 104;
                 DrawText(debugRen, 12, y, 2, std::string("Flags H/P/D/FPS: ") +
                                             (showHitboxes ? "1" : "0") + "/" +
                                             (showPlayerHitbox ? "1" : "0") + "/" +
@@ -6477,4 +6989,5 @@ int RunGameApp(int argc, char** argv) {
     SDL_Quit();
     return 0;
 }
+
 

@@ -3,18 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DF-New Account Manager</title>
+  <title>Dorfplatformer Timetravel Account Manager</title>
+  <link rel="stylesheet" href="./theme.css">
   <style>
-    :root {
-      --bg: #0d1823;
-      --panel: #182735;
-      --panel-2: #1f3041;
-      --text: #e8f1ff;
-      --muted: #97acc5;
-      --ok: #5cd1a1;
-      --warn: #f0cf70;
-      --err: #ff8c8c;
-    }
     body {
       margin: 0;
       font-family: "Segoe UI", Tahoma, sans-serif;
@@ -24,8 +15,8 @@
     .wrap { max-width: 920px; margin: 24px auto; padding: 0 14px; }
     .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
     .panel {
-      background: var(--panel);
-      border: 1px solid #36506a;
+      background: var(--card);
+      border: 1px solid var(--border);
       border-radius: 12px;
       padding: 14px;
     }
@@ -35,96 +26,109 @@
     input {
       width: 100%;
       box-sizing: border-box;
-      border: 1px solid #496683;
+      border: 1px solid var(--border);
       border-radius: 8px;
-      background: #102031;
+      background: #0b1324;
       color: var(--text);
       padding: 9px 10px;
       font-size: 14px;
     }
     .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
     button {
-      border: 1px solid #4f6d89;
-      background: var(--panel-2);
+      border: 1px solid var(--border);
+      background: #1f2937;
       color: var(--text);
       border-radius: 8px;
       padding: 8px 12px;
       cursor: pointer;
     }
-    button.primary { background: #245942; border-color: #33956e; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #f8fafc; font-weight: 700; }
     .status {
       margin-top: 12px;
       min-height: 18px;
       font-size: 13px;
-      color: var(--warn);
+      color: #fbbf24;
     }
-    .ok { color: var(--ok); }
-    .err { color: var(--err); }
+    .ok { color: #34d399; }
+    .err { color: #f87171; }
     .mono {
       font-family: Consolas, "Courier New", monospace;
       font-size: 12px;
       word-break: break-all;
-      color: #d8e6ff;
-      background: #0f1d2c;
-      border: 1px solid #3f5a75;
+      color: var(--text);
+      background: #0b1324;
+      border: 1px solid var(--border);
       border-radius: 8px;
       padding: 8px;
       margin-top: 8px;
+    }
+    @media (max-width: 640px) {
+      input {
+        min-height: 44px;
+        padding: 11px 12px;
+        font-size: 16px;
+      }
+      button {
+        min-height: 44px;
+      }
+      .row button {
+        flex: 1 1 100%;
+      }
     }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>DF-New Account Manager</h1>
-    <p style="color:#a8bdd6">Create account, sign in, change password, and change username for level uploads.</p>
+    <h1>Dorfplatformer Timetravel Account Manager</h1>
+    <p style="color:var(--muted)">Create account, sign in, change password, and change username for level uploads.</p>
 
     <div class="grid">
-      <section class="panel">
+      <section class="panel" id="createPanel">
         <h2>Create Account</h2>
         <label for="createEmail">Email</label>
-        <input id="createEmail" type="email" placeholder="you@example.com">
+        <input id="createEmail" type="email" inputmode="email" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="you@example.com">
 
         <label for="createPassword">Password</label>
-        <input id="createPassword" type="password" placeholder="min 6 chars">
+        <input id="createPassword" type="password" autocomplete="new-password" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="min 6 chars">
 
         <label for="createUsername">Username</label>
-        <input id="createUsername" type="text" placeholder="player_one">
+        <input id="createUsername" type="text" inputmode="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="player_one">
 
         <div class="row">
           <button id="createAccountBtn" class="primary">Create Account</button>
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel" id="loginPanel">
         <h2>Sign In</h2>
         <label for="loginEmail">Email</label>
-        <input id="loginEmail" type="email" placeholder="you@example.com">
+        <input id="loginEmail" type="email" inputmode="email" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="you@example.com">
 
         <label for="loginPassword">Password</label>
-        <input id="loginPassword" type="password" placeholder="password">
+        <input id="loginPassword" type="password" autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="password">
 
         <div class="row">
           <button id="signInBtn" class="primary">Sign In</button>
-          <button id="signOutBtn">Sign Out</button>
         </div>
       </section>
 
-      <section class="panel">
-        <h2>Account Changes</h2>
+      <section class="panel" id="usernamePanel">
+        <h2>Username</h2>
         <label for="newUsername">New Username</label>
-        <input id="newUsername" type="text" placeholder="new_name">
+        <input id="newUsername" type="text" inputmode="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="new_name">
 
         <label for="newPassword">New Password</label>
-        <input id="newPassword" type="password" placeholder="min 6 chars">
+        <input id="newPassword" type="password" autocomplete="new-password" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="min 6 chars">
 
         <div class="row">
           <button id="changeUsernameBtn">Change Username</button>
           <button id="changePasswordBtn">Change Password</button>
+          <button id="signOutBtn">Sign Out</button>
         </div>
       </section>
     </div>
 
-    <section class="panel" style="margin-top:14px">
+    <section class="panel" style="margin-top:14px; display:none">
       <h2>Session + Game Fields</h2>
       <div id="sessionSummary" class="mono">No session.</div>
       <div class="status" id="status"></div>

@@ -2,3 +2,5 @@
 node_modules
 /.build/include
 \.build\include
+.tools\
+\.tools
