@@ -116,12 +116,13 @@ PlayerUpdateResult UpdatePlayerMovement(
     bool gamepadDown,
     bool gamepadJump,
     bool gamepadFreeMove,
+    bool allowFreeMove,
     const KeyboardBindings& keybinds,
     float& inputMove,
     bool& inputDown
 ) {
     const bool* keys = SDL_GetKeyboardState(nullptr);
-    bool shiftDown = keys[SDL_SCANCODE_LSHIFT] || keys[SDL_SCANCODE_RSHIFT];
+    bool shiftDown = allowFreeMove && (keys[SDL_SCANCODE_LSHIFT] || keys[SDL_SCANCODE_RSHIFT]);
     shiftDown = shiftDown || gamepadFreeMove;
     player.freeMove = shiftDown;
 

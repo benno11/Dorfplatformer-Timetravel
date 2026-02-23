@@ -1,6 +1,6 @@
 #define MyAppName "Dorfplatformer Timetravel"
 #ifndef MyAppVersion
-  #define MyAppVersion "2.1.1"
+  #define MyAppVersion "2.1.2"
 #endif
 #define MyAppPublisher "Benno111"
 #define MyAppExeName "platformer.exe"

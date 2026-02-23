@@ -51,6 +51,7 @@ PlayerUpdateResult UpdatePlayerMovement(
     bool gamepadDown,
     bool gamepadJump,
     bool gamepadFreeMove,
+    bool allowFreeMove,
     const KeyboardBindings& keybinds,
     float& inputMove,
     bool& inputDown

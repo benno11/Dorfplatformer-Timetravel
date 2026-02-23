@@ -190,6 +190,9 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     int settingsSelNetwork = 0;
     std::string networkLoginEmail;
     std::string networkLoginPassword;
+    std::size_t networkLoginEmailCursor = 0;
+    std::size_t networkLoginPasswordCursor = 0;
+    bool networkCursorPreset = false;
     std::string networkLoginStatus;
     bool waitingForControlKey = false;
     int waitingControlIndex = -1;
@@ -443,33 +446,111 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         hideVirtualKeyboard();
 #endif
     };
-    auto beginNetworkEditing = [&](NetworkEditField field) {
+    auto beginNetworkEditing = [&](NetworkEditField field, const SDL_Rect* focusGameRect = nullptr) {
         networkEditField = field;
+        if (!networkCursorPreset) {
+            if (field == NetworkEditField::LoginEmail) networkLoginEmailCursor = networkLoginEmail.size();
+            if (field == NetworkEditField::LoginPassword) networkLoginPasswordCursor = networkLoginPassword.size();
+        }
+        networkCursorPreset = false;
         SDL_StartTextInput(ctx.win);
 #if defined(__ANDROID__)
-        showVirtualKeyboard(0, 0, std::max(1, ctx.baseScreenW), std::max(1, ctx.baseScreenH));
+        int winW = 0;
+        int winH = 0;
+        SDL_GetWindowSize(ctx.win, &winW, &winH);
+        if (focusGameRect && ctx.baseScreenW > 0 && ctx.baseScreenH > 0 && winW > 0 && winH > 0) {
+            SDL_Rect focusRect = *focusGameRect;
+            const int focusPad = 12;
+            focusRect.x -= focusPad;
+            focusRect.y -= focusPad;
+            focusRect.w += focusPad * 2;
+            focusRect.h += focusPad * 2;
+
+            SDL_Rect present = computePresentRect(winW, winH, ctx.baseScreenW, ctx.baseScreenH, 1.0f);
+            if (present.w > 0 && present.h > 0) {
+                const float sx = (float)present.w / (float)ctx.baseScreenW;
+                const float sy = (float)present.h / (float)ctx.baseScreenH;
+                int wx = present.x + (int)std::floor((float)focusRect.x * sx);
+                int wy = present.y + (int)std::floor((float)focusRect.y * sy);
+                int ww = std::max(1, (int)std::ceil((float)focusRect.w * sx));
+                int wh = std::max(1, (int)std::ceil((float)focusRect.h * sy));
+                wx = std::clamp(wx, 0, std::max(0, winW - 1));
+                wy = std::clamp(wy, 0, std::max(0, winH - 1));
+                ww = std::min(ww, std::max(1, winW - wx));
+                wh = std::min(wh, std::max(1, winH - wy));
+                showVirtualKeyboard(wx, wy, ww, wh);
+            } else {
+                showVirtualKeyboard(0, 0, std::max(1, winW), std::max(1, winH));
+            }
+        } else {
+            showVirtualKeyboard(0, 0, std::max(1, winW), std::max(1, winH));
+        }
 #endif
+    };
+    auto utf8Prev = [](const std::string& s, std::size_t pos) -> std::size_t {
+        if (pos == 0) return 0;
+        std::size_t i = pos - 1;
+        while (i > 0 && ((static_cast<unsigned char>(s[i]) & 0xC0) == 0x80)) --i;
+        return i;
+    };
+    auto utf8Next = [](const std::string& s, std::size_t pos) -> std::size_t {
+        if (pos >= s.size()) return s.size();
+        std::size_t i = pos + 1;
+        while (i < s.size() && ((static_cast<unsigned char>(s[i]) & 0xC0) == 0x80)) ++i;
+        return i;
     };
     auto appendNetworkInput = [&](const std::string& text) {
         if (text.empty()) return;
-        if (networkEditField == NetworkEditField::LoginEmail) {
-            std::string next = networkLoginEmail + text;
-            if (next.size() > 256) next.resize(256);
-            networkLoginEmail = next;
-            return;
-        }
-        if (networkEditField == NetworkEditField::LoginPassword) {
-            std::string next = networkLoginPassword + text;
-            if (next.size() > 256) next.resize(256);
-            networkLoginPassword = next;
+        std::string* target = nullptr;
+        std::size_t* cursor = nullptr;
+        if (networkEditField == NetworkEditField::LoginEmail) { target = &networkLoginEmail; cursor = &networkLoginEmailCursor; }
+        if (networkEditField == NetworkEditField::LoginPassword) { target = &networkLoginPassword; cursor = &networkLoginPasswordCursor; }
+        if (!target || !cursor) return;
+        if (*cursor > target->size()) *cursor = target->size();
+        target->insert(*cursor, text);
+        *cursor += text.size();
+        while (target->size() > 256) {
+            const std::size_t cut = utf8Prev(*target, target->size());
+            target->erase(cut);
+            if (*cursor > target->size()) *cursor = target->size();
         }
     };
     auto popNetworkInput = [&]() {
         std::string* target = nullptr;
-        if (networkEditField == NetworkEditField::LoginEmail) target = &networkLoginEmail;
-        if (networkEditField == NetworkEditField::LoginPassword) target = &networkLoginPassword;
-        if (!target || target->empty()) return;
-        target->pop_back();
+        std::size_t* cursor = nullptr;
+        if (networkEditField == NetworkEditField::LoginEmail) { target = &networkLoginEmail; cursor = &networkLoginEmailCursor; }
+        if (networkEditField == NetworkEditField::LoginPassword) { target = &networkLoginPassword; cursor = &networkLoginPasswordCursor; }
+        if (!target || !cursor || target->empty()) return;
+        if (*cursor > target->size()) *cursor = target->size();
+        if (*cursor == 0) return;
+        const std::size_t left = utf8Prev(*target, *cursor);
+        target->erase(left, *cursor - left);
+        *cursor = left;
+    };
+    auto deleteNetworkInputForward = [&]() {
+        std::string* target = nullptr;
+        std::size_t* cursor = nullptr;
+        if (networkEditField == NetworkEditField::LoginEmail) { target = &networkLoginEmail; cursor = &networkLoginEmailCursor; }
+        if (networkEditField == NetworkEditField::LoginPassword) { target = &networkLoginPassword; cursor = &networkLoginPasswordCursor; }
+        if (!target || !cursor || target->empty()) return;
+        if (*cursor > target->size()) *cursor = target->size();
+        if (*cursor >= target->size()) return;
+        const std::size_t right = utf8Next(*target, *cursor);
+        target->erase(*cursor, right - *cursor);
+    };
+    auto moveNetworkCursor = [&](int dir) {
+        std::string* target = nullptr;
+        std::size_t* cursor = nullptr;
+        if (networkEditField == NetworkEditField::LoginEmail) { target = &networkLoginEmail; cursor = &networkLoginEmailCursor; }
+        if (networkEditField == NetworkEditField::LoginPassword) { target = &networkLoginPassword; cursor = &networkLoginPasswordCursor; }
+        if (!target || !cursor) return;
+        if (*cursor > target->size()) *cursor = target->size();
+        if (dir < 0) *cursor = utf8Prev(*target, *cursor);
+        if (dir > 0) *cursor = utf8Next(*target, *cursor);
+    };
+    auto moveNetworkCursorToEdge = [&](bool toEnd) {
+        if (networkEditField == NetworkEditField::LoginEmail) networkLoginEmailCursor = toEnd ? networkLoginEmail.size() : 0;
+        if (networkEditField == NetworkEditField::LoginPassword) networkLoginPasswordCursor = toEnd ? networkLoginPassword.size() : 0;
     };
     auto maskedPassword = [](const std::string& password) -> std::string {
         if (password.empty()) return "<empty>";
@@ -503,6 +584,77 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             SDL_Log("ACCOUNT: sign-in rejected (missing firebase_api_key after config fallback)");
             return false;
         }
+#if defined(__ANDROID__)
+        {
+            JNIEnv* env = static_cast<JNIEnv*>(SDL_GetAndroidJNIEnv());
+            if (env) {
+                jclass cls = env->FindClass("com/Benno111/dorfplatformertimetravel/MainActivity");
+                if (!cls) {
+                    if (env->ExceptionCheck()) env->ExceptionClear();
+                } else {
+                    jmethodID mid = env->GetStaticMethodID(
+                        cls, "firebaseSignIn",
+                        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)Ljava/lang/String;");
+                    if (mid) {
+                        jstring jApi = env->NewStringUTF(effectiveApiKey.c_str());
+                        jstring jEmail = env->NewStringUTF(email.c_str());
+                        jstring jPass = env->NewStringUTF(password.c_str());
+                        if (env->ExceptionCheck()) {
+                            env->ExceptionClear();
+                        }
+                        jobject jRespObj = env->CallStaticObjectMethod(cls, mid, jApi, jEmail, jPass, (jint)12000);
+                        if (env->ExceptionCheck()) {
+                            env->ExceptionClear();
+                        }
+                        if (jApi) env->DeleteLocalRef(jApi);
+                        if (jEmail) env->DeleteLocalRef(jEmail);
+                        if (jPass) env->DeleteLocalRef(jPass);
+                        std::string respBody;
+                        if (jRespObj) {
+                            jstring jResp = static_cast<jstring>(jRespObj);
+                            const char* cResp = env->GetStringUTFChars(jResp, nullptr);
+                            if (cResp) {
+                                respBody = cResp;
+                                env->ReleaseStringUTFChars(jResp, cResp);
+                            }
+                            if (env->ExceptionCheck()) {
+                                env->ExceptionClear();
+                            }
+                            env->DeleteLocalRef(jRespObj);
+                        }
+                        env->DeleteLocalRef(cls);
+                        if (!respBody.empty()) {
+                            nlohmann::json resp;
+                            try { resp = nlohmann::json::parse(respBody); } catch (...) { resp = nlohmann::json(); }
+                            if (resp.is_object() && resp.contains("idToken") && resp["idToken"].is_string()) {
+                                levelServerAuthToken = resp["idToken"].get<std::string>();
+                                if (resp.contains("displayName") && resp["displayName"].is_string()) {
+                                    levelServerAccountUsername = sanitizeAccountUsername(resp["displayName"].get<std::string>());
+                                }
+                                if (levelServerAccountUsername.empty()) {
+                                    const std::size_t atPos = email.find('@');
+                                    const std::string localName = (atPos == std::string::npos) ? email : email.substr(0, atPos);
+                                    levelServerAccountUsername = sanitizeAccountUsername(localName);
+                                }
+                                SDL_Log("ACCOUNT: sign-in ok (Java) email=%s username=%s",
+                                        email.c_str(), levelServerAccountUsername.c_str());
+                                return true;
+                            }
+                            if (resp.is_object() && resp.contains("error") && resp["error"].is_object() &&
+                                resp["error"].contains("message") && resp["error"]["message"].is_string()) {
+                                errOut = resp["error"]["message"].get<std::string>();
+                                SDL_Log("ACCOUNT: sign-in failed (Java) email=%s reason=%s", email.c_str(), errOut.c_str());
+                                return false;
+                            }
+                        }
+                    } else {
+                        if (env->ExceptionCheck()) env->ExceptionClear();
+                        env->DeleteLocalRef(cls);
+                    }
+                }
+            }
+        }
+#endif
 #if defined(HAVE_CURL) && HAVE_CURL
         CURL* curl = curl_easy_init();
         if (!curl) {
@@ -639,6 +791,52 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         const int left = ctx.baseScreenW / 2 - totalW / 2;
         const int rowLeft = left + tabW + tabsGap;
         return SDL_Rect{rowLeft + pad, settingsRowY(idx), rowW, rowHpx};
+    };
+    auto setNetworkCursorFromPoint = [&](int rowIdx, int px) {
+        const bool hasUser = !levelServerAccountUsername.empty();
+        const bool hasToken = !levelServerAuthToken.empty();
+        if (hasUser || hasToken) return;
+        if (rowIdx != 0 && rowIdx != 1) return;
+
+        std::string* target = (rowIdx == 0) ? &networkLoginEmail : &networkLoginPassword;
+        std::size_t* cursor = (rowIdx == 0) ? &networkLoginEmailCursor : &networkLoginPasswordCursor;
+        if (!target || !cursor) return;
+        if (target->empty()) {
+            *cursor = 0;
+            networkCursorPreset = true;
+            return;
+        }
+
+        const int settingsRowTextScale = std::clamp((int)std::lround(2.0f + 0.5f * settingsMenuScale()), 2, 4);
+        const std::string prefix = (rowIdx == 0) ? "LOGIN EMAIL: " : "LOGIN PASSWORD: ";
+        const std::string shown = (rowIdx == 0) ? *target : maskedPassword(*target);
+        SDL_Rect row = settingsRowBtn(rowIdx);
+        const int leftInset = std::max(24, row.h);
+        const int totalW = MeasureTextWidth(settingsRowTextScale, prefix + shown);
+        const int tx = row.x + leftInset + std::max(0, (row.w - leftInset - totalW) / 2);
+        const int valueStartX = tx + MeasureTextWidth(settingsRowTextScale, prefix);
+        const int localX = std::max(0, px - valueStartX);
+
+        std::size_t bytePos = 0;
+        std::size_t lastBytePos = 0;
+        int cpIndex = 0;
+        while (bytePos < target->size()) {
+            std::size_t next = bytePos + 1;
+            while (next < target->size() && ((static_cast<unsigned char>((*target)[next]) & 0xC0) == 0x80)) ++next;
+            const int leftW = MeasureTextWidth(settingsRowTextScale, shown.substr(0, cpIndex));
+            const int rightW = MeasureTextWidth(settingsRowTextScale, shown.substr(0, cpIndex + 1));
+            const int mid = leftW + (rightW - leftW) / 2;
+            if (localX < mid) {
+                *cursor = bytePos;
+                networkCursorPreset = true;
+                return;
+            }
+            lastBytePos = next;
+            bytePos = next;
+            ++cpIndex;
+        }
+        *cursor = lastBytePos;
+        networkCursorPreset = true;
     };
     auto settingsListClipRect = [&]() -> SDL_Rect {
         const int pad = settingsListPadPx();
@@ -902,6 +1100,12 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         const int next = (idx + delta + (int)tabs.size()) % (int)tabs.size();
         openSettingsTab(tabs[next]);
     };
+    auto refreshAccountUi = [&]() {
+        if (settingsTab != 8) return;
+        const int rows = std::max(1, settingsRowsForTab(8));
+        settingsSelNetwork = std::clamp(settingsSelNetwork, 0, rows - 1);
+        ensureSettingsRowVisible(settingsSelNetwork);
+    };
     auto navigateSettingsBy = [&](int delta) {
         if (settingsTab == 4) {
             scrollAboutBy(delta < 0 ? -24 : 24);
@@ -968,6 +1172,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     networkLoginStatus = "Login repaired. Enter credentials.";
                     SDL_Log("ACCOUNT: login repaired (cleared username/token)");
                     if (ctx.saveClientSettings) ctx.saveClientSettings();
+                    refreshAccountUi();
                 } else if (settingsSelNetwork == 2) {
                     openAccountManager();
                 } else if (settingsSelNetwork == 3) {
@@ -982,6 +1187,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     networkLoginStatus = "Logged out.";
                     SDL_Log("ACCOUNT: logged out");
                     if (ctx.saveClientSettings) ctx.saveClientSettings();
+                    refreshAccountUi();
                 } else if (settingsSelNetwork == 2) {
                     openAccountManager();
                 } else if (settingsSelNetwork == 3) {
@@ -990,16 +1196,21 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 return;
             }
             if (settingsSelNetwork == 0) {
-                beginNetworkEditing(NetworkEditField::LoginEmail);
+                SDL_Rect row = settingsRowBtn(0);
+                beginNetworkEditing(NetworkEditField::LoginEmail, &row);
             } else if (settingsSelNetwork == 1) {
-                beginNetworkEditing(NetworkEditField::LoginPassword);
+                SDL_Rect row = settingsRowBtn(1);
+                beginNetworkEditing(NetworkEditField::LoginPassword, &row);
             } else if (settingsSelNetwork == 2) {
+                // Finalize IME composition before login so the latest touched text is committed.
+                stopNetworkEditing();
                 std::string err;
                 if (loginWithFirebase(err)) {
-                    stopNetworkEditing();
                     networkLoginPassword.clear();
+                    networkLoginPasswordCursor = 0;
                     networkLoginStatus = std::string("Logged in as ") + levelServerAccountUsername;
                     if (ctx.saveClientSettings) ctx.saveClientSettings();
+                    refreshAccountUi();
                 } else {
                     networkLoginStatus = err.empty() ? "Login failed." : err;
                 }
@@ -1413,12 +1624,15 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                             stopNetworkEditing();
                         } else if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) {
                             if (networkEditField == NetworkEditField::LoginPassword) {
+                                // Finalize IME composition before login so the latest touched text is committed.
+                                stopNetworkEditing();
                                 std::string err;
                                 if (loginWithFirebase(err)) {
-                                    stopNetworkEditing();
                                     networkLoginPassword.clear();
+                                    networkLoginPasswordCursor = 0;
                                     networkLoginStatus = std::string("Logged in as ") + levelServerAccountUsername;
                                     if (ctx.saveClientSettings) ctx.saveClientSettings();
+                                    refreshAccountUi();
                                 } else {
                                     networkLoginStatus = err.empty() ? "Login failed." : err;
                                 }
@@ -1428,6 +1642,24 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         } else if (e.key.key == SDLK_BACKSPACE) {
                             popNetworkInput();
                             if (ctx.saveClientSettings) ctx.saveClientSettings();
+                        } else if (e.key.key == SDLK_DELETE) {
+                            deleteNetworkInputForward();
+                            if (ctx.saveClientSettings) ctx.saveClientSettings();
+                        } else if (e.key.key == SDLK_LEFT) {
+                            moveNetworkCursor(-1);
+                        } else if (e.key.key == SDLK_RIGHT) {
+                            moveNetworkCursor(1);
+                        } else if (e.key.key == SDLK_HOME) {
+                            moveNetworkCursorToEdge(false);
+                        } else if (e.key.key == SDLK_END) {
+                            moveNetworkCursorToEdge(true);
+                        } else if ((e.key.mod & SDL_KMOD_CTRL) && e.key.key == SDLK_v) {
+                            const char* clip = SDL_GetClipboardText();
+                            if (clip && *clip) {
+                                appendNetworkInput(clip);
+                                if (ctx.saveClientSettings) ctx.saveClientSettings();
+                            }
+                            if (clip) SDL_free((void*)clip);
                         }
                         continue;
                     }
@@ -1602,7 +1834,6 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 scrollbarDrag = ScrollbarDragTarget::None;
             }
             if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
-                if (!activeTouchFingers.empty()) continue;
                 // Some platforms emit synthetic mouse clicks for taps; ignore only near-immediate
                 // events that occur at the same touch location to avoid dropping real mouse input.
                 if (isLikelySyntheticMouseFromTouch(e.button.x, e.button.y)) continue;
@@ -1703,11 +1934,16 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                             SDL_Rect rr{r.x - pad, r.y - pad, r.w + pad * 2, r.h + pad * 2};
                             return SDL_PointInRect(&pt, &rr);
                         };
+                        const bool hasUser = !levelServerAccountUsername.empty();
+                        const bool hasToken = !levelServerAuthToken.empty();
                         const int rows = settingsRowsForTab(settingsTab);
                         for (int i = 0; i < rows; ++i) {
                             SDL_Rect row = settingsRowBtn(i);
                             const int pad = (i <= 1) ? 14 : 10; // Email/password rows get extra touch room.
                             if (!pointInPaddedRect(row, pad)) continue;
+                            if (!hasUser && !hasToken && (i == 0 || i == 1)) {
+                                setNetworkCursorFromPoint(i, pt.x);
+                            }
                             settingsSelNetwork = i;
                             activateCurrentSettingsSelection(0);
                             if (ctx.saveClientSettings) ctx.saveClientSettings();
@@ -1958,11 +2194,16 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                             SDL_Rect rr{r.x - pad, r.y - pad, r.w + pad * 2, r.h + pad * 2};
                             return SDL_PointInRect(&pt, &rr);
                         };
+                        const bool hasUser = !levelServerAccountUsername.empty();
+                        const bool hasToken = !levelServerAuthToken.empty();
                         const int rows = settingsRowsForTab(settingsTab);
                         for (int i = 0; i < rows; ++i) {
                             SDL_Rect row = settingsRowBtn(i);
                             const int pad = (i <= 1) ? 14 : 10;
                             if (!pointInPaddedRect(row, pad)) continue;
+                            if (!hasUser && !hasToken && (i == 0 || i == 1)) {
+                                setNetworkCursorFromPoint(i, pt.x);
+                            }
                             settingsSelNetwork = i;
                             activateCurrentSettingsSelection(0);
                             if (ctx.saveClientSettings) ctx.saveClientSettings();
@@ -2681,9 +2922,34 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         "BACK"
                     };
                 } else {
+                    auto utf8CodepointCount = [](const std::string& s, std::size_t byteEnd = std::string::npos) -> int {
+                        const std::size_t end = (byteEnd == std::string::npos) ? s.size() : std::min(byteEnd, s.size());
+                        int count = 0;
+                        for (std::size_t i = 0; i < end;) {
+                            ++count;
+                            ++i;
+                            while (i < end && ((static_cast<unsigned char>(s[i]) & 0xC0) == 0x80)) ++i;
+                        }
+                        return count;
+                    };
+                    auto insertCaret = [](const std::string& s, int caretPos) -> std::string {
+                        const int clampedPos = std::max(0, std::min((int)s.size(), caretPos));
+                        return s.substr(0, (std::size_t)clampedPos) + "|" + s.substr((std::size_t)clampedPos);
+                    };
+                    std::string emailDisplay = networkLoginEmail.empty() ? "<empty>" : networkLoginEmail;
+                    std::string passwordDisplay = networkLoginPassword.empty() ? "<empty>" : maskedPassword(networkLoginPassword);
+                    if (networkEditField == NetworkEditField::LoginEmail) {
+                        const std::size_t cur = std::min(networkLoginEmailCursor, networkLoginEmail.size());
+                        const int pos = (int)cur;
+                        emailDisplay = insertCaret(emailDisplay, pos);
+                    } else if (networkEditField == NetworkEditField::LoginPassword) {
+                        const std::size_t cur = std::min(networkLoginPasswordCursor, networkLoginPassword.size());
+                        const int pos = utf8CodepointCount(networkLoginPassword, cur);
+                        passwordDisplay = insertCaret(passwordDisplay, pos);
+                    }
                     rows = {
-                        std::string("LOGIN EMAIL: ") + (networkLoginEmail.empty() ? "<empty>" : networkLoginEmail),
-                        std::string("LOGIN PASSWORD: ") + maskedPassword(networkLoginPassword),
+                        std::string("LOGIN EMAIL: ") + emailDisplay,
+                        std::string("LOGIN PASSWORD: ") + passwordDisplay,
                         "SIGN IN",
                         "OPEN ACCOUNT MANAGER",
                         "BACK"

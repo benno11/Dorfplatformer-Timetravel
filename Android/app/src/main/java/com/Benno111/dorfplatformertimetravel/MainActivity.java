@@ -81,6 +81,153 @@ public class MainActivity extends SDLActivity {
         }
     }
 
+    private static String jsonEscape(String s) {
+        if (s == null) return "";
+        StringBuilder out = new StringBuilder(s.length() + 8);
+        for (int i = 0; i < s.length(); i++) {
+            char ch = s.charAt(i);
+            switch (ch) {
+                case '\\': out.append("\\\\"); break;
+                case '"': out.append("\\\""); break;
+                case '\b': out.append("\\b"); break;
+                case '\f': out.append("\\f"); break;
+                case '\n': out.append("\\n"); break;
+                case '\r': out.append("\\r"); break;
+                case '\t': out.append("\\t"); break;
+                default:
+                    if (ch < 0x20) {
+                        out.append(String.format("\\u%04x", (int) ch));
+                    } else {
+                        out.append(ch);
+                    }
+                    break;
+            }
+        }
+        return out.toString();
+    }
+
+    public static String firebaseSignIn(String apiKey, String email, String password, int timeoutMs) {
+        HttpURLConnection conn = null;
+        try {
+            if (apiKey == null || apiKey.isEmpty()) return "";
+            String safeEmail = email == null ? "" : email;
+            String safePassword = password == null ? "" : password;
+            final String url = "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=" + apiKey;
+            final String body = "{\"email\":\"" + jsonEscape(safeEmail) + "\",\"password\":\"" +
+                    jsonEscape(safePassword) + "\",\"returnSecureToken\":true}";
+
+            URL u = new URL(url);
+            conn = (HttpURLConnection) u.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setConnectTimeout(Math.max(1000, timeoutMs));
+            conn.setReadTimeout(Math.max(1000, timeoutMs));
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("Accept", "application/json");
+            conn.setRequestProperty("User-Agent", "DF-New/1.0-android");
+            java.io.OutputStream os = conn.getOutputStream();
+            os.write(body.getBytes(StandardCharsets.UTF_8));
+            os.flush();
+            os.close();
+
+            final int code = conn.getResponseCode();
+            BufferedInputStream in;
+            try {
+                in = new BufferedInputStream(code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream());
+            } catch (Throwable ignored) {
+                in = null;
+            }
+            if (in == null) return "";
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buf = new byte[4096];
+            int n;
+            while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+            in.close();
+            byte[] bytes = out.toByteArray();
+            String resp = new String(bytes, StandardCharsets.UTF_8);
+            Log.i(TAG, "ACCOUNT: Java signIn code=" + code + " bytes=" + bytes.length);
+            return resp;
+        } catch (Throwable t) {
+            Log.i(TAG, "ACCOUNT: Java signIn exception", t);
+            return "";
+        } finally {
+            if (conn != null) {
+                try { conn.disconnect(); } catch (Throwable ignored) {}
+            }
+        }
+    }
+
+    public static String firebaseLookupAccount(String apiKey, String idToken, int timeoutMs) {
+        HttpURLConnection conn = null;
+        try {
+            if (apiKey == null || apiKey.isEmpty() || idToken == null || idToken.isEmpty()) return "";
+            final String url = "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" + apiKey;
+            final String body = "{\"idToken\":\"" + jsonEscape(idToken) + "\"}";
+            URL u = new URL(url);
+            conn = (HttpURLConnection) u.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setConnectTimeout(Math.max(1000, timeoutMs));
+            conn.setReadTimeout(Math.max(1000, timeoutMs));
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("Accept", "application/json");
+            conn.setRequestProperty("User-Agent", "DF-New/1.0-android");
+            java.io.OutputStream os = conn.getOutputStream();
+            os.write(body.getBytes(StandardCharsets.UTF_8));
+            os.flush();
+            os.close();
+            final int code = conn.getResponseCode();
+            BufferedInputStream in;
+            try {
+                in = new BufferedInputStream(code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream());
+            } catch (Throwable ignored) {
+                in = null;
+            }
+            if (in == null) return "";
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buf = new byte[4096];
+            int n;
+            while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+            in.close();
+            return new String(out.toByteArray(), StandardCharsets.UTF_8);
+        } catch (Throwable t) {
+            Log.i(TAG, "ACCOUNT: Java lookup exception", t);
+            return "";
+        } finally {
+            if (conn != null) {
+                try { conn.disconnect(); } catch (Throwable ignored) {}
+            }
+        }
+    }
+
+    public static int firebaseUploadLevel(String url, String jsonBody, int timeoutMs) {
+        HttpURLConnection conn = null;
+        try {
+            if (url == null || url.isEmpty() || jsonBody == null) return -1;
+            URL u = new URL(url);
+            conn = (HttpURLConnection) u.openConnection();
+            conn.setRequestMethod("PUT");
+            conn.setConnectTimeout(Math.max(1000, timeoutMs));
+            conn.setReadTimeout(Math.max(1000, timeoutMs));
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("Accept", "application/json");
+            conn.setRequestProperty("User-Agent", "DF-New/1.0-android");
+            java.io.OutputStream os = conn.getOutputStream();
+            os.write(jsonBody.getBytes(StandardCharsets.UTF_8));
+            os.flush();
+            os.close();
+            return conn.getResponseCode();
+        } catch (Throwable t) {
+            Log.i(TAG, "NET/UI: Java upload exception", t);
+            return -1;
+        } finally {
+            if (conn != null) {
+                try { conn.disconnect(); } catch (Throwable ignored) {}
+            }
+        }
+    }
+
     public static boolean showSoftKeyboard(int x, int y, int w, int h) {
         try {
             final SDLActivity activity = mSingleton;
@@ -146,11 +293,18 @@ public class MainActivity extends SDLActivity {
             InputMethodManager imm = (InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
             focus.setFocusable(true);
             focus.setFocusableInTouchMode(true);
+            focus.requestFocusFromTouch();
             focus.requestFocus();
             if (imm != null) {
                 imm.restartInput(focus);
                 if (!imm.showSoftInput(focus, InputMethodManager.SHOW_IMPLICIT)) {
-                    imm.toggleSoftInput(InputMethodManager.SHOW_IMPLICIT, 0);
+                    focus.post(() -> {
+                        try {
+                            if (!imm.showSoftInput(focus, InputMethodManager.SHOW_IMPLICIT)) {
+                                imm.toggleSoftInput(InputMethodManager.SHOW_IMPLICIT, 0);
+                            }
+                        } catch (Throwable ignored) {}
+                    });
                 }
             }
         } catch (Throwable t) {

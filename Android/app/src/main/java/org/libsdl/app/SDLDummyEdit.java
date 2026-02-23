@@ -55,7 +55,20 @@ public class SDLDummyEdit extends View implements View.OnKeyListener
 
     @Override
     public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
-        ic = new BaseInputConnection(this, true);
+        InputConnection conn = null;
+        try {
+            Class<?> klass = Class.forName("org.libsdl.app.SDLInputConnection");
+            Object instance = klass.getConstructor(View.class, boolean.class).newInstance(this, true);
+            if (instance instanceof InputConnection) {
+                conn = (InputConnection) instance;
+            }
+        } catch (Throwable ignored) {
+            // Fallback for builds where SDLInputConnection is unavailable.
+        }
+        if (conn == null) {
+            conn = new BaseInputConnection(this, true);
+        }
+        ic = conn;
 
         outAttrs.inputType = input_type;
         outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI |

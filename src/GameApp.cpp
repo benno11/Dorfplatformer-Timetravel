@@ -1383,6 +1383,7 @@ int RunGameApp(int argc, char** argv) {
                         fastTravelChangeDelay = 0.0f;
                     }
                 }
+                debugModeEnabled = false; //disable for prod
                 if (s.contains("telemetry") && s["telemetry"].is_object()) {
                     const auto& t = s["telemetry"];
                     if (t.contains("telemetry_webhook_url") && t["telemetry_webhook_url"].is_string()) {
@@ -1415,6 +1416,7 @@ int RunGameApp(int argc, char** argv) {
             }
 
             // Legacy flat format fallback.
+            debugModeEnabled = false; //disable for prod
             if (j.contains("fullscreen") && j["fullscreen"].is_boolean()) fullscreen = j["fullscreen"].get<bool>();
             if (j.contains("vsync") && j["vsync"].is_boolean()) vsyncEnabled = j["vsync"].get<bool>();
             if (j.contains("clamp_cam_x") && j["clamp_cam_x"].is_boolean()) clampCamX = j["clamp_cam_x"].get<bool>();
@@ -4370,6 +4372,7 @@ int RunGameApp(int argc, char** argv) {
                         player, map, dt, jumpBufferMax, movementCfg,
                         touchMove, touchDown, touchJump,
                         gamepadMove, gamepadDown, gamepadJump, gamepadFreeMove,
+                        debugModeEnabled,
                         keybinds,
                         inputMove, inputDown
                     );

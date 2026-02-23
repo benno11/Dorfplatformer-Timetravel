@@ -270,14 +270,36 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
     bool running = true;
     int selectedRow = 0; // 0 name, 1 width, 2 height, 3 create, 4 cancel
     bool promptTextInputActive = false;
-    auto setPromptTextInput = [&](bool active, int winW = 0, int winH = 0) {
-        if (active == promptTextInputActive) return;
+    auto setPromptTextInput = [&](bool active, int winW = 0, int winH = 0, const SDL_Rect* focusRect = nullptr) {
+        if (active == promptTextInputActive) {
+#if defined(__ANDROID__)
+            if (active) {
+                if (winW <= 0 || winH <= 0) SDL_GetWindowSize(win, &winW, &winH);
+                if (focusRect) {
+                    ShowAndroidSoftKeyboard(
+                        focusRect->x,
+                        focusRect->y,
+                        std::max(1, focusRect->w),
+                        std::max(1, focusRect->h));
+                }
+            }
+#endif
+            return;
+        }
         promptTextInputActive = active;
         if (active) {
             SDL_StartTextInput(win);
 #if defined(__ANDROID__)
             if (winW <= 0 || winH <= 0) SDL_GetWindowSize(win, &winW, &winH);
-            ShowAndroidSoftKeyboard(0, 0, std::max(1, winW), std::max(1, winH));
+            if (focusRect) {
+                ShowAndroidSoftKeyboard(
+                    focusRect->x,
+                    focusRect->y,
+                    std::max(1, focusRect->w),
+                    std::max(1, focusRect->h));
+            } else {
+                ShowAndroidSoftKeyboard(0, 0, std::max(1, winW), std::max(1, winH));
+            }
 #endif
         } else {
             SDL_StopTextInput(win);
@@ -286,15 +308,9 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
 #endif
         }
     };
-    auto setSelectedRow = [&](int row, int winW = 0, int winH = 0) {
+    auto setSelectedRow = [&](int row, int winW = 0, int winH = 0, const SDL_Rect* nameFocusRect = nullptr) {
         selectedRow = std::clamp(row, 0, 4);
-        if (selectedRow == 0) {
-            setPromptTextInput(true, winW, winH);
-#if defined(__ANDROID__)
-            if (winW <= 0 || winH <= 0) SDL_GetWindowSize(win, &winW, &winH);
-            ShowAndroidSoftKeyboard(0, 0, std::max(1, winW), std::max(1, winH));
-#endif
-        }
+        setPromptTextInput(selectedRow == 0, winW, winH, nameFocusRect);
     };
     setPromptTextInput(true);
     auto clampSize = [](int v) { return std::clamp(v, 5, 400); };
@@ -348,7 +364,7 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
             if (inPadded(rowWPlus, 12)) { setSelectedRow(1, winW, winH); out.width = clampSize(out.width + 1); return; }
             if (inPadded(rowHMinus, 12)) { setSelectedRow(2, winW, winH); out.height = clampSize(out.height - 1); return; }
             if (inPadded(rowHPlus, 12)) { setSelectedRow(2, winW, winH); out.height = clampSize(out.height + 1); return; }
-            if (inPadded(rowName, 14)) { setSelectedRow(0, winW, winH); return; }
+            if (inPadded(rowName, 14)) { setSelectedRow(0, winW, winH, &rowName); return; }
             if (inPadded(rowW, 10)) { setSelectedRow(1, winW, winH); return; }
             if (inPadded(rowH, 10)) { setSelectedRow(2, winW, winH); return; }
             if (inPadded(createBtn, 10)) {
@@ -380,11 +396,11 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
                     break;
                 }
                 if (e.key.key == SDLK_UP) {
-                    setSelectedRow((selectedRow + 4) % 5, winW, winH);
+                    setSelectedRow((selectedRow + 4) % 5, winW, winH, &rowName);
                     continue;
                 }
                 if (e.key.key == SDLK_DOWN || e.key.key == SDLK_TAB) {
-                    setSelectedRow((selectedRow + 1) % 5, winW, winH);
+                    setSelectedRow((selectedRow + 1) % 5, winW, winH, &rowName);
                     continue;
                 }
                 if ((e.key.key == SDLK_BACKSPACE || e.key.key == SDLK_DELETE) && selectedRow == 0) {
@@ -412,7 +428,7 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
                     } else if (selectedRow == 4) {
                         running = false;
                     } else {
-                        setSelectedRow((selectedRow + 1) % 5, winW, winH);
+                        setSelectedRow((selectedRow + 1) % 5, winW, winH, &rowName);
                     }
                     continue;
                 }
@@ -2305,7 +2321,6 @@ std::string buildFirebaseLevelUploadUrl(const std::string& base,
 bool resolveAccountUsernameFromToken(const std::string& authToken, std::string& accountUsernameOut) {
     accountUsernameOut.clear();
     if (authToken.empty()) return false;
-#if defined(HAVE_CURL) && HAVE_CURL
     std::string apiKey;
     const std::string cfgText = ReadTextFile("assets/config.json");
     if (!cfgText.empty()) {
@@ -2322,62 +2337,124 @@ bool resolveAccountUsernameFromToken(const std::string& authToken, std::string& 
     }
     if (apiKey.empty()) return false;
 
-    CURL* curl = curl_easy_init();
-    if (!curl) return false;
-    const std::string url = "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" + apiKey;
-    nlohmann::json req;
-    req["idToken"] = authToken;
-    const std::string body = req.dump();
-    struct curl_slist* headers = nullptr;
-    headers = curl_slist_append(headers, "Content-Type: application/json");
-    std::string respBody;
-    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(curl, CURLOPT_POST, 1L);
-    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
-    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)body.size());
-    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
-    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "DF-New/1.0");
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,
-        +[](char* ptr, size_t size, size_t nmemb, void* userdata) -> size_t {
-            std::string* out = static_cast<std::string*>(userdata);
-            out->append(ptr, size * nmemb);
-            return size * nmemb;
-        });
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &respBody);
-    const CURLcode rc = curl_easy_perform(curl);
-    long code = 0;
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
-    curl_slist_free_all(headers);
-    curl_easy_cleanup(curl);
-    if (rc != CURLE_OK || code < 200 || code >= 300) return false;
+#if defined(HAVE_CURL) && HAVE_CURL
 
-    try {
-        const nlohmann::json resp = nlohmann::json::parse(respBody);
-        if (!resp.is_object() || !resp.contains("users") || !resp["users"].is_array() || resp["users"].empty()) return false;
-        const nlohmann::json& user = resp["users"][0];
-        std::string candidate;
-        if (user.contains("displayName") && user["displayName"].is_string()) {
-            candidate = user["displayName"].get<std::string>();
+    CURL* curl = curl_easy_init();
+    if (curl) {
+        const std::string url = "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" + apiKey;
+        nlohmann::json req;
+        req["idToken"] = authToken;
+        const std::string body = req.dump();
+        struct curl_slist* headers = nullptr;
+        headers = curl_slist_append(headers, "Content-Type: application/json");
+        std::string respBody;
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+        curl_easy_setopt(curl, CURLOPT_POST, 1L);
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)body.size());
+        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+        curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, "DF-New/1.0");
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,
+            +[](char* ptr, size_t size, size_t nmemb, void* userdata) -> size_t {
+                std::string* out = static_cast<std::string*>(userdata);
+                out->append(ptr, size * nmemb);
+                return size * nmemb;
+            });
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &respBody);
+        const CURLcode rc = curl_easy_perform(curl);
+        long code = 0;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(curl);
+        if (rc == CURLE_OK && code >= 200 && code < 300) {
+            try {
+                const nlohmann::json resp = nlohmann::json::parse(respBody);
+                if (resp.is_object() && resp.contains("users") && resp["users"].is_array() && !resp["users"].empty()) {
+                    const nlohmann::json& user = resp["users"][0];
+                    std::string candidate;
+                    if (user.contains("displayName") && user["displayName"].is_string()) {
+                        candidate = user["displayName"].get<std::string>();
+                    }
+                    if (candidate.empty() && user.contains("email") && user["email"].is_string()) {
+                        const std::string email = user["email"].get<std::string>();
+                        const std::size_t atPos = email.find('@');
+                        candidate = (atPos == std::string::npos) ? email : email.substr(0, atPos);
+                    }
+                    candidate = sanitizeFilePart(candidate);
+                    if (!candidate.empty()) {
+                        accountUsernameOut = candidate;
+                        return true;
+                    }
+                }
+            } catch (...) {}
         }
-        if (candidate.empty() && user.contains("email") && user["email"].is_string()) {
-            const std::string email = user["email"].get<std::string>();
-            const std::size_t atPos = email.find('@');
-            candidate = (atPos == std::string::npos) ? email : email.substr(0, atPos);
-        }
-        candidate = sanitizeFilePart(candidate);
-        if (candidate.empty()) return false;
-        accountUsernameOut = candidate;
-        return true;
-    } catch (...) {
-        return false;
     }
-#else
-    (void)authToken;
-    return false;
 #endif
+
+#if defined(__ANDROID__)
+    {
+        JNIEnv* env = static_cast<JNIEnv*>(SDL_GetAndroidJNIEnv());
+        if (env) {
+            jclass cls = env->FindClass("com/Benno111/dorfplatformertimetravel/MainActivity");
+            if (cls) {
+                jmethodID mid = env->GetStaticMethodID(
+                    cls, "firebaseLookupAccount",
+                    "(Ljava/lang/String;Ljava/lang/String;I)Ljava/lang/String;");
+                if (mid) {
+                    jstring jApi = env->NewStringUTF(apiKey.c_str());
+                    jstring jToken = env->NewStringUTF(authToken.c_str());
+                    jobject jRespObj = env->CallStaticObjectMethod(cls, mid, jApi, jToken, (jint)10000);
+                    if (env->ExceptionCheck()) env->ExceptionClear();
+                    if (jApi) env->DeleteLocalRef(jApi);
+                    if (jToken) env->DeleteLocalRef(jToken);
+                    std::string respBody;
+                    if (jRespObj) {
+                        jstring jResp = static_cast<jstring>(jRespObj);
+                        const char* cResp = env->GetStringUTFChars(jResp, nullptr);
+                        if (cResp) {
+                            respBody = cResp;
+                            env->ReleaseStringUTFChars(jResp, cResp);
+                        }
+                        env->DeleteLocalRef(jRespObj);
+                    }
+                    env->DeleteLocalRef(cls);
+                    if (!respBody.empty()) {
+                        try {
+                            const nlohmann::json resp = nlohmann::json::parse(respBody);
+                            if (resp.is_object() && resp.contains("users") && resp["users"].is_array() && !resp["users"].empty()) {
+                                const nlohmann::json& user = resp["users"][0];
+                                std::string candidate;
+                                if (user.contains("displayName") && user["displayName"].is_string()) {
+                                    candidate = user["displayName"].get<std::string>();
+                                }
+                                if (candidate.empty() && user.contains("email") && user["email"].is_string()) {
+                                    const std::string email = user["email"].get<std::string>();
+                                    const std::size_t atPos = email.find('@');
+                                    candidate = (atPos == std::string::npos) ? email : email.substr(0, atPos);
+                                }
+                                candidate = sanitizeFilePart(candidate);
+                                if (!candidate.empty()) {
+                                    accountUsernameOut = candidate;
+                                    return true;
+                                }
+                            }
+                        } catch (...) {}
+                    }
+                } else {
+                    if (env->ExceptionCheck()) env->ExceptionClear();
+                    env->DeleteLocalRef(cls);
+                }
+            } else if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+            }
+        }
+    }
+#endif
+
+    return false;
 }
 
 bool uploadLocalLevelToServer(const LevelEntry& level, std::string& statusText) {
@@ -2433,9 +2510,44 @@ bool uploadLocalLevelToServer(const LevelEntry& level, std::string& statusText) 
     payload["uploaded_at"] = (long long)std::time(nullptr);
     const std::string body = payload.dump();
 
+    auto tryAndroidJavaUpload = [&]() -> bool {
+#if defined(__ANDROID__)
+        JNIEnv* env = static_cast<JNIEnv*>(SDL_GetAndroidJNIEnv());
+        if (!env) return false;
+        jclass cls = env->FindClass("com/Benno111/dorfplatformertimetravel/MainActivity");
+        if (!cls) {
+            if (env->ExceptionCheck()) env->ExceptionClear();
+            return false;
+        }
+        jmethodID mid = env->GetStaticMethodID(
+            cls, "firebaseUploadLevel",
+            "(Ljava/lang/String;Ljava/lang/String;I)I");
+        if (!mid) {
+            if (env->ExceptionCheck()) env->ExceptionClear();
+            env->DeleteLocalRef(cls);
+            return false;
+        }
+        jstring jUrl = env->NewStringUTF(uploadUrl.c_str());
+        jstring jBody = env->NewStringUTF(body.c_str());
+        jint code = env->CallStaticIntMethod(cls, mid, jUrl, jBody, (jint)15000);
+        if (env->ExceptionCheck()) env->ExceptionClear();
+        if (jUrl) env->DeleteLocalRef(jUrl);
+        if (jBody) env->DeleteLocalRef(jBody);
+        env->DeleteLocalRef(cls);
+        if (code >= 200 && code < 300) {
+            statusText = "Uploaded as " + levelId + ".";
+            SDL_Log("NET/UI: upload ok (Java) file=%s id=%s code=%d", level.path.c_str(), levelId.c_str(), (int)code);
+            return true;
+        }
+        SDL_Log("NET/UI: upload failed (Java) file=%s id=%s code=%d", level.path.c_str(), levelId.c_str(), (int)code);
+#endif
+        return false;
+    };
+
 #if defined(HAVE_CURL) && HAVE_CURL
     CURL* curl = curl_easy_init();
     if (!curl) {
+        if (tryAndroidJavaUpload()) return true;
         statusText = "Upload failed (curl init).";
         return false;
     }
@@ -2456,6 +2568,7 @@ bool uploadLocalLevelToServer(const LevelEntry& level, std::string& statusText) 
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
     if (rc != CURLE_OK || code < 200 || code >= 300) {
+        if (tryAndroidJavaUpload()) return true;
         statusText = "Upload failed.";
         SDL_Log("NET/UI: upload failed file=%s code=%ld curl=%d", level.path.c_str(), code, (int)rc);
         return false;
@@ -2464,6 +2577,7 @@ bool uploadLocalLevelToServer(const LevelEntry& level, std::string& statusText) 
     SDL_Log("NET/UI: upload ok file=%s id=%s", level.path.c_str(), levelId.c_str());
     return true;
 #else
+    if (tryAndroidJavaUpload()) return true;
     (void)uploadUrl;
     (void)body;
     statusText = "Upload unavailable (curl disabled).";

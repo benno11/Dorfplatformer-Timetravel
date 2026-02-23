@@ -531,6 +531,12 @@ function Build-NativeAndroidWindows {
                 }
             }
             if ($failedJob) {
+                $retryArgs = @($failedJob.Args)
+                $retryOutput = & $failedJob.CompilerPath @retryArgs 2>&1
+                if ($LASTEXITCODE -eq 0) {
+                    $jobs = $remaining
+                    continue
+                }
                 if (Test-Path $failedJob.StdErrPath) {
                     Write-Host (Get-Content -Path $failedJob.StdErrPath -Raw)
                 }
@@ -540,13 +546,11 @@ function Build-NativeAndroidWindows {
                         Write-Host $outText
                     }
                 }
-                Write-Host "[INFO] Re-running failed compile in foreground for diagnostics..."
-                $retryArgs = @($failedJob.Args)
-                & $failedJob.CompilerPath @retryArgs 2>&1 | Out-Host
-                if ($LASTEXITCODE -eq 0) {
-                    Write-Host "[WARN] Parallel compile reported failure but foreground retry succeeded: $($failedJob.SourceRel)"
-                    $jobs = $remaining
-                    continue
+                if ($retryOutput) {
+                    $retryText = ($retryOutput | Out-String).Trim()
+                    if (-not [string]::IsNullOrWhiteSpace($retryText)) {
+                        Write-Host $retryText
+                    }
                 }
                 throw "Compile failed: $($failedJob.SourceRel) for ABI=$OneAbi (thread $($failedJob.SlotId))"
             }
@@ -596,6 +600,12 @@ function Build-NativeAndroidWindows {
             }
         }
         if ($failedJob) {
+            $retryArgs = @($failedJob.Args)
+            $retryOutput = & $failedJob.CompilerPath @retryArgs 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                $jobs = $remaining
+                continue
+            }
             if (Test-Path $failedJob.StdErrPath) {
                 Write-Host (Get-Content -Path $failedJob.StdErrPath -Raw)
             }
@@ -605,13 +615,11 @@ function Build-NativeAndroidWindows {
                     Write-Host $outText
                 }
             }
-            Write-Host "[INFO] Re-running failed compile in foreground for diagnostics..."
-            $retryArgs = @($failedJob.Args)
-            & $failedJob.CompilerPath @retryArgs 2>&1 | Out-Host
-            if ($LASTEXITCODE -eq 0) {
-                Write-Host "[WARN] Parallel compile reported failure but foreground retry succeeded: $($failedJob.SourceRel)"
-                $jobs = $remaining
-                continue
+            if ($retryOutput) {
+                $retryText = ($retryOutput | Out-String).Trim()
+                if (-not [string]::IsNullOrWhiteSpace($retryText)) {
+                    Write-Host $retryText
+                }
             }
             throw "Compile failed: $($failedJob.SourceRel) for ABI=$OneAbi (thread $($failedJob.SlotId))"
         }
