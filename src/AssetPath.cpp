@@ -7,6 +7,10 @@
 #include <chrono>
 #include <filesystem>
 #include <vector>
+#if defined(_WIN32)
+#include <windows.h>
+#include <winhttp.h>
+#endif
 #if defined(__ANDROID__)
 #include <jni.h>
 #include <SDL3/SDL_system.h>
@@ -57,6 +61,164 @@ std::string resolveFromBasePath(const std::string& path) {
     }
     return {};
 }
+
+#if defined(_WIN32)
+std::wstring utf8ToWide(const std::string& s) {
+    if (s.empty()) return {};
+    const int needed = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), nullptr, 0);
+    if (needed <= 0) return {};
+    std::wstring out((size_t)needed, L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), out.data(), needed);
+    return out;
+}
+
+std::string win32ErrorString(DWORD err) {
+    return "WinHTTP error " + std::to_string((unsigned long)err) + ".";
+}
+
+bool winHttpRequestText(const std::string& method,
+                        const std::string& url,
+                        const std::vector<std::string>& headers,
+                        const std::string& body,
+                        long* statusCodeOut,
+                        std::string* responseBodyOut,
+                        std::string* errorOut,
+                        int timeoutMs) {
+    if (statusCodeOut) *statusCodeOut = 0;
+    if (responseBodyOut) responseBodyOut->clear();
+    if (errorOut) errorOut->clear();
+
+    const std::wstring wurl = utf8ToWide(url);
+    const std::wstring wmethod = utf8ToWide(method);
+    if (wurl.empty() || wmethod.empty()) {
+        if (errorOut) *errorOut = "Invalid request URL or method.";
+        return false;
+    }
+
+    URL_COMPONENTS parts{};
+    parts.dwStructSize = sizeof(parts);
+    parts.dwSchemeLength = (DWORD)-1;
+    parts.dwHostNameLength = (DWORD)-1;
+    parts.dwUrlPathLength = (DWORD)-1;
+    parts.dwExtraInfoLength = (DWORD)-1;
+    if (!WinHttpCrackUrl(wurl.c_str(), 0, 0, &parts)) {
+        if (errorOut) *errorOut = win32ErrorString(GetLastError());
+        return false;
+    }
+    const bool secure = parts.nScheme == INTERNET_SCHEME_HTTPS;
+    if (!secure && parts.nScheme != INTERNET_SCHEME_HTTP) {
+        if (errorOut) *errorOut = "Unsupported URL scheme.";
+        return false;
+    }
+
+    std::wstring host(parts.lpszHostName, parts.dwHostNameLength);
+    std::wstring path(parts.lpszUrlPath ? parts.lpszUrlPath : L"", parts.dwUrlPathLength);
+    if (parts.lpszExtraInfo && parts.dwExtraInfoLength > 0) {
+        path.append(parts.lpszExtraInfo, parts.dwExtraInfoLength);
+    }
+    if (path.empty()) path = L"/";
+
+    HINTERNET session = WinHttpOpen(L"DF-New/1.0",
+                                    WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                                    WINHTTP_NO_PROXY_NAME,
+                                    WINHTTP_NO_PROXY_BYPASS,
+                                    0);
+    if (!session) {
+        if (errorOut) *errorOut = win32ErrorString(GetLastError());
+        return false;
+    }
+    const int clampedTimeoutMs = std::max(1000, timeoutMs);
+    WinHttpSetTimeouts(session, clampedTimeoutMs, clampedTimeoutMs, clampedTimeoutMs, clampedTimeoutMs);
+
+    HINTERNET connect = WinHttpConnect(session, host.c_str(), parts.nPort, 0);
+    if (!connect) {
+        if (errorOut) *errorOut = win32ErrorString(GetLastError());
+        WinHttpCloseHandle(session);
+        return false;
+    }
+
+    HINTERNET request = WinHttpOpenRequest(connect,
+                                           wmethod.c_str(),
+                                           path.c_str(),
+                                           nullptr,
+                                           WINHTTP_NO_REFERER,
+                                           WINHTTP_DEFAULT_ACCEPT_TYPES,
+                                           secure ? WINHTTP_FLAG_SECURE : 0);
+    if (!request) {
+        if (errorOut) *errorOut = win32ErrorString(GetLastError());
+        WinHttpCloseHandle(connect);
+        WinHttpCloseHandle(session);
+        return false;
+    }
+
+    std::wstring headerBlock;
+    for (const std::string& h : headers) {
+        if (h.empty()) continue;
+        if (!headerBlock.empty()) headerBlock += L"\r\n";
+        headerBlock += utf8ToWide(h);
+    }
+
+    LPVOID bodyPtr = body.empty() ? WINHTTP_NO_REQUEST_DATA : (LPVOID)body.data();
+    const DWORD bodySize = (DWORD)body.size();
+    BOOL ok = WinHttpSendRequest(request,
+                                 headerBlock.empty() ? WINHTTP_NO_ADDITIONAL_HEADERS : headerBlock.c_str(),
+                                 headerBlock.empty() ? 0 : (DWORD)-1,
+                                 bodyPtr,
+                                 bodySize,
+                                 bodySize,
+                                 0);
+    if (ok) ok = WinHttpReceiveResponse(request, nullptr);
+    if (!ok) {
+        if (errorOut) *errorOut = win32ErrorString(GetLastError());
+        WinHttpCloseHandle(request);
+        WinHttpCloseHandle(connect);
+        WinHttpCloseHandle(session);
+        return false;
+    }
+
+    DWORD status = 0;
+    DWORD statusSize = sizeof(status);
+    if (WinHttpQueryHeaders(request,
+                            WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                            WINHTTP_HEADER_NAME_BY_INDEX,
+                            &status,
+                            &statusSize,
+                            WINHTTP_NO_HEADER_INDEX) &&
+        statusCodeOut) {
+        *statusCodeOut = (long)status;
+    }
+
+    std::string response;
+    for (;;) {
+        DWORD available = 0;
+        if (!WinHttpQueryDataAvailable(request, &available)) {
+            if (errorOut) *errorOut = win32ErrorString(GetLastError());
+            WinHttpCloseHandle(request);
+            WinHttpCloseHandle(connect);
+            WinHttpCloseHandle(session);
+            return false;
+        }
+        if (available == 0) break;
+        std::string chunk(available, '\0');
+        DWORD read = 0;
+        if (!WinHttpReadData(request, chunk.data(), available, &read)) {
+            if (errorOut) *errorOut = win32ErrorString(GetLastError());
+            WinHttpCloseHandle(request);
+            WinHttpCloseHandle(connect);
+            WinHttpCloseHandle(session);
+            return false;
+        }
+        chunk.resize(read);
+        response += chunk;
+    }
+
+    if (responseBodyOut) *responseBodyOut = std::move(response);
+    WinHttpCloseHandle(request);
+    WinHttpCloseHandle(connect);
+    WinHttpCloseHandle(session);
+    return true;
+}
+#endif
 
 #if defined(__ANDROID__)
 std::string androidHttpGetViaJava(const std::string& url, int timeoutMs) {
@@ -112,6 +274,29 @@ std::string androidHttpGetViaJava(const std::string& url, int timeoutMs) {
 }
 #endif
 } // namespace
+
+bool HttpRequestText(const std::string& method,
+                     const std::string& url,
+                     const std::vector<std::string>& headers,
+                     const std::string& body,
+                     long* statusCodeOut,
+                     std::string* responseBodyOut,
+                     std::string* errorOut,
+                     int timeoutMs) {
+#if defined(_WIN32)
+    return winHttpRequestText(method, url, headers, body, statusCodeOut, responseBodyOut, errorOut, timeoutMs);
+#else
+    (void)method;
+    (void)url;
+    (void)headers;
+    (void)body;
+    (void)statusCodeOut;
+    (void)responseBodyOut;
+    if (errorOut) *errorOut = "HTTP fallback unavailable on this platform.";
+    (void)timeoutMs;
+    return false;
+#endif
+}
 
 std::string ResolveAssetPath(const std::string& path) {
     if (isHttpUrl(path)) return path;
@@ -202,8 +387,16 @@ std::string ReadTextFile(const std::string& path) {
     }
 #else
     if (isHttpUrl(resolved)) {
-        SDL_Log("NET: HTTP requested but curl support is disabled at build time (HAVE_CURL=0): %s",
-                resolved.c_str());
+        std::string body;
+        long code = 0;
+        std::string httpErr;
+        if (HttpRequestText("GET", resolved, {}, {}, &code, &body, &httpErr, 10000) &&
+            code >= 200 && code < 300) {
+            SDL_Log("NET: ok GET (fallback) %s code=%ld bytes=%d", resolved.c_str(), code, (int)body.size());
+            return body;
+        }
+        SDL_Log("NET: HTTP GET failed and curl support is disabled (HAVE_CURL=0): %s code=%ld reason=%s",
+                resolved.c_str(), code, httpErr.c_str());
         return {};
     }
 #endif

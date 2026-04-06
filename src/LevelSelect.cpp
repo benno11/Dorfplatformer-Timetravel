@@ -2337,14 +2337,38 @@ bool resolveAccountUsernameFromToken(const std::string& authToken, std::string& 
     }
     if (apiKey.empty()) return false;
 
+    const std::string url = "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" + apiKey;
+    nlohmann::json req;
+    req["idToken"] = authToken;
+    const std::string body = req.dump();
+    auto parseLookupResponse = [&](const std::string& respBody) -> bool {
+        try {
+            const nlohmann::json resp = nlohmann::json::parse(respBody);
+            if (resp.is_object() && resp.contains("users") && resp["users"].is_array() && !resp["users"].empty()) {
+                const nlohmann::json& user = resp["users"][0];
+                std::string candidate;
+                if (user.contains("displayName") && user["displayName"].is_string()) {
+                    candidate = user["displayName"].get<std::string>();
+                }
+                if (candidate.empty() && user.contains("email") && user["email"].is_string()) {
+                    const std::string email = user["email"].get<std::string>();
+                    const std::size_t atPos = email.find('@');
+                    candidate = (atPos == std::string::npos) ? email : email.substr(0, atPos);
+                }
+                candidate = sanitizeFilePart(candidate);
+                if (!candidate.empty()) {
+                    accountUsernameOut = candidate;
+                    return true;
+                }
+            }
+        } catch (...) {}
+        return false;
+    };
+
 #if defined(HAVE_CURL) && HAVE_CURL
 
     CURL* curl = curl_easy_init();
     if (curl) {
-        const std::string url = "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" + apiKey;
-        nlohmann::json req;
-        req["idToken"] = authToken;
-        const std::string body = req.dump();
         struct curl_slist* headers = nullptr;
         headers = curl_slist_append(headers, "Content-Type: application/json");
         std::string respBody;
@@ -2370,26 +2394,18 @@ bool resolveAccountUsernameFromToken(const std::string& authToken, std::string& 
         curl_slist_free_all(headers);
         curl_easy_cleanup(curl);
         if (rc == CURLE_OK && code >= 200 && code < 300) {
-            try {
-                const nlohmann::json resp = nlohmann::json::parse(respBody);
-                if (resp.is_object() && resp.contains("users") && resp["users"].is_array() && !resp["users"].empty()) {
-                    const nlohmann::json& user = resp["users"][0];
-                    std::string candidate;
-                    if (user.contains("displayName") && user["displayName"].is_string()) {
-                        candidate = user["displayName"].get<std::string>();
-                    }
-                    if (candidate.empty() && user.contains("email") && user["email"].is_string()) {
-                        const std::string email = user["email"].get<std::string>();
-                        const std::size_t atPos = email.find('@');
-                        candidate = (atPos == std::string::npos) ? email : email.substr(0, atPos);
-                    }
-                    candidate = sanitizeFilePart(candidate);
-                    if (!candidate.empty()) {
-                        accountUsernameOut = candidate;
-                        return true;
-                    }
-                }
-            } catch (...) {}
+            if (parseLookupResponse(respBody)) return true;
+        }
+    }
+#else
+    {
+        std::string respBody;
+        long code = 0;
+        std::string httpErr;
+        if (HttpRequestText("POST", url, {"Content-Type: application/json"}, body, &code, &respBody, &httpErr, 10000) &&
+            code >= 200 && code < 300 &&
+            parseLookupResponse(respBody)) {
+            return true;
         }
     }
 #endif
@@ -2543,10 +2559,27 @@ bool uploadLocalLevelToServer(const LevelEntry& level, std::string& statusText) 
 #endif
         return false;
     };
+    auto tryDesktopHttpUpload = [&]() -> bool {
+#if defined(_WIN32)
+        std::string respBody;
+        long code = 0;
+        std::string httpErr;
+        if (HttpRequestText("PUT", uploadUrl, {"Content-Type: application/json"}, body, &code, &respBody, &httpErr, 15000) &&
+            code >= 200 && code < 300) {
+            statusText = "Uploaded as " + levelId + ".";
+            SDL_Log("NET/UI: upload ok (WinHTTP) file=%s id=%s code=%ld", level.path.c_str(), levelId.c_str(), code);
+            return true;
+        }
+        SDL_Log("NET/UI: upload failed (WinHTTP) file=%s id=%s code=%ld reason=%s",
+                level.path.c_str(), levelId.c_str(), code, httpErr.c_str());
+#endif
+        return false;
+    };
 
 #if defined(HAVE_CURL) && HAVE_CURL
     CURL* curl = curl_easy_init();
     if (!curl) {
+        if (tryDesktopHttpUpload()) return true;
         if (tryAndroidJavaUpload()) return true;
         statusText = "Upload failed (curl init).";
         return false;
@@ -2568,6 +2601,7 @@ bool uploadLocalLevelToServer(const LevelEntry& level, std::string& statusText) 
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
     if (rc != CURLE_OK || code < 200 || code >= 300) {
+        if (tryDesktopHttpUpload()) return true;
         if (tryAndroidJavaUpload()) return true;
         statusText = "Upload failed.";
         SDL_Log("NET/UI: upload failed file=%s code=%ld curl=%d", level.path.c_str(), code, (int)rc);
@@ -2577,6 +2611,7 @@ bool uploadLocalLevelToServer(const LevelEntry& level, std::string& statusText) 
     SDL_Log("NET/UI: upload ok file=%s id=%s", level.path.c_str(), levelId.c_str());
     return true;
 #else
+    if (tryDesktopHttpUpload()) return true;
     if (tryAndroidJavaUpload()) return true;
     (void)uploadUrl;
     (void)body;

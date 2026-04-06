@@ -655,18 +655,18 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             }
         }
 #endif
-#if defined(HAVE_CURL) && HAVE_CURL
-        CURL* curl = curl_easy_init();
-        if (!curl) {
-            errOut = "curl init failed.";
-            return false;
-        }
         const std::string url = "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=" + effectiveApiKey;
         nlohmann::json req;
         req["email"] = email;
         req["password"] = password;
         req["returnSecureToken"] = true;
         const std::string body = req.dump();
+#if defined(HAVE_CURL) && HAVE_CURL
+        CURL* curl = curl_easy_init();
+        if (!curl) {
+            errOut = "curl init failed.";
+            return false;
+        }
         struct curl_slist* headers = nullptr;
         headers = curl_slist_append(headers, "Content-Type: application/json");
         std::string respBody;
@@ -725,9 +725,47 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         SDL_Log("ACCOUNT: sign-in ok email=%s username=%s", email.c_str(), levelServerAccountUsername.c_str());
         return true;
 #else
-        errOut = "curl disabled in this build.";
-        SDL_Log("ACCOUNT: sign-in unavailable (curl disabled)");
-        return false;
+        std::string respBody;
+        long code = 0;
+        std::string httpErr;
+        if (!HttpRequestText("POST", url, {"Content-Type: application/json"}, body, &code, &respBody, &httpErr, 12000)) {
+            errOut = httpErr.empty() ? "curl disabled in this build." : httpErr;
+            SDL_Log("ACCOUNT: sign-in unavailable email=%s reason=%s", email.c_str(), errOut.c_str());
+            return false;
+        }
+        if (code < 200 || code >= 300) {
+            if (!respBody.empty()) {
+                try {
+                    const nlohmann::json errJson = nlohmann::json::parse(respBody);
+                    if (errJson.is_object() && errJson.contains("error") && errJson["error"].is_object() &&
+                        errJson["error"].contains("message") && errJson["error"]["message"].is_string()) {
+                        errOut = errJson["error"]["message"].get<std::string>();
+                    }
+                } catch (...) {}
+            }
+            if (errOut.empty()) errOut = "Login failed.";
+            SDL_Log("ACCOUNT: sign-in failed (WinHTTP) email=%s http=%ld reason=%s",
+                    email.c_str(), code, errOut.c_str());
+            return false;
+        }
+        nlohmann::json resp;
+        try { resp = nlohmann::json::parse(respBody); } catch (...) { resp = nlohmann::json(); }
+        if (!resp.is_object() || !resp.contains("idToken") || !resp["idToken"].is_string()) {
+            errOut = "Invalid login response.";
+            SDL_Log("ACCOUNT: sign-in failed (WinHTTP) email=%s reason=%s", email.c_str(), errOut.c_str());
+            return false;
+        }
+        levelServerAuthToken = resp["idToken"].get<std::string>();
+        if (resp.contains("displayName") && resp["displayName"].is_string()) {
+            levelServerAccountUsername = sanitizeAccountUsername(resp["displayName"].get<std::string>());
+        }
+        if (levelServerAccountUsername.empty()) {
+            const std::size_t atPos = email.find('@');
+            const std::string localName = (atPos == std::string::npos) ? email : email.substr(0, atPos);
+            levelServerAccountUsername = sanitizeAccountUsername(localName);
+        }
+        SDL_Log("ACCOUNT: sign-in ok (WinHTTP) email=%s username=%s", email.c_str(), levelServerAccountUsername.c_str());
+        return true;
 #endif
     };
     auto controlBindingRef = [&](int idx) -> SDL_Scancode* {

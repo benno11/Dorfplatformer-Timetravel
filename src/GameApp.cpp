@@ -1212,7 +1212,13 @@ int RunGameApp(int argc, char** argv) {
     if (!appSaveRootPath.empty()) {
         clientSettingsPath = (std::filesystem::path(appSaveRootPath) / "client_settings.json").string();
     }
+    auto syncLevelServerGlobals = [&]() {
+        SetLevelServerUrl(levelServerUrl);
+        SetLevelServerAuthToken(levelServerAuthToken);
+        SetLevelServerAccountUsername(levelServerAccountUsername);
+    };
     auto saveClientSettings = [&]() {
+        syncLevelServerGlobals();
         nlohmann::json j;
         j["build_uuid"] = buildUuid;
         nlohmann::json settings;
@@ -1494,9 +1500,7 @@ int RunGameApp(int argc, char** argv) {
             }
         }
     }
-    SetLevelServerUrl(levelServerUrl);
-    SetLevelServerAuthToken(levelServerAuthToken);
-    SetLevelServerAccountUsername(levelServerAccountUsername);
+    syncLevelServerGlobals();
     if (!levelServerUrl.empty()) {
         SDL_Log("Level server: %s", levelServerUrl.c_str());
     }
