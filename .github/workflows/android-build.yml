@@ -96,17 +96,6 @@ jobs:
         run: |
           cmake --build build-ci --config Release --parallel
 
-      - name: Upload desktop binaries
-        uses: actions/upload-artifact@v7
-        with:
-          name: desktop-${{ runner.os }}
-          path: |
-            build-ci/platformer*
-            build-ci/sheet_config*
-            build-ci/Release/platformer*
-            build-ci/Release/sheet_config*
-          if-no-files-found: error
-
   android:
     name: Android APK
     runs-on: ubuntu-latest
@@ -167,17 +156,3 @@ jobs:
         working-directory: Android
         run: |
           ./gradlew --no-daemon assembleDebug assembleRelease --stacktrace
-
-      - name: Upload debug APK
-        uses: actions/upload-artifact@v7
-        with:
-          name: android-debug-apk
-          path: Android/app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-
-      - name: Upload release APK
-        uses: actions/upload-artifact@v7
-        with:
-          name: android-release-apk
-          path: Android/app/build/outputs/apk/release/*.apk
-          if-no-files-found: error
