@@ -103,6 +103,8 @@ jobs:
           path: |
             .build-ci/platformer*
             .build-ci/sheet_config*
+            .build-ci/Release/platformer*
+            .build-ci/Release/sheet_config*
           if-no-files-found: error
 
   android:
