@@ -1,6 +1,7 @@
 
 node_modules
-/.build/include
-\.build\include
+.build/
+.build-*/
+build-*/
 .tools\
 \.tools

@@ -1,4 +1,0 @@
-C:/Users/Benno111/Documents/GitHub/DF-New/.build/CMakeFiles/platformer.dir
-C:/Users/Benno111/Documents/GitHub/DF-New/.build/CMakeFiles/sheet_config.dir
-C:/Users/Benno111/Documents/GitHub/DF-New/.build/CMakeFiles/ALL_BUILD.dir
-C:/Users/Benno111/Documents/GitHub/DF-New/.build/CMakeFiles/ZERO_CHECK.dir
