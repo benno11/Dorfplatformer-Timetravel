@@ -85,7 +85,7 @@ jobs:
         shell: pwsh
         run: |
           $vcpkgRoot = Join-Path $env:GITHUB_WORKSPACE ".ci/vcpkg"
-          cmake -S . -B .build-ci -G Ninja `
+          cmake -S . -B build-ci -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_TOOLCHAIN_FILE="$vcpkgRoot/scripts/buildsystems/vcpkg.cmake" `
             -DVCPKG_TARGET_TRIPLET="${{ matrix.triplet }}" `
@@ -94,17 +94,17 @@ jobs:
       - name: Build
         shell: pwsh
         run: |
-          cmake --build .build-ci --config Release --parallel
+          cmake --build build-ci --config Release --parallel
 
       - name: Upload desktop binaries
         uses: actions/upload-artifact@v7
         with:
           name: desktop-${{ runner.os }}
           path: |
-            .build-ci/platformer*
-            .build-ci/sheet_config*
-            .build-ci/Release/platformer*
-            .build-ci/Release/sheet_config*
+            build-ci/platformer*
+            build-ci/sheet_config*
+            build-ci/Release/platformer*
+            build-ci/Release/sheet_config*
           if-no-files-found: error
 
   android:
