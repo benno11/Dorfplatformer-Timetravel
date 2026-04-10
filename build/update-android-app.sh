@@ -44,9 +44,16 @@ if [ ! -d "$ASSETS_SRC" ]; then
   exit 1
 fi
 
+SAVED_ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-}"
+
 if [ -f "$ROOT_DIR/build/android.env" ]; then
   # shellcheck disable=SC1091
   . "$ROOT_DIR/build/android.env"
+fi
+
+if [ -n "$SAVED_ANDROID_NDK_HOME" ]; then
+  ANDROID_NDK_HOME="$SAVED_ANDROID_NDK_HOME"
+  export ANDROID_NDK_HOME
 fi
 
 # Default to syncing every built ABI unless the caller explicitly set ABI/ABIS.

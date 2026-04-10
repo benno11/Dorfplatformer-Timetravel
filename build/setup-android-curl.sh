@@ -19,9 +19,16 @@ SRC_DIR="$ROOT_DIR/deps/android-curl-src"
 BUILD_DIR="$ROOT_DIR/build/android-curl/$ABI"
 STAGE_DIR="$ROOT_DIR/deps/android-curl"
 
+SAVED_ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-}"
+
 if [ -f "$ROOT_DIR/build/android.env" ]; then
   # shellcheck disable=SC1091
   . "$ROOT_DIR/build/android.env"
+fi
+
+if [ -n "$SAVED_ANDROID_NDK_HOME" ]; then
+  ANDROID_NDK_HOME="$SAVED_ANDROID_NDK_HOME"
+  export ANDROID_NDK_HOME
 fi
 
 if [ -z "${ANDROID_NDK_HOME:-}" ]; then

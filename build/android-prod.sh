@@ -29,9 +29,16 @@ unset CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH INCLUDE LIBRARY_PATH LD_LIBRARY_PA
 # Output:
 #   build/android/<abi>/libplatformer.so
 
+SAVED_ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-}"
+
 if [ -f "build/android.env" ]; then
   # shellcheck disable=SC1091
   . "build/android.env"
+fi
+
+if [ -n "$SAVED_ANDROID_NDK_HOME" ]; then
+  ANDROID_NDK_HOME="$SAVED_ANDROID_NDK_HOME"
+  export ANDROID_NDK_HOME
 fi
 
 compute_build_code_id() {
