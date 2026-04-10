@@ -49,14 +49,16 @@ jobs:
           if [[ "${GITHUB_REF:-}" == refs/tags/* ]]; then
             release_enabled=true
             release_tag="${GITHUB_REF#refs/tags/}"
-          elif [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" && -n "${{ inputs.release_tag }}" ]]; then
+          elif [[ -n "${{ inputs.release_tag }}" ]]; then
             release_enabled=true
             release_tag="${{ inputs.release_tag }}"
-          elif [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then
+          elif [[ "${GITHUB_EVENT_NAME:-}" != "pull_request" ]]; then
             release_enabled=true
-            release_tag="draft-${GITHUB_RUN_NUMBER}"
+            release_tag="draft-${GITHUB_REF_NAME//\//-}-${GITHUB_RUN_NUMBER}"
           fi
 
+          echo "Resolved release_enabled=$release_enabled"
+          echo "Resolved release_tag=$release_tag"
           echo "release_enabled=$release_enabled" >> "$GITHUB_OUTPUT"
           echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
 
