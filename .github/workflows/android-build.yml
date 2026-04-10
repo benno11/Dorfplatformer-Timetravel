@@ -57,28 +57,13 @@ jobs:
           echo "release_enabled=$release_enabled" >> "$GITHUB_OUTPUT"
           echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
 
-      - name: Create tag for manual release runs
-        if: steps.release.outputs.release_enabled == 'true' && github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          tag="${{ steps.release.outputs.release_tag }}"
-          git fetch --tags origin
-          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
-            echo "Tag $tag already exists; reusing it."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag "$tag" "$GITHUB_SHA"
-          git push origin "refs/tags/$tag"
-
       - name: Create draft release
         if: steps.release.outputs.release_enabled == 'true'
         uses: softprops/action-gh-release@v2
         with:
           name: ${{ steps.release.outputs.release_tag }}
           tag_name: ${{ steps.release.outputs.release_tag }}
+          target_commitish: ${{ github.sha }}
           draft: true
           generate_release_notes: true
           overwrite_files: true
@@ -210,8 +195,8 @@ jobs:
         with:
           name: ${{ needs.prepare_release.outputs.release_tag }}
           tag_name: ${{ needs.prepare_release.outputs.release_tag }}
+          target_commitish: ${{ github.sha }}
           draft: true
-          generate_release_notes: true
           overwrite_files: true
           fail_on_unmatched_files: true
           files: release/*.zip
@@ -287,8 +272,8 @@ jobs:
         with:
           name: ${{ needs.prepare_release.outputs.release_tag }}
           tag_name: ${{ needs.prepare_release.outputs.release_tag }}
+          target_commitish: ${{ github.sha }}
           draft: true
-          generate_release_notes: true
           overwrite_files: true
           fail_on_unmatched_files: true
           files: Android/app/build/outputs/apk/**/*.apk
