@@ -2,7 +2,7 @@
 #include <cstdio>
 #include <exception>
 
-int main(int argc, char** argv) {
+static int runMainImpl(int argc, char** argv) {
     try {
         return RunGameApp(argc, argv);
     } catch (const std::exception& e) {
@@ -13,3 +13,20 @@ int main(int argc, char** argv) {
         return 1;
     }
 }
+
+int main(int argc, char** argv) {
+    return runMainImpl(argc, argv);
+}
+
+#if defined(_WIN32)
+#include <windows.h>
+
+extern "C" {
+extern int __argc;
+extern char** __argv;
+}
+
+int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
+    return runMainImpl(__argc, __argv);
+}
+#endif
