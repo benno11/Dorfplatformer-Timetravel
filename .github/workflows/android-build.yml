@@ -142,7 +142,7 @@ jobs:
           $vcpkgRoot = Join-Path $env:GITHUB_WORKSPACE ".ci/vcpkg"
           $env:VCPKG_ROOT = $vcpkgRoot
           $vcpkgExe = if ($env:RUNNER_OS -eq "Windows") { Join-Path $vcpkgRoot "vcpkg.exe" } else { Join-Path $vcpkgRoot "vcpkg" }
-          & $vcpkgExe install sdl3 sdl3-image sdl3-ttf curl nlohmann-json --triplet "${{ matrix.triplet }}" --vcpkg-root $vcpkgRoot
+          & $vcpkgExe install sdl3 sdl3-image sdl3-ttf sdl3-mixer curl nlohmann-json --triplet "${{ matrix.triplet }}" --vcpkg-root $vcpkgRoot
 
       - name: Configure
         shell: pwsh
