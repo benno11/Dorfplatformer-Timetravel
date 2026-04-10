@@ -101,6 +101,7 @@ jobs:
           cmake --build build-ci --config Release --parallel
 
       - name: Package desktop release
+        if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
         run: |
           $packageRoot = Join-Path $env:GITHUB_WORKSPACE ("release-" + "${{ matrix.triplet }}")
@@ -137,7 +138,7 @@ jobs:
           Compress-Archive -Path (Join-Path $packageRoot "*") -DestinationPath $assetPath -Force
 
       - name: Draft desktop release assets
-        if: github.ref_type == 'tag' || startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           name: ${{ github.ref_name }}
@@ -213,7 +214,7 @@ jobs:
           ./gradlew --no-daemon assembleDebug assembleRelease --stacktrace
 
       - name: Draft GitHub release
-        if: github.ref_type == 'tag' || startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           name: ${{ github.ref_name }}
