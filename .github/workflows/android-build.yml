@@ -73,6 +73,16 @@ jobs:
           git tag "$tag" "$GITHUB_SHA"
           git push origin "refs/tags/$tag"
 
+      - name: Create draft release
+        if: steps.release.outputs.release_enabled == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ steps.release.outputs.release_tag }}
+          tag_name: ${{ steps.release.outputs.release_tag }}
+          draft: true
+          generate_release_notes: true
+          overwrite_files: true
+
   desktop:
     name: Desktop (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -194,7 +204,7 @@ jobs:
 
           Compress-Archive -Path (Join-Path $packageRoot "*") -DestinationPath $assetPath -Force
 
-      - name: Draft desktop release assets
+      - name: Upload desktop release assets
         if: needs.prepare_release.outputs.release_enabled == 'true'
         uses: softprops/action-gh-release@v2
         with:
@@ -271,7 +281,7 @@ jobs:
         run: |
           ./gradlew --no-daemon assembleDebug assembleRelease --stacktrace
 
-      - name: Draft GitHub release
+      - name: Upload Android release assets
         if: needs.prepare_release.outputs.release_enabled == 'true'
         uses: softprops/action-gh-release@v2
         with:
