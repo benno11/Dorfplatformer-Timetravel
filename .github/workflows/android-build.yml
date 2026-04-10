@@ -21,6 +21,8 @@ jobs:
     name: Desktop (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -98,6 +100,54 @@ jobs:
         run: |
           cmake --build build-ci --config Release --parallel
 
+      - name: Package desktop release
+        shell: pwsh
+        run: |
+          $packageRoot = Join-Path $env:GITHUB_WORKSPACE ("release-" + "${{ matrix.triplet }}")
+          $archiveRoot = Join-Path $env:GITHUB_WORKSPACE "release"
+          $assetName = "platformer-${{ matrix.triplet }}.zip"
+          $assetPath = Join-Path $archiveRoot $assetName
+          $vcpkgBin = Join-Path $env:GITHUB_WORKSPACE ".ci/vcpkg/installed/${{ matrix.triplet }}/bin"
+
+          if (Test-Path $packageRoot) { Remove-Item $packageRoot -Recurse -Force }
+          if (Test-Path $assetPath) { Remove-Item $assetPath -Force }
+          New-Item -ItemType Directory -Force -Path $packageRoot | Out-Null
+          New-Item -ItemType Directory -Force -Path $archiveRoot | Out-Null
+
+          Copy-Item "assets" -Destination (Join-Path $packageRoot "assets") -Recurse -Force
+          Copy-Item "README.md" -Destination $packageRoot -Force
+          Copy-Item "LICENSE" -Destination $packageRoot -Force
+
+          if ($env:RUNNER_OS -eq "Windows") {
+            Copy-Item "build-ci/platformer.exe" -Destination $packageRoot -Force
+            if (Test-Path "build-ci/sheet_config.exe") {
+              Copy-Item "build-ci/sheet_config.exe" -Destination $packageRoot -Force
+            }
+            Get-ChildItem "build-ci" -Filter "*.dll" -File -ErrorAction SilentlyContinue | Copy-Item -Destination $packageRoot -Force
+            if (Test-Path $vcpkgBin) {
+              Get-ChildItem $vcpkgBin -Filter "*.dll" -File -ErrorAction SilentlyContinue | Copy-Item -Destination $packageRoot -Force
+            }
+          } else {
+            Copy-Item "build-ci/platformer" -Destination $packageRoot -Force
+            if (Test-Path "build-ci/sheet_config") {
+              Copy-Item "build-ci/sheet_config" -Destination $packageRoot -Force
+            }
+          }
+
+          Compress-Archive -Path (Join-Path $packageRoot "*") -DestinationPath $assetPath -Force
+
+      - name: Draft desktop release assets
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          draft: true
+          generate_release_notes: true
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          files: release/*.zip
+
   android:
     name: Android APK
     runs-on: ubuntu-latest
@@ -162,13 +212,6 @@ jobs:
         run: |
           ./gradlew --no-daemon assembleDebug assembleRelease --stacktrace
 
-      - name: Upload Android APKs
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-apks
-          path: Android/app/build/outputs/apk/**/*.apk
-          if-no-files-found: error
-
       - name: Draft GitHub release
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
@@ -177,5 +220,6 @@ jobs:
           tag_name: ${{ github.ref_name }}
           draft: true
           generate_release_notes: true
+          overwrite_files: true
           fail_on_unmatched_files: true
           files: Android/app/build/outputs/apk/**/*.apk
