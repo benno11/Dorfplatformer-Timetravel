@@ -414,12 +414,22 @@ target_link_libraries(platformer
 if(SDL3_MIXER_LINK_TARGET)
   target_link_libraries(platformer ${SDL3_MIXER_LINK_TARGET})
   if(WIN32 AND TARGET "${SDL3_MIXER_LINK_TARGET}")
+    get_target_property(_sdl3_mixer_type "${SDL3_MIXER_LINK_TARGET}" TYPE)
     add_custom_command(TARGET platformer POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<TARGET_FILE:${SDL3_MIXER_LINK_TARGET}>"
         "$<TARGET_FILE_DIR:platformer>"
       VERBATIM
     )
+    if(_sdl3_mixer_type STREQUAL "SHARED_LIBRARY")
+      add_custom_command(TARGET platformer POST_BUILD
+        COMMAND ${CMAKE_COMMAND}
+          -DSRC_DIR="$<TARGET_FILE_DIR:${SDL3_MIXER_LINK_TARGET}>/optional"
+          -DDST_DIR="$<TARGET_FILE_DIR:platformer>"
+          -P "${CMAKE_SOURCE_DIR}/cmake/CopyOptionalMixerDlls.cmake"
+        VERBATIM
+      )
+    endif()
     message(STATUS "Will copy SDL3_mixer runtime DLL next to platformer.exe")
   endif()
 endif()

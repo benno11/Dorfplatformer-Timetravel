@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <sstream>
 #include <vector>
 
 #include <SDL3/SDL.h>
@@ -73,16 +74,82 @@ static int Mix_OpenAudioCompat(int frequency, SDL_AudioFormat format, int channe
 
 static const char* Mix_GetErrorCompat() { return SDL_GetError(); }
 
+static std::string availableAudioDecoders() {
+    std::ostringstream out;
+    const int count = MIX_GetNumAudioDecoders();
+    for (int i = 0; i < count; ++i) {
+        const char* decoder = MIX_GetAudioDecoder(i);
+        if (!decoder || !*decoder) continue;
+        if (!out.str().empty()) out << ", ";
+        out << decoder;
+    }
+    return out.str();
+}
+
+static MIX_Audio* mixLoadAudioWithDecoder(MIX_Mixer* mixer, const char* path, bool predecode, const char* decoder) {
+    if (!path || !*path) return nullptr;
+    SDL_IOStream* io = SDL_IOFromFile(path, "rb");
+    if (!io) return nullptr;
+
+    const SDL_PropertiesID props = SDL_CreateProperties();
+    if (!props) {
+        SDL_CloseIO(io);
+        return nullptr;
+    }
+
+    SDL_SetPointerProperty(props, MIX_PROP_AUDIO_LOAD_IOSTREAM_POINTER, io);
+    SDL_SetBooleanProperty(props, MIX_PROP_AUDIO_LOAD_CLOSEIO_BOOLEAN, true);
+    SDL_SetBooleanProperty(props, MIX_PROP_AUDIO_LOAD_PREDECODE_BOOLEAN, predecode);
+    SDL_SetBooleanProperty(props, MIX_PROP_AUDIO_LOAD_SKIP_METADATA_TAGS_BOOLEAN, false);
+    if (mixer) SDL_SetPointerProperty(props, MIX_PROP_AUDIO_LOAD_PREFERRED_MIXER_POINTER, mixer);
+    if (decoder && *decoder) SDL_SetStringProperty(props, MIX_PROP_AUDIO_DECODER_STRING, decoder);
+
+    MIX_Audio* audio = MIX_LoadAudioWithProperties(props);
+    SDL_DestroyProperties(props);
+    return audio;
+}
+
+static MIX_Audio* mixLoadAudioBestEffort(const char* path, bool predecode) {
+    if (!path || !*path) return nullptr;
+
+    MIX_Audio* audio = MIX_LoadAudio(g_mix_mixer, path, predecode);
+    if (audio) return audio;
+
+    audio = MIX_LoadAudio(nullptr, path, predecode);
+    if (audio) return audio;
+
+    static const char* kDecoderCandidates[] = {"DRMP3", "MPG123", "MP3"};
+    for (const char* decoder : kDecoderCandidates) {
+        audio = mixLoadAudioWithDecoder(g_mix_mixer, path, predecode, decoder);
+        if (audio) return audio;
+        audio = mixLoadAudioWithDecoder(nullptr, path, predecode, decoder);
+        if (audio) return audio;
+    }
+
+    return nullptr;
+}
+
 static Mix_Chunk* Mix_LoadWAVCompat(const char* path) {
     if (!g_mix_mixer || !path) return nullptr;
-    MIX_Audio* a = MIX_LoadAudio(g_mix_mixer, path, false);
+    MIX_Audio* a = mixLoadAudioBestEffort(path, true);
     if (!a) return nullptr;
     Mix_Chunk* c = new Mix_Chunk();
     c->audio = a;
     return c;
 }
 
-static Mix_Music* Mix_LoadMUSCompat(const char* path) { return Mix_LoadWAVCompat(path); }
+static Mix_Music* Mix_LoadMUSCompat(const char* path) {
+    if (!g_mix_mixer || !path) return nullptr;
+    MIX_Audio* a = mixLoadAudioBestEffort(path, false);
+    if (!a) {
+        // Some MP3 builds only behave when fully predecoded up front.
+        a = mixLoadAudioBestEffort(path, true);
+    }
+    if (!a) return nullptr;
+    Mix_Music* m = new Mix_Music();
+    m->audio = a;
+    return m;
+}
 
 static int Mix_PlayChannelCompat(int channel, Mix_Chunk* chunk, int loops) {
     if (!g_mix_mixer || !chunk || !chunk->audio) return -1;
@@ -354,6 +421,7 @@ bool AudioSystem::isLoopingEnabled() const {
 void AudioSystem::loadGlobalAssets() {
     if (!isReady() || impl_->shuttingDown) return;
 #if AUDIO_HAS_SDL3_MIXER
+    const std::string decoders = availableAudioDecoders();
     auto loadSfx = [](const char* path, const char* label) -> Mix_Chunk* {
         Mix_Chunk* chunk = Mix_LoadWAVCompat(ResolveAssetPath(path).c_str());
         if (!chunk) SDL_Log("Could not load %s: %s", label, Mix_GetErrorCompat());
@@ -369,7 +437,10 @@ void AudioSystem::loadGlobalAssets() {
     if (!impl_->menuMusic) {
         impl_->menuMusic = Mix_LoadMUSCompat(ResolveAssetPath("assets/Audio/Music/Menu.mp3").c_str());
     }
-    if (!impl_->menuMusic) SDL_Log("Could not load menu music: %s", Mix_GetErrorCompat());
+    if (!impl_->menuMusic) {
+        SDL_Log("Could not load menu music: %s", Mix_GetErrorCompat());
+        if (!decoders.empty()) SDL_Log("Available audio decoders: %s", decoders.c_str());
+    }
 #endif
 }
 
@@ -439,6 +510,8 @@ void AudioSystem::loadLevelMusic(const std::string& musicPath) {
         (void)startMusicWithRetry(impl_->levelMusic, musicLoopCount(impl_->loopingEnabled));
     } else {
         SDL_Log("Could not load music: %s (%s)", musicPath.c_str(), Mix_GetErrorCompat());
+        const std::string decoders = availableAudioDecoders();
+        if (!decoders.empty()) SDL_Log("Available audio decoders: %s", decoders.c_str());
     }
 #else
     (void)musicPath;

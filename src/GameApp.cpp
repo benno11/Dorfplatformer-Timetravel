@@ -96,6 +96,11 @@ int RunGameApp(int argc, char** argv) {
 #endif
     if (!enableGameLog) {
         SDL_LogSetAllPriority(SDL_LOG_PRIORITY_CRITICAL);
+        SDL_SetLogOutputFunction(
+            +[](void*, int, SDL_LogPriority, const char*) {
+                // Normal GUI launches should stay silent even when started from cmd.exe.
+            },
+            nullptr);
     }
     allowDevTools = false;// disable when a debugger is needed else a to prevent players from cheating ingame using a debuger
     //allowDevTools = true;// enable for debuging
