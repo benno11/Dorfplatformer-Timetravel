@@ -1106,6 +1106,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         settingsSelNetwork = std::clamp(settingsSelNetwork, 0, rows - 1);
         ensureSettingsRowVisible(settingsSelNetwork);
     };
+    auto syncNetworkSessionState = [&]() {
+        SetLevelServerAuthToken(levelServerAuthToken);
+        SetLevelServerAccountUsername(levelServerAccountUsername);
+    };
     auto navigateSettingsBy = [&](int delta) {
         if (settingsTab == 4) {
             scrollAboutBy(delta < 0 ? -24 : 24);
@@ -1169,6 +1173,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 if (settingsSelNetwork == 1) {
                     levelServerAccountUsername.clear();
                     levelServerAuthToken.clear();
+                    syncNetworkSessionState();
                     networkLoginStatus = "Login repaired. Enter credentials.";
                     SDL_Log("ACCOUNT: login repaired (cleared username/token)");
                     if (ctx.saveClientSettings) ctx.saveClientSettings();
@@ -1184,6 +1189,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 if (settingsSelNetwork == 1) {
                     levelServerAccountUsername.clear();
                     levelServerAuthToken.clear();
+                    syncNetworkSessionState();
                     networkLoginStatus = "Logged out.";
                     SDL_Log("ACCOUNT: logged out");
                     if (ctx.saveClientSettings) ctx.saveClientSettings();
@@ -1206,6 +1212,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 stopNetworkEditing();
                 std::string err;
                 if (loginWithFirebase(err)) {
+                    syncNetworkSessionState();
                     networkLoginPassword.clear();
                     networkLoginPasswordCursor = 0;
                     networkLoginStatus = std::string("Logged in as ") + levelServerAccountUsername;
@@ -1628,6 +1635,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                                 stopNetworkEditing();
                                 std::string err;
                                 if (loginWithFirebase(err)) {
+                                    syncNetworkSessionState();
                                     networkLoginPassword.clear();
                                     networkLoginPasswordCursor = 0;
                                     networkLoginStatus = std::string("Logged in as ") + levelServerAccountUsername;

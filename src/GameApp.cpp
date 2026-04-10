@@ -86,26 +86,12 @@ int RunGameApp(int argc, char** argv) {
         }
     }
 #if defined(_WIN32)
-    bool hasParentConsole = false;
-    if (GetConsoleWindow() != nullptr) {
-        DWORD consolePids[2] = {0, 0};
-        const DWORD n = GetConsoleProcessList(consolePids, 2);
-        hasParentConsole = (n > 1);
-    }
-    if (!hasParentConsole) {
-        HWND consoleHwnd = GetConsoleWindow();
-        if (consoleHwnd) {
-            ShowWindow(consoleHwnd, SW_HIDE);
-        }
-    }
     if (enableGameLog) {
-        if (!hasParentConsole) {
-            std::filesystem::create_directories("build");
-            FILE* out = nullptr;
-            FILE* err = nullptr;
-            freopen_s(&out, "build\\game.log", "a", stdout);
-            freopen_s(&err, "build\\game.log", "a", stderr);
-        }
+        std::filesystem::create_directories("build");
+        FILE* out = nullptr;
+        FILE* err = nullptr;
+        freopen_s(&out, "build\\game.log", "a", stdout);
+        freopen_s(&err, "build\\game.log", "a", stderr);
     }
 #endif
     if (!enableGameLog) {
@@ -114,8 +100,6 @@ int RunGameApp(int argc, char** argv) {
     allowDevTools = false;// disable when a debugger is needed else a to prevent players from cheating ingame using a debuger
     //allowDevTools = true;// enable for debuging
 
-    
-    // Keep existing terminal output (e.g. compile script logs) visible.
     const std::string buildUuid = makeBuildUuid();
     auto reportStartupError = [](const char* title, const std::string& msg, SDL_Window* parent) {
 #if defined(__ANDROID__)
@@ -963,7 +947,6 @@ int RunGameApp(int argc, char** argv) {
     const std::vector<const Frame*> animSkidFrames = framesFromNames(animCfg.skid);
     const std::vector<const Frame*> animHurtFrames = framesFromNames(animCfg.hurt);
     const std::vector<const Frame*> animDeathFrames = framesFromNames(animCfg.death);
-    float jumpBufferMax = 0.12f;
     std::string levelServerUrl;
     std::string levelServerAuthToken;
     std::string levelServerAccountUsername;
@@ -1001,10 +984,6 @@ int RunGameApp(int argc, char** argv) {
             }
             if (cfg.contains("firebase_api_key") && cfg["firebase_api_key"].is_string()) {
                 firebaseApiKey = cfg["firebase_api_key"].get<std::string>();
-            }
-            if (cfg.contains("jump_buffer_seconds") && cfg["jump_buffer_seconds"].is_number()) {
-                jumpBufferMax = (float)cfg["jump_buffer_seconds"].get<double>();
-                if (jumpBufferMax < 0.0f) jumpBufferMax = 0.0f;
             }
             if (cfg.contains("movement") && cfg["movement"].is_object()) {
                 const auto& m = cfg["movement"];
@@ -2535,7 +2514,6 @@ int RunGameApp(int argc, char** argv) {
             bool jumpHeld = false;
             float jumpHoldTime = 0.0f;
             bool jumpWasDown = false;
-            float jumpBufferTime = 0.0f;
             float inputMove = 0.0f;
             bool inputDown = false;
         };
@@ -2637,7 +2615,6 @@ int RunGameApp(int argc, char** argv) {
                 s.jumpHeld = p.value("jump_held", false);
                 s.jumpHoldTime = p.value("jump_hold_time", 0.0f);
                 s.jumpWasDown = p.value("jump_was_down", false);
-                s.jumpBufferTime = p.value("jump_buffer_time", 0.0f);
                 if (j.contains("input_map") && j["input_map"].is_object()) {
                     const auto& im = j["input_map"];
                     s.inputMove = im.value("input_move", 0.0f);
@@ -3469,7 +3446,6 @@ int RunGameApp(int argc, char** argv) {
                     player.jumpHeld = s.jumpHeld;
                     player.jumpHoldTime = s.jumpHoldTime;
                     player.jumpWasDown = s.jumpWasDown;
-                    player.jumpBufferTime = s.jumpBufferTime;
                     inputMove = s.inputMove;
                     inputDown = s.inputDown;
                     replayPlaybackDrivingThisFrame = true;
@@ -4346,7 +4322,6 @@ int RunGameApp(int argc, char** argv) {
                 player.jumpHeld = false;
                 player.jumpWasDown = false;
                 player.jumpHoldTime = 0.0f;
-                player.jumpBufferTime = 0.0f;
                 touchMove = 0.0f;
                 touchDown = false;
                 touchJump = false;
@@ -4369,7 +4344,7 @@ int RunGameApp(int argc, char** argv) {
             const float beforeNormalY = player.y;
                 if (!fastTravelEnabled) {
                     upd = UpdatePlayerMovement(
-                        player, map, dt, jumpBufferMax, movementCfg,
+                        player, map, dt, movementCfg,
                         touchMove, touchDown, touchJump,
                         gamepadMove, gamepadDown, gamepadJump, gamepadFreeMove,
                         debugModeEnabled,
@@ -6330,8 +6305,7 @@ int RunGameApp(int argc, char** argv) {
                     {"frame_name", renderFrameName},
                     {"jump_held", player.jumpHeld},
                     {"jump_hold_time", player.jumpHoldTime},
-                    {"jump_was_down", player.jumpWasDown},
-                    {"jump_buffer_time", player.jumpBufferTime}
+                    {"jump_was_down", player.jumpWasDown}
                 };
                 frame["input_map"] = {
                     {"touch_move", replayInput.touchMove},
@@ -6898,7 +6872,6 @@ int RunGameApp(int argc, char** argv) {
                 DrawText(debugRen, 12, y, 2, std::string("FreeMove: ") + (player.freeMove ? "1" : "0")); y += 20;
                 DrawText(debugRen, 12, y, 2, std::string("JumpHeld/WasDown: ") + (player.jumpHeld ? "1" : "0") + "/" + (player.jumpWasDown ? "1" : "0")); y += 20;
                 DrawText(debugRen, 12, y, 2, std::string("JumpHoldTime: ") + std::to_string((int)std::lround(player.jumpHoldTime * 1000.0f)) + "ms"); y += 20;
-                DrawText(debugRen, 12, y, 2, std::string("JumpBuffer: ") + std::to_string((int)std::lround(player.jumpBufferTime * 1000.0f)) + "ms"); y += 20;
                 DrawText(debugRen, 12, y, 2, std::string("DrownTimer: ") + std::to_string((int)std::lround(player.drownTimer * 1000.0f)) + "ms"); y += 20;
             } else {
                 auto entries = makeTextureInspectorEntries();

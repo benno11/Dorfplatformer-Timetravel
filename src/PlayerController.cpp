@@ -107,7 +107,6 @@ PlayerUpdateResult UpdatePlayerMovement(
     Player& player,
     const TileMap& map,
     float dt,
-    float jumpBufferMax,
     const MovementConfig& movement,
     float touchMove,
     bool touchDown,
@@ -209,15 +208,6 @@ PlayerUpdateResult UpdatePlayerMovement(
     bool jumpDown = touchJump || gamepadJump || keyHeld(keys, keybinds.jump) || keys[SDL_SCANCODE_UP];
     bool jumpPressed = jumpDown && !player.jumpWasDown;
     bool jumpReleased = !jumpDown && player.jumpWasDown;
-    if (jumpDown == false){
-        player.jumpBufferTime = 0.0f;
-    }
-
-    if (jumpPressed) {
-        player.jumpBufferTime = jumpBufferMax;
-    } else {
-        player.jumpBufferTime = std::max(0.0f, player.jumpBufferTime - dt);
-    }
 
     if (insideSolid) {
         // Escape-mode controls while embedded in solid tiles: ignore collision locks.
@@ -235,12 +225,11 @@ PlayerUpdateResult UpdatePlayerMovement(
         return PlayerUpdateResult::Normal;
     }
 
-    if ((player.onGround || inWater) && player.jumpBufferTime > 0.0f) {
+    if ((player.onGround || inWater) && jumpPressed) {
         player.vy = -jumpSpeed;
         if (player.onGround) player.onGround = false;
         player.jumpHeld = false;
         player.jumpHoldTime = 0.0f;
-        player.jumpBufferTime = 0.0f;
     }
 
     player.jumpHeld = false;

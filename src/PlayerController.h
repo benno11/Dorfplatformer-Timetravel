@@ -42,7 +42,6 @@ PlayerUpdateResult UpdatePlayerMovement(
     Player& player,
     const TileMap& map,
     float dt,
-    float jumpBufferMax,
     const MovementConfig& movement,
     float touchMove,
     bool touchDown,

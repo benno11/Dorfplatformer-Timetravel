@@ -150,7 +150,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_TOOLCHAIN_FILE="$vcpkgRoot/scripts/buildsystems/vcpkg.cmake" `
             -DVCPKG_TARGET_TRIPLET="${{ matrix.triplet }}" `
-            -DPLATFORMER_REQUIRE_SDL3_MIXER=OFF
+            -DPLATFORMER_REQUIRE_SDL3_MIXER=ON
 
       - name: Build
         shell: pwsh

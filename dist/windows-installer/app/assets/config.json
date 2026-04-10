@@ -1,5 +1,5 @@
 {
-  "version": "2.1.2",
+  "version": "2.2.0 Alpha",
   "experimental_render_thread": false,
   "movement": {
     "accel_in_water": 700.0,

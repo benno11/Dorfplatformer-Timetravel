@@ -28,7 +28,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O2 -DNDEBUG")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -O2 -g -DNDEBUG")
 option(PLATFORMER_EMBED_LIBS "Prefer static dependency libraries in the main binary" ON)
 option(PLATFORMER_ENABLE_LOWERCASE_SDL_SHIM "Generate lowercase SDL include shim (<sdl3/...>)" OFF)
-option(PLATFORMER_REQUIRE_SDL3_MIXER "Fail configure if SDL3_mixer is not found" OFF)
+option(PLATFORMER_REQUIRE_SDL3_MIXER "Fail configure if SDL3_mixer is not found" ON)
 
 option(PLATFORMER_ENABLE_UNITY_BUILD "Enable CMake unity build for faster compile times" ON)
 if(PLATFORMER_ENABLE_UNITY_BUILD)
@@ -79,6 +79,9 @@ add_executable(platformer
   src/ParallaxRenderer.cpp
   src/World3PatternBackground.cpp
 )
+if(WIN32)
+  set_target_properties(platformer PROPERTIES WIN32_EXECUTABLE ON)
+endif()
 if(WIN32)
   set(PLATFORMER_ICON_FILE "${CMAKE_SOURCE_DIR}/icon.ico")
   if(EXISTS "${PLATFORMER_ICON_FILE}")
