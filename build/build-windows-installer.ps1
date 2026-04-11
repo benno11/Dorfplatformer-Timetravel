@@ -75,7 +75,7 @@ if (-not (Test-Path $vcpkgExe)) {
 
 if (-not $SkipVcpkgInstall) {
     Write-Host "[STEP] Installing dependencies with vcpkg ($Triplet)"
-    & $vcpkgExe install sdl3 sdl3-image sdl3-ttf curl nlohmann-json --triplet $Triplet
+    & $vcpkgExe install sdl3 sdl3-image sdl3-ttf sdl3-mixer curl nlohmann-json --triplet $Triplet
 }
 
 Write-Host "[STEP] Configuring CMake"
@@ -85,7 +85,8 @@ Write-Host "[STEP] Configuring CMake"
     -G Ninja `
     -DCMAKE_BUILD_TYPE=$Config `
     -DCMAKE_TOOLCHAIN_FILE="$vcpkgRoot\scripts\buildsystems\vcpkg.cmake" `
-    -DVCPKG_TARGET_TRIPLET=$Triplet
+    -DVCPKG_TARGET_TRIPLET=$Triplet `
+    -DPLATFORMER_REQUIRE_SDL3_MIXER=ON
 
 Write-Host "[STEP] Building binaries"
 & cmake --build (Join-Path $repoRoot $BuildDir) --config $Config --parallel

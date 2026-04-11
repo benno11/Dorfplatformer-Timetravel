@@ -314,15 +314,18 @@ function Ensure-ProjectDepsAvailable {
     $sdlMixerConfigB = Join-Path $prefix "share\SDL3_mixer\SDL3_mixerConfig.cmake"
     $hasSdlMixer = (Test-Path $sdlMixerConfigA) -or (Test-Path $sdlMixerConfigB)
     $localMixerPrefix = Get-LocalSdl3MixerPrefix
+    $preferredMixerPrefix = if ($hasSdlMixer) { $prefix } else { $localMixerPrefix }
 
     if ((Test-Path $sdlConfig) -and ($hasSdlMixer -or $localMixerPrefix)) {
         $prefixes = @($prefix)
-        if ($localMixerPrefix) { $prefixes += $localMixerPrefix }
+        if ((-not $hasSdlMixer) -and $localMixerPrefix) { $prefixes += $localMixerPrefix }
         $joinedPrefixes = ($prefixes -join ";")
-        $env:SDL3_mixer_DIR = Join-Path $localMixerPrefix "cmake"
+        if ($preferredMixerPrefix) {
+            $env:SDL3_mixer_DIR = Join-Path $preferredMixerPrefix "cmake"
+        }
         $env:CMAKE_PREFIX_PATH = if ($env:CMAKE_PREFIX_PATH) { "$joinedPrefixes;$env:CMAKE_PREFIX_PATH" } else { $joinedPrefixes }
         Write-Host "Using dependency prefix: $prefix"
-        if ($localMixerPrefix) { Write-Host "Using SDL3_mixer prefix: $localMixerPrefix" }
+        if ($preferredMixerPrefix) { Write-Host "Using SDL3_mixer prefix: $preferredMixerPrefix" }
         return
     }
 
@@ -541,13 +544,14 @@ function Ensure-ProjectDepsAvailable {
         Write-Host "SDL3_mixer is unavailable in this local vcpkg baseline; continuing without mixer link target."
     }
 
+    $preferredMixerPrefix = if ($hasSdlMixer) { $prefix } else { $localMixerPrefix }
     $prefixes = @($prefix)
-    if ($localMixerPrefix) { $prefixes += $localMixerPrefix }
+    if ((-not $hasSdlMixer) -and $localMixerPrefix) { $prefixes += $localMixerPrefix }
     $joinedPrefixes = ($prefixes -join ";")
-    if ($localMixerPrefix) { $env:SDL3_mixer_DIR = Join-Path $localMixerPrefix "cmake" }
+    if ($preferredMixerPrefix) { $env:SDL3_mixer_DIR = Join-Path $preferredMixerPrefix "cmake" }
     $env:CMAKE_PREFIX_PATH = if ($env:CMAKE_PREFIX_PATH) { "$joinedPrefixes;$env:CMAKE_PREFIX_PATH" } else { $joinedPrefixes }
     Write-Host "Using dependency prefix: $prefix"
-    if ($localMixerPrefix) { Write-Host "Using SDL3_mixer prefix: $localMixerPrefix" }
+    if ($preferredMixerPrefix) { Write-Host "Using SDL3_mixer prefix: $preferredMixerPrefix" }
 }
 
 if ($NoCompilerAutoInstall) {
