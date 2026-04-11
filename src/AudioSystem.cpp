@@ -152,8 +152,12 @@ static int Mix_PlayChannelCompat(int channel, Mix_Chunk* chunk, int loops) {
     MIX_Track* t = mix_track_at(idx);
     if (!t) return -1;
     if (!MIX_SetTrackAudio(t, chunk->audio)) return -1;
-    MIX_SetTrackLoops(t, loops);
-    if (!MIX_PlayTrack(t, 0)) return -1;
+    const SDL_PropertiesID props = SDL_CreateProperties();
+    if (!props) return -1;
+    SDL_SetNumberProperty(props, MIX_PROP_PLAY_LOOPS_NUMBER, loops);
+    const bool ok = MIX_PlayTrack(t, props);
+    SDL_DestroyProperties(props);
+    if (!ok) return -1;
     return idx;
 }
 
@@ -162,8 +166,12 @@ static int Mix_PlayMusicCompat(Mix_Music* music, int loops) {
     if (!g_mix_music_track) g_mix_music_track = MIX_CreateTrack(g_mix_mixer);
     if (!g_mix_music_track) return -1;
     if (!MIX_SetTrackAudio(g_mix_music_track, music->audio)) return -1;
-    MIX_SetTrackLoops(g_mix_music_track, loops);
-    return MIX_PlayTrack(g_mix_music_track, 0) ? 0 : -1;
+    const SDL_PropertiesID props = SDL_CreateProperties();
+    if (!props) return -1;
+    SDL_SetNumberProperty(props, MIX_PROP_PLAY_LOOPS_NUMBER, loops);
+    const bool ok = MIX_PlayTrack(g_mix_music_track, props);
+    SDL_DestroyProperties(props);
+    return ok ? 0 : -1;
 }
 
 static int Mix_PlayingCompat(int channel) {
