@@ -77,17 +77,19 @@ static const char* Mix_GetErrorCompat() { return SDL_GetError(); }
 static std::string availableAudioDecoders() {
     std::ostringstream out;
     const int count = MIX_GetNumAudioDecoders();
+    bool first = true;
     for (int i = 0; i < count; ++i) {
         const char* decoder = MIX_GetAudioDecoder(i);
         if (!decoder || !*decoder) continue;
-        if (!out.str().empty()) out << ", ";
+        if (!first) out << ", ";
         out << decoder;
+        first = false;
     }
     return out.str();
 }
 
 static MIX_Audio* mixLoadAudioWithDecoder(MIX_Mixer* mixer, const char* path, bool predecode, const char* decoder) {
-    if (!path || !*path) return nullptr;
+    if (!mixer || !path || !*path) return nullptr;
     SDL_IOStream* io = SDL_IOFromFile(path, "rb");
     if (!io) return nullptr;
 
@@ -101,7 +103,7 @@ static MIX_Audio* mixLoadAudioWithDecoder(MIX_Mixer* mixer, const char* path, bo
     SDL_SetBooleanProperty(props, MIX_PROP_AUDIO_LOAD_CLOSEIO_BOOLEAN, true);
     SDL_SetBooleanProperty(props, MIX_PROP_AUDIO_LOAD_PREDECODE_BOOLEAN, predecode);
     SDL_SetBooleanProperty(props, MIX_PROP_AUDIO_LOAD_SKIP_METADATA_TAGS_BOOLEAN, false);
-    if (mixer) SDL_SetPointerProperty(props, MIX_PROP_AUDIO_LOAD_PREFERRED_MIXER_POINTER, mixer);
+    SDL_SetPointerProperty(props, MIX_PROP_AUDIO_LOAD_PREFERRED_MIXER_POINTER, mixer);
     if (decoder && *decoder) SDL_SetStringProperty(props, MIX_PROP_AUDIO_DECODER_STRING, decoder);
 
     MIX_Audio* audio = MIX_LoadAudioWithProperties(props);
@@ -110,19 +112,14 @@ static MIX_Audio* mixLoadAudioWithDecoder(MIX_Mixer* mixer, const char* path, bo
 }
 
 static MIX_Audio* mixLoadAudioBestEffort(const char* path, bool predecode) {
-    if (!path || !*path) return nullptr;
+    if (!g_mix_mixer || !path || !*path) return nullptr;
 
     MIX_Audio* audio = MIX_LoadAudio(g_mix_mixer, path, predecode);
-    if (audio) return audio;
-
-    audio = MIX_LoadAudio(nullptr, path, predecode);
     if (audio) return audio;
 
     static const char* kDecoderCandidates[] = {"DRMP3", "MPG123", "MP3"};
     for (const char* decoder : kDecoderCandidates) {
         audio = mixLoadAudioWithDecoder(g_mix_mixer, path, predecode, decoder);
-        if (audio) return audio;
-        audio = mixLoadAudioWithDecoder(nullptr, path, predecode, decoder);
         if (audio) return audio;
     }
 
