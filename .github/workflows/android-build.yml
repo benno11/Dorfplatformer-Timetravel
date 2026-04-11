@@ -256,6 +256,9 @@ jobs:
           ANDROID_ALLOW_NO_CURL: "1"
           FORCE_REBUILD_SDL: "1"
           SDL_REF: release-3.4.x
+          SDL_IMAGE_REF: release-3.4.x
+          SDL_TTF_REF: release-3.4.x
+          SDL_MIXER_REF: release-3.4.x
           SDL_REQUIRED_VERSION: 3.4.0
           TERM: xterm
         run: |
