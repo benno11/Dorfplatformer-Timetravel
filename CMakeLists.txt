@@ -165,6 +165,13 @@ set(SDL3_MIXER_DIR_CANDIDATES
   "/usr/lib/x86_64-linux-gnu/cmake/SDL3_mixer"
 )
 if(WIN32)
+  # Search for pre-bundled SDL3_mixer packages under deps/windows-sdl3-mixer/*/cmake.
+  file(GLOB _windows_mixer_cmake_dirs "${CMAKE_SOURCE_DIR}/deps/windows-sdl3-mixer/*/cmake")
+  foreach(_dir IN LISTS _windows_mixer_cmake_dirs)
+    list(APPEND SDL3_MIXER_DIR_CANDIDATES "${_dir}")
+  endforeach()
+  unset(_windows_mixer_cmake_dirs)
+  unset(_dir)
   if(DEFINED VCPKG_TARGET_TRIPLET)
     list(APPEND SDL3_MIXER_DIR_CANDIDATES
       "${CMAKE_SOURCE_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/share/sdl3-mixer"
