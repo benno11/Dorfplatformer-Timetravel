@@ -1,0 +1,6 @@
+# Copy to signing.properties and keep the real file private.
+# For the default PKCS12 keystore format, keyPassword should match storePassword.
+storeFile=release-keystore.jks
+storePassword=replace-with-store-password
+keyAlias=release
+keyPassword=replace-with-key-password
