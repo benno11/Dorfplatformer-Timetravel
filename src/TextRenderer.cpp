@@ -17,6 +17,7 @@ struct TextCacheEntry {
     SDL_Texture* tex = nullptr;
     int w = 0;
     int h = 0;
+    Uint64 lastUsedTicks = 0;
 };
 struct RendererTextCache {
     std::unordered_map<std::string, TextCacheEntry> entries;
@@ -73,6 +74,76 @@ void ShutdownTextRenderer() {
     gTextCacheByRenderer.clear();
     if (gTtfInited) TTF_Quit();
     gTtfInited = false;
+}
+
+void ClearTextRendererCache(SDL_Renderer* ren) {
+    auto clearRendererCache = [](RendererTextCache& cache) {
+        for (auto& kv : cache.entries) {
+            if (kv.second.tex) SDL_DestroyTexture(kv.second.tex);
+        }
+        cache.entries.clear();
+        cache.order.clear();
+    };
+
+    if (ren) {
+        auto it = gTextCacheByRenderer.find(ren);
+        if (it == gTextCacheByRenderer.end()) return;
+        clearRendererCache(it->second);
+        if (it->second.entries.empty() && it->second.order.empty()) {
+            gTextCacheByRenderer.erase(it);
+        }
+        return;
+    }
+
+    for (auto& byRenderer : gTextCacheByRenderer) {
+        clearRendererCache(byRenderer.second);
+    }
+    gTextCacheByRenderer.clear();
+}
+
+void CollectTextRendererGarbage(Uint64 maxIdleMs, size_t targetEntriesPerRenderer) {
+    const Uint64 now = SDL_GetTicks();
+    for (auto rendererIt = gTextCacheByRenderer.begin(); rendererIt != gTextCacheByRenderer.end();) {
+        auto& cache = rendererIt->second;
+
+        for (auto entryIt = cache.entries.begin(); entryIt != cache.entries.end();) {
+            const bool stale = (now >= entryIt->second.lastUsedTicks) &&
+                               ((now - entryIt->second.lastUsedTicks) > maxIdleMs);
+            if (!stale) {
+                ++entryIt;
+                continue;
+            }
+            if (entryIt->second.tex) SDL_DestroyTexture(entryIt->second.tex);
+            entryIt = cache.entries.erase(entryIt);
+        }
+
+        while (cache.order.size() > targetEntriesPerRenderer) {
+            const std::string oldKey = cache.order.front();
+            cache.order.pop_front();
+            auto itOld = cache.entries.find(oldKey);
+            if (itOld == cache.entries.end()) continue;
+            if (itOld->second.tex) SDL_DestroyTexture(itOld->second.tex);
+            cache.entries.erase(itOld);
+        }
+
+        for (auto orderIt = cache.order.begin(); orderIt != cache.order.end();) {
+            if (cache.entries.find(*orderIt) == cache.entries.end()) {
+                orderIt = cache.order.erase(orderIt);
+            } else {
+                ++orderIt;
+            }
+        }
+
+        if (cache.entries.empty()) {
+            rendererIt = gTextCacheByRenderer.erase(rendererIt);
+        } else {
+            ++rendererIt;
+        }
+    }
+
+    if (gDebugLabelWidthCache.size() > 2048) {
+        gDebugLabelWidthCache.clear();
+    }
 }
 
 void SetTextScaleMultiplier(float multiplier) {
@@ -145,6 +216,7 @@ void DrawTextColored(SDL_Renderer* ren, int x, int y, int scale, const std::stri
         SDL_GetTextureSize(tex, &tw, &th);
         entry.w = (int)tw;
         entry.h = (int)th;
+        entry.lastUsedTicks = SDL_GetTicks();
         rendererCache.entries[key] = entry;
         rendererCache.order.push_back(key);
         itCached = rendererCache.entries.find(key);
@@ -159,6 +231,7 @@ void DrawTextColored(SDL_Renderer* ren, int x, int y, int scale, const std::stri
             rendererCache.order.pop_front();
         }
     }
+    itCached->second.lastUsedTicks = SDL_GetTicks();
 
     SDL_FRect dst{
         (float)x,

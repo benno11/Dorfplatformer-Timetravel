@@ -460,14 +460,72 @@ std::vector<FrameEntry> loadPlistFrameList(const std::string& plistPath) {
     return frames;
 }
 
+namespace {
+bool renderRotatedAtlasFrame(SDL_Renderer* ren, SDL_Texture* tex, const Frame& f, const SDL_Rect& dst, SDL_RendererFlip flip) {
+    float texW = 0.0f;
+    float texH = 0.0f;
+    if (!SDL_GetTextureSize(tex, &texW, &texH) || texW <= 0.0f || texH <= 0.0f) {
+        return false;
+    }
+
+    const float u0 = (float)f.rect.x / texW;
+    const float v0 = (float)f.rect.y / texH;
+    const float u1 = (float)(f.rect.x + f.rect.w) / texW;
+    const float v1 = (float)(f.rect.y + f.rect.h) / texH;
+
+    SDL_FPoint uv[4] = {
+        {u0, v0}, // top-left samples the stored top-left corner
+        {u0, v1}, // top-right samples the stored bottom-left corner
+        {u1, v1}, // bottom-right samples the stored bottom-right corner
+        {u1, v0}, // bottom-left samples the stored top-right corner
+    };
+
+    if ((flip & SDL_FLIP_HORIZONTAL) != 0) {
+        std::swap(uv[0], uv[1]);
+        std::swap(uv[3], uv[2]);
+    }
+    if ((flip & SDL_FLIP_VERTICAL) != 0) {
+        std::swap(uv[0], uv[3]);
+        std::swap(uv[1], uv[2]);
+    }
+
+    Uint8 modR = 255;
+    Uint8 modG = 255;
+    Uint8 modB = 255;
+    Uint8 modA = 255;
+    SDL_GetTextureColorMod(tex, &modR, &modG, &modB);
+    SDL_GetTextureAlphaMod(tex, &modA);
+    const SDL_FColor color{
+        (float)modR / 255.0f,
+        (float)modG / 255.0f,
+        (float)modB / 255.0f,
+        (float)modA / 255.0f
+    };
+
+    const float left = (float)dst.x;
+    const float top = (float)dst.y;
+    const float right = left + (float)dst.w;
+    const float bottom = top + (float)dst.h;
+    const SDL_Vertex vertices[4] = {
+        {{left, top}, color, uv[0]},
+        {{right, top}, color, uv[1]},
+        {{right, bottom}, color, uv[2]},
+        {{left, bottom}, color, uv[3]},
+    };
+    static const int indices[6] = {0, 1, 2, 2, 3, 0};
+    return SDL_RenderGeometry(ren, tex, vertices, 4, indices, 6);
+}
+} // namespace
+
 void renderFrame(SDL_Renderer* ren, SDL_Texture* tex, const Frame& f, const SDL_Rect& dst) {
     if (!tex) return;
     if (!f.rotated) {
         SDL_RenderCopy(ren, tex, &f.rect, &dst);
         return;
     }
-    SDL_Point center{dst.w / 2, dst.h / 2};
-    SDL_RenderCopyEx(ren, tex, &f.rect, &dst, -90.0, &center, SDL_FLIP_NONE);
+    if (!renderRotatedAtlasFrame(ren, tex, f, dst, SDL_FLIP_NONE)) {
+        SDL_RenderCopy(ren, tex, &f.rect, &dst);
+    }
 }
 
 void renderFrameEx(SDL_Renderer* ren, SDL_Texture* tex, const Frame& f, const SDL_Rect& dst, SDL_RendererFlip flip) {
@@ -476,8 +534,9 @@ void renderFrameEx(SDL_Renderer* ren, SDL_Texture* tex, const Frame& f, const SD
         SDL_RenderCopyEx(ren, tex, &f.rect, &dst, 0.0, nullptr, flip);
         return;
     }
-    SDL_Point center{dst.w / 2, dst.h / 2};
-    SDL_RenderCopyEx(ren, tex, &f.rect, &dst, -90.0, &center, flip);
+    if (!renderRotatedAtlasFrame(ren, tex, f, dst, flip)) {
+        SDL_RenderCopyEx(ren, tex, &f.rect, &dst, 0.0, nullptr, flip);
+    }
 }
 
 SDL_Texture* loadTextureWithColorKey(SDL_Renderer* ren, const std::string& path, Uint8 r, Uint8 g, Uint8 b) {

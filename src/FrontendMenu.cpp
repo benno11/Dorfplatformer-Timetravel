@@ -39,6 +39,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     bool devToolsEnabledLocal = false;
     bool& devToolsEnabled = ctx.devToolsEnabled ? *ctx.devToolsEnabled : devToolsEnabledLocal;
     bool& powerManagementEnabled = *ctx.powerManagementEnabled;
+    bool lowPowerModeEnabledLocal = false;
+    bool& lowPowerModeEnabled = ctx.lowPowerModeEnabled ? *ctx.lowPowerModeEnabled : lowPowerModeEnabledLocal;
     bool& menuMusicEnabled = *ctx.menuMusicEnabled;
     bool& muteAllAudio = *ctx.muteAllAudio;
     SDL_Scancode& keyMoveLeft = *ctx.keyMoveLeft;
@@ -80,7 +82,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     };
     std::vector<std::string> debugLabels = {
         "FPS COUNTER", "DETAILED DEBUGGER", "SHOW HITBOXES", "PLAYER HITBOX",
-        "DEBUG HUD", "HIDE UNKNOWN OBJECT TYPES", "POWER MANAGEMENT", "BACK"
+        "DEBUG HUD", "HIDE UNKNOWN OBJECT TYPES", "POWER MANAGEMENT", "LOW POWER MODE", "BACK"
     };
     {
         const std::string menuJsonText = ReadTextFile("assets/menus/settings_menu.json");
@@ -98,7 +100,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 readStringArray("tabs", settingsTabLabels, 10);
                 readStringArray("controls_rows", controlsLabels, 6);
                 readStringArray("audio_rows", audioLabels, 5);
-                readStringArray("debug_rows", debugLabels, 8);
+                readStringArray("debug_rows", debugLabels, 9);
             } catch (...) {}
         }
     }
@@ -385,6 +387,21 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         if (tab == 4) return 0;
         if (isExtraTab(tab)) return extraTabRowCountForTab(tab);
         return kSettingsCount;
+    };
+    auto generalSettingsRowHidden = [&](int idx) -> bool {
+        if (debugModeEnabled) return false;
+        return idx == IDX_SHOW_FPS ||
+               idx == IDX_SHOW_DETAILED ||
+               idx == IDX_SHOW_HITBOXES ||
+               idx == IDX_SHOW_PLAYER_HITBOX ||
+               idx == IDX_SHOW_DEBUG_VIEW;
+    };
+    auto visibleGeneralSettingsRowIndex = [&](int rawIdx) -> int {
+        int visibleIdx = 0;
+        for (int i = 0; i < rawIdx; ++i) {
+            if (!generalSettingsRowHidden(i)) ++visibleIdx;
+        }
+        return visibleIdx;
     };
     auto activeSettingsSelectionRef = [&]() -> int& {
         if (settingsTab == 1) return settingsSelAudio;
@@ -1133,7 +1150,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             return;
         }
         if (settingsTab == 2) {
-            if (!debugModeEnabled) return;
+            if (!debugModeEnabled && settingsSelDebug <= 5) return;
             if (settingsSelDebug == 0) defaultShowFpsCounter = !defaultShowFpsCounter;
             else if (settingsSelDebug == 1) defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
             else if (settingsSelDebug == 2) defaultShowHitboxes = !defaultShowHitboxes;
@@ -1141,7 +1158,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             else if (settingsSelDebug == 4) defaultShowDebugView = !defaultShowDebugView;
             else if (settingsSelDebug == 5) defaultHideUnknownObjectTypes = !defaultHideUnknownObjectTypes;
             else if (settingsSelDebug == 6) powerManagementEnabled = !powerManagementEnabled;
-            else if (settingsSelDebug == 7) setInSettings(false);
+            else if (settingsSelDebug == 7) lowPowerModeEnabled = !lowPowerModeEnabled;
+            else if (settingsSelDebug == 8) setInSettings(false);
             return;
         }
         if (settingsTab == 3) {
@@ -1785,7 +1803,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         continue;
                     }
                     if (settingsTab == 2) {
-                        constexpr int kDebugCount = 8;
+                        constexpr int kDebugCount = 9;
                         if (navUp) settingsSelDebug = (settingsSelDebug + kDebugCount - 1) % kDebugCount;
                         if (navDown) settingsSelDebug = (settingsSelDebug + 1) % kDebugCount;
                         if (navUp || navDown) {
@@ -2017,6 +2035,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         SDL_Rect row5 = settingsRowBtn(5);
                         SDL_Rect row6 = settingsRowBtn(6);
                         SDL_Rect row7 = settingsRowBtn(7);
+                        SDL_Rect row8 = settingsRowBtn(8);
                         if (SDL_PointInRect(&pt, &row0) && debugModeEnabled) defaultShowFpsCounter = !defaultShowFpsCounter;
                         else if (SDL_PointInRect(&pt, &row1) && debugModeEnabled) defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
                         else if (SDL_PointInRect(&pt, &row2) && debugModeEnabled) defaultShowHitboxes = !defaultShowHitboxes;
@@ -2024,7 +2043,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         else if (SDL_PointInRect(&pt, &row4) && debugModeEnabled) defaultShowDebugView = !defaultShowDebugView;
                         else if (SDL_PointInRect(&pt, &row5) && debugModeEnabled) defaultHideUnknownObjectTypes = !defaultHideUnknownObjectTypes;
                         else if (SDL_PointInRect(&pt, &row6)) powerManagementEnabled = !powerManagementEnabled;
-                        else if (SDL_PointInRect(&pt, &row7)) setInSettings(false);
+                        else if (SDL_PointInRect(&pt, &row7)) lowPowerModeEnabled = !lowPowerModeEnabled;
+                        else if (SDL_PointInRect(&pt, &row8)) setInSettings(false);
                         settingsSelDebug = SDL_PointInRect(&pt, &row0) ? 0 :
                                            SDL_PointInRect(&pt, &row1) ? 1 :
                                            SDL_PointInRect(&pt, &row2) ? 2 :
@@ -2032,11 +2052,12 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                                            SDL_PointInRect(&pt, &row4) ? 4 :
                                            SDL_PointInRect(&pt, &row5) ? 5 :
                                            SDL_PointInRect(&pt, &row6) ? 6 :
-                                           SDL_PointInRect(&pt, &row7) ? 7 : settingsSelDebug;
+                                           SDL_PointInRect(&pt, &row7) ? 7 :
+                                           SDL_PointInRect(&pt, &row8) ? 8 : settingsSelDebug;
                         continue;
                     }
-                    SDL_Rect aboutBtn = settingsRowBtn(IDX_ABOUT);
-                    SDL_Rect backBtn = settingsRowBtn(IDX_BACK);
+                    SDL_Rect aboutBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_ABOUT));
+                    SDL_Rect backBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_BACK));
 #if defined(__ANDROID__)
                     SDL_Rect vsyncBtn = settingsRowBtn(IDX_VSYNC);
                     SDL_Rect camBtn = settingsRowBtn(IDX_CAM_CLAMP);
@@ -2279,6 +2300,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         SDL_Rect row5 = settingsRowBtn(5);
                         SDL_Rect row6 = settingsRowBtn(6);
                         SDL_Rect row7 = settingsRowBtn(7);
+                        SDL_Rect row8 = settingsRowBtn(8);
                         if (SDL_PointInRect(&pt, &row0) && debugModeEnabled) defaultShowFpsCounter = !defaultShowFpsCounter;
                         else if (SDL_PointInRect(&pt, &row1) && debugModeEnabled) defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
                         else if (SDL_PointInRect(&pt, &row2) && debugModeEnabled) defaultShowHitboxes = !defaultShowHitboxes;
@@ -2286,7 +2308,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         else if (SDL_PointInRect(&pt, &row4) && debugModeEnabled) defaultShowDebugView = !defaultShowDebugView;
                         else if (SDL_PointInRect(&pt, &row5) && debugModeEnabled) defaultHideUnknownObjectTypes = !defaultHideUnknownObjectTypes;
                         else if (SDL_PointInRect(&pt, &row6)) powerManagementEnabled = !powerManagementEnabled;
-                        else if (SDL_PointInRect(&pt, &row7)) setInSettings(false);
+                        else if (SDL_PointInRect(&pt, &row7)) lowPowerModeEnabled = !lowPowerModeEnabled;
+                        else if (SDL_PointInRect(&pt, &row8)) setInSettings(false);
                         settingsSelDebug = SDL_PointInRect(&pt, &row0) ? 0 :
                                            SDL_PointInRect(&pt, &row1) ? 1 :
                                            SDL_PointInRect(&pt, &row2) ? 2 :
@@ -2294,11 +2317,12 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                                            SDL_PointInRect(&pt, &row4) ? 4 :
                                            SDL_PointInRect(&pt, &row5) ? 5 :
                                            SDL_PointInRect(&pt, &row6) ? 6 :
-                                           SDL_PointInRect(&pt, &row7) ? 7 : settingsSelDebug;
+                                           SDL_PointInRect(&pt, &row7) ? 7 :
+                                           SDL_PointInRect(&pt, &row8) ? 8 : settingsSelDebug;
                         continue;
                     }
-                    SDL_Rect aboutBtn = settingsRowBtn(IDX_ABOUT);
-                    SDL_Rect backBtn = settingsRowBtn(IDX_BACK);
+                    SDL_Rect aboutBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_ABOUT));
+                    SDL_Rect backBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_BACK));
 #if defined(__ANDROID__)
                     SDL_Rect vsyncBtn = settingsRowBtn(IDX_VSYNC);
                     SDL_Rect camBtn = settingsRowBtn(IDX_CAM_CLAMP);
@@ -2560,15 +2584,13 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 const int titleY = (int)std::lround(menuCanvasOriginY() + 84.0f * menuCanvasScale());
                 DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(3, title) / 2, titleY, 3, title);
             }
-            if (!closeMenuOpen) {
-                const std::string versionText = std::string("v") + (ctx.versionString.empty() ? "dev" : ctx.versionString);
-                const std::string copyrightText = "Copyright (c) Benno111 2024 - 2026";
-                const int footerScale = std::max(1, (int)std::lround(2.0f * menuCanvasScale() * mainMenuScale()));
-                const int footerY = (int)std::lround(menuCanvasOriginY() + 496.0f * menuCanvasScale());
-                const int edgePad = std::max(8, (int)std::lround(12.0f * menuCanvasScale()));
-                DrawText(ctx.ren, edgePad, footerY, footerScale, versionText);
-                DrawText(ctx.ren, ctx.baseScreenW - edgePad - MeasureTextWidth(footerScale, copyrightText), footerY, footerScale, copyrightText);
-            }
+            const std::string versionText = std::string("v") + (ctx.versionString.empty() ? "dev" : ctx.versionString);
+            const std::string copyrightText = "Copyright (c) Benno111 2024 - 2026";
+            const int footerScale = std::max(1, (int)std::lround(2.0f * menuCanvasScale() * mainMenuScale()));
+            const int footerY = (int)std::lround(menuCanvasOriginY() + 496.0f * menuCanvasScale());
+            const int edgePad = std::max(8, (int)std::lround(12.0f * menuCanvasScale()));
+            DrawText(ctx.ren, edgePad, footerY, footerScale, versionText);
+            DrawText(ctx.ren, ctx.baseScreenW - edgePad - MeasureTextWidth(footerScale, copyrightText), footerY, footerScale, copyrightText);
             if (closeMenuOpen) {
                 constexpr Uint8 kQuitDimAlpha = 150;
                 constexpr Uint8 kQuitWindowAlpha = 236;
@@ -2586,7 +2608,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 if (popupWindow && popupWindowTex) {
                     SDL_SetTextureBlendMode(popupWindowTex, SDL_BLENDMODE_BLEND);
                     SDL_SetTextureAlphaMod(popupWindowTex, kQuitWindowAlpha);
-                    renderCenterLoopedFrame(popupWindowTex, *popupWindow, modal);
+                    renderFrame(ctx.ren, popupWindowTex, *popupWindow, modal);
                     SDL_SetTextureAlphaMod(popupWindowTex, 255);
                 } else {
                     SDL_SetRenderDrawColor(ctx.ren, 26, 32, 42, kQuitWindowAlpha);
@@ -2604,8 +2626,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 if (popupBtnFrame && popupBtnTex) {
                     SDL_SetTextureBlendMode(popupBtnTex, SDL_BLENDMODE_BLEND);
                     SDL_SetTextureAlphaMod(popupBtnTex, kQuitButtonAlpha);
-                    renderCenterLoopedFrame(popupBtnTex, *popupBtnFrame, resumeBtn);
-                    renderCenterLoopedFrame(popupBtnTex, *popupBtnFrame, closeBtn);
+                    renderFrame(ctx.ren, popupBtnTex, *popupBtnFrame, resumeBtn);
+                    renderFrame(ctx.ren, popupBtnTex, *popupBtnFrame, closeBtn);
                     SDL_SetTextureAlphaMod(popupBtnTex, 255);
                 } else {
                     SDL_SetRenderDrawColor(ctx.ren, closeMenuSel == 0 ? 120 : 70, 95, 85, kQuitButtonAlpha);
@@ -2886,7 +2908,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     debugLabels[4] + std::string(": ") + (defaultShowDebugView ? "ON" : "OFF"),
                     debugLabels[5] + std::string(": ") + (defaultHideUnknownObjectTypes ? "ON" : "OFF"),
                     debugLabels[6] + std::string(": ") + (powerManagementEnabled ? "ON" : "OFF"),
-                    debugLabels[7]
+                    debugLabels[7] + std::string(": ") + (lowPowerModeEnabled ? "ON" : "OFF"),
+                    debugLabels[8]
                 };
                 for (int i = 0; i < (int)rows.size(); ++i) {
                     drawToggleHitbox(i, i == settingsSelDebug);
@@ -2897,6 +2920,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     if (i == 4) drawToggleCheckbox(i, defaultShowDebugView);
                     if (i == 5) drawToggleCheckbox(i, defaultHideUnknownObjectTypes);
                     if (i == 6) drawToggleCheckbox(i, powerManagementEnabled);
+                    if (i == 7) drawToggleCheckbox(i, lowPowerModeEnabled);
                     int y = settingsRowY(i);
                     if (i == settingsSelDebug) {
                         SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_BLEND);
@@ -3047,17 +3071,9 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     "BACK"
                 };
 #endif
-                auto hideGeneralDebugRow = [&](int idx) -> bool {
-                    if (debugModeEnabled) return false;
-                    return idx == IDX_SHOW_FPS ||
-                           idx == IDX_SHOW_DETAILED ||
-                           idx == IDX_SHOW_HITBOXES ||
-                           idx == IDX_SHOW_PLAYER_HITBOX ||
-                           idx == IDX_SHOW_DEBUG_VIEW;
-                };
                 int drawIdx = 0;
                 for (int i = 0; i < (int)rows.size(); ++i) {
-                    if (hideGeneralDebugRow(i)) continue;
+                    if (generalSettingsRowHidden(i)) continue;
                     drawToggleHitbox(drawIdx, i == settingsSel);
 #if defined(__ANDROID__)
                     if (i == 0) drawToggleCheckbox(drawIdx, vsyncEnabled);

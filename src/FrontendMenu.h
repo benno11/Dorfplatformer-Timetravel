@@ -32,6 +32,7 @@ struct FrontendMenuContext {
     bool* defaultHideUnknownObjectTypes = nullptr;
     bool* debugModeEnabled = nullptr;
     bool* powerManagementEnabled = nullptr;
+    bool* lowPowerModeEnabled = nullptr;
     bool* menuMusicEnabled = nullptr;
     bool* muteAllAudio = nullptr;
     SDL_Scancode* keyMoveLeft = nullptr;

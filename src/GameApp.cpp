@@ -1139,6 +1139,256 @@ int RunGameApp(int argc, char** argv) {
         f.rotated = false;
         pauseFrames["fallback"] = f;
     }
+    auto destroyTextureRef = [&](SDL_Texture*& tex) {
+        if (tex) SDL_DestroyTexture(tex);
+        tex = nullptr;
+    };
+    auto recreateCurrentRenderTargets = [&]() -> bool {
+        SDL_Texture* newGameTarget = SDL_CreateTexture(
+            ren,
+            SDL_PIXELFORMAT_RGBA8888,
+            SDL_TEXTUREACCESS_TARGET,
+            kBaseScreenW, kBaseScreenH
+        );
+        SDL_Texture* newWorldTarget = SDL_CreateTexture(
+            ren,
+            SDL_PIXELFORMAT_RGBA8888,
+            SDL_TEXTUREACCESS_TARGET,
+            kGameplayViewW, kGameplayViewH
+        );
+        if (!newGameTarget || !newWorldTarget) {
+            if (newWorldTarget) SDL_DestroyTexture(newWorldTarget);
+            if (newGameTarget) SDL_DestroyTexture(newGameTarget);
+            return false;
+        }
+        SDL_SetTextureScaleMode(newWorldTarget, SDL_SCALEMODE_NEAREST);
+        SDL_SetTextureScaleMode(newGameTarget, SDL_SCALEMODE_NEAREST);
+        destroyTextureRef(worldTarget);
+        destroyTextureRef(gameTarget);
+        worldTarget = newWorldTarget;
+        gameTarget = newGameTarget;
+        return true;
+    };
+    auto refreshGameplayAssetLookups = [&]() {
+        blocksFrameByName.clear();
+        blocksFrameByName.reserve(blocksFrameList.size());
+        for (const auto& e : blocksFrameList) blocksFrameByName[e.name] = e.frame;
+        std::fill(blocksFrameById.begin(), blocksFrameById.end(), nullptr);
+        for (const auto& e : blocksFrameList) {
+            bool numeric = !e.name.empty();
+            for (char ch : e.name) {
+                if (!std::isdigit((unsigned char)ch)) {
+                    numeric = false;
+                    break;
+                }
+            }
+            if (!numeric) continue;
+            int id = 0;
+            try { id = std::stoi(e.name); } catch (...) { continue; }
+            if (id < 0 || id >= (int)blocksFrameById.size()) continue;
+            blocksFrameById[id] = &e.frame;
+        }
+        for (int i = 0; i < 8; ++i) {
+            cycleFrames[i] = nullptr;
+            const std::string key = std::string("c") + std::to_string(i + 1);
+            auto it = blocksFrameByName.find(key);
+            if (it != blocksFrameByName.end()) cycleFrames[i] = &it->second;
+        }
+        for (int i = 0; i < 10; ++i) {
+            world3PatternFrames[i] = nullptr;
+            const std::string key = std::string("3.") + std::to_string(i + 1);
+            auto it = blocksFrameByName.find(key);
+            if (it != blocksFrameByName.end()) world3PatternFrames[i] = &it->second;
+            else {
+                auto itPng = blocksFrameByName.find(key + ".png");
+                if (itPng != blocksFrameByName.end()) world3PatternFrames[i] = &itPng->second;
+                else {
+                    const std::string fallbackKey = std::string("c") + std::to_string(i + 1);
+                    auto itFallback = blocksFrameByName.find(fallbackKey);
+                    if (itFallback != blocksFrameByName.end()) world3PatternFrames[i] = &itFallback->second;
+                    else {
+                        auto itFallbackPng = blocksFrameByName.find(fallbackKey + ".png");
+                        if (itFallbackPng != blocksFrameByName.end()) world3PatternFrames[i] = &itFallbackPng->second;
+                    }
+                }
+            }
+        }
+
+        defaultEndSignFrame = nullptr;
+        {
+            auto it = endSignFrames.find("SignPost9");
+            if (it == endSignFrames.end()) it = endSignFrames.find("SignPost9.png");
+            if (it != endSignFrames.end()) defaultEndSignFrame = &it->second;
+        }
+
+        bossNormalFrame = nullptr;
+        bossHurtFrame = nullptr;
+        bossFinalNormalFrame = nullptr;
+        {
+            auto it = bossesFrames.find("Normal-1");
+            if (it == bossesFrames.end()) it = bossesFrames.find("Normal-1.png");
+            if (it != bossesFrames.end()) bossNormalFrame = &it->second;
+            it = bossesFrames.find("Hurt-1");
+            if (it == bossesFrames.end()) it = bossesFrames.find("Hurt-1.png");
+            if (it != bossesFrames.end()) bossHurtFrame = &it->second;
+            it = bossesFrames.find("Final-Normal");
+            if (it == bossesFrames.end()) it = bossesFrames.find("Final-Normal.png");
+            if (it != bossesFrames.end()) bossFinalNormalFrame = &it->second;
+        }
+
+        entitiesFrameByName.clear();
+        entitiesFrameByName.reserve(entitiesFrameList.size());
+        for (const auto& e : entitiesFrameList) entitiesFrameByName[e.name] = e.frame;
+        defaultEntityFrame = !entitiesFrameList.empty() ? &entitiesFrameList[0].frame : nullptr;
+
+        playerFramesByName.clear();
+        playerFramesByName.reserve(playerFrameList.size());
+        for (const auto& e : playerFrameList) playerFramesByName[e.name] = e.frame;
+        if (playerFrameList.empty() && playerTex) {
+            float twf = 0.0f, thf = 0.0f;
+            SDL_GetTextureSize(playerTex, &twf, &thf);
+            Frame f{};
+            f.rect = SDL_Rect{0, 0, std::max(1, (int)std::lround(twf)), std::max(1, (int)std::lround(thf))};
+            f.rotated = false;
+            playerFrameList.push_back(FrameEntry{"fallback", f});
+            playerFramesByName["fallback"] = f;
+        }
+        fallbackPlayerFrame = !playerFrameList.empty() ? &playerFrameList[0].frame : nullptr;
+
+        if (pauseFrames.empty() && pauseTex) {
+            float twf = 0.0f, thf = 0.0f;
+            SDL_GetTextureSize(pauseTex, &twf, &thf);
+            Frame f{};
+            f.rect = SDL_Rect{0, 0, std::max(1, (int)std::lround(twf)), std::max(1, (int)std::lround(thf))};
+            f.rotated = false;
+            pauseFrames["fallback"] = f;
+        }
+
+        ensureTextureAndFrames("blocks", blocksTex, blocksFrameList, &blocksFrameByName);
+        ensureTextureAndFrames("player", playerTex, playerFrameList, &playerFramesByName);
+        if (!pauseTex) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Asset fallback: missing pause texture, using placeholder");
+            pauseTex = createFallbackTexture(32, 32, 32, 255);
+        }
+        if (pauseFrames.empty()) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Asset fallback: missing pause plist/frames, using full-texture frame");
+            float twf = 0.0f, thf = 0.0f;
+            if (pauseTex) SDL_GetTextureSize(pauseTex, &twf, &thf);
+            Frame f{};
+            f.rect = SDL_Rect{0, 0, std::max(1, (int)std::lround(twf)), std::max(1, (int)std::lround(thf))};
+            f.rotated = false;
+            pauseFrames["fallback"] = f;
+        }
+    };
+    auto unloadGameplayAssets = [&]() {
+        destroyTextureRef(playerTex);
+        destroyTextureRef(bgTexWorld1);
+        destroyTextureRef(bgTexWorld2);
+        destroyTextureRef(bgTexWorld4);
+        destroyTextureRef(bgTexWorld5);
+        destroyTextureRef(bgTexWorld6);
+        destroyTextureRef(introCardTex);
+        destroyTextureRef(blocksTex);
+        destroyTextureRef(entitiesTex);
+        destroyTextureRef(bossesTex);
+        destroyTextureRef(endSignTex);
+        destroyTextureRef(pauseTex);
+        destroyTextureRef(worldTarget);
+        destroyTextureRef(gameTarget);
+        pauseFrames.clear();
+        blocksFrameList.clear();
+        blocksFrameByName.clear();
+        std::fill(blocksFrameById.begin(), blocksFrameById.end(), nullptr);
+        endSignFrames.clear();
+        introCardFrames.clear();
+        bossesFrames.clear();
+        entitiesFrameList.clear();
+        entitiesFrameByName.clear();
+        playerFrameList.clear();
+        playerFramesByName.clear();
+        bgFrameByNameWorld1.clear();
+        bgFrameByNameWorld2.clear();
+        bgFrameByNameWorld4.clear();
+        bgFrameByNameWorld5.clear();
+        bgFrameByNameWorld6.clear();
+        bgFrameListWorld1.clear();
+        bgFrameListWorld2.clear();
+        bgFrameListWorld4.clear();
+        bgFrameListWorld5.clear();
+        bgAnimFramesWorld6.clear();
+        defaultEndSignFrame = nullptr;
+        bossNormalFrame = nullptr;
+        bossHurtFrame = nullptr;
+        bossFinalNormalFrame = nullptr;
+        defaultEntityFrame = nullptr;
+        fallbackPlayerFrame = nullptr;
+        for (int i = 0; i < 8; ++i) cycleFrames[i] = nullptr;
+        for (int i = 0; i < 10; ++i) world3PatternFrames[i] = nullptr;
+        ClearTextRendererCache();
+        audio.haltAllChannels();
+        audio.haltMusic();
+        audio.unloadLevelMusic();
+        audio.unloadGlobalAssets();
+    };
+    auto loadGameplayAssets = [&]() -> bool {
+        if (!gameTarget || !worldTarget) {
+            if (!recreateCurrentRenderTargets()) {
+                SDL_Log("Low power recovery: render target recreation failed: %s", SDL_GetError());
+                return false;
+            }
+        }
+
+        pausePlist = texPath("plists", "pause", "assets/Sheets/DF_Pause-uhd.plist");
+        pauseTex = loadTextureSafe(ren, texPath("textures", "pause", "assets/Sheets/DF_Pause-uhd.png"), nullptr);
+        if (pauseTex) SDL_SetTextureScaleMode(pauseTex, SDL_SCALEMODE_NEAREST);
+        pauseFrames = loadPlistFrames(pausePlist);
+
+        blocksPlist = texPath("plists", "blocks", "assets/Sheets/DF_Blocks-uhd.plist");
+        blocksTex = loadTextureWithColorKey(ren, texPath("textures", "blocks", "assets/Sheets/DF_Blocks-uhd.png"), 0x9f, 0x61, 0xff);
+        blocksFrameList = loadPlistFrameList(blocksPlist);
+
+        loadBgSheet(
+            texPath("textures", "background_world1", "assets/Sheets/DF_Back_1-uhd.png"),
+            texPath("plists", "background_world1", "assets/Sheets/DF_Back_1-uhd.plist"),
+            bgTexWorld1, bgFrameByNameWorld1, &bgFrameListWorld1);
+        loadBgSheet(
+            texPath("textures", "background_world2", "assets/Sheets/DF_Back_2-uhd.png"),
+            texPath("plists", "background_world2", "assets/Sheets/DF_Back_2-uhd.plist"),
+            bgTexWorld2, bgFrameByNameWorld2, &bgFrameListWorld2);
+        loadBgSheet(
+            texPath("textures", "background_world4", "assets/Sheets/DF_Back_4-uhd.png"),
+            texPath("plists", "background_world4", "assets/Sheets/DF_Back_4-uhd.plist"),
+            bgTexWorld4, bgFrameByNameWorld4, &bgFrameListWorld4);
+        loadBgSheet(
+            texPath("textures", "background_world5", "assets/Sheets/DF_Back_5-uhd.png"),
+            texPath("plists", "background_world5", "assets/Sheets/DF_Back_5-uhd.plist"),
+            bgTexWorld5, bgFrameByNameWorld5, &bgFrameListWorld5);
+        loadBgSheet(
+            texPath("textures", "background_world6", "assets/Sheets/DF_Back_6-uhd.png"),
+            texPath("plists", "background_world6", "assets/Sheets/DF_Back_6-uhd.plist"),
+            bgTexWorld6, bgFrameByNameWorld6, &bgAnimFramesWorld6);
+
+        introCardTex = loadTextureSafe(ren, "assets/Sheets/Introcard-uhd.png", nullptr);
+        if (introCardTex) SDL_SetTextureScaleMode(introCardTex, SDL_SCALEMODE_NEAREST);
+        introCardFrames = loadPlistFrames("assets/Sheets/Introcard-uhd.plist");
+        endSignTex = loadTextureSafe(ren, "assets/Sheets/end_sign-uhd.png", nullptr);
+        if (endSignTex) SDL_SetTextureScaleMode(endSignTex, SDL_SCALEMODE_NEAREST);
+        endSignFrames = loadPlistFrames("assets/Sheets/end_sign-uhd.plist");
+        bossesTex = loadTextureSafe(ren, "assets/Sheets/DF_Bosses-uhd.png", nullptr);
+        if (bossesTex) SDL_SetTextureScaleMode(bossesTex, SDL_SCALEMODE_NEAREST);
+        bossesFrames = loadPlistFrames("assets/Sheets/DF_Bosses-uhd.plist");
+        entitiesTex = loadTextureSafe(ren, "assets/Sheets/DF_Enitys-uhd.png", nullptr);
+        if (entitiesTex) SDL_SetTextureScaleMode(entitiesTex, SDL_SCALEMODE_NEAREST);
+        entitiesFrameList = loadPlistFrameList(entitiesPlist);
+        playerPlist = texPath("plists", "player", "assets/Sheets/DF_Player1-uhd.plist");
+        playerTex = loadTextureSafe(ren, texPath("textures", "player", "assets/Sheets/DF_Player1-uhd.png"), nullptr);
+        if (playerTex) SDL_SetTextureScaleMode(playerTex, SDL_SCALEMODE_NEAREST);
+        playerFrameList = loadPlistFrameList(playerPlist);
+
+        audio.loadGlobalAssets();
+        refreshGameplayAssetLookups();
+        return true;
+    };
     if (!gameTarget) {
         reportStartupError("Render Target Error", "Failed to create game render target.", win);
         if (playerTex) SDL_DestroyTexture(playerTex);
@@ -1173,6 +1423,7 @@ int RunGameApp(int argc, char** argv) {
     bool defaultHideUnknownObjectTypes = false;
     bool debugModeEnabled = false;
     bool powerManagementEnabled = true;
+    bool lowPowerModeEnabled = false;
     bool menuMusicEnabled = true;
     bool muteAllAudio = false;
     KeyboardBindings keybinds{};
@@ -1231,6 +1482,7 @@ int RunGameApp(int argc, char** argv) {
         };
         settings["gameplay"] = {
             {"power_management", powerManagementEnabled},
+            {"low_power_mode", lowPowerModeEnabled},
             {"debug_mode_enabled", debugModeEnabled},
             {"fast_travel_delay", fastTravelChangeDelay}
         };
@@ -1261,6 +1513,7 @@ int RunGameApp(int argc, char** argv) {
         j["show_debug_view"] = defaultShowDebugView;
         j["hide_unknown_object_types"] = defaultHideUnknownObjectTypes;
         j["power_management"] = powerManagementEnabled;
+        j["low_power_mode"] = lowPowerModeEnabled;
         j["debug_mode_enabled"] = debugModeEnabled;
         j["menu_music_enabled"] = menuMusicEnabled;
         j["mute_all_audio"] = muteAllAudio;
@@ -1361,6 +1614,7 @@ int RunGameApp(int argc, char** argv) {
                 if (s.contains("gameplay") && s["gameplay"].is_object()) {
                     const auto& g = s["gameplay"];
                     if (g.contains("power_management") && g["power_management"].is_boolean()) powerManagementEnabled = g["power_management"].get<bool>();
+                    if (g.contains("low_power_mode") && g["low_power_mode"].is_boolean()) lowPowerModeEnabled = g["low_power_mode"].get<bool>();
                     if (g.contains("debug_mode_enabled") && g["debug_mode_enabled"].is_boolean()) debugModeEnabled = g["debug_mode_enabled"].get<bool>();
                     if (g.contains("fast_travel_delay") && g["fast_travel_delay"].is_number()) {
                         // Deprecated: delay removed in favor of immediate smooth transitions.
@@ -1411,6 +1665,7 @@ int RunGameApp(int argc, char** argv) {
             if (j.contains("show_debug_view") && j["show_debug_view"].is_boolean()) defaultShowDebugView = j["show_debug_view"].get<bool>();
             if (j.contains("hide_unknown_object_types") && j["hide_unknown_object_types"].is_boolean()) defaultHideUnknownObjectTypes = j["hide_unknown_object_types"].get<bool>();
             if (j.contains("power_management") && j["power_management"].is_boolean()) powerManagementEnabled = j["power_management"].get<bool>();
+            if (j.contains("low_power_mode") && j["low_power_mode"].is_boolean()) lowPowerModeEnabled = j["low_power_mode"].get<bool>();
             if (j.contains("debug_mode_enabled") && j["debug_mode_enabled"].is_boolean()) debugModeEnabled = j["debug_mode_enabled"].get<bool>();
             if (j.contains("menu_music_enabled") && j["menu_music_enabled"].is_boolean()) menuMusicEnabled = j["menu_music_enabled"].get<bool>();
             if (j.contains("mute_all_audio") && j["mute_all_audio"].is_boolean()) muteAllAudio = j["mute_all_audio"].get<bool>();
@@ -1761,6 +2016,7 @@ int RunGameApp(int argc, char** argv) {
     frontendCtx.defaultHideUnknownObjectTypes = &defaultHideUnknownObjectTypes;
     frontendCtx.debugModeEnabled = &debugModeEnabled;
     frontendCtx.powerManagementEnabled = &powerManagementEnabled;
+    frontendCtx.lowPowerModeEnabled = &lowPowerModeEnabled;
     frontendCtx.menuMusicEnabled = &menuMusicEnabled;
     frontendCtx.muteAllAudio = &muteAllAudio;
     frontendCtx.keyMoveLeft = &keybinds.moveLeft;
@@ -2639,6 +2895,7 @@ int RunGameApp(int argc, char** argv) {
         Uint32 lastTicks = SDL_GetTicks();
         Uint32 lastPresentTicks = lastTicks;
         Uint32 nextPresentTicks = lastTicks;
+        Uint32 nextGarbageCollectTicks = lastTicks + 5000;
         bool mainWindowFocused = true;
         bool mainWindowMinimized = false;
         constexpr int kFpsDisplayMax = 99999999;
@@ -2650,6 +2907,7 @@ int RunGameApp(int argc, char** argv) {
         SDL_Rect pauseBtnContinue{0,0,0,0};
         SDL_Rect pauseBtnRestart{0,0,0,0};
         SDL_Rect pauseBtnExit{0,0,0,0};
+        bool lowPowerSuspendActive = false;
 
         auto handlePauseSelect = [&](int sel) {
             pauseSelection = sel;
@@ -2663,6 +2921,51 @@ int RunGameApp(int argc, char** argv) {
                 returnToSelect = true;
                 levelRunning = false;
             }
+        };
+        auto enterLowPowerSuspend = [&]() {
+            if (lowPowerSuspendActive) return;
+            paused = true;
+            stopDebugButtonEditing();
+            unloadGameplayAssets();
+            lowPowerSuspendActive = true;
+            lastTicks = SDL_GetTicks();
+            lastPresentTicks = lastTicks;
+            nextPresentTicks = lastTicks;
+            SDL_Log("Low power mode: suspended reloadable assets");
+        };
+        auto exitLowPowerSuspend = [&]() -> bool {
+            if (!lowPowerSuspendActive) return true;
+            if (!loadGameplayAssets()) {
+                reportStartupError("Low Power Recovery Error",
+                                   std::string("Failed to restore gameplay assets: ") + SDL_GetError(),
+                                   win);
+                running = false;
+                levelRunning = false;
+                return false;
+            }
+            applyAudioVolumes();
+            if (audio.isReady()) {
+                audio.loadLevelMusic(levelManager.musicPath());
+            }
+            lowPowerSuspendActive = false;
+            lastTicks = SDL_GetTicks();
+            lastPresentTicks = lastTicks;
+            nextPresentTicks = lastTicks;
+            SDL_Log("Low power mode: restored gameplay assets");
+            return true;
+        };
+        auto updateLowPowerSuspendState = [&]() -> bool {
+            const bool shouldSuspend = lowPowerModeEnabled &&
+                                       powerManagementEnabled &&
+                                       (mainWindowMinimized || !mainWindowFocused);
+            if (shouldSuspend) {
+                enterLowPowerSuspend();
+                return true;
+            }
+            if (lowPowerSuspendActive) {
+                return !exitLowPowerSuspend();
+            }
+            return false;
         };
         auto toggleDetailedDebugger = [&]() {
             if (!allowDevTools) {
@@ -3153,7 +3456,7 @@ int RunGameApp(int argc, char** argv) {
             }
             if ((e.type == SDL_EVENT_WINDOW_RESIZED || e.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) &&
                 e.window.windowID == mainWindowId) {
-                applyDynamicResolutionFromWindow(false);
+                if (!lowPowerSuspendActive) applyDynamicResolutionFromWindow(false);
             }
             const bool isTextInputEvent =
 #if defined(SDL_EVENT_TEXT_INPUT)
@@ -3250,7 +3553,7 @@ int RunGameApp(int argc, char** argv) {
                 if (allowDevTools && e.key.key == SDLK_p) {
                     showDemoPath = !showDemoPath;
                 }
-                if (allowDevTools && e.key.key == SDLK_F6) {
+                if (e.key.key == SDLK_F6) {
                     showFpsCounter = !showFpsCounter;
                 }
                 if (e.key.key == SDLK_F10) {
@@ -3303,7 +3606,7 @@ int RunGameApp(int argc, char** argv) {
                     if (e.key.key == SDLK_UP || e.key.key == SDLK_LEFT) detailedDebugTextureIndex--;
                     if (e.key.key == SDLK_DOWN || e.key.key == SDLK_RIGHT) detailedDebugTextureIndex++;
                 }
-                if (e.key.key == SDLK_F9) {
+                if (allowDevTools && e.key.key == SDLK_F9) {
                     if (allowNextLevelProgression) {
                         std::string nextPath = levelManager.nextLevelPath();
                         (void)transitionToLevelPath(nextPath);
@@ -3407,6 +3710,31 @@ int RunGameApp(int argc, char** argv) {
                     else if (SDL_PointInRect(&pt, &pauseBtnRestart)) handlePauseSelect(1);
                     else if (SDL_PointInRect(&pt, &pauseBtnExit)) handlePauseSelect(2);
                 }
+            }
+        }
+        if (updateLowPowerSuspendState()) {
+            if (!running || !levelRunning) continue;
+        }
+        if (lowPowerSuspendActive) {
+            SDL_Delay(250);
+            continue;
+        }
+        {
+            const Uint32 gcNow = SDL_GetTicks();
+            if (gcNow >= nextGarbageCollectTicks) {
+                const bool aggressiveGc = lowPowerModeEnabled || mainWindowMinimized || !mainWindowFocused || paused;
+                CollectTextRendererGarbage(
+                    aggressiveGc ? 3000u : 15000u,
+                    aggressiveGc ? 96u : 256u
+                );
+                if (droppedCoins.capacity() > 256 && droppedCoins.size() < 64) {
+                    std::vector<DroppedCoin>(droppedCoins.begin(), droppedCoins.end()).swap(droppedCoins);
+                }
+                if (solidHitboxes.capacity() > 8192 && solidHitboxes.empty()) std::vector<SDL_FRect>().swap(solidHitboxes);
+                if (semiHitboxes.capacity() > 4096 && semiHitboxes.empty()) std::vector<SDL_FRect>().swap(semiHitboxes);
+                if (waterHitboxes.capacity() > 4096 && waterHitboxes.empty()) std::vector<SDL_FRect>().swap(waterHitboxes);
+                if (airDebugHitboxes.capacity() > 4096 && airDebugHitboxes.empty()) std::vector<SDL_FRect>().swap(airDebugHitboxes);
+                nextGarbageCollectTicks = gcNow + (aggressiveGc ? 2000u : 5000u);
             }
         }
         computeTouchButtons();

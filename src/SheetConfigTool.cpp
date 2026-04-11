@@ -35,9 +35,11 @@ static void writePlist(const std::string& outPath, const std::string& imageName,
     for (const auto& f : frames) {
         int x = (int)std::round(f.rect.x);
         int y = (int)std::round(f.rect.y);
-        int w = (int)std::round(f.rect.w);
-        int h = (int)std::round(f.rect.h);
-        if (f.rotated) std::swap(w, h);
+        int rectW = (int)std::round(f.rect.w);
+        int rectH = (int)std::round(f.rect.h);
+        int spriteW = rectW;
+        int spriteH = rectH;
+        if (f.rotated) std::swap(rectW, rectH);
         std::string name = f.name.empty() ? "frame" : f.name;
         out << "\t\t\t<key>" << name << ".png</key>\n";
         out << "\t\t\t<dict>\n";
@@ -46,11 +48,11 @@ static void writePlist(const std::string& outPath, const std::string& imageName,
         out << "\t\t\t\t<key>spriteOffset</key>\n";
         out << "\t\t\t\t<string>{0,0}</string>\n";
         out << "\t\t\t\t<key>spriteSize</key>\n";
-        out << "\t\t\t\t<string>{" << w << "," << h << "}</string>\n";
+        out << "\t\t\t\t<string>{" << spriteW << "," << spriteH << "}</string>\n";
         out << "\t\t\t\t<key>spriteSourceSize</key>\n";
-        out << "\t\t\t\t<string>{" << w << "," << h << "}</string>\n";
+        out << "\t\t\t\t<string>{" << spriteW << "," << spriteH << "}</string>\n";
         out << "\t\t\t\t<key>textureRect</key>\n";
-        out << "\t\t\t\t<string>{{" << x << "," << y << "},{" << w << "," << h << "}}</string>\n";
+        out << "\t\t\t\t<string>{{" << x << "," << y << "},{" << rectW << "," << rectH << "}}</string>\n";
         out << "\t\t\t\t<key>textureRotated</key>\n";
         if (f.rotated) {
             out << "\t\t\t\t<true/>\n";

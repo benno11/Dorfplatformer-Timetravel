@@ -5,6 +5,8 @@
 
 bool InitTextRenderer(const std::string& fontPath);
 void ShutdownTextRenderer();
+void ClearTextRendererCache(SDL_Renderer* ren = nullptr);
+void CollectTextRendererGarbage(Uint64 maxIdleMs = 15000, size_t targetEntriesPerRenderer = 256);
 void SetTextScaleMultiplier(float multiplier);
 float GetTextScaleMultiplier();
 
