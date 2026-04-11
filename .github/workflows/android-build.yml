@@ -184,9 +184,9 @@ jobs:
             if (Test-Path "build-ci/sheet_config.exe") {
               Copy-Item "build-ci/sheet_config.exe" -Destination $packageRoot -Force
             }
-            Get-ChildItem "build-ci" -Filter "*.dll" -File -ErrorAction SilentlyContinue | Copy-Item -Destination $packageRoot -Force
+            Get-ChildItem "build-ci" -Filter "*.dll" -File -Recurse -ErrorAction SilentlyContinue | Copy-Item -Destination $packageRoot -Force
             if (Test-Path $vcpkgBin) {
-              Get-ChildItem $vcpkgBin -Filter "*.dll" -File -ErrorAction SilentlyContinue | Copy-Item -Destination $packageRoot -Force
+              Get-ChildItem $vcpkgBin -Filter "*.dll" -File -Recurse -ErrorAction SilentlyContinue | Copy-Item -Destination $packageRoot -Force
             }
           } else {
             Copy-Item "build-ci/platformer" -Destination $packageRoot -Force

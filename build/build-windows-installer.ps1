@@ -48,6 +48,12 @@ function Resolve-IsccPath() {
     return $null
 }
 
+function Copy-DllTree([string]$sourceDir, [string]$destDir) {
+    if (-not (Test-Path $sourceDir)) { return }
+    Get-ChildItem $sourceDir -Filter "*.dll" -File -Recurse -ErrorAction SilentlyContinue |
+        Copy-Item -Destination $destDir -Force
+}
+
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $vcpkgRoot = Join-Path $repoRoot "vcpkg"
 $vcpkgExe = Join-Path $vcpkgRoot "vcpkg.exe"
@@ -114,7 +120,7 @@ if (Test-Path $objectTypeMap) {
 
 $vcpkgBin = Join-Path $vcpkgRoot "installed\$Triplet\bin"
 if (Test-Path $vcpkgBin) {
-    Copy-Item (Join-Path $vcpkgBin "*.dll") -Destination $appDir -Force
+    Copy-DllTree -sourceDir $vcpkgBin -destDir $appDir
 }
 
 if (-not $SkipVcRedistDownload) {
