@@ -456,6 +456,7 @@ else()
 endif()
 if(ANDROID)
   target_link_libraries(platformer
+    PRIVATE
     OpenSLES
     android
     log
@@ -472,7 +473,7 @@ if(MSVC)
   target_compile_options(platformer PRIVATE /EHsc /FS)
 endif()
 if (CURL_FOUND)
-  target_link_libraries(platformer CURL::libcurl)
+  target_link_libraries(platformer PRIVATE CURL::libcurl)
   target_compile_definitions(platformer PRIVATE HAVE_CURL=1)
   message(STATUS "Linked platformer: CURL::libcurl")
 else()
