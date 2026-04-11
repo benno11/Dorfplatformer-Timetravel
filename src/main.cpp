@@ -20,13 +20,24 @@ int main(int argc, char** argv) {
 
 #if defined(_WIN32)
 #include <windows.h>
-
 extern "C" {
 extern int __argc;
 extern char** __argv;
 }
 
+static void attachToParentConsoleIfAvailable() {
+    if (!AttachConsole(ATTACH_PARENT_PROCESS)) {
+        return;
+    }
+
+    FILE* stream = nullptr;
+    freopen_s(&stream, "CONIN$", "r", stdin);
+    freopen_s(&stream, "CONOUT$", "w", stdout);
+    freopen_s(&stream, "CONOUT$", "w", stderr);
+}
+
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
+    attachToParentConsoleIfAvailable();
     return runMainImpl(__argc, __argv);
 }
 #endif
