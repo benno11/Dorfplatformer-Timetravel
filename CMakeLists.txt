@@ -418,14 +418,19 @@ if(PLATFORMER_ENABLE_LOWERCASE_SDL_SHIM)
   endif()
 endif()
 
-target_link_libraries(platformer
+set(PLATFORMER_LINK_LIBS
   ${SDL3_LINK_TARGET}
   ${SDL3_IMAGE_LINK_TARGET}
   ${SDL3_TTF_LINK_TARGET}
   nlohmann_json::nlohmann_json
 )
 if(SDL3_MIXER_LINK_TARGET)
-  target_link_libraries(platformer ${SDL3_MIXER_LINK_TARGET})
+  list(APPEND PLATFORMER_LINK_LIBS ${SDL3_MIXER_LINK_TARGET})
+endif()
+
+target_link_libraries(platformer PRIVATE ${PLATFORMER_LINK_LIBS})
+
+if(SDL3_MIXER_LINK_TARGET)
   target_compile_definitions(platformer PRIVATE PLATFORMER_HAS_SDL3_MIXER=1)
   if(WIN32 AND TARGET "${SDL3_MIXER_LINK_TARGET}")
     get_target_property(_sdl3_mixer_type "${SDL3_MIXER_LINK_TARGET}" TYPE)
@@ -474,7 +479,7 @@ else()
   target_compile_definitions(platformer PRIVATE HAVE_CURL=0)
   message(WARNING "libcurl not found: remote Firebase level fetch disabled")
 endif()
-message(STATUS "Linked platformer: ${SDL3_LINK_TARGET}, nlohmann_json::nlohmann_json")
+message(STATUS "Linked platformer: ${PLATFORMER_LINK_LIBS}")
 
 add_executable(sheet_config
   src/SheetConfigTool.cpp
