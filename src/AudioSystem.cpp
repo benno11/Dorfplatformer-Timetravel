@@ -8,17 +8,15 @@
 
 #include <SDL3/SDL.h>
 
-#if __has_include(<SDL3_mixer/SDL_mixer.h>)
+#ifndef PLATFORMER_HAS_SDL3_MIXER
+#define PLATFORMER_HAS_SDL3_MIXER 0
+#endif
+
+#if PLATFORMER_HAS_SDL3_MIXER
 #include <SDL3_mixer/SDL_mixer.h>
 #define AUDIO_HAS_SDL3_MIXER 1
-#define AUDIO_HAS_SDL_MIXER 1
-#elif __has_include(<SDL_mixer.h>)
-#include <SDL_mixer.h>
-#define AUDIO_HAS_SDL3_MIXER 0
-#define AUDIO_HAS_SDL_MIXER 1
 #else
 #define AUDIO_HAS_SDL3_MIXER 0
-#define AUDIO_HAS_SDL_MIXER 0
 #endif
 
 #include "AssetPath.h"

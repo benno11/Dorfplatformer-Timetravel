@@ -413,6 +413,7 @@ target_link_libraries(platformer
 )
 if(SDL3_MIXER_LINK_TARGET)
   target_link_libraries(platformer ${SDL3_MIXER_LINK_TARGET})
+  target_compile_definitions(platformer PRIVATE PLATFORMER_HAS_SDL3_MIXER=1)
   if(WIN32 AND TARGET "${SDL3_MIXER_LINK_TARGET}")
     get_target_property(_sdl3_mixer_type "${SDL3_MIXER_LINK_TARGET}" TYPE)
     add_custom_command(TARGET platformer POST_BUILD
@@ -432,6 +433,8 @@ if(SDL3_MIXER_LINK_TARGET)
     endif()
     message(STATUS "Will copy SDL3_mixer runtime DLL next to platformer.exe")
   endif()
+else()
+  target_compile_definitions(platformer PRIVATE PLATFORMER_HAS_SDL3_MIXER=0)
 endif()
 if(ANDROID)
   target_link_libraries(platformer
