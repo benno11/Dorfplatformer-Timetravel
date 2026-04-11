@@ -1,5 +1,6 @@
 #include "GameApp.h"
 #include <cstdio>
+#include <cstdlib>
 #include <exception>
 
 static int runMainImpl(int argc, char** argv) {
@@ -21,10 +22,6 @@ int main(int argc, char** argv) {
 #if defined(_WIN32)
 #include <windows.h>
 #include <tlhelp32.h>
-extern "C" {
-extern int __argc;
-extern char** __argv;
-}
 
 static DWORD getParentProcessId() {
     const DWORD currentPid = GetCurrentProcessId();

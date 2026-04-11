@@ -9,13 +9,47 @@ param(
 $ErrorActionPreference = "Stop"
 $script:PreferredVcvars = ""
 
-function Import-VsDevCmdEnvironment {
+function Get-VsInstallPath {
     $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
     if (-not (Test-Path $vswhere)) {
-        return
+        return ""
     }
 
-    $vsInstall = & $vswhere -latest -products * -property installationPath 2>$null
+    $vsInstall = & $vswhere `
+        -latest `
+        -products * `
+        -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+        -property installationPath 2>$null
+
+    if ($vsInstall -and (Test-Path $vsInstall.Trim())) {
+        return $vsInstall.Trim()
+    }
+    return ""
+}
+
+function Get-VsPlatformToolset {
+    $vsInstall = Get-VsInstallPath
+    if (-not $vsInstall) {
+        return ""
+    }
+
+    $toolsetRoot = Join-Path $vsInstall "VC\Auxiliary\Build"
+    if (-not (Test-Path $toolsetRoot)) {
+        return ""
+    }
+
+    $preferred = Get-ChildItem $toolsetRoot -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '^v\d+$' } |
+        Sort-Object Name -Descending |
+        Select-Object -First 1
+    if ($preferred) {
+        return $preferred.Name
+    }
+    return ""
+}
+
+function Import-VsDevCmdEnvironment {
+    $vsInstall = Get-VsInstallPath
     if (-not $vsInstall) {
         return
     }
@@ -58,11 +92,7 @@ function Import-VsDevCmdEnvironment {
 }
 
 function Get-PreferredMsvcBinDir {
-    $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
-    if (-not (Test-Path $vswhere)) {
-        return ""
-    }
-    $vsInstall = & $vswhere -latest -products * -property installationPath 2>$null
+    $vsInstall = Get-VsInstallPath
     if (-not $vsInstall) {
         return ""
     }
@@ -132,7 +162,7 @@ $buildDirFull = [System.IO.Path]::GetFullPath($BuildDir)
 $sourceDirFull = [System.IO.Path]::GetFullPath(".")
 $cachePath = Join-Path $buildDirFull "CMakeCache.txt"
 $requestedPlatform = ""
-    if ($Generator -and $Generator.Trim() -and ($Generator -like "Visual Studio*")) {
+if ($Generator -and $Generator.Trim() -and ($Generator -like "Visual Studio*")) {
     $requestedPlatform = "x64"
 }
 if ($Generator -and $Generator.Trim() -and ($Generator -like "Visual Studio*")) {
@@ -149,6 +179,7 @@ if (Test-Path $cachePath) {
     $cachedGenerator = ""
     $cachedPlatform = ""
     $cachedToolset = ""
+    $cachedGeneratorInstance = ""
     foreach ($line in ($cacheText -split "`r?`n")) {
         if ($line.StartsWith("CMAKE_HOME_DIRECTORY:INTERNAL=")) {
             $cachedSource = $line.Substring("CMAKE_HOME_DIRECTORY:INTERNAL=".Length)
@@ -160,6 +191,8 @@ if (Test-Path $cachePath) {
             $cachedPlatform = $line.Substring("CMAKE_GENERATOR_PLATFORM:INTERNAL=".Length)
         } elseif ($line.StartsWith("CMAKE_GENERATOR_TOOLSET:INTERNAL=")) {
             $cachedToolset = $line.Substring("CMAKE_GENERATOR_TOOLSET:INTERNAL=".Length)
+        } elseif ($line -match "^CMAKE_GENERATOR_INSTANCE:(?:INTERNAL|UNINITIALIZED)=") {
+            $cachedGeneratorInstance = $line.Substring($line.IndexOf("=") + 1)
         }
     }
 
@@ -169,10 +202,22 @@ if (Test-Path $cachePath) {
     $platformMismatch = $requestedPlatform -and ($cachedPlatform -ne $requestedPlatform)
     $requestedToolset = ""
     if ($Generator -and ($Generator -like "Visual Studio*") -and $script:PreferredVcvars) {
-        $requestedToolset = "v143,version=$script:PreferredVcvars"
+        $vsPlatformToolset = Get-VsPlatformToolset
+        if ($vsPlatformToolset) {
+            $requestedToolset = "$vsPlatformToolset,version=$script:PreferredVcvars"
+        }
     }
     $toolsetMismatch = $requestedToolset -and ($cachedToolset -ne $requestedToolset)
-    if ($sourceMismatch -or $buildMismatch -or $generatorMismatch -or $platformMismatch -or $toolsetMismatch) {
+    $generatorInstanceMismatch = $false
+    if ($Generator -and ($Generator -like "Visual Studio*")) {
+        $requestedVsInstall = Get-VsInstallPath
+        if ($cachedGeneratorInstance -and (-not (Test-Path $cachedGeneratorInstance))) {
+            $generatorInstanceMismatch = $true
+        } elseif ($requestedVsInstall -and $cachedGeneratorInstance -and ((Normalize-PathForCompare $cachedGeneratorInstance) -ne (Normalize-PathForCompare $requestedVsInstall))) {
+            $generatorInstanceMismatch = $true
+        }
+    }
+    if ($sourceMismatch -or $buildMismatch -or $generatorMismatch -or $platformMismatch -or $toolsetMismatch -or $generatorInstanceMismatch) {
         Write-Host "Detected stale CMake cache from a different path/environment. Resetting cache in $buildDirFull..."
         Remove-Item $cachePath -Force -ErrorAction SilentlyContinue
         $cmakeFilesDir = Join-Path $buildDirFull "CMakeFiles"
@@ -186,8 +231,9 @@ if ($Generator -and $Generator.Trim()) {
     $cmakeArgs += @("-G", $Generator)
     if ($Generator -like "Visual Studio*") {
         $cmakeArgs += @("-A", "x64")
-        if ($script:PreferredVcvars) {
-            $cmakeArgs += @("-T", "v143,version=$script:PreferredVcvars")
+        $vsPlatformToolset = Get-VsPlatformToolset
+        if ($script:PreferredVcvars -and $vsPlatformToolset) {
+            $cmakeArgs += @("-T", "$vsPlatformToolset,version=$script:PreferredVcvars")
         }
         $preferredMsvcBin = Get-PreferredMsvcBinDir
         if ($preferredMsvcBin) {
@@ -197,12 +243,9 @@ if ($Generator -and $Generator.Trim()) {
             $cmakeArgs += @("-DCMAKE_LINKER=$linkPath")
             Write-Host "Forcing MSVC compiler: $clPath"
         }
-        $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
-        if (Test-Path $vswhere) {
-            $vsInstall = & $vswhere -latest -products * -property installationPath 2>$null
-            if ($vsInstall) {
-                $cmakeArgs += "-DCMAKE_GENERATOR_INSTANCE=$vsInstall"
-            }
+        $vsInstall = Get-VsInstallPath
+        if ($vsInstall) {
+            $cmakeArgs += "-DCMAKE_GENERATOR_INSTANCE=$vsInstall"
         }
     }
 }

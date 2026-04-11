@@ -14,10 +14,10 @@ $ErrorActionPreference = "Stop"
 
 Set-Location $PSScriptRoot
 
-function Test-VSBuildToolsInstalled {
+function Get-VsInstallPath {
     $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
     if (-not (Test-Path $vswhere)) {
-        return $false
+        return ""
     }
 
     $installPath = & $vswhere `
@@ -26,7 +26,35 @@ function Test-VSBuildToolsInstalled {
         -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
         -property installationPath 2>$null
 
-    return -not [string]::IsNullOrWhiteSpace($installPath)
+    if ($installPath -and (Test-Path $installPath.Trim())) {
+        return $installPath.Trim()
+    }
+    return ""
+}
+
+function Get-PreferredVisualStudioGenerator {
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+    if (-not (Test-Path $vswhere)) {
+        return "Visual Studio 17 2022"
+    }
+
+    $productLineVersion = & $vswhere `
+        -latest `
+        -products * `
+        -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+        -property catalog_productLineVersion 2>$null
+
+    switch ($productLineVersion.Trim()) {
+        "18" { return "Visual Studio 18 2026" }
+        "17" { return "Visual Studio 17 2022" }
+        "16" { return "Visual Studio 16 2019" }
+        "15" { return "Visual Studio 15 2017" }
+        default { return "Visual Studio 17 2022" }
+    }
+}
+
+function Test-VSBuildToolsInstalled {
+    return -not [string]::IsNullOrWhiteSpace((Get-VsInstallPath))
 }
 
 function Test-CxxCompilerAvailable {
@@ -304,6 +332,59 @@ function Install-Sdl3MixerDevelPackage {
     }
 }
 
+function Ensure-LocalVcpkgExecutable {
+    param(
+        [string]$VcpkgRoot
+    )
+
+    $vcpkgExe = Join-Path $VcpkgRoot "vcpkg.exe"
+    if (Test-Path $vcpkgExe) {
+        return $vcpkgExe
+    }
+
+    $bootstrapScript = Join-Path $VcpkgRoot "bootstrap-vcpkg.bat"
+    $tlsDownloader = Join-Path $VcpkgRoot "scripts\tls12-download.exe"
+    $toolMetadata = Join-Path $VcpkgRoot "scripts\vcpkg-tool-metadata.txt"
+
+    if ((Test-Path $bootstrapScript) -and (Test-Path $tlsDownloader)) {
+        Write-Host "Bootstrapping local vcpkg..."
+        Push-Location $VcpkgRoot
+        try {
+            & cmd.exe /c "`"$bootstrapScript`""
+        } finally {
+            Pop-Location
+        }
+        if (($LASTEXITCODE -eq 0) -and (Test-Path $vcpkgExe)) {
+            return $vcpkgExe
+        }
+    }
+
+    if (Test-Path $toolMetadata) {
+        Write-Host "Downloading pinned vcpkg.exe for local toolchain..."
+        $versionTag = Select-String -Path $toolMetadata -Pattern "^VCPKG_TOOL_RELEASE_TAG=(.+)$" |
+            ForEach-Object { $_.Matches[0].Groups[1].Value.Trim() } |
+            Select-Object -First 1
+        if ($versionTag) {
+            $downloadUrl = "https://github.com/microsoft/vcpkg-tool/releases/download/$versionTag/vcpkg.exe"
+            try {
+                Invoke-WebRequest -Uri $downloadUrl -OutFile $vcpkgExe -UseBasicParsing
+            } catch {
+                $curlExe = Get-Command curl.exe -ErrorAction SilentlyContinue
+                if ($curlExe) {
+                    & $curlExe.Source -L --retry 3 --fail --output $vcpkgExe $downloadUrl
+                } else {
+                    throw
+                }
+            }
+        }
+    }
+
+    if (Test-Path $vcpkgExe) {
+        return $vcpkgExe
+    }
+    throw "Unable to prepare local vcpkg executable."
+}
+
 function Ensure-ProjectDepsAvailable {
     $triplet = if ([Environment]::Is64BitOperatingSystem) { "x64-windows" } else { "x86-windows" }
     $vcpkgRoot = Join-Path $PSScriptRoot "vcpkg"
@@ -330,7 +411,7 @@ function Ensure-ProjectDepsAvailable {
     }
 
     if (-not (Test-Path $vcpkgExe)) {
-        return
+        $vcpkgExe = Ensure-LocalVcpkgExecutable -VcpkgRoot $vcpkgRoot
     }
 
     Write-Host "Missing SDL dev packages (including SDL3_mixer). Installing dependencies via local vcpkg..."
@@ -586,7 +667,7 @@ Ensure-ProjectDepsAvailable
 
 if (-not $Generator) {
     if ($Compiler -eq "msvc") {
-        $Generator = "Visual Studio 17 2022"
+        $Generator = Get-PreferredVisualStudioGenerator
     } elseif ($Compiler -eq "llvm") {
         $Generator = "Ninja"
     } else {
@@ -598,7 +679,7 @@ if (-not $Generator) {
         if ($hasNinja -and $hasPathCompiler) {
             $Generator = "Ninja"
         } else {
-            $Generator = "Visual Studio 17 2022"
+            $Generator = Get-PreferredVisualStudioGenerator
         }
     }
 }
@@ -615,14 +696,24 @@ if ($Compiler -eq "llvm") {
 $cachePath = Join-Path $BuildDir "CMakeCache.txt"
 if (Test-Path $cachePath) {
     $cachedGenerator = ""
+    $cachedGeneratorInstance = ""
     foreach ($line in (Get-Content $cachePath)) {
         if ($line.StartsWith("CMAKE_GENERATOR:INTERNAL=")) {
             $cachedGenerator = $line.Substring("CMAKE_GENERATOR:INTERNAL=".Length).Trim()
-            break
+        } elseif ($line -match "^CMAKE_GENERATOR_INSTANCE:(?:INTERNAL|UNINITIALIZED)=") {
+            $cachedGeneratorInstance = $line.Substring($line.IndexOf("=") + 1).Trim()
         }
     }
+    $resetCache = $false
     if ($cachedGenerator -and $cachedGenerator -ne $Generator) {
         Write-Host "Switching generator from '$cachedGenerator' to '$Generator'. Resetting build cache..."
+        $resetCache = $true
+    }
+    if (($Generator -like "Visual Studio*") -and $cachedGeneratorInstance -and (-not (Test-Path $cachedGeneratorInstance))) {
+        Write-Host "Cached Visual Studio instance is missing: $cachedGeneratorInstance"
+        $resetCache = $true
+    }
+    if ($resetCache) {
         Remove-Item $cachePath -Force -ErrorAction SilentlyContinue
         $cmakeFilesDir = Join-Path $BuildDir "CMakeFiles"
         if (Test-Path $cmakeFilesDir) {
