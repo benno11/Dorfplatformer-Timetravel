@@ -171,7 +171,6 @@ if(WIN32)
     list(APPEND SDL3_MIXER_DIR_CANDIDATES "${_dir}")
   endforeach()
   unset(_windows_mixer_cmake_dirs)
-  unset(_dir)
   if(DEFINED VCPKG_TARGET_TRIPLET)
     list(APPEND SDL3_MIXER_DIR_CANDIDATES
       "${CMAKE_SOURCE_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/share/sdl3-mixer"
