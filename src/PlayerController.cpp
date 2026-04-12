@@ -211,7 +211,7 @@ PlayerUpdateResult UpdatePlayerMovement(
     bool jumpPressed = jumpDown && !player.jumpWasDown;
     bool jumpReleased = !jumpDown && player.jumpWasDown;
     if (jumpPressed) {
-        player.jumpBufferTime = kJumpBufferDuration;
+        player.jumpBufferTime = 1;
     } else {
         player.jumpBufferTime = std::max(0.0f, player.jumpBufferTime - dt);
     }
