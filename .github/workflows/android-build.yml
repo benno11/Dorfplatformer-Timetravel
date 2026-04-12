@@ -323,12 +323,12 @@ jobs:
 
           if [[ -n "${ANDROID_RELEASE_KEYSTORE_BASE64:-}" && -n "${ANDROID_RELEASE_STORE_PASSWORD:-}" && -n "${ANDROID_RELEASE_KEY_ALIAS:-}" && -n "${ANDROID_RELEASE_KEY_PASSWORD:-}" ]]; then
             printf '%s' "$ANDROID_RELEASE_KEYSTORE_BASE64" | base64 --decode > Android/release-keystore.jks
-            cat > Android/signing.properties <<EOF
-            storeFile=release-keystore.jks
-            storePassword=${ANDROID_RELEASE_STORE_PASSWORD}
-            keyAlias=${ANDROID_RELEASE_KEY_ALIAS}
-            keyPassword=${ANDROID_RELEASE_KEY_PASSWORD}
-            EOF
+            {
+              echo "storeFile=release-keystore.jks"
+              echo "storePassword=${ANDROID_RELEASE_STORE_PASSWORD}"
+              echo "keyAlias=${ANDROID_RELEASE_KEY_ALIAS}"
+              echo "keyPassword=${ANDROID_RELEASE_KEY_PASSWORD}"
+            } > Android/signing.properties
             echo "[info] Android release signing configured from GitHub secrets."
           else
             if [[ ! -f Android/release-keystore.jks || ! -f Android/signing.properties ]]; then
