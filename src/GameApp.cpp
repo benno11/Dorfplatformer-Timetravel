@@ -3126,6 +3126,7 @@ int RunGameApp(int argc, char** argv) {
             bool jumpHeld = false;
             float jumpHoldTime = 0.0f;
             bool jumpWasDown = false;
+            float jumpBufferTime = 0.0f;
             float inputMove = 0.0f;
             bool inputDown = false;
         };
@@ -3227,6 +3228,7 @@ int RunGameApp(int argc, char** argv) {
                 s.jumpHeld = p.value("jump_held", false);
                 s.jumpHoldTime = p.value("jump_hold_time", 0.0f);
                 s.jumpWasDown = p.value("jump_was_down", false);
+                s.jumpBufferTime = p.value("jump_buffer_time", 0.0f);
                 if (j.contains("input_map") && j["input_map"].is_object()) {
                     const auto& im = j["input_map"];
                     s.inputMove = im.value("input_move", 0.0f);
@@ -4130,6 +4132,7 @@ int RunGameApp(int argc, char** argv) {
                     player.jumpHeld = s.jumpHeld;
                     player.jumpHoldTime = s.jumpHoldTime;
                     player.jumpWasDown = s.jumpWasDown;
+                    player.jumpBufferTime = s.jumpBufferTime;
                     inputMove = s.inputMove;
                     inputDown = s.inputDown;
                     replayPlaybackDrivingThisFrame = true;
@@ -5006,6 +5009,7 @@ int RunGameApp(int argc, char** argv) {
                 player.jumpHeld = false;
                 player.jumpWasDown = false;
                 player.jumpHoldTime = 0.0f;
+                player.jumpBufferTime = 0.0f;
                 touchMove = 0.0f;
                 touchDown = false;
                 touchJump = false;
@@ -6989,7 +6993,8 @@ int RunGameApp(int argc, char** argv) {
                     {"frame_name", renderFrameName},
                     {"jump_held", player.jumpHeld},
                     {"jump_hold_time", player.jumpHoldTime},
-                    {"jump_was_down", player.jumpWasDown}
+                    {"jump_was_down", player.jumpWasDown},
+                    {"jump_buffer_time", player.jumpBufferTime}
                 };
                 frame["input_map"] = {
                     {"touch_move", replayInput.touchMove},

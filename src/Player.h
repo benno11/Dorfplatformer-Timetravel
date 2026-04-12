@@ -11,6 +11,7 @@ struct Player {
     bool jumpHeld = false;
     bool jumpWasDown = false;
     float jumpHoldTime = 0.0f;
+    float jumpBufferTime = 0.0f;
     bool inWater = false;
     float drownTimer = 0.0f;
     bool freeMove = false;

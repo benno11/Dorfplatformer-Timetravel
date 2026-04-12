@@ -7,6 +7,7 @@
 namespace {
 bool g_horizontalWrapCollision = false;
 bool g_verticalWrapCollision = false;
+constexpr float kJumpBufferDuration = 0.12f;
 
 inline int wrapTileX(int x, int w) {
     if (w <= 0) return x;
@@ -143,6 +144,7 @@ PlayerUpdateResult UpdatePlayerMovement(
         player.jumpHeld = false;
         player.jumpHoldTime = 0.0f;
         player.jumpWasDown = false;
+        player.jumpBufferTime = 0.0f;
         return PlayerUpdateResult::RenderOnly;
     }
 
@@ -208,6 +210,11 @@ PlayerUpdateResult UpdatePlayerMovement(
     bool jumpDown = touchJump || gamepadJump || keyHeld(keys, keybinds.jump) || keys[SDL_SCANCODE_UP];
     bool jumpPressed = jumpDown && !player.jumpWasDown;
     bool jumpReleased = !jumpDown && player.jumpWasDown;
+    if (jumpPressed) {
+        player.jumpBufferTime = kJumpBufferDuration;
+    } else {
+        player.jumpBufferTime = std::max(0.0f, player.jumpBufferTime - dt);
+    }
 
     if (insideSolid) {
         // Escape-mode controls while embedded in solid tiles: ignore collision locks.
@@ -221,15 +228,18 @@ PlayerUpdateResult UpdatePlayerMovement(
         player.jumpHeld = false;
         player.jumpHoldTime = 0.0f;
         player.jumpWasDown = jumpDown;
+        player.jumpBufferTime = 0.0f;
         player.inWater = false;
         return PlayerUpdateResult::Normal;
     }
 
-    if ((player.onGround || inWater) && jumpPressed) {
+    const bool bufferedJumpReady = player.jumpBufferTime > 0.0f;
+    if ((player.onGround || inWater) && bufferedJumpReady) {
         player.vy = -jumpSpeed;
         if (player.onGround) player.onGround = false;
         player.jumpHeld = false;
         player.jumpHoldTime = 0.0f;
+        player.jumpBufferTime = 0.0f;
     }
 
     player.jumpHeld = false;
