@@ -26,6 +26,7 @@
 #include <cstdlib>
 #if defined(_WIN32)
 #include <windows.h>
+#include <shellapi.h>
 #endif
 #include <vector>
 #include <fstream>
@@ -67,6 +68,43 @@ static void unsetEnvCompat(const char* name) {
     unsetenv(name);
 #endif
 }
+
+#if defined(_WIN32)
+static std::wstring utf8ToWide(const std::string& text) {
+    if (text.empty()) return std::wstring();
+    const int needed = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
+    if (needed <= 0) return std::wstring(text.begin(), text.end());
+    std::wstring out((size_t)needed, L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, out.data(), needed);
+    if (!out.empty() && out.back() == L'\0') out.pop_back();
+    return out;
+}
+
+static std::wstring quoteWindowsArg(const std::wstring& value) {
+    std::wstring out = L"\"";
+    int backslashes = 0;
+    for (wchar_t ch : value) {
+        if (ch == L'\\') {
+            ++backslashes;
+            continue;
+        }
+        if (ch == L'"') {
+            out.append((size_t)backslashes * 2 + 1, L'\\');
+            out.push_back(L'"');
+            backslashes = 0;
+            continue;
+        }
+        if (backslashes > 0) {
+            out.append((size_t)backslashes, L'\\');
+            backslashes = 0;
+        }
+        out.push_back(ch);
+    }
+    if (backslashes > 0) out.append((size_t)backslashes * 2, L'\\');
+    out.push_back(L'"');
+    return out;
+}
+#endif
 } // namespace
 
 int RunGameApp(int argc, char** argv) {
@@ -957,7 +995,9 @@ int RunGameApp(int argc, char** argv) {
     std::string levelServerAccountUsername;
     std::string accountManagerUrl = "https://benno111.github.io/Dorfplatformer-API/";
     std::string firebaseApiKey;
+    std::string windowsUpdateManifestUrl;
     std::string appVersion = "dev";
+    std::string appVersionId = "0.0.0";
     MovementConfig movementCfg{};
     float bossGravity = 0.0f;
     std::array<float, 3> parallaxLayerScales{{0.80f, 0.80f, 0.80f}};
@@ -966,8 +1006,25 @@ int RunGameApp(int argc, char** argv) {
         if (!text.empty()) {
             nlohmann::json cfg;
             try { cfg = nlohmann::json::parse(text); } catch (...) { cfg = nlohmann::json(); }
+            auto jsonValueToString = [](const nlohmann::json& value) -> std::string {
+                if (value.is_string()) return value.get<std::string>();
+                if (value.is_number_integer()) return std::to_string(value.get<long long>());
+                if (value.is_number_unsigned()) return std::to_string(value.get<unsigned long long>());
+                if (value.is_number_float()) {
+                    std::ostringstream oss;
+                    oss << value.get<double>();
+                    return oss.str();
+                }
+                return std::string();
+            };
             if (cfg.contains("version") && cfg["version"].is_string()) {
                 appVersion = cfg["version"].get<std::string>();
+            }
+            if (cfg.contains("version_id")) {
+                const std::string parsedVersionId = jsonValueToString(cfg["version_id"]);
+                if (!parsedVersionId.empty()) appVersionId = parsedVersionId;
+            } else {
+                appVersionId = appVersion;
             }
             if (cfg.contains("level_server_url") && cfg["level_server_url"].is_string()) {
                 levelServerUrl = cfg["level_server_url"].get<std::string>();
@@ -989,6 +1046,9 @@ int RunGameApp(int argc, char** argv) {
             }
             if (cfg.contains("firebase_api_key") && cfg["firebase_api_key"].is_string()) {
                 firebaseApiKey = cfg["firebase_api_key"].get<std::string>();
+            }
+            if (cfg.contains("windows_update_manifest_url") && cfg["windows_update_manifest_url"].is_string()) {
+                windowsUpdateManifestUrl = cfg["windows_update_manifest_url"].get<std::string>();
             }
             if (cfg.contains("movement") && cfg["movement"].is_object()) {
                 const auto& m = cfg["movement"];
@@ -1424,6 +1484,7 @@ int RunGameApp(int argc, char** argv) {
     bool debugModeEnabled = false;
     bool powerManagementEnabled = true;
     bool lowPowerModeEnabled = false;
+    bool showExperimentalFeatures = false;
     bool menuMusicEnabled = true;
     bool muteAllAudio = false;
     KeyboardBindings keybinds{};
@@ -1483,6 +1544,7 @@ int RunGameApp(int argc, char** argv) {
         settings["gameplay"] = {
             {"power_management", powerManagementEnabled},
             {"low_power_mode", lowPowerModeEnabled},
+            {"show_experimental_features", showExperimentalFeatures},
             {"debug_mode_enabled", debugModeEnabled},
             {"fast_travel_delay", fastTravelChangeDelay}
         };
@@ -1514,6 +1576,7 @@ int RunGameApp(int argc, char** argv) {
         j["hide_unknown_object_types"] = defaultHideUnknownObjectTypes;
         j["power_management"] = powerManagementEnabled;
         j["low_power_mode"] = lowPowerModeEnabled;
+        j["show_experimental_features"] = showExperimentalFeatures;
         j["debug_mode_enabled"] = debugModeEnabled;
         j["menu_music_enabled"] = menuMusicEnabled;
         j["mute_all_audio"] = muteAllAudio;
@@ -1615,6 +1678,9 @@ int RunGameApp(int argc, char** argv) {
                     const auto& g = s["gameplay"];
                     if (g.contains("power_management") && g["power_management"].is_boolean()) powerManagementEnabled = g["power_management"].get<bool>();
                     if (g.contains("low_power_mode") && g["low_power_mode"].is_boolean()) lowPowerModeEnabled = g["low_power_mode"].get<bool>();
+                    if (g.contains("show_experimental_features") && g["show_experimental_features"].is_boolean()) {
+                        showExperimentalFeatures = g["show_experimental_features"].get<bool>();
+                    }
                     if (g.contains("debug_mode_enabled") && g["debug_mode_enabled"].is_boolean()) debugModeEnabled = g["debug_mode_enabled"].get<bool>();
                     if (g.contains("fast_travel_delay") && g["fast_travel_delay"].is_number()) {
                         // Deprecated: delay removed in favor of immediate smooth transitions.
@@ -1666,6 +1732,9 @@ int RunGameApp(int argc, char** argv) {
             if (j.contains("hide_unknown_object_types") && j["hide_unknown_object_types"].is_boolean()) defaultHideUnknownObjectTypes = j["hide_unknown_object_types"].get<bool>();
             if (j.contains("power_management") && j["power_management"].is_boolean()) powerManagementEnabled = j["power_management"].get<bool>();
             if (j.contains("low_power_mode") && j["low_power_mode"].is_boolean()) lowPowerModeEnabled = j["low_power_mode"].get<bool>();
+            if (j.contains("show_experimental_features") && j["show_experimental_features"].is_boolean()) {
+                showExperimentalFeatures = j["show_experimental_features"].get<bool>();
+            }
             if (j.contains("debug_mode_enabled") && j["debug_mode_enabled"].is_boolean()) debugModeEnabled = j["debug_mode_enabled"].get<bool>();
             if (j.contains("menu_music_enabled") && j["menu_music_enabled"].is_boolean()) menuMusicEnabled = j["menu_music_enabled"].get<bool>();
             if (j.contains("mute_all_audio") && j["mute_all_audio"].is_boolean()) muteAllAudio = j["mute_all_audio"].get<bool>();
@@ -2004,6 +2073,8 @@ int RunGameApp(int argc, char** argv) {
     frontendCtx.baseScreenH = kBaseScreenH;
     frontendCtx.buildUuid = buildUuid;
     frontendCtx.versionString = appVersion;
+    frontendCtx.versionIdString = appVersionId;
+    frontendCtx.windowsUpdateManifestUrl = windowsUpdateManifestUrl;
     frontendCtx.running = &running;
     frontendCtx.fullscreen = &fullscreen;
     frontendCtx.vsyncEnabled = &vsyncEnabled;
@@ -2017,6 +2088,7 @@ int RunGameApp(int argc, char** argv) {
     frontendCtx.debugModeEnabled = &debugModeEnabled;
     frontendCtx.powerManagementEnabled = &powerManagementEnabled;
     frontendCtx.lowPowerModeEnabled = &lowPowerModeEnabled;
+    frontendCtx.showExperimentalFeatures = &showExperimentalFeatures;
     frontendCtx.menuMusicEnabled = &menuMusicEnabled;
     frontendCtx.muteAllAudio = &muteAllAudio;
     frontendCtx.keyMoveLeft = &keybinds.moveLeft;
@@ -2040,6 +2112,285 @@ int RunGameApp(int argc, char** argv) {
     frontendCtx.applyAudioVolumes = applyAudioVolumes;
     frontendCtx.applyMenuMusicToggle = applyMenuMusicToggle;
     frontendCtx.saveClientSettings = saveClientSettings;
+#if defined(_WIN32)
+    struct UpdaterStatusSnapshot {
+        std::filesystem::path path;
+        Uint64 lastReadTicks = 0;
+        std::string displayText;
+        std::string rawState;
+        std::string detail;
+        std::string latestVersion;
+        std::string latestVersionId;
+        std::string installerUrl;
+        std::string notes;
+        float progress01 = 0.0f;
+    };
+    auto updaterStatus = std::make_shared<UpdaterStatusSnapshot>();
+    auto writeUpdaterStatus = [updaterStatus, &appVersion, &appVersionId](const std::string& state,
+                                                                          const std::string& detail,
+                                                                          const std::string& latestVersion = std::string(),
+                                                                          const std::string& latestVersionId = std::string()) {
+        if (updaterStatus->path.empty()) return;
+        nlohmann::json json;
+        json["state"] = state;
+        json["detail"] = detail;
+        json["current_version"] = appVersion;
+        json["current_version_id"] = appVersionId;
+        json["latest_version"] = latestVersion;
+        json["latest_version_id"] = latestVersionId;
+        std::ofstream out(updaterStatus->path, std::ios::binary | std::ios::trunc);
+        if (out.is_open()) {
+            out << json.dump(2);
+        }
+    };
+    auto refreshUpdaterStatus = [updaterStatus, &windowsUpdateManifestUrl]() -> std::string {
+        const Uint64 now = SDL_GetTicks();
+        if (now - updaterStatus->lastReadTicks < 250 && !updaterStatus->displayText.empty()) {
+            return updaterStatus->displayText;
+        }
+        updaterStatus->lastReadTicks = now;
+        updaterStatus->rawState.clear();
+        if (updaterStatus->path.empty() || !std::filesystem::exists(updaterStatus->path)) {
+            updaterStatus->displayText = windowsUpdateManifestUrl.empty() ? "NOT CONFIGURED" : "READY";
+            return updaterStatus->displayText;
+        }
+        try {
+            const std::string text = ReadTextFile(updaterStatus->path.string());
+            if (text.empty()) {
+                updaterStatus->displayText = windowsUpdateManifestUrl.empty() ? "NOT CONFIGURED" : "READY";
+                return updaterStatus->displayText;
+            }
+            const auto json = nlohmann::json::parse(text);
+            const std::string state = (json.contains("state") && json["state"].is_string())
+                ? json["state"].get<std::string>() : std::string();
+            const std::string detail = (json.contains("detail") && json["detail"].is_string())
+                ? json["detail"].get<std::string>() : std::string();
+            const std::string latestVersion = (json.contains("latest_version") && json["latest_version"].is_string())
+                ? json["latest_version"].get<std::string>() : std::string();
+            const std::string latestVersionId = (json.contains("latest_version_id") && json["latest_version_id"].is_string())
+                ? json["latest_version_id"].get<std::string>() : std::string();
+            const std::string installerUrl = (json.contains("installer_url") && json["installer_url"].is_string())
+                ? json["installer_url"].get<std::string>() : std::string();
+            const std::string notes = (json.contains("notes") && json["notes"].is_string())
+                ? json["notes"].get<std::string>() : std::string();
+            float progress01 = 0.0f;
+            if (json.contains("progress") && json["progress"].is_number()) {
+                progress01 = std::clamp((float)json["progress"].get<double>(), 0.0f, 1.0f);
+            }
+            updaterStatus->rawState = state;
+            updaterStatus->detail = detail;
+            updaterStatus->latestVersion = latestVersion;
+            updaterStatus->latestVersionId = latestVersionId;
+            updaterStatus->installerUrl = installerUrl;
+            updaterStatus->notes = notes;
+            updaterStatus->progress01 = progress01;
+            if (state == "checking") updaterStatus->displayText = "CHECKING";
+            else if (state == "update_available") {
+                updaterStatus->displayText = latestVersionId.empty() ? "UPDATE FOUND - PRESS ENTER" : ("UPDATE FOUND [ID " + latestVersionId + "] - PRESS ENTER");
+            }
+            else if (state == "downloading") {
+                const int percent = (int)std::lround(progress01 * 100.0f);
+                updaterStatus->displayText = "DOWNLOADING";
+                if (percent > 0) updaterStatus->displayText += " " + std::to_string(percent) + "%";
+            }
+            else if (state == "install_ready") updaterStatus->displayText = "STARTING INSTALLER";
+            else if (state == "awaiting_admin_approval") updaterStatus->displayText = "WAITING FOR WINDOWS PERMISSION";
+            else if (state == "installing") updaterStatus->displayText = "INSTALLING UPDATE";
+            else if (state == "installer_started") updaterStatus->displayText = "INSTALLER STARTED";
+            else if (state == "relaunch_ready") updaterStatus->displayText = "RESTARTING INTO UPDATE";
+            else if (state == "up_to_date") updaterStatus->displayText = "UP TO DATE";
+            else if (state == "cancelled") updaterStatus->displayText = "CANCELLED";
+            else if (state == "not_configured") updaterStatus->displayText = "NOT CONFIGURED";
+            else if (state == "error") updaterStatus->displayText = "ERROR";
+            else updaterStatus->displayText = detail.empty() ? (windowsUpdateManifestUrl.empty() ? "NOT CONFIGURED" : "READY") : detail;
+            if (!latestVersion.empty() && (state == "downloading" || state == "install_ready")) {
+                updaterStatus->displayText += " -> " + latestVersion;
+            }
+            return updaterStatus->displayText;
+        } catch (...) {
+            updaterStatus->displayText = "STATUS ERROR";
+            updaterStatus->rawState = "error";
+            return updaterStatus->displayText;
+        }
+    };
+    frontendCtx.getUpdaterStatusText = [refreshUpdaterStatus]() {
+        return refreshUpdaterStatus();
+    };
+    frontendCtx.getUpdaterStatusDetail = [updaterStatus, refreshUpdaterStatus]() {
+        (void)refreshUpdaterStatus();
+        return updaterStatus->detail;
+    };
+    frontendCtx.getUpdaterLatestVersionText = [updaterStatus, refreshUpdaterStatus]() {
+        (void)refreshUpdaterStatus();
+        if (updaterStatus->latestVersion.empty() && updaterStatus->latestVersionId.empty()) return std::string();
+        if (updaterStatus->latestVersion.empty()) return std::string("ID ") + updaterStatus->latestVersionId;
+        if (updaterStatus->latestVersionId.empty()) return updaterStatus->latestVersion;
+        return updaterStatus->latestVersion + " [ID " + updaterStatus->latestVersionId + "]";
+    };
+    frontendCtx.getUpdaterNotesText = [updaterStatus, refreshUpdaterStatus]() {
+        (void)refreshUpdaterStatus();
+        return updaterStatus->notes;
+    };
+    frontendCtx.getUpdaterProgress01 = [updaterStatus, refreshUpdaterStatus]() {
+        (void)refreshUpdaterStatus();
+        return updaterStatus->progress01;
+    };
+    frontendCtx.pollUpdaterAutoRelaunch = [&, updaterStatus, refreshUpdaterStatus, writeUpdaterStatus]() {
+        (void)refreshUpdaterStatus();
+        if (updaterStatus->rawState != "relaunch_ready") return;
+
+        wchar_t modulePathBuf[MAX_PATH] = {};
+        const DWORD moduleLen = GetModuleFileNameW(nullptr, modulePathBuf, (DWORD)std::size(modulePathBuf));
+        if (moduleLen == 0 || moduleLen >= std::size(modulePathBuf)) {
+            writeUpdaterStatus("error", "Could not resolve the current game path.");
+            return;
+        }
+
+        const std::filesystem::path modulePath(modulePathBuf);
+        const std::filesystem::path appDir = modulePath.parent_path();
+        std::vector<std::filesystem::path> candidates = {
+            appDir / "df-launcher.exe",
+            appDir.parent_path() / "df-launcher.exe",
+            appDir.parent_path().parent_path() / "df-launcher.exe"
+        };
+
+        std::filesystem::path launcherPath;
+        for (const auto& candidate : candidates) {
+            if (!candidate.empty() && std::filesystem::exists(candidate)) {
+                launcherPath = candidate;
+                break;
+            }
+        }
+        if (launcherPath.empty()) {
+            writeUpdaterStatus("error", "Installed launcher not found.");
+            return;
+        }
+
+        std::wstring cmdLine = quoteWindowsArg(launcherPath.wstring());
+        STARTUPINFOW si{};
+        si.cb = sizeof(si);
+        PROCESS_INFORMATION pi{};
+        std::vector<wchar_t> mutableCmd(cmdLine.begin(), cmdLine.end());
+        mutableCmd.push_back(L'\0');
+        const BOOL started = CreateProcessW(
+            launcherPath.c_str(),
+            mutableCmd.data(),
+            nullptr,
+            nullptr,
+            FALSE,
+            0,
+            nullptr,
+            launcherPath.parent_path().c_str(),
+            &si,
+            &pi);
+        if (!started) {
+            const DWORD err = GetLastError();
+            std::ostringstream oss;
+            oss << "Failed to relaunch updated game (Win32 error " << err << ").";
+            writeUpdaterStatus("error", oss.str());
+            return;
+        }
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+        writeUpdaterStatus("relaunching", "Launching updated game...");
+        running = false;
+    };
+    frontendCtx.launchUpdater = [&]() -> bool {
+        wchar_t modulePathBuf[MAX_PATH] = {};
+        const DWORD moduleLen = GetModuleFileNameW(nullptr, modulePathBuf, (DWORD)std::size(modulePathBuf));
+        if (moduleLen == 0 || moduleLen >= std::size(modulePathBuf)) {
+            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Updater Error",
+                                     "Could not resolve the game install path.", win);
+            return false;
+        }
+        const std::filesystem::path modulePath(modulePathBuf);
+        const std::filesystem::path appDir = modulePath.parent_path();
+        updaterStatus->path = appDir / "updater-status.json";
+        const std::filesystem::path updaterPath = appDir / "df-updater.exe";
+        if (!std::filesystem::exists(updaterPath)) {
+            writeUpdaterStatus("error", "df-updater.exe is missing.");
+            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Updater Missing",
+                                     "df-updater.exe was not found next to the game executable.", win);
+            return false;
+        }
+        if (windowsUpdateManifestUrl.empty()) {
+            writeUpdaterStatus("not_configured", "No Windows update manifest URL is configured.");
+            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "Updater Not Configured",
+                                     "No Windows update manifest URL is configured in assets/config.json.", win);
+            return false;
+        }
+        (void)refreshUpdaterStatus();
+        if (updaterStatus->rawState == "checking" ||
+            updaterStatus->rawState == "downloading" ||
+            updaterStatus->rawState == "install_ready") {
+            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "Updater Busy",
+                                     "An update is already in progress.", win);
+            return false;
+        }
+
+        std::wstring cmdLine;
+        cmdLine += quoteWindowsArg(updaterPath.wstring());
+        cmdLine += L" --current-version ";
+        cmdLine += quoteWindowsArg(utf8ToWide(appVersion));
+        cmdLine += L" --current-version-id ";
+        cmdLine += quoteWindowsArg(utf8ToWide(appVersionId));
+        cmdLine += L" --wait-pid ";
+        cmdLine += std::to_wstring(GetCurrentProcessId());
+        cmdLine += L" --app-dir ";
+        cmdLine += quoteWindowsArg(appDir.wstring());
+        cmdLine += L" --status-file ";
+        cmdLine += quoteWindowsArg(updaterStatus->path.wstring());
+
+        if (updaterStatus->rawState == "update_available" && !updaterStatus->installerUrl.empty()) {
+            writeUpdaterStatus("downloading", "Downloading installer...",
+                               updaterStatus->latestVersion, updaterStatus->latestVersionId);
+            cmdLine += L" --mode install";
+            cmdLine += L" --installer-url ";
+            cmdLine += quoteWindowsArg(utf8ToWide(updaterStatus->installerUrl));
+            cmdLine += L" --latest-version ";
+            cmdLine += quoteWindowsArg(utf8ToWide(updaterStatus->latestVersion));
+            cmdLine += L" --latest-version-id ";
+            cmdLine += quoteWindowsArg(utf8ToWide(updaterStatus->latestVersionId));
+            if (!updaterStatus->notes.empty()) {
+                cmdLine += L" --notes ";
+                cmdLine += quoteWindowsArg(utf8ToWide(updaterStatus->notes));
+            }
+        } else {
+            writeUpdaterStatus("checking", "Checking for updates...");
+            cmdLine += L" --mode check";
+            cmdLine += L" --manifest-url ";
+            cmdLine += quoteWindowsArg(utf8ToWide(windowsUpdateManifestUrl));
+        }
+
+        STARTUPINFOW si{};
+        si.cb = sizeof(si);
+        PROCESS_INFORMATION pi{};
+        std::vector<wchar_t> mutableCmd(cmdLine.begin(), cmdLine.end());
+        mutableCmd.push_back(L'\0');
+        const BOOL started = CreateProcessW(
+            updaterPath.c_str(),
+            mutableCmd.data(),
+            nullptr,
+            nullptr,
+            FALSE,
+            CREATE_NEW_PROCESS_GROUP,
+            nullptr,
+            appDir.c_str(),
+            &si,
+            &pi);
+        if (!started) {
+            const DWORD err = GetLastError();
+            std::ostringstream oss;
+            oss << "Failed to launch updater (Win32 error " << err << ").";
+            writeUpdaterStatus("error", oss.str());
+            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Updater Error", oss.str().c_str(), win);
+            return false;
+        }
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+        return true;
+    };
+#endif
     auto applyDynamicResolutionFromWindow = [&](bool force) -> bool {
         int winW = 0, winH = 0;
         SDL_GetWindowSize(win, &winW, &winH);

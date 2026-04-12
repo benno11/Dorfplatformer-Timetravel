@@ -19,6 +19,8 @@ struct FrontendMenuContext {
     int baseScreenH = 0;
     std::string buildUuid;
     std::string versionString;
+    std::string versionIdString;
+    std::string windowsUpdateManifestUrl;
 
     bool* running = nullptr;
     bool* fullscreen = nullptr;
@@ -33,6 +35,7 @@ struct FrontendMenuContext {
     bool* debugModeEnabled = nullptr;
     bool* powerManagementEnabled = nullptr;
     bool* lowPowerModeEnabled = nullptr;
+    bool* showExperimentalFeatures = nullptr;
     bool* menuMusicEnabled = nullptr;
     bool* muteAllAudio = nullptr;
     SDL_Scancode* keyMoveLeft = nullptr;
@@ -57,6 +60,13 @@ struct FrontendMenuContext {
     std::function<void()> applyMenuMusicToggle;
     std::function<void()> updateDynamicResolution;
     std::function<void()> saveClientSettings;
+    std::function<bool()> launchUpdater;
+    std::function<std::string()> getUpdaterStatusText;
+    std::function<std::string()> getUpdaterStatusDetail;
+    std::function<std::string()> getUpdaterLatestVersionText;
+    std::function<std::string()> getUpdaterNotesText;
+    std::function<float()> getUpdaterProgress01;
+    std::function<void()> pollUpdaterAutoRelaunch;
 };
 
 FrontendAction runFrontendMenu(FrontendMenuContext& ctx);

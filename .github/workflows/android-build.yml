@@ -142,13 +142,28 @@ jobs:
           $vcpkgRoot = Join-Path $env:GITHUB_WORKSPACE ".ci/vcpkg"
           $env:VCPKG_ROOT = $vcpkgRoot
           $vcpkgExe = if ($env:RUNNER_OS -eq "Windows") { Join-Path $vcpkgRoot "vcpkg.exe" } else { Join-Path $vcpkgRoot "vcpkg" }
-          & $vcpkgExe install sdl3 sdl3-image sdl3-ttf sdl3-mixer curl nlohmann-json --triplet "${{ matrix.triplet }}" --vcpkg-root $vcpkgRoot
+          if ($env:RUNNER_OS -eq "Windows") {
+            $localMixerPrefix = Join-Path $env:GITHUB_WORKSPACE "deps/windows-sdl3-mixer/SDL3_mixer-3.1.2"
+            if (-not (Test-Path (Join-Path $localMixerPrefix "cmake/SDL3_mixerConfig.cmake"))) {
+              throw "Bundled SDL3_mixer package is missing from deps/windows-sdl3-mixer."
+            }
+            $env:SDL3_mixer_DIR = Join-Path $localMixerPrefix "cmake"
+            $env:CMAKE_PREFIX_PATH = if ($env:CMAKE_PREFIX_PATH) { "$localMixerPrefix;$env:CMAKE_PREFIX_PATH" } else { $localMixerPrefix }
+            & $vcpkgExe install sdl3 sdl3-image sdl3-ttf curl nlohmann-json --triplet "${{ matrix.triplet }}" --vcpkg-root $vcpkgRoot
+          } else {
+            & $vcpkgExe install sdl3 sdl3-image sdl3-ttf sdl3-mixer curl nlohmann-json --triplet "${{ matrix.triplet }}" --vcpkg-root $vcpkgRoot
+          }
 
       - name: Configure
         shell: pwsh
         run: |
           $vcpkgRoot = Join-Path $env:GITHUB_WORKSPACE ".ci/vcpkg"
           $env:VCPKG_ROOT = $vcpkgRoot
+          if ($env:RUNNER_OS -eq "Windows") {
+            $localMixerPrefix = Join-Path $env:GITHUB_WORKSPACE "deps/windows-sdl3-mixer/SDL3_mixer-3.1.2"
+            $env:SDL3_mixer_DIR = Join-Path $localMixerPrefix "cmake"
+            $env:CMAKE_PREFIX_PATH = if ($env:CMAKE_PREFIX_PATH) { "$localMixerPrefix;$env:CMAKE_PREFIX_PATH" } else { $localMixerPrefix }
+          }
           cmake -S . -B build-ci -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_TOOLCHAIN_FILE="$vcpkgRoot/scripts/buildsystems/vcpkg.cmake" `
@@ -169,6 +184,23 @@ jobs:
           $assetName = "platformer-${{ matrix.triplet }}.zip"
           $assetPath = Join-Path $archiveRoot $assetName
           $vcpkgBin = Join-Path $env:GITHUB_WORKSPACE ".ci/vcpkg/installed/${{ matrix.triplet }}/bin"
+          $bundledMixerBin = ""
+          $bundledMixerOptional = ""
+
+          if ($env:RUNNER_OS -eq "Windows") {
+            $windowsMixerRoot = Join-Path $env:GITHUB_WORKSPACE "deps/windows-sdl3-mixer/SDL3_mixer-3.1.2/lib"
+            $windowsMixerArch = switch -Regex ("${{ matrix.triplet }}") {
+              "^x64-" { "x64"; break }
+              "^x86-" { "x86"; break }
+              "^arm64-" { "arm64"; break }
+              default { "" }
+            }
+            if (-not $windowsMixerArch) {
+              throw "Unsupported Windows triplet for bundled SDL3_mixer: ${{ matrix.triplet }}"
+            }
+            $bundledMixerBin = Join-Path $windowsMixerRoot $windowsMixerArch
+            $bundledMixerOptional = Join-Path $bundledMixerBin "optional"
+          }
 
           if (Test-Path $packageRoot) { Remove-Item $packageRoot -Recurse -Force }
           if (Test-Path $assetPath) { Remove-Item $assetPath -Force }
@@ -187,6 +219,12 @@ jobs:
             Get-ChildItem "build-ci" -Filter "*.dll" -File -Recurse -ErrorAction SilentlyContinue | Copy-Item -Destination $packageRoot -Force
             if (Test-Path $vcpkgBin) {
               Get-ChildItem $vcpkgBin -Filter "*.dll" -File -Recurse -ErrorAction SilentlyContinue | Copy-Item -Destination $packageRoot -Force
+            }
+            if ($bundledMixerBin -and (Test-Path $bundledMixerBin)) {
+              Get-ChildItem $bundledMixerBin -Filter "*.dll" -File -ErrorAction SilentlyContinue | Copy-Item -Destination $packageRoot -Force
+            }
+            if ($bundledMixerOptional -and (Test-Path $bundledMixerOptional)) {
+              Get-ChildItem $bundledMixerOptional -Filter "*.dll" -File -ErrorAction SilentlyContinue | Copy-Item -Destination $packageRoot -Force
             }
           } else {
             Copy-Item "build-ci/platformer" -Destination $packageRoot -Force

@@ -213,6 +213,41 @@ normalize_abi() {
   esac
 }
 
+resolve_android_component_root() {
+  local root="$1"
+  local abi="$2"
+  local package_name="$3"
+  local static_lib_name="$4"
+  local header_rel="$5"
+  local abi_pkg_root="$PWD/deps/android-install/$abi/$package_name"
+
+  if [ -f "$abi_pkg_root/lib/$static_lib_name" ] && [ -f "$abi_pkg_root/include/$header_rel" ]; then
+    printf '%s' "$abi_pkg_root"
+    return 0
+  fi
+
+  printf '%s' "$root"
+}
+
+component_lib_dir() {
+  local root="$1"
+  local abi="$2"
+  if [ -d "$root/lib/$abi" ]; then
+    printf '%s' "$root/lib/$abi"
+    return 0
+  fi
+  printf '%s' "$root/lib"
+}
+
+component_has_static_lib() {
+  local root="$1"
+  local abi="$2"
+  local static_lib_name="$3"
+  local libdir
+  libdir="$(component_lib_dir "$root" "$abi")"
+  [ -f "$libdir/$static_lib_name" ]
+}
+
 abi_target_prefix() {
   case "$1" in
     arm64-v8a) echo "aarch64-linux-android" ;;
@@ -226,10 +261,10 @@ abi_target_prefix() {
 
 has_staged_sdl_for_abi() {
   local abi="$1"
-  [ -f "$SDL3_ANDROID_ROOT/lib/$abi/libSDL3.a" ] &&
-  [ -f "$SDL3_IMAGE_ROOT/lib/$abi/libSDL3_image.a" ] &&
-  [ -f "$SDL3_TTF_ROOT/lib/$abi/libSDL3_ttf.a" ] &&
-  [ -f "$SDL3_MIXER_ROOT/lib/$abi/libSDL3_mixer.a" ]
+  component_has_static_lib "$(resolve_android_component_root "$SDL3_ANDROID_ROOT" "$abi" "SDL" "libSDL3.a" "SDL3/SDL.h")" "$abi" "libSDL3.a" &&
+  component_has_static_lib "$(resolve_android_component_root "$SDL3_IMAGE_ROOT" "$abi" "SDL_image" "libSDL3_image.a" "SDL3_image/SDL_image.h")" "$abi" "libSDL3_image.a" &&
+  component_has_static_lib "$(resolve_android_component_root "$SDL3_TTF_ROOT" "$abi" "SDL_ttf" "libSDL3_ttf.a" "SDL3_ttf/SDL_ttf.h")" "$abi" "libSDL3_ttf.a" &&
+  component_has_static_lib "$(resolve_android_component_root "$SDL3_MIXER_ROOT" "$abi" "SDL_mixer" "libSDL3_mixer.a" "SDL3_mixer/SDL_mixer.h")" "$abi" "libSDL3_mixer.a"
 }
 
 has_staged_curl_for_abi() {
@@ -351,6 +386,17 @@ case "$ABI" in
     exit 1
     ;;
 esac
+
+SDL3_ANDROID_ROOT="$(resolve_android_component_root "$SDL3_ANDROID_ROOT" "$ABI" "SDL" "libSDL3.a" "SDL3/SDL.h")"
+SDL3_IMAGE_ROOT="$(resolve_android_component_root "$SDL3_IMAGE_ROOT" "$ABI" "SDL_image" "libSDL3_image.a" "SDL3_image/SDL_image.h")"
+SDL3_TTF_ROOT="$(resolve_android_component_root "$SDL3_TTF_ROOT" "$ABI" "SDL_ttf" "libSDL3_ttf.a" "SDL3_ttf/SDL_ttf.h")"
+SDL3_MIXER_ROOT="$(resolve_android_component_root "$SDL3_MIXER_ROOT" "$ABI" "SDL_mixer" "libSDL3_mixer.a" "SDL3_mixer/SDL_mixer.h")"
+
+echo "[INFO] Android SDL roots for ABI=$ABI"
+echo "[INFO]   SDL3: $SDL3_ANDROID_ROOT"
+echo "[INFO]   SDL3_image: $SDL3_IMAGE_ROOT"
+echo "[INFO]   SDL3_ttf: $SDL3_TTF_ROOT"
+echo "[INFO]   SDL3_mixer: $SDL3_MIXER_ROOT"
 
 HOST_TAG="linux-x86_64"
 TOOLCHAIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$HOST_TAG"
@@ -486,10 +532,10 @@ fi
 echo "[INFO] Using SDL in compile path: $SDL_STAGED_VERSION (required >= $SDL_REQUIRED_VERSION)"
 
 LDFLAGS=(
-  -L"$SDL3_ANDROID_ROOT/lib/$ABI"
-  -L"$SDL3_IMAGE_ROOT/lib/$ABI"
-  -L"$SDL3_TTF_ROOT/lib/$ABI"
-  -L"$SDL3_MIXER_ROOT/lib/$ABI"
+  -L"$(component_lib_dir "$SDL3_ANDROID_ROOT" "$ABI")"
+  -L"$(component_lib_dir "$SDL3_IMAGE_ROOT" "$ABI")"
+  -L"$(component_lib_dir "$SDL3_TTF_ROOT" "$ABI")"
+  -L"$(component_lib_dir "$SDL3_MIXER_ROOT" "$ABI")"
   -landroid
   -lOpenSLES
   -llog
@@ -498,8 +544,8 @@ LDFLAGS=(
   -Wl,--no-undefined
   -Wl,--gc-sections
 )
-if [ ! -d "$SDL3_MIXER_ROOT/lib/$ABI" ]; then
-  echo "[ERROR] Missing staged SDL_mixer libs: $SDL3_MIXER_ROOT/lib/$ABI"
+if [ ! -d "$(component_lib_dir "$SDL3_MIXER_ROOT" "$ABI")" ]; then
+  echo "[ERROR] Missing staged SDL_mixer libs: $(component_lib_dir "$SDL3_MIXER_ROOT" "$ABI")"
   echo "[HINT] Run: ./build/setup-android-sdl.sh"
   exit 1
 fi
@@ -508,12 +554,13 @@ SDL_LINK_INPUTS=()
 pick_sdl_lib() {
   local root="$1"
   local base="$2"
-  local static_path="$root/lib/$ABI/lib${base}.a"
+  local static_path
+  static_path="$(component_lib_dir "$root" "$ABI")/lib${base}.a"
   if [ -f "$static_path" ]; then
     SDL_LINK_INPUTS+=("$static_path")
     return 0
   fi
-  echo "[ERROR] Missing static SDL library: lib${base}.a under $root/lib/$ABI"
+  echo "[ERROR] Missing static SDL library: lib${base}.a under $(component_lib_dir "$root" "$ABI")"
   echo "[HINT] Android build embeds SDL in libplatformer.so and does not use SDL shared .so at startup."
   return 1
 }
@@ -529,7 +576,8 @@ EXTRA_STATIC_INPUTS=()
 declare -A _extra_seen=()
 collect_extra_static_libs() {
   local root="$1"
-  local libdir="$root/lib/$ABI"
+  local libdir
+  libdir="$(component_lib_dir "$root" "$ABI")"
   [ -d "$libdir" ] || return 0
   local f base
   while IFS= read -r -d '' f; do

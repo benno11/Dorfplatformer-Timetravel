@@ -23,6 +23,8 @@ int main(int argc, char** argv) {
 #include <windows.h>
 #include <tlhelp32.h>
 
+static HANDLE gSingleInstanceMutex = nullptr;
+
 static DWORD getParentProcessId() {
     const DWORD currentPid = GetCurrentProcessId();
     HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -78,6 +80,21 @@ static void attachToParentConsoleIfAvailable() {
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
     attachToParentConsoleIfAvailable();
-    return runMainImpl(__argc, __argv);
+    gSingleInstanceMutex = CreateMutexW(nullptr, TRUE, L"Local\\DFNewGameSingleInstance");
+    if (!gSingleInstanceMutex || GetLastError() == ERROR_ALREADY_EXISTS) {
+        if (gSingleInstanceMutex) {
+            CloseHandle(gSingleInstanceMutex);
+            gSingleInstanceMutex = nullptr;
+        }
+        return 0;
+    }
+
+    const int rc = runMainImpl(__argc, __argv);
+    if (gSingleInstanceMutex) {
+        ReleaseMutex(gSingleInstanceMutex);
+        CloseHandle(gSingleInstanceMutex);
+        gSingleInstanceMutex = nullptr;
+    }
+    return rc;
 }
 #endif

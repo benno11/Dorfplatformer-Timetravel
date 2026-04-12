@@ -5,6 +5,32 @@ if(WIN32)
   enable_language(RC)
 endif()
 
+set(PLATFORMER_APP_VERSION_STRING "0.0.0")
+set(PLATFORMER_APP_VERSION_MAJOR 0)
+set(PLATFORMER_APP_VERSION_MINOR 0)
+set(PLATFORMER_APP_VERSION_PATCH 0)
+set(PLATFORMER_APP_VERSION_BUILD 0)
+set(_platformer_config_json "${CMAKE_SOURCE_DIR}/assets/config.json")
+if(EXISTS "${_platformer_config_json}")
+  file(READ "${_platformer_config_json}" _platformer_config_text)
+  string(REGEX MATCH "\"version\"[ \t\r\n]*:[ \t\r\n]*\"([^\"]+)\"" _platformer_version_match "${_platformer_config_text}")
+  if(CMAKE_MATCH_1)
+    set(PLATFORMER_APP_VERSION_STRING "${CMAKE_MATCH_1}")
+    string(REGEX MATCH "([0-9]+)\\.([0-9]+)\\.([0-9]+)" _platformer_numeric_version "${PLATFORMER_APP_VERSION_STRING}")
+    if(CMAKE_MATCH_1)
+      set(PLATFORMER_APP_VERSION_MAJOR "${CMAKE_MATCH_1}")
+      set(PLATFORMER_APP_VERSION_MINOR "${CMAKE_MATCH_2}")
+      set(PLATFORMER_APP_VERSION_PATCH "${CMAKE_MATCH_3}")
+    endif()
+    string(REGEX MATCHALL "[0-9]+" _platformer_all_version_parts "${PLATFORMER_APP_VERSION_STRING}")
+    list(LENGTH _platformer_all_version_parts _platformer_part_count)
+    if(_platformer_part_count GREATER 3)
+      list(GET _platformer_all_version_parts 3 PLATFORMER_APP_VERSION_BUILD)
+    endif()
+  endif()
+endif()
+message(STATUS "App version: ${PLATFORMER_APP_VERSION_STRING}")
+
 # Keep generated files out of the source tree.
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
   message(FATAL_ERROR
@@ -61,6 +87,32 @@ else()
   message(STATUS "IPO/LTO disabled for faster builds")
 endif()
 
+function(platformer_apply_windows_exe_hardening target_name)
+  if(NOT WIN32)
+    return()
+  endif()
+
+  if(MSVC)
+    target_compile_options(${target_name} PRIVATE /guard:cf)
+    target_link_options(${target_name} PRIVATE
+      /NXCOMPAT
+      /DYNAMICBASE
+      /guard:cf
+    )
+    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+      target_link_options(${target_name} PRIVATE /HIGHENTROPYVA)
+    endif()
+  elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_link_options(${target_name} PRIVATE
+      "-Wl,--nxcompat"
+      "-Wl,--dynamicbase"
+    )
+    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+      target_link_options(${target_name} PRIVATE "-Wl,--high-entropy-va")
+    endif()
+  endif()
+endfunction()
+
 add_executable(platformer
   src/main.cpp
   src/GameApp.cpp
@@ -85,8 +137,15 @@ endif()
 if(WIN32)
   set(PLATFORMER_ICON_FILE "${CMAKE_SOURCE_DIR}/icon.ico")
   if(EXISTS "${PLATFORMER_ICON_FILE}")
-    set(PLATFORMER_ICON_RC "${CMAKE_CURRENT_BINARY_DIR}/platformer_icon.rc")
-    file(WRITE "${PLATFORMER_ICON_RC}" "IDI_APP_ICON ICON \"${PLATFORMER_ICON_FILE}\"\n")
+    set(PLATFORMER_ICON_RC "${CMAKE_CURRENT_BINARY_DIR}/platformer_version.rc")
+    set(WINDOWS_RESOURCE_ICON_FILE "${PLATFORMER_ICON_FILE}")
+    set(WINDOWS_RESOURCE_FILE_DESCRIPTION "Dorfplatformer Timetravel")
+    set(WINDOWS_RESOURCE_INTERNAL_NAME "platformer.exe")
+    set(WINDOWS_RESOURCE_ORIGINAL_FILENAME "platformer.exe")
+    set(WINDOWS_RESOURCE_PRODUCT_NAME "Dorfplatformer Timetravel")
+    set(WINDOWS_RESOURCE_PRODUCT_VERSION "${PLATFORMER_APP_VERSION_STRING}")
+    set(WINDOWS_RESOURCE_FILE_VERSION "${PLATFORMER_APP_VERSION_STRING}")
+    configure_file("${CMAKE_SOURCE_DIR}/cmake/WindowsVersionResource.rc.in" "${PLATFORMER_ICON_RC}" @ONLY)
     target_sources(platformer PRIVATE "${PLATFORMER_ICON_RC}")
     message(STATUS "Embedded Windows icon: ${PLATFORMER_ICON_FILE}")
   else()
@@ -478,6 +537,7 @@ endif()
 if(MSVC)
   target_compile_options(platformer PRIVATE /EHsc /FS)
 endif()
+platformer_apply_windows_exe_hardening(platformer)
 if (CURL_FOUND)
   target_link_libraries(platformer PRIVATE CURL::libcurl)
   target_compile_definitions(platformer PRIVATE HAVE_CURL=1)
@@ -507,4 +567,89 @@ endif()
 if(MSVC)
   target_compile_options(sheet_config PRIVATE /EHsc /FS)
 endif()
+platformer_apply_windows_exe_hardening(sheet_config)
 message(STATUS "Linked sheet_config: ${SDL3_LINK_TARGET}, ${SDL3_IMAGE_LINK_TARGET}")
+
+if(WIN32 AND CURL_FOUND)
+  add_executable(df-updater WIN32
+    src/WindowsUpdater.cpp
+  )
+  if(EXISTS "${PLATFORMER_ICON_FILE}")
+    set(DF_UPDATER_RC "${CMAKE_CURRENT_BINARY_DIR}/df_updater_version.rc")
+    set(WINDOWS_RESOURCE_ICON_FILE "${PLATFORMER_ICON_FILE}")
+    set(WINDOWS_RESOURCE_FILE_DESCRIPTION "Dorfplatformer Timetravel Updater")
+    set(WINDOWS_RESOURCE_INTERNAL_NAME "df-updater.exe")
+    set(WINDOWS_RESOURCE_ORIGINAL_FILENAME "df-updater.exe")
+    set(WINDOWS_RESOURCE_PRODUCT_NAME "Dorfplatformer Timetravel")
+    set(WINDOWS_RESOURCE_PRODUCT_VERSION "${PLATFORMER_APP_VERSION_STRING}")
+    set(WINDOWS_RESOURCE_FILE_VERSION "${PLATFORMER_APP_VERSION_STRING}")
+    configure_file("${CMAKE_SOURCE_DIR}/cmake/WindowsVersionResource.rc.in" "${DF_UPDATER_RC}" @ONLY)
+    target_sources(df-updater PRIVATE "${DF_UPDATER_RC}")
+  endif()
+  target_link_libraries(df-updater
+    PRIVATE
+    CURL::libcurl
+    nlohmann_json::nlohmann_json
+    shell32
+  )
+  target_compile_definitions(df-updater PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+  if(MSVC)
+    target_compile_options(df-updater PRIVATE /EHsc /FS)
+  endif()
+  platformer_apply_windows_exe_hardening(df-updater)
+  message(STATUS "Added target: df-updater")
+endif()
+
+if(WIN32)
+  add_executable(df-launcher WIN32
+    src/WindowsLauncher.cpp
+  )
+  if(EXISTS "${PLATFORMER_ICON_FILE}")
+    set(DF_LAUNCHER_RC "${CMAKE_CURRENT_BINARY_DIR}/df_launcher_version.rc")
+    set(WINDOWS_RESOURCE_ICON_FILE "${PLATFORMER_ICON_FILE}")
+    set(WINDOWS_RESOURCE_FILE_DESCRIPTION "Dorfplatformer Timetravel Launcher")
+    set(WINDOWS_RESOURCE_INTERNAL_NAME "df-launcher.exe")
+    set(WINDOWS_RESOURCE_ORIGINAL_FILENAME "df-launcher.exe")
+    set(WINDOWS_RESOURCE_PRODUCT_NAME "Dorfplatformer Timetravel")
+    set(WINDOWS_RESOURCE_PRODUCT_VERSION "${PLATFORMER_APP_VERSION_STRING}")
+    set(WINDOWS_RESOURCE_FILE_VERSION "${PLATFORMER_APP_VERSION_STRING}")
+    configure_file("${CMAKE_SOURCE_DIR}/cmake/WindowsVersionResource.rc.in" "${DF_LAUNCHER_RC}" @ONLY)
+    target_sources(df-launcher PRIVATE "${DF_LAUNCHER_RC}")
+  endif()
+  target_compile_definitions(df-launcher PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+  if(MSVC)
+    target_compile_options(df-launcher PRIVATE /EHsc /FS)
+  endif()
+  platformer_apply_windows_exe_hardening(df-launcher)
+  message(STATUS "Added target: df-launcher")
+endif()
+
+if(WIN32)
+  add_executable(df-tray WIN32
+    src/WindowsTrayApp.cpp
+  )
+  if(EXISTS "${PLATFORMER_ICON_FILE}")
+    set(DF_TRAY_RC "${CMAKE_CURRENT_BINARY_DIR}/df_tray_version.rc")
+    set(WINDOWS_RESOURCE_ICON_FILE "${PLATFORMER_ICON_FILE}")
+    set(WINDOWS_RESOURCE_FILE_DESCRIPTION "Dorfplatformer Timetravel Tray")
+    set(WINDOWS_RESOURCE_INTERNAL_NAME "df-tray.exe")
+    set(WINDOWS_RESOURCE_ORIGINAL_FILENAME "df-tray.exe")
+    set(WINDOWS_RESOURCE_PRODUCT_NAME "Dorfplatformer Timetravel")
+    set(WINDOWS_RESOURCE_PRODUCT_VERSION "${PLATFORMER_APP_VERSION_STRING}")
+    set(WINDOWS_RESOURCE_FILE_VERSION "${PLATFORMER_APP_VERSION_STRING}")
+    configure_file("${CMAKE_SOURCE_DIR}/cmake/WindowsVersionResource.rc.in" "${DF_TRAY_RC}" @ONLY)
+    target_sources(df-tray PRIVATE "${DF_TRAY_RC}")
+  endif()
+  target_link_libraries(df-tray
+    PRIVATE
+    ${SDL3_LINK_TARGET}
+    nlohmann_json::nlohmann_json
+    shell32
+  )
+  target_compile_definitions(df-tray PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+  if(MSVC)
+    target_compile_options(df-tray PRIVATE /EHsc /FS)
+  endif()
+  platformer_apply_windows_exe_hardening(df-tray)
+  message(STATUS "Added target: df-tray")
+endif()

@@ -27,6 +27,55 @@ function Get-VsInstallPath {
     return ""
 }
 
+function Get-PreferredVisualStudioGenerator {
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+    if (-not (Test-Path $vswhere)) {
+        return "Visual Studio 17 2022"
+    }
+
+    $productLineVersion = & $vswhere `
+        -latest `
+        -products * `
+        -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+        -property catalog_productLineVersion 2>$null
+
+    switch ($productLineVersion.Trim()) {
+        "18" { return "Visual Studio 18 2026" }
+        "17" { return "Visual Studio 17 2022" }
+        "16" { return "Visual Studio 16 2019" }
+        "15" { return "Visual Studio 15 2017" }
+        default { return "Visual Studio 17 2022" }
+    }
+}
+
+function Test-VSBuildToolsInstalled {
+    return -not [string]::IsNullOrWhiteSpace((Get-VsInstallPath))
+}
+
+function Test-PathCompilerAvailable {
+    if (Get-Command cl -ErrorAction SilentlyContinue) { return $true }
+    if (Get-Command clang++ -ErrorAction SilentlyContinue) { return $true }
+    if (Get-Command g++ -ErrorAction SilentlyContinue) { return $true }
+    return $false
+}
+
+function Ensure-NinjaAvailable {
+    if (Get-Command ninja -ErrorAction SilentlyContinue) {
+        return $true
+    }
+
+    $ninjaDir = Join-Path $PSScriptRoot "..\.tools\ninja"
+    $ninjaExe = Join-Path $ninjaDir "ninja.exe"
+    if (Test-Path $ninjaExe) {
+        if (-not (($env:Path -split ";") -contains $ninjaDir)) {
+            $env:Path = "$ninjaDir;$env:Path"
+        }
+        return $true
+    }
+
+    return $false
+}
+
 function Get-VsPlatformToolset {
     $vsInstall = Get-VsInstallPath
     if (-not $vsInstall) {
@@ -142,6 +191,21 @@ function Require-Tool([string]$name) {
 
 Require-Tool "cmake"
 
+if (-not $Generator -or -not $Generator.Trim()) {
+    $hasPathCompiler = Test-PathCompilerAvailable
+    $hasNinja = Ensure-NinjaAvailable
+    if ($hasNinja -and $hasPathCompiler) {
+        $Generator = "Ninja"
+    } elseif (Test-VSBuildToolsInstalled) {
+        $Generator = Get-PreferredVisualStudioGenerator
+    } elseif ($hasNinja -and $hasPathCompiler) {
+        $Generator = "Ninja"
+    } else {
+        throw "No usable build generator/toolchain found. Install Visual Studio Build Tools or run from a shell with clang++, cl, or g++ on PATH."
+    }
+    Write-Host "Auto-selected generator: $Generator"
+}
+
 $cmakeArgs = @(
     "-S", ".",
     "-B", $BuildDir,
@@ -158,9 +222,28 @@ function Normalize-PathForCompare([string]$p) {
     return ($full -replace "\\", "/").ToLowerInvariant().TrimEnd("/")
 }
 
+function Get-ConfigureFingerprint {
+    $repoRoot = [System.IO.Path]::GetFullPath(".")
+    $fingerprintFiles = @(
+        (Join-Path $repoRoot "CMakeLists.txt"),
+        (Join-Path $repoRoot "build\setup-build-env.ps1"),
+        (Join-Path $repoRoot "cmake\WindowsVersionResource.rc.in")
+    )
+
+    $parts = New-Object System.Collections.Generic.List[string]
+    foreach ($file in $fingerprintFiles) {
+        if (-not (Test-Path $file)) { continue }
+        $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash
+        $parts.Add(((Normalize-PathForCompare $file) + "=" + $hash))
+    }
+    return ($parts -join ";")
+}
+
 $buildDirFull = [System.IO.Path]::GetFullPath($BuildDir)
 $sourceDirFull = [System.IO.Path]::GetFullPath(".")
 $cachePath = Join-Path $buildDirFull "CMakeCache.txt"
+$fingerprintPath = Join-Path $buildDirFull ".configure-fingerprint"
+$currentFingerprint = Get-ConfigureFingerprint
 $requestedPlatform = ""
 if ($Generator -and $Generator.Trim() -and ($Generator -like "Visual Studio*")) {
     $requestedPlatform = "x64"
@@ -217,13 +300,19 @@ if (Test-Path $cachePath) {
             $generatorInstanceMismatch = $true
         }
     }
-    if ($sourceMismatch -or $buildMismatch -or $generatorMismatch -or $platformMismatch -or $toolsetMismatch -or $generatorInstanceMismatch) {
+    $fingerprintMismatch = $false
+    if (Test-Path $fingerprintPath) {
+        $cachedFingerprint = Get-Content $fingerprintPath -Raw
+        $fingerprintMismatch = $cachedFingerprint -ne $currentFingerprint
+    }
+    if ($sourceMismatch -or $buildMismatch -or $generatorMismatch -or $platformMismatch -or $toolsetMismatch -or $generatorInstanceMismatch -or $fingerprintMismatch) {
         Write-Host "Detected stale CMake cache from a different path/environment. Resetting cache in $buildDirFull..."
         Remove-Item $cachePath -Force -ErrorAction SilentlyContinue
         $cmakeFilesDir = Join-Path $buildDirFull "CMakeFiles"
         if (Test-Path $cmakeFilesDir) {
             Remove-Item $cmakeFilesDir -Recurse -Force -ErrorAction SilentlyContinue
         }
+        Remove-Item $fingerprintPath -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -286,6 +375,9 @@ Write-Host "Configuring project..."
 if ($LASTEXITCODE -ne 0) {
     throw "CMake configure failed. Ensure Visual Studio Build Tools C++ workload is installed and dependencies are available (local vcpkg is auto-detected if present)."
 }
+
+New-Item -ItemType Directory -Force -Path $buildDirFull | Out-Null
+Set-Content -LiteralPath $fingerprintPath -Value $currentFingerprint -NoNewline
 
 Write-Host "Build environment ready."
 Write-Host "Next: cmake --build $BuildDir --config $Config"

@@ -1,0 +1,6 @@
+{
+  "version": "2.2.0 Alpha 2",
+  "version_id": 2,
+  "installer_url": "https://example.com/downloads/df-platformer-windows-installer.exe",
+  "notes": "Bug fixes, performance improvements, and new content."
+}

@@ -41,8 +41,44 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     bool& powerManagementEnabled = *ctx.powerManagementEnabled;
     bool lowPowerModeEnabledLocal = false;
     bool& lowPowerModeEnabled = ctx.lowPowerModeEnabled ? *ctx.lowPowerModeEnabled : lowPowerModeEnabledLocal;
+    bool showExperimentalFeaturesLocal = false;
+    bool& showExperimentalFeatures = ctx.showExperimentalFeatures ? *ctx.showExperimentalFeatures : showExperimentalFeaturesLocal;
     bool& menuMusicEnabled = *ctx.menuMusicEnabled;
     bool& muteAllAudio = *ctx.muteAllAudio;
+    auto updaterStatusText = [&]() -> std::string {
+        if (ctx.getUpdaterStatusText) {
+            const std::string text = ctx.getUpdaterStatusText();
+            if (!text.empty()) return text;
+        }
+        return ctx.windowsUpdateManifestUrl.empty() ? "NOT CONFIGURED" : "READY";
+    };
+    auto updaterStatusDetail = [&]() -> std::string {
+        if (ctx.getUpdaterStatusDetail) {
+            const std::string text = ctx.getUpdaterStatusDetail();
+            if (!text.empty()) return text;
+        }
+        return std::string();
+    };
+    auto updaterLatestVersionText = [&]() -> std::string {
+        if (ctx.getUpdaterLatestVersionText) {
+            const std::string text = ctx.getUpdaterLatestVersionText();
+            if (!text.empty()) return text;
+        }
+        return std::string();
+    };
+    auto updaterNotesText = [&]() -> std::string {
+        if (ctx.getUpdaterNotesText) {
+            const std::string text = ctx.getUpdaterNotesText();
+            if (!text.empty()) return text;
+        }
+        return std::string();
+    };
+    auto updaterProgress01 = [&]() -> float {
+        if (ctx.getUpdaterProgress01) {
+            return std::clamp(ctx.getUpdaterProgress01(), 0.0f, 1.0f);
+        }
+        return 0.0f;
+    };
     SDL_Scancode& keyMoveLeft = *ctx.keyMoveLeft;
     SDL_Scancode& keyMoveRight = *ctx.keyMoveRight;
     SDL_Scancode& keyMoveDown = *ctx.keyMoveDown;
@@ -104,6 +140,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             } catch (...) {}
         }
     }
+    if ((int)settingsTabLabels.size() < 11) settingsTabLabels.resize(11, "TAB");
+    settingsTabLabels[10] = "UPDATER";
     constexpr float kMenuAuthorW = 960.0f;
     constexpr float kMenuAuthorH = 540.0f;
     auto menuCanvasScale = [&]() -> float {
@@ -207,9 +245,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     bool pendingSettingsExitCleanup = false;
     Uint64 inputBlockUntilTicks = 0;
     constexpr Uint64 kMenuInputBlockMs = 1000;
-    constexpr int kSettingsTabCount = 10;
+    constexpr int kSettingsTabCount = 11;
     constexpr int kExtraTabStart = 5;
     constexpr int kExtraTabCount = 5;
+    constexpr int IDX_UPDATER_TAB = 10;
     constexpr int kExtraTabOptionCount = 11;
     bool localExtraTabValues[kExtraTabCount][kExtraTabOptionCount] = {};
     auto extraTabValueRef = [&](int tabIdx, int optIdx) -> bool& {
@@ -249,12 +288,14 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     auto tabIsVisible = [&](int tab) -> bool {
         if (tab == 2) return debugModeEnabled;
         if (tab == 8) return true; // NETWORK+ hosts account manager UI.
+        if (tab == IDX_UPDATER_TAB) return true;
         if (!isExtraTab(tab)) return true;
-        return extraTabUsedOptionCount(tab) > 0;
+        return showExperimentalFeatures && extraTabUsedOptionCount(tab) > 0;
     };
     auto visibleTabList = [&]() -> std::vector<int> {
         std::vector<int> tabs;
         for (int i = 0; i < kSettingsTabCount; ++i) {
+            if (i == 4 || i == IDX_UPDATER_TAB) continue;
             if (tabIsVisible(i)) tabs.push_back(i);
         }
         return tabs;
@@ -262,6 +303,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     auto sidebarTabList = [&]() -> std::vector<int> {
         std::vector<int> tabs = visibleTabList();
         tabs.erase(std::remove(tabs.begin(), tabs.end(), 4), tabs.end()); // Hide ABOUT tab button from left sidebar.
+        tabs.erase(std::remove(tabs.begin(), tabs.end(), IDX_UPDATER_TAB), tabs.end()); // Hide UPDATER from left sidebar.
         return tabs;
     };
     auto firstVisibleTab = [&]() -> int {
@@ -306,9 +348,28 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     constexpr int IDX_SHOW_DEBUG_VIEW = 7;
     constexpr int IDX_MUSIC = 8;
     constexpr int IDX_SFX = 9;
-    constexpr int IDX_ABOUT = 10;
-    constexpr int IDX_BACK = 11;
-    constexpr int kSettingsCount = 12;
+    constexpr int IDX_SHOW_EXPERIMENTAL = 10;
+    constexpr int IDX_ABOUT = 11;
+    constexpr int IDX_BACK = 12;
+    constexpr int kSettingsCount = 13;
+#else
+#if defined(_WIN32)
+    constexpr int IDX_FULLSCREEN = 0;
+    constexpr int IDX_VSYNC = 1;
+    constexpr int IDX_CAM_CLAMP = 2;
+    constexpr int IDX_UI_SCALE = 3;
+    constexpr int IDX_SHOW_FPS = 4;
+    constexpr int IDX_SHOW_DETAILED = 5;
+    constexpr int IDX_SHOW_HITBOXES = 6;
+    constexpr int IDX_SHOW_PLAYER_HITBOX = 7;
+    constexpr int IDX_SHOW_DEBUG_VIEW = 8;
+    constexpr int IDX_MUSIC = 9;
+    constexpr int IDX_SFX = 10;
+    constexpr int IDX_SHOW_EXPERIMENTAL = 11;
+    constexpr int IDX_UPDATE = 12;
+    constexpr int IDX_ABOUT = 13;
+    constexpr int IDX_BACK = 14;
+    constexpr int kSettingsCount = 15;
 #else
     constexpr int IDX_FULLSCREEN = 0;
     constexpr int IDX_VSYNC = 1;
@@ -321,9 +382,11 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     constexpr int IDX_SHOW_DEBUG_VIEW = 8;
     constexpr int IDX_MUSIC = 9;
     constexpr int IDX_SFX = 10;
-    constexpr int IDX_ABOUT = 11;
-    constexpr int IDX_BACK = 12;
-    constexpr int kSettingsCount = 13;
+    constexpr int IDX_SHOW_EXPERIMENTAL = 11;
+    constexpr int IDX_ABOUT = 12;
+    constexpr int IDX_BACK = 13;
+    constexpr int kSettingsCount = 14;
+#endif
 #endif
     int settingsSel = 0;
     enum class SliderDragTarget { None, Music, Sfx, UiScale };
@@ -384,17 +447,21 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             if (hasUser && hasToken) return 4; // username, logout, open, back
             return 5; // email, password, sign in, open, back
         }
+        if (tab == IDX_UPDATER_TAB) return 3;
         if (tab == 4) return 0;
         if (isExtraTab(tab)) return extraTabRowCountForTab(tab);
         return kSettingsCount;
     };
     auto generalSettingsRowHidden = [&](int idx) -> bool {
-        if (debugModeEnabled) return false;
-        return idx == IDX_SHOW_FPS ||
-               idx == IDX_SHOW_DETAILED ||
-               idx == IDX_SHOW_HITBOXES ||
-               idx == IDX_SHOW_PLAYER_HITBOX ||
-               idx == IDX_SHOW_DEBUG_VIEW;
+        if (!debugModeEnabled &&
+            (idx == IDX_SHOW_FPS ||
+             idx == IDX_SHOW_DETAILED ||
+             idx == IDX_SHOW_HITBOXES ||
+             idx == IDX_SHOW_PLAYER_HITBOX ||
+             idx == IDX_SHOW_DEBUG_VIEW)) {
+            return true;
+        }
+        return false;
     };
     auto visibleGeneralSettingsRowIndex = [&](int rawIdx) -> int {
         int visibleIdx = 0;
@@ -1123,6 +1190,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         settingsSelNetwork = std::clamp(settingsSelNetwork, 0, rows - 1);
         ensureSettingsRowVisible(settingsSelNetwork);
     };
+    auto updaterCanStartInstall = [&]() -> bool {
+        const std::string status = updaterStatusText();
+        return status.find("UPDATE FOUND") != std::string::npos;
+    };
     auto syncNetworkSessionState = [&]() {
         SetLevelServerAuthToken(levelServerAuthToken);
         SetLevelServerAccountUsername(levelServerAccountUsername);
@@ -1246,6 +1317,15 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             }
             return;
         }
+        if (settingsTab == IDX_UPDATER_TAB) {
+            if (settingsSel == 1 && ctx.launchUpdater) {
+                if (ctx.saveClientSettings) ctx.saveClientSettings();
+                (void)ctx.launchUpdater();
+            } else if (settingsSel == 2) {
+                openSettingsTab(0);
+            }
+            return;
+        }
         if (settingsTab == 4) {
             setInSettings(false);
             return;
@@ -1272,6 +1352,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         else if (settingsSel == IDX_SHOW_DEBUG_VIEW && debugModeEnabled) defaultShowDebugView = !defaultShowDebugView;
         else if (settingsSel == IDX_MUSIC && dir != 0) musicVolume = std::clamp(musicVolume + dir * 8, 0, 128);
         else if (settingsSel == IDX_SFX && dir != 0) sfxVolume = std::clamp(sfxVolume + dir * 8, 0, 128);
+        else if (settingsSel == IDX_SHOW_EXPERIMENTAL) showExperimentalFeatures = !showExperimentalFeatures;
         else if (settingsSel == IDX_ABOUT) { openSettingsTab(4); }
         else setInSettings(false);
 #else
@@ -1286,6 +1367,12 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         else if (settingsSel == IDX_SHOW_DEBUG_VIEW && debugModeEnabled) defaultShowDebugView = !defaultShowDebugView;
         else if (settingsSel == IDX_MUSIC && dir != 0) musicVolume = std::clamp(musicVolume + dir * 8, 0, 128);
         else if (settingsSel == IDX_SFX && dir != 0) sfxVolume = std::clamp(sfxVolume + dir * 8, 0, 128);
+        else if (settingsSel == IDX_SHOW_EXPERIMENTAL) showExperimentalFeatures = !showExperimentalFeatures;
+#if defined(_WIN32)
+        else if (settingsSel == IDX_UPDATE && ctx.launchUpdater) {
+            openSettingsTab(IDX_UPDATER_TAB);
+        }
+#endif
         else if (settingsSel == IDX_ABOUT) { openSettingsTab(4); }
         else setInSettings(false);
 #endif
@@ -1447,6 +1534,13 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     menuInput.scanConnected();
 
     while (running) {
+        if (ctx.pollUpdaterAutoRelaunch) {
+            ctx.pollUpdaterAutoRelaunch();
+            if (!running) {
+                cleanupMenuAssets();
+                return FrontendAction::Quit;
+            }
+        }
         if (ctx.updateDynamicResolution) ctx.updateDynamicResolution();
         SDL_Texture* gameTarget = (ctx.gameTargetRef && *ctx.gameTargetRef) ? *ctx.gameTargetRef : ctx.gameTarget;
         if (!gameTarget) {
@@ -1786,6 +1880,12 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     if (e.key.key == SDLK_h && debugModeEnabled) defaultShowHitboxes = !defaultShowHitboxes;
                     if (e.key.key == SDLK_p && debugModeEnabled) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
                     if (e.key.key == SDLK_d && debugModeEnabled) defaultShowDebugView = !defaultShowDebugView;
+#if defined(_WIN32)
+                    if (e.key.key == SDLK_u && ctx.launchUpdater) {
+                        openSettingsTab(IDX_UPDATER_TAB);
+                        continue;
+                    }
+#endif
                     if (isBackKey) setInSettings(false);
 
                     if (settingsTab == 1) {
@@ -1977,6 +2077,17 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         }
                         continue;
                     }
+                    if (settingsTab == IDX_UPDATER_TAB) {
+                        const int rows = settingsRowsForTab(settingsTab);
+                        for (int i = 0; i < rows; ++i) {
+                            SDL_Rect row = settingsRowBtn(i);
+                            if (!SDL_PointInRect(&pt, &row)) continue;
+                            settingsSel = i;
+                            activateCurrentSettingsSelection(0);
+                            break;
+                        }
+                        continue;
+                    }
                     if (isExtraTab(settingsTab)) {
                         const int extraIdx = extraTabIndex(settingsTab);
                         const int extraRows = settingsRowsForTab(settingsTab);
@@ -2069,6 +2180,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_Rect hitBtn = settingsRowBtn(IDX_SHOW_HITBOXES);
                     SDL_Rect playerHitBtn = settingsRowBtn(IDX_SHOW_PLAYER_HITBOX);
                     SDL_Rect debugViewBtn = settingsRowBtn(IDX_SHOW_DEBUG_VIEW);
+                    SDL_Rect experimentalBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_SHOW_EXPERIMENTAL));
                     if (SDL_PointInRect(&pt, &vsyncBtn)) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
                     else if (SDL_PointInRect(&pt, &camBtn)) clampCamX = !clampCamX;
                     else if (SDL_PointInRect(&pt, &uiScaleSliderHit) || SDL_PointInRect(&pt, &uiScaleBtn)) {
@@ -2080,6 +2192,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     else if (SDL_PointInRect(&pt, &hitBtn) && debugModeEnabled) defaultShowHitboxes = !defaultShowHitboxes;
                     else if (SDL_PointInRect(&pt, &playerHitBtn) && debugModeEnabled) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
                     else if (SDL_PointInRect(&pt, &debugViewBtn) && debugModeEnabled) defaultShowDebugView = !defaultShowDebugView;
+                    else if (SDL_PointInRect(&pt, &experimentalBtn)) showExperimentalFeatures = !showExperimentalFeatures;
                     else if (SDL_PointInRect(&pt, &aboutBtn)) { openSettingsTab(4); }
                     else if (SDL_PointInRect(&pt, &backBtn)) setInSettings(false);
 #else
@@ -2094,6 +2207,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_Rect hitBtn = settingsRowBtn(IDX_SHOW_HITBOXES);
                     SDL_Rect playerHitBtn = settingsRowBtn(IDX_SHOW_PLAYER_HITBOX);
                     SDL_Rect debugViewBtn = settingsRowBtn(IDX_SHOW_DEBUG_VIEW);
+                    SDL_Rect experimentalBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_SHOW_EXPERIMENTAL));
+#if defined(_WIN32)
+                    SDL_Rect updateBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_UPDATE));
+#endif
                     if (SDL_PointInRect(&pt, &fullBtn)) { (void)applyFullscreen(!fullscreen); }
                     else if (SDL_PointInRect(&pt, &vsyncBtn)) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
                     else if (SDL_PointInRect(&pt, &camBtn)) clampCamX = !clampCamX;
@@ -2106,6 +2223,12 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     else if (SDL_PointInRect(&pt, &hitBtn) && debugModeEnabled) defaultShowHitboxes = !defaultShowHitboxes;
                     else if (SDL_PointInRect(&pt, &playerHitBtn) && debugModeEnabled) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
                     else if (SDL_PointInRect(&pt, &debugViewBtn) && debugModeEnabled) defaultShowDebugView = !defaultShowDebugView;
+                    else if (SDL_PointInRect(&pt, &experimentalBtn)) showExperimentalFeatures = !showExperimentalFeatures;
+#if defined(_WIN32)
+                    else if (SDL_PointInRect(&pt, &updateBtn) && ctx.launchUpdater) {
+                        openSettingsTab(IDX_UPDATER_TAB);
+                    }
+#endif
                     else if (SDL_PointInRect(&pt, &aboutBtn)) { openSettingsTab(4); }
                     else if (SDL_PointInRect(&pt, &backBtn)) setInSettings(false);
 #endif
@@ -2360,6 +2483,9 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_Rect hitBtn = settingsRowBtn(IDX_SHOW_HITBOXES);
                     SDL_Rect playerHitBtn = settingsRowBtn(IDX_SHOW_PLAYER_HITBOX);
                     SDL_Rect debugViewBtn = settingsRowBtn(IDX_SHOW_DEBUG_VIEW);
+#if defined(_WIN32)
+                    SDL_Rect updateBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_UPDATE));
+#endif
                     if (SDL_PointInRect(&pt, &fullBtn)) { (void)applyFullscreen(!fullscreen); }
                     else if (SDL_PointInRect(&pt, &vsyncBtn)) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
                     else if (SDL_PointInRect(&pt, &camBtn)) clampCamX = !clampCamX;
@@ -2373,6 +2499,12 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     else if (SDL_PointInRect(&pt, &hitBtn) && debugModeEnabled) defaultShowHitboxes = !defaultShowHitboxes;
                     else if (SDL_PointInRect(&pt, &playerHitBtn) && debugModeEnabled) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
                     else if (SDL_PointInRect(&pt, &debugViewBtn) && debugModeEnabled) defaultShowDebugView = !defaultShowDebugView;
+#if defined(_WIN32)
+                    else if (SDL_PointInRect(&pt, &updateBtn) && ctx.launchUpdater) {
+                        if (ctx.saveClientSettings) ctx.saveClientSettings();
+                        (void)ctx.launchUpdater();
+                    }
+#endif
                     else if (SDL_PointInRect(&pt, &aboutBtn)) { openSettingsTab(4); }
                     else if (SDL_PointInRect(&pt, &backBtn)) setInSettings(false);
 #endif
@@ -2584,7 +2716,12 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 const int titleY = (int)std::lround(menuCanvasOriginY() + 84.0f * menuCanvasScale());
                 DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(3, title) / 2, titleY, 3, title);
             }
-            const std::string versionText = std::string("v") + (ctx.versionString.empty() ? "dev" : ctx.versionString);
+            std::string versionText = std::string("v") + (ctx.versionString.empty() ? "dev" : ctx.versionString);
+#if defined(_WIN32)
+            if (!ctx.versionIdString.empty()) {
+                versionText += std::string(" [ID ") + ctx.versionIdString + "]";
+            }
+#endif
             const std::string copyrightText = "Copyright (c) Benno111 2024 - 2026";
             const int footerScale = std::max(1, (int)std::lround(2.0f * menuCanvasScale() * mainMenuScale()));
             const int footerY = (int)std::lround(menuCanvasOriginY() + 496.0f * menuCanvasScale());
@@ -2816,6 +2953,9 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 };
                 drawAboutLine(aboutHeadScale, "DORFPLATFORMER TIMETRAVEL", 8);
                 drawAboutLine(aboutBodyScale, std::string("VERSION: ") + (ctx.versionString.empty() ? "dev" : ctx.versionString), 6);
+#if defined(_WIN32)
+                drawAboutLine(aboutBodyScale, std::string("VERSION ID: ") + (ctx.versionIdString.empty() ? "unknown" : ctx.versionIdString), 6);
+#endif
                 drawAboutLine(aboutBodyScale, std::string("SDL: ") + std::to_string(sdlMajor) + "." + std::to_string(sdlMinor) + "." + std::to_string(sdlPatch), 6);
                 drawAboutLine(aboutBodyScale, std::string("PLATFORM: ") + (platform ? platform : "unknown"), 6);
                 drawAboutLine(aboutBodyScale, std::string("RENDERER: ") + (rendererName ? rendererName : "unknown"), 6);
@@ -2830,6 +2970,12 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 drawAboutLine(aboutBodyScale, sdlRevision ? sdlRevision : "unknown", 8);
                 drawAboutLine(aboutBodyScale, "BUILD UUID:", 2);
                 drawAboutLine(aboutBodyScale, ctx.buildUuid, 6);
+#if defined(_WIN32)
+                drawAboutLine(aboutBodyScale,
+                              std::string("UPDATER: ") + updaterStatusText(),
+                              6);
+                drawAboutLine(aboutBodyScale, "PRESS U OR USE SETTINGS > CHECK FOR UPDATES", 6);
+#endif
                 aboutContentBottomY = y + aboutScrollY;
                 SDL_SetRenderClipRect(ctx.ren, nullptr);
             } else if (settingsTab == 3) {
@@ -3007,6 +3153,68 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     drawRowText(i, rowText);
                 }
                 SDL_SetRenderClipRect(ctx.ren, nullptr);
+            } else if (settingsTab == IDX_UPDATER_TAB) {
+                SDL_Rect listClip = settingsListClipRect();
+                SDL_SetRenderClipRect(ctx.ren, &listClip);
+                const std::string status = updaterStatusText();
+                const std::string detail = updaterStatusDetail();
+                const std::string latest = updaterLatestVersionText();
+                const std::string notes = updaterNotesText();
+                const float progress01 = updaterProgress01();
+                const std::string actionLabel =
+                    updaterCanStartInstall() ? "START UPDATE" :
+                    (status == "NOT CONFIGURED" ? "UPDATER NOT CONFIGURED" : "CHECK FOR UPDATES");
+                std::vector<std::string> rows = {
+                    std::string("STATUS: ") + status,
+                    actionLabel,
+                    "BACK"
+                };
+                for (int i = 0; i < (int)rows.size(); ++i) {
+                    drawToggleHitbox(i, i == settingsSel);
+                    if (i == settingsSel) {
+                        SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_BLEND);
+                        SDL_SetRenderDrawColor(ctx.ren, 255, 255, 255, 76);
+                        SDL_Rect hl = settingsRowBtn(i);
+                        SDL_RenderFillRect(ctx.ren, &hl);
+                        SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_NONE);
+                    }
+                    drawRowText(i, rows[i]);
+                }
+                int infoY = settingsRowY((int)rows.size()) + std::max(8, (int)std::lround(10.0f * settingsMenuScale()));
+                const int infoScale = std::clamp((int)std::lround(1.0f + 0.30f * settingsMenuScale()), 1, 2);
+                const int infoX = settingsRowBtn(0).x + std::max(6, (int)std::lround(8.0f * settingsMenuScale()));
+                auto drawInfo = [&](const std::string& line) {
+                    if (line.empty()) return;
+                    DrawText(ctx.ren, infoX, infoY, infoScale, line);
+                    infoY += std::max(16, 10 * infoScale + 6);
+                };
+                drawInfo(std::string("CURRENT: ") + (ctx.versionString.empty() ? "dev" : ctx.versionString));
+                if (!ctx.versionIdString.empty()) drawInfo(std::string("CURRENT ID: ") + ctx.versionIdString);
+                if (!latest.empty()) drawInfo(std::string("LATEST: ") + latest);
+                if (!detail.empty()) drawInfo(std::string("DETAIL: ") + detail);
+                if (status.find("DOWNLOADING") != std::string::npos || progress01 > 0.0f) {
+                    SDL_Rect bar{
+                        infoX,
+                        infoY + 2,
+                        std::max(80, settingsRowBtn(0).w - std::max(12, (int)std::lround(16.0f * settingsMenuScale()))),
+                        std::clamp((int)std::lround(12.0f * settingsMenuScale()), 10, 18)
+                    };
+                    SDL_SetRenderDrawColor(ctx.ren, 70, 80, 95, 255);
+                    SDL_RenderFillRect(ctx.ren, &bar);
+                    SDL_SetRenderDrawColor(ctx.ren, 130, 150, 180, 255);
+                    SDL_RenderDrawRect(ctx.ren, &bar);
+                    SDL_Rect fill = bar;
+                    fill.w = std::clamp((int)std::lround(progress01 * bar.w), 0, bar.w);
+                    SDL_SetRenderDrawColor(ctx.ren, 180, 220, 255, 255);
+                    SDL_RenderFillRect(ctx.ren, &fill);
+                    infoY += bar.h + std::max(10, (int)std::lround(12.0f * settingsMenuScale()));
+                    drawInfo(std::string("PROGRESS: ") + std::to_string((int)std::lround(progress01 * 100.0f)) + "%");
+                }
+                if (!notes.empty()) {
+                    drawInfo("NOTES:");
+                    drawInfo(notes);
+                }
+                SDL_SetRenderClipRect(ctx.ren, nullptr);
             } else if (isExtraTab(settingsTab)) {
                 SDL_Rect listClip = settingsListClipRect();
                 SDL_SetRenderClipRect(ctx.ren, &listClip);
@@ -3051,6 +3259,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     std::string("DEBUG HUD: ") + (defaultShowDebugView ? "ON" : "OFF"),
                     std::string("MUSIC: ") + std::to_string((musicVolume * 100) / 128) + "%",
                     std::string("SFX: ") + std::to_string((sfxVolume * 100) / 128) + "%",
+                    std::string("SHOW EXPERIMENTAL FEATURES: ") + (showExperimentalFeatures ? "ON" : "OFF"),
                     "ABOUT",
                     "BACK"
                 };
@@ -3067,6 +3276,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     std::string("DEBUG HUD: ") + (defaultShowDebugView ? "ON" : "OFF"),
                     std::string("MUSIC: ") + std::to_string((musicVolume * 100) / 128) + "%",
                     std::string("SFX: ") + std::to_string((sfxVolume * 100) / 128) + "%",
+                    std::string("SHOW EXPERIMENTAL FEATURES: ") + (showExperimentalFeatures ? "ON" : "OFF"),
+#if defined(_WIN32)
+                    std::string("UPDATER: ") + updaterStatusText(),
+#endif
                     "ABOUT",
                     "BACK"
                 };
@@ -3083,6 +3296,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     if (i == 5) drawToggleCheckbox(drawIdx, defaultShowHitboxes);
                     if (i == 6) drawToggleCheckbox(drawIdx, defaultShowPlayerHitbox);
                     if (i == 7) drawToggleCheckbox(drawIdx, defaultShowDebugView);
+                    if (i == IDX_SHOW_EXPERIMENTAL) drawToggleCheckbox(drawIdx, showExperimentalFeatures);
 #else
                     if (i == 0) drawToggleCheckbox(drawIdx, fullscreen);
                     if (i == 1) drawToggleCheckbox(drawIdx, vsyncEnabled);
@@ -3092,6 +3306,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     if (i == 6) drawToggleCheckbox(drawIdx, defaultShowHitboxes);
                     if (i == 7) drawToggleCheckbox(drawIdx, defaultShowPlayerHitbox);
                     if (i == 8) drawToggleCheckbox(drawIdx, defaultShowDebugView);
+                    if (i == IDX_SHOW_EXPERIMENTAL) drawToggleCheckbox(drawIdx, showExperimentalFeatures);
 #endif
                     int y = settingsRowY(drawIdx);
                     if (i == settingsSel) {
