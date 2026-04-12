@@ -20,6 +20,9 @@
 
 namespace {
 
+constexpr const wchar_t* kTrayMutexName = L"Local\\DFNewTrayAppMutex";
+constexpr const wchar_t* kTrayStopEventName = L"Local\\DFNewTrayAppStopEvent";
+
 struct AppState {
     std::filesystem::path rootDir;
     std::filesystem::path launcherPath;
@@ -317,6 +320,24 @@ void SDLCALL onExitClicked(void* userdata, SDL_TrayEntry*) {
     ctx->running = false;
 }
 
+bool hasArg(int argc, wchar_t** argv, const wchar_t* expected) {
+    if (!expected) return false;
+    for (int i = 1; i < argc; ++i) {
+        if (argv[i] && _wcsicmp(argv[i], expected) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool signalExistingTrayShutdown() {
+    HANDLE stopEvent = OpenEventW(EVENT_MODIFY_STATE, FALSE, kTrayStopEventName);
+    if (!stopEvent) return false;
+    const BOOL signaled = SetEvent(stopEvent);
+    CloseHandle(stopEvent);
+    return signaled != FALSE;
+}
+
 void refreshTrayUi(TrayContext& ctx) {
     ctx.state = readAppState(ctx.rootDir, ctx.launcherPath);
     SDL_SetTrayEntryLabel(ctx.gameStatusEntry,
@@ -349,15 +370,37 @@ void refreshTrayUi(TrayContext& ctx) {
 } // namespace
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
-    HANDLE mutex = CreateMutexW(nullptr, TRUE, L"Local\\DFNewTrayAppMutex");
+    int argc = 0;
+    wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    const bool shutdownOnly = argv && (hasArg(argc, argv, L"--shutdown") || hasArg(argc, argv, L"--exit"));
+    if (argv) {
+        LocalFree(argv);
+        argv = nullptr;
+    }
+
+    if (shutdownOnly) {
+        return signalExistingTrayShutdown() ? 0 : 1;
+    }
+
+    HANDLE mutex = CreateMutexW(nullptr, TRUE, kTrayMutexName);
     if (!mutex || GetLastError() == ERROR_ALREADY_EXISTS) {
         if (mutex) CloseHandle(mutex);
         return 0;
     }
 
+    HANDLE stopEvent = CreateEventW(nullptr, FALSE, FALSE, kTrayStopEventName);
+    if (!stopEvent) {
+        if (mutex) {
+            ReleaseMutex(mutex);
+            CloseHandle(mutex);
+        }
+        return 1;
+    }
+
     wchar_t modulePathBuf[MAX_PATH] = {};
     const DWORD moduleLen = GetModuleFileNameW(nullptr, modulePathBuf, (DWORD)std::size(modulePathBuf));
     if (moduleLen == 0 || moduleLen >= std::size(modulePathBuf)) {
+        CloseHandle(stopEvent);
         if (mutex) CloseHandle(mutex);
         return 1;
     }
@@ -366,6 +409,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     const std::filesystem::path launcherPath = rootDir / "df-launcher.exe";
 
     if (!SDL_Init(SDL_INIT_VIDEO)) {
+        CloseHandle(stopEvent);
         if (mutex) CloseHandle(mutex);
         return 1;
     }
@@ -375,6 +419,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     if (icon) SDL_DestroySurface(icon);
     if (!tray) {
         SDL_Quit();
+        CloseHandle(stopEvent);
         if (mutex) CloseHandle(mutex);
         return 1;
     }
@@ -405,6 +450,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
 
     Uint64 lastRefresh = SDL_GetTicks();
     while (ctx.running) {
+        if (WaitForSingleObject(stopEvent, 0) == WAIT_OBJECT_0) {
+            ctx.running = false;
+            break;
+        }
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_EVENT_QUIT) {
@@ -422,6 +471,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
 
     SDL_DestroyTray(tray);
     SDL_Quit();
+    CloseHandle(stopEvent);
     if (mutex) {
         ReleaseMutex(mutex);
         CloseHandle(mutex);
