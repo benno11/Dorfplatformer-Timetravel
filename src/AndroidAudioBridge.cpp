@@ -99,7 +99,7 @@ bool cacheMethods(JNIEnv* env) {
 
 template <typename Fn>
 auto withEnv(Fn&& fn) -> decltype(fn(static_cast<JNIEnv*>(nullptr))) {
-    JNIEnv* env = SDL_GetAndroidJNIEnv();
+    JNIEnv* env = static_cast<JNIEnv*>(SDL_GetAndroidJNIEnv());
     if (!env || !cacheMethods(env)) {
         return decltype(fn(static_cast<JNIEnv*>(nullptr)))();
     }
