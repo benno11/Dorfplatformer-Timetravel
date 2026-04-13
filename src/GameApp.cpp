@@ -351,7 +351,12 @@ int RunGameApp(int argc, char** argv) {
     }
     logStartup("SDL_Init completed");
     auto tryAudioInit = [&](const char* label, const char* forcedDriver) -> bool {
-        SDL_QuitSubSystem(SDL_INIT_AUDIO);
+        // Only quit the audio subsystem if it was previously initialised.
+        // Calling SDL_QuitSubSystem(SDL_INIT_AUDIO) unconditionally before the
+        // first SDL_InitSubSystem call can crash on Android's JNI audio bridge.
+        if (SDL_WasInit(SDL_INIT_AUDIO) & SDL_INIT_AUDIO) {
+            SDL_QuitSubSystem(SDL_INIT_AUDIO);
+        }
         if (forcedDriver && *forcedDriver) applyAudioDriverSelection(forcedDriver);
         else if (initialAudioEnv != "<unset>") applyAudioDriverSelection(initialAudioEnv.c_str());
         else applyAudioDriverSelection(nullptr);
