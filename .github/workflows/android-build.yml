@@ -33,7 +33,7 @@ jobs:
 
     steps:
       - name: Checkout game
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -91,7 +91,7 @@ jobs:
 
     steps:
       - name: Checkout game
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Install Linux build tools
         if: runner.os == 'Linux'
@@ -110,7 +110,7 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Checkout vcpkg
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           repository: microsoft/vcpkg
           path: .ci/vcpkg
@@ -123,7 +123,7 @@ jobs:
             .ci/vcpkg/buildtrees
             .ci/vcpkg/packages
             .ci/vcpkg/installed
-          key: vcpkg-${{ runner.os }}-${{ matrix.triplet }}-${{ hashFiles('CMakeLists.txt', '.github/workflows/android-build.yml') }}
+          key: vcpkg-${{ runner.os }}-${{ matrix.triplet }}-${{ hashFiles('CMakeLists.txt', '.github/workflows/build-game.yml') }}
 
       - name: Bootstrap vcpkg
         shell: pwsh
@@ -257,7 +257,7 @@ jobs:
 
     steps:
       - name: Checkout game
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -296,7 +296,7 @@ jobs:
           SDL_REF: release-3.4.x
           SDL_IMAGE_REF: release-3.4.x
           SDL_TTF_REF: release-3.4.x
-          SDL_MIXER_REF: release-3.4.x
+          SDL_MIXER_REF: release-3.2.x
           SDL_REQUIRED_VERSION: 3.4.0
           TERM: xterm
         run: |
