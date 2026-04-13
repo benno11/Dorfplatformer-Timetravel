@@ -1,9 +1,9 @@
 #define MyAppName "Dorfplatformer Timetravel"
 #ifndef MyAppVersion
-  #define MyAppVersion "2.1.2"
+  #define MyAppVersion "2.2.0"
 #endif
 #ifndef MyAppVersionId
-  #define MyAppVersionId "0"
+  #define MyAppVersionId "22"
 #endif
 #define MyAppPublisher "Benno111"
 #define MyAppExeName "df-launcher.exe"
