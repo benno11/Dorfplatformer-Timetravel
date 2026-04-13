@@ -474,6 +474,11 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         mSingleton = this;
         SDL.setContext(this);
 
+        // Register audio device callbacks so the native audio layer can enumerate
+        // playback devices.  Must be called after SDL.setContext() has provided a
+        // context to SDLAudioManager.
+        SDLAudioManager.registerAudioDeviceCallback();
+
         mClipboardHandler = new SDLClipboardHandler();
 
         mHIDDeviceManager = HIDDeviceManager.acquire(this);
@@ -706,6 +711,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
             mHIDDeviceManager = null;
         }
 
+        SDLAudioManager.unregisterAudioDeviceCallback();
         SDLAudioManager.release(this);
 
         if (SDLActivity.mBrokenLibraries) {
