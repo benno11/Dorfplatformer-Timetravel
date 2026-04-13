@@ -3,13 +3,13 @@
 #if defined(__ANDROID__)
 
 #include <jni.h>
+#include <SDL3/SDL.h>
 
 #include <mutex>
 #include <string>
 
 namespace {
 
-JavaVM* g_vm = nullptr;
 jclass g_bridge_class = nullptr;
 std::mutex g_jni_mutex;
 
@@ -35,26 +35,6 @@ struct MethodCache {
 } g_methods;
 
 constexpr const char* kBridgeClassName = "com/Benno111/dorfplatformertimetravel/AndroidAudioBridge";
-
-JNIEnv* getEnv(bool* didAttach) {
-    if (didAttach) *didAttach = false;
-    if (!g_vm) return nullptr;
-
-    JNIEnv* env = nullptr;
-    const jint getEnvResult = g_vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6);
-    if (getEnvResult == JNI_OK) return env;
-    if (getEnvResult != JNI_EDETACHED) return nullptr;
-
-    if (g_vm->AttachCurrentThread(&env, nullptr) != JNI_OK) return nullptr;
-    if (didAttach) *didAttach = true;
-    return env;
-}
-
-void releaseEnv(bool didAttach) {
-    if (didAttach && g_vm) {
-        g_vm->DetachCurrentThread();
-    }
-}
 
 bool cacheMethods(JNIEnv* env) {
     if (!env) return false;
@@ -119,12 +99,9 @@ bool cacheMethods(JNIEnv* env) {
 
 template <typename Fn>
 auto withEnv(Fn&& fn) -> decltype(fn(static_cast<JNIEnv*>(nullptr))) {
-    bool didAttach = false;
-    JNIEnv* env = getEnv(&didAttach);
+    JNIEnv* env = SDL_GetAndroidJNIEnv();
     if (!env || !cacheMethods(env)) {
-        using ReturnT = decltype(fn(static_cast<JNIEnv*>(nullptr)));
-        releaseEnv(didAttach);
-        return ReturnT();
+        return decltype(fn(static_cast<JNIEnv*>(nullptr)))();
     }
 
     auto result = fn(env);
@@ -132,7 +109,6 @@ auto withEnv(Fn&& fn) -> decltype(fn(static_cast<JNIEnv*>(nullptr))) {
         env->ExceptionDescribe();
         env->ExceptionClear();
     }
-    releaseEnv(didAttach);
     return result;
 }
 
@@ -153,17 +129,6 @@ std::string sanitizeAssetPath(const std::string& path) {
 }
 
 } // namespace
-
-extern "C" jint JNI_OnLoad(JavaVM* vm, void*) {
-    g_vm = vm;
-    bool didAttach = false;
-    JNIEnv* env = getEnv(&didAttach);
-    if (env) {
-        (void)cacheMethods(env);
-    }
-    releaseEnv(didAttach);
-    return JNI_VERSION_1_6;
-}
 
 namespace AndroidAudioBridge {
 
