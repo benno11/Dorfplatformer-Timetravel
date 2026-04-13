@@ -76,6 +76,7 @@ $CXX $CXXFLAGS $CPPFLAGS_PKG \
   "$SRC_DIR/CrashReporter.cpp" \
   "$SRC_DIR/FrontendMenu.cpp" \
   "$SRC_DIR/AudioSystem.cpp" \
+  "$SRC_DIR/AndroidAudioBridge.cpp" \
   "$SRC_DIR/ParallaxRenderer.cpp" \
   "$SRC_DIR/World3PatternBackground.cpp" \
   $LDFLAGS $LIBS_PKG \
