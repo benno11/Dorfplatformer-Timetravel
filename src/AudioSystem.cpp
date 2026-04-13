@@ -62,11 +62,33 @@ static int Mix_InitCompat(int flags) {
 static int Mix_OpenAudioCompat(int frequency, SDL_AudioFormat format, int channels, int chunksize) {
     (void)chunksize;
     if (g_mix_mixer) return 0;
+    // Guard against calling without an initialised audio subsystem: on Android
+    // this can crash inside the aaudio backend rather than returning an error.
+    if (!(SDL_WasInit(SDL_INIT_AUDIO) & SDL_INIT_AUDIO)) return -1;
     SDL_AudioSpec want{};
     want.freq = frequency;
     want.format = format;
     want.channels = (Uint8)((channels <= 0) ? 2 : channels);
+#if defined(__ANDROID__)
+    // On Android, SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK can crash when the audio
+    // device list hasn't settled yet.  Enumerate and use an explicit device.
+    SDL_AudioDeviceID devid = SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK;
+    int devCount = 0;
+    SDL_AudioDeviceID* devs = SDL_GetAudioPlaybackDevices(&devCount);
+    if (devs && devCount > 0) {
+        devid = devs[0];
+    } else {
+        devCount = 0;
+    }
+    SDL_free(devs);
+    if (devCount <= 0) {
+        SDL_Log("Mix_OpenAudioCompat: no audio playback devices available");
+        return -1;
+    }
+    g_mix_mixer = MIX_CreateMixerDevice(devid, &want);
+#else
     g_mix_mixer = MIX_CreateMixerDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &want);
+#endif
     return g_mix_mixer ? 0 : -1;
 }
 
@@ -360,6 +382,15 @@ bool AudioSystem::initialize() {
             if (pipewireHotplugFailed && std::strcmp(driver, "pipewire") == 0) continue;
             if (!audioDriverAvailable(driver)) continue;
             if (activeDriver && std::strcmp(activeDriver, driver) == 0) continue;
+#if defined(__ANDROID__)
+            // On Android, rapid SDL_QuitSubSystem/SDL_InitSubSystem cycling can
+            // crash the aaudio backend.  Only reinitialise when the subsystem is
+            // not currently active (i.e. a previous init attempt already quit it).
+            if (SDL_WasInit(SDL_INIT_AUDIO) & SDL_INIT_AUDIO) {
+                SDL_Log("Audio mixer retry skipped on Android (subsystem busy, driver=%s)", driver);
+                continue;
+            }
+#endif
             if (!reinitAudioSubsystemWithDriver(driver)) continue;
             const char* switchedDriver = SDL_GetCurrentAudioDriver();
             if (!switchedDriver || std::strcmp(switchedDriver, driver) != 0) {
