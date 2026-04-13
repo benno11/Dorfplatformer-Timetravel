@@ -279,6 +279,41 @@ void openInstallFolder(const AppState& state) {
     ShellExecuteW(nullptr, L"open", state.rootDir.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
+void launchUpdater(const AppState& state) {
+    const std::filesystem::path updaterPath = state.rootDir / "df-updater.exe";
+    if (!std::filesystem::exists(updaterPath)) {
+        MessageBoxW(nullptr, L"df-updater.exe was not found.", L"Dorfplatformer Tray", MB_OK | MB_ICONERROR);
+        return;
+    }
+    std::wstring cmdLine = quoteWindowsArg(updaterPath.wstring());
+    cmdLine += L" --mode check";
+
+    STARTUPINFOW si{};
+    si.cb = sizeof(si);
+    PROCESS_INFORMATION pi{};
+    std::vector<wchar_t> mutableCmd(cmdLine.begin(), cmdLine.end());
+    mutableCmd.push_back(L'\0');
+    const BOOL started = CreateProcessW(
+        updaterPath.c_str(),
+        mutableCmd.data(),
+        nullptr,
+        nullptr,
+        FALSE,
+        CREATE_NEW_PROCESS_GROUP,
+        nullptr,
+        state.rootDir.c_str(),
+        &si,
+        &pi);
+    if (!started) {
+        std::wstringstream ss;
+        ss << L"Could not launch the updater.\n\nWin32 error: " << GetLastError();
+        MessageBoxW(nullptr, ss.str().c_str(), L"Dorfplatformer Tray", MB_OK | MB_ICONERROR);
+        return;
+    }
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+}
+
 struct TrayContext {
     std::filesystem::path rootDir;
     std::filesystem::path launcherPath;
@@ -289,6 +324,7 @@ struct TrayContext {
     SDL_TrayEntry* versionEntry = nullptr;
     SDL_TrayEntry* detailEntry = nullptr;
     SDL_TrayEntry* launchEntry = nullptr;
+    SDL_TrayEntry* checkUpdatesEntry = nullptr;
     SDL_TrayEntry* closeGameEntry = nullptr;
     SDL_TrayEntry* openFolderEntry = nullptr;
     SDL_TrayEntry* exitEntry = nullptr;
@@ -300,6 +336,12 @@ void SDLCALL onLaunchClicked(void* userdata, SDL_TrayEntry*) {
     auto* ctx = static_cast<TrayContext*>(userdata);
     if (!ctx) return;
     launchViaLauncher(ctx->state);
+}
+
+void SDLCALL onCheckUpdatesClicked(void* userdata, SDL_TrayEntry*) {
+    auto* ctx = static_cast<TrayContext*>(userdata);
+    if (!ctx) return;
+    launchUpdater(ctx->state);
 }
 
 void SDLCALL onCloseGameClicked(void* userdata, SDL_TrayEntry*) {
@@ -351,6 +393,8 @@ void refreshTrayUi(TrayContext& ctx) {
                           (std::string("Detail: ") +
                            (ctx.state.updaterDetail.empty() ? "No active message." : ctx.state.updaterDetail)).c_str());
     SDL_SetTrayEntryEnabled(ctx.closeGameEntry, ctx.state.gameProcessCount > 0);
+    SDL_SetTrayEntryEnabled(ctx.checkUpdatesEntry, ctx.state.updaterProcessCount == 0 &&
+                            (ctx.state.updaterState.empty() || ctx.state.updaterState == "idle"));
 
     std::string tooltip = "Dorfplatformer";
     tooltip += "\nGame: ";
@@ -437,11 +481,13 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     ctx.detailEntry = SDL_InsertTrayEntryAt(menu, -1, "Detail: ...", SDL_TRAYENTRY_BUTTON | SDL_TRAYENTRY_DISABLED);
     SDL_InsertTrayEntryAt(menu, -1, nullptr, SDL_TRAYENTRY_BUTTON);
     ctx.launchEntry = SDL_InsertTrayEntryAt(menu, -1, "Launch Game", SDL_TRAYENTRY_BUTTON);
+    ctx.checkUpdatesEntry = SDL_InsertTrayEntryAt(menu, -1, "Check for Updates", SDL_TRAYENTRY_BUTTON);
     ctx.closeGameEntry = SDL_InsertTrayEntryAt(menu, -1, "Close Running Game", SDL_TRAYENTRY_BUTTON);
     ctx.openFolderEntry = SDL_InsertTrayEntryAt(menu, -1, "Open Install Folder", SDL_TRAYENTRY_BUTTON);
     ctx.exitEntry = SDL_InsertTrayEntryAt(menu, -1, "Exit Tray", SDL_TRAYENTRY_BUTTON);
 
     SDL_SetTrayEntryCallback(ctx.launchEntry, &onLaunchClicked, &ctx);
+    SDL_SetTrayEntryCallback(ctx.checkUpdatesEntry, &onCheckUpdatesClicked, &ctx);
     SDL_SetTrayEntryCallback(ctx.closeGameEntry, &onCloseGameClicked, &ctx);
     SDL_SetTrayEntryCallback(ctx.openFolderEntry, &onOpenFolderClicked, &ctx);
     SDL_SetTrayEntryCallback(ctx.exitEntry, &onExitClicked, &ctx);

@@ -21,6 +21,10 @@
 
 #include "AssetPath.h"
 
+#if defined(__ANDROID__)
+#include "AndroidAudioBridge.h"
+#endif
+
 #if AUDIO_HAS_SDL3_MIXER
 namespace {
 struct Mix_Chunk { MIX_Audio* audio = nullptr; };
@@ -334,6 +338,7 @@ struct AudioSystem::Impl {
     bool ready = false;
     bool loopingEnabled = true;
     bool shuttingDown = false;
+    bool usingJavaBackend = false;
 
 #if AUDIO_HAS_SDL3_MIXER
     Mix_Chunk* coinSfx = nullptr;
@@ -353,6 +358,12 @@ bool AudioSystem::initialize() {
     if (!impl_) impl_ = new Impl();
     if (impl_->shuttingDown) return false;
     if (impl_->ready) return true;
+
+#if defined(__ANDROID__)
+    impl_->usingJavaBackend = AndroidAudioBridge::initialize();
+    impl_->ready = impl_->usingJavaBackend;
+    return impl_->ready;
+#endif
 
 #if AUDIO_HAS_SDL3_MIXER
     constexpr int mixerFlags = MIX_INIT_MP3;
@@ -420,6 +431,15 @@ void AudioSystem::shutdown() {
     if (impl_->shuttingDown) return;
     impl_->shuttingDown = true;
 
+#if defined(__ANDROID__)
+    if (impl_->usingJavaBackend) {
+        AndroidAudioBridge::shutdown();
+        delete impl_;
+        impl_ = nullptr;
+        return;
+    }
+#endif
+
     if (impl_->ready) {
         haltMusic();
         haltAllChannels();
@@ -446,6 +466,11 @@ bool AudioSystem::isReady() const { return impl_ && impl_->ready; }
 void AudioSystem::setLoopingEnabled(bool enabled) {
     if (!impl_) impl_ = new Impl();
     impl_->loopingEnabled = enabled;
+#if defined(__ANDROID__)
+    if (impl_->usingJavaBackend) {
+        AndroidAudioBridge::setLoopingEnabled(enabled);
+    }
+#endif
 }
 
 bool AudioSystem::isLoopingEnabled() const {
@@ -454,6 +479,12 @@ bool AudioSystem::isLoopingEnabled() const {
 
 void AudioSystem::loadGlobalAssets() {
     if (!isReady() || impl_->shuttingDown) return;
+#if defined(__ANDROID__)
+    if (impl_->usingJavaBackend) {
+        AndroidAudioBridge::loadGlobalAssets();
+        return;
+    }
+#endif
 #if AUDIO_HAS_SDL3_MIXER
     const std::string decoders = availableAudioDecoders();
     auto loadSfx = [](const char* path, const char* label) -> Mix_Chunk* {
@@ -480,6 +511,12 @@ void AudioSystem::loadGlobalAssets() {
 
 void AudioSystem::unloadGlobalAssets() {
     if (!impl_) return;
+#if defined(__ANDROID__)
+    if (impl_->usingJavaBackend) {
+        AndroidAudioBridge::unloadGlobalAssets();
+        return;
+    }
+#endif
 #if AUDIO_HAS_SDL3_MIXER
     if (!g_mix_mixer) {
         impl_->coinSfx = nullptr;
@@ -506,6 +543,12 @@ void AudioSystem::unloadGlobalAssets() {
 
 void AudioSystem::applyVolumes(bool muteAllAudio, int musicVolume, int sfxVolume) {
     if (!isReady() || impl_->shuttingDown) return;
+#if defined(__ANDROID__)
+    if (impl_->usingJavaBackend) {
+        AndroidAudioBridge::applyVolumes(muteAllAudio, musicVolume, sfxVolume);
+        return;
+    }
+#endif
 #if AUDIO_HAS_SDL3_MIXER
     const int appliedMusic = muteAllAudio ? 0 : musicVolume;
     const int appliedSfx = muteAllAudio ? 0 : sfxVolume;
@@ -521,6 +564,12 @@ void AudioSystem::applyVolumes(bool muteAllAudio, int musicVolume, int sfxVolume
 
 void AudioSystem::applyMenuMusicToggle(bool menuMusicEnabled) {
     if (!isReady() || impl_->shuttingDown) return;
+#if defined(__ANDROID__)
+    if (impl_->usingJavaBackend) {
+        AndroidAudioBridge::applyMenuMusicToggle(menuMusicEnabled);
+        return;
+    }
+#endif
 #if AUDIO_HAS_SDL3_MIXER
     if (menuMusicEnabled && impl_->menuMusic) {
         if (!impl_->menuMusicPlaying || !Mix_PlayingMusicCompat()) {
@@ -535,6 +584,12 @@ void AudioSystem::applyMenuMusicToggle(bool menuMusicEnabled) {
 
 void AudioSystem::loadLevelMusic(const std::string& musicPath) {
     if (!isReady() || impl_->shuttingDown) return;
+#if defined(__ANDROID__)
+    if (impl_->usingJavaBackend) {
+        AndroidAudioBridge::loadLevelMusic(musicPath);
+        return;
+    }
+#endif
 #if AUDIO_HAS_SDL3_MIXER
     unloadLevelMusic();
     if (musicPath.empty()) return;
@@ -554,6 +609,12 @@ void AudioSystem::loadLevelMusic(const std::string& musicPath) {
 
 void AudioSystem::unloadLevelMusic() {
     if (!impl_) return;
+#if defined(__ANDROID__)
+    if (impl_->usingJavaBackend) {
+        AndroidAudioBridge::unloadLevelMusic();
+        return;
+    }
+#endif
 #if AUDIO_HAS_SDL3_MIXER
     if (!g_mix_mixer) {
         impl_->levelMusic = nullptr;
@@ -569,6 +630,12 @@ void AudioSystem::unloadLevelMusic() {
 
 void AudioSystem::ensureLevelMusic(bool paused, bool deathSequenceActive, bool levelCompleteActive) {
     if (!isReady() || impl_->shuttingDown) return;
+#if defined(__ANDROID__)
+    if (impl_->usingJavaBackend) {
+        AndroidAudioBridge::ensureLevelMusic(paused, deathSequenceActive, levelCompleteActive);
+        return;
+    }
+#endif
 #if AUDIO_HAS_SDL3_MIXER
     if (impl_->levelMusic &&
         !paused &&
@@ -586,6 +653,12 @@ void AudioSystem::ensureLevelMusic(bool paused, bool deathSequenceActive, bool l
 
 void AudioSystem::haltMusic() {
     if (!isReady() || impl_->shuttingDown) return;
+#if defined(__ANDROID__)
+    if (impl_->usingJavaBackend) {
+        AndroidAudioBridge::haltMusic();
+        return;
+    }
+#endif
 #if AUDIO_HAS_SDL3_MIXER
     Mix_HaltMusicCompat();
 #endif
@@ -593,6 +666,12 @@ void AudioSystem::haltMusic() {
 
 void AudioSystem::haltAllChannels() {
     if (!isReady() || impl_->shuttingDown) return;
+#if defined(__ANDROID__)
+    if (impl_->usingJavaBackend) {
+        AndroidAudioBridge::haltAllChannels();
+        return;
+    }
+#endif
 #if AUDIO_HAS_SDL3_MIXER
     Mix_HaltChannelCompat(-1);
 #endif
@@ -600,6 +679,12 @@ void AudioSystem::haltAllChannels() {
 
 void AudioSystem::playCoinSfx() {
     if (!isReady() || impl_->shuttingDown) return;
+#if defined(__ANDROID__)
+    if (impl_->usingJavaBackend) {
+        AndroidAudioBridge::playCoinSfx();
+        return;
+    }
+#endif
 #if AUDIO_HAS_SDL3_MIXER
     if (impl_->coinSfx) Mix_PlayChannelCompat(-1, impl_->coinSfx, 0);
 #endif
@@ -607,6 +692,12 @@ void AudioSystem::playCoinSfx() {
 
 void AudioSystem::playLoseSfx() {
     if (!isReady() || impl_->shuttingDown) return;
+#if defined(__ANDROID__)
+    if (impl_->usingJavaBackend) {
+        AndroidAudioBridge::playLoseSfx();
+        return;
+    }
+#endif
 #if AUDIO_HAS_SDL3_MIXER
     if (impl_->loseSfx) Mix_PlayChannelCompat(-1, impl_->loseSfx, 0);
 #endif
@@ -614,6 +705,12 @@ void AudioSystem::playLoseSfx() {
 
 void AudioSystem::playBumperSfx() {
     if (!isReady() || impl_->shuttingDown) return;
+#if defined(__ANDROID__)
+    if (impl_->usingJavaBackend) {
+        AndroidAudioBridge::playBumperSfx();
+        return;
+    }
+#endif
 #if AUDIO_HAS_SDL3_MIXER
     if (impl_->bumperSfx) Mix_PlayChannelCompat(-1, impl_->bumperSfx, 0);
 #endif
@@ -621,6 +718,12 @@ void AudioSystem::playBumperSfx() {
 
 void AudioSystem::playMessageSfx() {
     if (!isReady() || impl_->shuttingDown) return;
+#if defined(__ANDROID__)
+    if (impl_->usingJavaBackend) {
+        AndroidAudioBridge::playMessageSfx();
+        return;
+    }
+#endif
 #if AUDIO_HAS_SDL3_MIXER
     if (impl_->messageSfx) Mix_PlayChannelCompat(-1, impl_->messageSfx, 0);
 #endif
@@ -628,6 +731,11 @@ void AudioSystem::playMessageSfx() {
 
 int AudioSystem::playVictorySfx() {
     if (!isReady() || impl_->shuttingDown) return -1;
+#if defined(__ANDROID__)
+    if (impl_->usingJavaBackend) {
+        return AndroidAudioBridge::playVictorySfx();
+    }
+#endif
 #if AUDIO_HAS_SDL3_MIXER
     if (impl_->victorySfx) return Mix_PlayChannelCompat(-1, impl_->victorySfx, 0);
 #endif
@@ -636,6 +744,11 @@ int AudioSystem::playVictorySfx() {
 
 bool AudioSystem::isChannelPlaying(int channel) const {
     if (!isReady() || impl_->shuttingDown) return false;
+#if defined(__ANDROID__)
+    if (impl_->usingJavaBackend) {
+        return AndroidAudioBridge::isChannelPlaying(channel);
+    }
+#endif
 #if AUDIO_HAS_SDL3_MIXER
     return Mix_PlayingCompat(channel) != 0;
 #else

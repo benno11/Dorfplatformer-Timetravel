@@ -128,6 +128,7 @@ add_executable(platformer
   src/CrashReporter.cpp
   src/FrontendMenu.cpp
   src/AudioSystem.cpp
+  src/AndroidAudioBridge.cpp
   src/ParallaxRenderer.cpp
   src/World3PatternBackground.cpp
 )

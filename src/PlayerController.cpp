@@ -7,6 +7,7 @@
 namespace {
 bool g_horizontalWrapCollision = false;
 bool g_verticalWrapCollision = false;
+bool swimheld = false;
 constexpr float kJumpBufferDuration = 0.12f;
 
 inline int wrapTileX(int x, int w) {
@@ -213,7 +214,7 @@ PlayerUpdateResult UpdatePlayerMovement(
     if (jumpPressed) {
         player.jumpBufferTime = 1;
     } else {
-        player.jumpBufferTime = std::max(0.0f, player.jumpBufferTime - dt);
+        player.jumpBufferTime = 0;
     }
 
     if (insideSolid) {
@@ -253,12 +254,17 @@ PlayerUpdateResult UpdatePlayerMovement(
     }
 
     if (inWater) {
-        if (jumpDown) {
+        if (jumpDown && swimheld == false) {
+            swimheld = true;
             // Preserve stronger jump impulses so the player can break out of water.
             // Swim rise only assists up to the normal swim-up cap.
             if (player.vy > -swimUpSpeed) {
                 player.vy -= swimRise * dt;
                 if (player.vy < -swimUpSpeed) player.vy = -swimUpSpeed;
+            }
+        }else{
+            if (!jumpDown){
+                swimheld = false;
             }
         }
         if (player.vy > 420.0f) player.vy = 420.0f;
