@@ -45,6 +45,11 @@ public class MainActivity extends SDLActivity {
     private final View.OnSystemUiVisibilityChangeListener systemUiListener =
             visibility -> applyImmersiveMode();
 
+    public static Context getAppContext() {
+        final SDLActivity activity = mSingleton;
+        return activity != null ? activity.getApplicationContext() : null;
+    }
+
     public static String httpGet(String url, int timeoutMs) {
         HttpURLConnection conn = null;
         try {

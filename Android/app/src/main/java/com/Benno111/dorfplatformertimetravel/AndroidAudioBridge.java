@@ -12,8 +12,6 @@ import android.util.SparseArray;
 import android.util.SparseBooleanArray;
 import android.util.SparseIntArray;
 
-import org.libsdl.app.SDLActivity;
-
 import java.io.IOException;
 import java.util.ArrayList;
 
@@ -267,8 +265,7 @@ public final class AndroidAudioBridge {
     }
 
     private static Context getContext() {
-        final SDLActivity activity = SDLActivity.mSingleton;
-        return activity != null ? activity.getApplicationContext() : null;
+        return MainActivity.getAppContext();
     }
 
     private static String normalizeAssetPath(String path) {
