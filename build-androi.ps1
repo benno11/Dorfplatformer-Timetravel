@@ -495,6 +495,7 @@ function Build-NativeAndroidWindows {
         "-Oz",
         "-DNDEBUG",
         "-DSDL_ENABLE_OLD_NAMES=1",
+        "-DPLATFORMER_HAS_SDL3_MIXER=1",
         "-fPIC",
         "-ffunction-sections",
         "-fdata-sections"
