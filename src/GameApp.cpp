@@ -5967,7 +5967,7 @@ int RunGameApp(int argc, char** argv) {
 
         // Smooth camera: exponential lerp of the render position toward the desired position.
         // Skip smoothing during boss/end-sign locks (those are handled separately below).
-        const float kCamSmoothSpeed = 50.0f;
+        const float kCamSmoothSpeed = 200.0f;
         const float camSmoothStep = 1.0f - std::exp(-kCamSmoothSpeed * std::max(0.0f, dt));
         if (!smoothCamInitialized || cameraSmoothingSuppressTimer > 0.0f) {
             smoothCamX = camX;
