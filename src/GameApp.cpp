@@ -2696,6 +2696,10 @@ int RunGameApp(int argc, char** argv) {
         float playerSpawnLockX = 0.0f;
         float playerSpawnLockY = 0.0f;
         float cameraSmoothingSuppressTimer = 0.0f;
+        float smoothCamX = 0.0f;
+        float smoothCamY = 0.0f;
+        bool smoothCamInitialized = false;
+        float cameraLookAheadX = 0.0f; // current look-ahead offset in world pixels (X)
         bool levelCompleteCameraLocked = false;
         float levelCompleteCameraX = 0.0f;
         float levelCompleteCameraY = 0.0f;
@@ -2834,6 +2838,8 @@ int RunGameApp(int argc, char** argv) {
             demoState.startTileSet = false;
             demoState.startTile = SDL_Point{0, 0};
             cameraSmoothingSuppressTimer = 0.20f;
+            smoothCamInitialized = false;
+            cameraLookAheadX = 0.0f;
             setFastTravelActiveDir(-1, "reload");
             fastTravelOverlapWasActive = false;
             fastTravelBlendVx = 0.0f;
@@ -5911,7 +5917,28 @@ int RunGameApp(int argc, char** argv) {
         const float cameraTargetY = forceBossCameraActive
             ? forcedBossCameraY
             : (player.y + player.h * 0.5f);
-        const float freeCamX = cameraTargetX - worldViewW * 0.5f;
+
+        // Look-ahead: smoothly shift the camera toward the direction the player faces/moves.
+        // Only apply look-ahead during normal gameplay (not boss camera, not end-sign lock).
+        const float kLookAheadMax = (float)worldViewW * 0.18f; // max lead in pixels (~18 % of view width)
+        const float kLookAheadLerpSpeed = 3.0f;
+        if (!forceBossCameraActive && !lockCameraToEndSign) {
+            // Target look-ahead based on facing direction (instant direction change prevented by lerp).
+            const float targetLookAhead = (float)player.facing * kLookAheadMax;
+            const float lookAheadStep = 1.0f - std::exp(-kLookAheadLerpSpeed * std::max(0.0f, dt));
+            if (cameraSmoothingSuppressTimer > 0.0f) {
+                cameraLookAheadX = targetLookAhead;
+            } else {
+                cameraLookAheadX += (targetLookAhead - cameraLookAheadX) * lookAheadStep;
+            }
+        } else {
+            // Fade out look-ahead during boss/end-sign camera.
+            const float lookAheadStep = 1.0f - std::exp(-kLookAheadLerpSpeed * std::max(0.0f, dt));
+            cameraLookAheadX += (0.0f - cameraLookAheadX) * lookAheadStep;
+        }
+
+        // Desired camera top-left (before clamping), including look-ahead.
+        const float freeCamX = cameraTargetX + cameraLookAheadX - worldViewW * 0.5f;
         float camX = freeCamX;
         const float freeCamY = cameraTargetY - worldViewH * 0.5f;
         float camY = freeCamY;
@@ -5938,6 +5965,26 @@ int RunGameApp(int argc, char** argv) {
             camYClampBlend += (clampTarget - camYClampBlend) * clampBlendStep;
         }
         camY = freeCamY * (1.0f - camYClampBlend) + clampedCamY * camYClampBlend;
+
+        // Smooth camera: exponential lerp of the render position toward the desired position.
+        // Skip smoothing during boss/end-sign locks (those are handled separately below).
+        const float kCamSmoothSpeed = 8.0f;
+        const float camSmoothStep = 1.0f - std::exp(-kCamSmoothSpeed * std::max(0.0f, dt));
+        if (!smoothCamInitialized || cameraSmoothingSuppressTimer > 0.0f) {
+            smoothCamX = camX;
+            smoothCamY = camY;
+            smoothCamInitialized = true;
+        } else if (!forceBossCameraActive && !lockCameraToEndSign && !levelCompleteActive) {
+            smoothCamX += (camX - smoothCamX) * camSmoothStep;
+            smoothCamY += (camY - smoothCamY) * camSmoothStep;
+            camX = smoothCamX;
+            camY = smoothCamY;
+        } else {
+            // For locked-camera states, follow the locked position immediately.
+            smoothCamX = camX;
+            smoothCamY = camY;
+        }
+
         if (lockCameraToEndSign) {
             if (!endSignCameraLocked) {
                 endSignCameraLocked = true;
