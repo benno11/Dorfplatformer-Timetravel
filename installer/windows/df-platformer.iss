@@ -3,7 +3,7 @@
   #define MyAppVersion "2.2.0"
 #endif
 #ifndef MyAppVersionId
-  #define MyAppVersionId "22"
+  #define MyAppVersionId "5"
 #endif
 #define MyAppPublisher "Benno111"
 #define MyAppExeName "df-launcher.exe"
@@ -12,7 +12,7 @@
 AppId={{D1BE0AE1-0D76-4A53-B02D-1CC6C36AB3AB}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
-AppPublisher={#MyAppPublisher}  // Display a message box
+AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 UninstallDisplayIcon={app}\{#MyAppExeName}
@@ -20,7 +20,7 @@ Compression=lzma
 SolidCompression=yes
 WizardStyle=classic
 ArchitecturesInstallIn64BitMode=x64
-PrivilegesRequired=admin
+PrivilegesRequired=lowest
 OutputDir=..\..\dist\windows-installer\output
 OutputBaseFilename=df-platformer-windows-installer
 

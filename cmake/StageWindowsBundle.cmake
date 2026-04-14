@@ -18,6 +18,7 @@ foreach(_pair
     "${SHEET_CONFIG_EXE}|${APP_DIR}"
     "${LAUNCHER_EXE}|${ROOT_DIR}"
     "${TRAY_EXE}|${ROOT_DIR}"
+    "${UPDATER_EXE}|${APP_DIR}"
     "${UPDATER_EXE}|${ROOT_DIR}"
     "${README_FILE}|${APP_DIR}"
     "${LICENSE_FILE}|${APP_DIR}"

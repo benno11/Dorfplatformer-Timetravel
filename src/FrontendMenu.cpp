@@ -98,13 +98,13 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     std::string& accountManagerUrl = ctx.accountManagerUrl ? *ctx.accountManagerUrl : accountManagerUrlLocal;
     std::string& firebaseApiKey = ctx.firebaseApiKey ? *ctx.firebaseApiKey : firebaseApiKeyLocal;
     constexpr int kUiScaleMinPercent = 50;
-    constexpr int kUiScaleMaxPercent = 200;
+    constexpr int kUiScaleMaxPercent = 400;
     auto uiButtonScale = [&]() -> float {
-        return std::clamp((float)uiScalePercent / 100.0f, 0.5f, 2.0f);
+        return std::clamp((float)uiScalePercent / 100.0f, 0.5f, 4.0f);
     };
     auto settingsMenuScale = [&]() -> float {
-        // Keep the doubled settings look, but cap the extreme end so the menu doesn't cut off.
-        return std::clamp(uiButtonScale() * 2.0f, 1.0f, 2.35f);
+        // Keep the enlarged settings look while allowing the higher UI-scale ceiling.
+        return std::clamp(uiButtonScale() * 2.0f, 1.0f, 4.7f);
     };
     std::vector<std::string> settingsTabLabels = {
         "GENERAL", "AUDIO", "DEBUG", "CONTROLS", "ABOUT",
@@ -165,7 +165,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         const float desiredTotalW = desiredBtnW * 3.0f + desiredGap * 2.0f;
         const float maxTotalW = std::max(260.0f, (float)ctx.baseScreenW - 120.0f);
         const float fit = (desiredTotalW > 0.0f) ? std::min(1.0f, maxTotalW / desiredTotalW) : 1.0f;
-        return std::clamp(desired * fit, 0.55f, 2.5f);
+        return std::clamp(desired * fit, 0.55f, 5.0f);
     };
     auto scaleRectCentered = [&](const SDL_Rect& in, float scale) -> SDL_Rect {
         if (scale <= 0.0f) return in;
@@ -1547,7 +1547,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             SDL_Delay(1);
             continue;
         }
-        SetTextScaleMultiplier(std::clamp((float)uiScalePercent / 100.0f, 0.5f, 2.0f));
+        SetTextScaleMultiplier(std::clamp((float)uiScalePercent / 100.0f, 0.5f, 4.0f));
         applySettingsExitCleanup();
         // Keep menu music alive even when no audio-settings input occurs.
         if (ctx.applyMenuMusicToggle) ctx.applyMenuMusicToggle();

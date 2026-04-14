@@ -26,7 +26,9 @@ constexpr const wchar_t* kTrayStopEventName = L"Local\\DFNewTrayAppStopEvent";
 struct AppState {
     std::filesystem::path rootDir;
     std::filesystem::path launcherPath;
+    std::string currentVersion;
     std::string currentVersionId;
+    std::string windowsUpdateManifestUrl;
     std::string updaterState;
     std::string updaterDetail;
     std::string latestVersion;
@@ -140,13 +142,41 @@ std::filesystem::path updaterStatusPath(const std::filesystem::path& rootDir, co
     return rootDir / "versions" / utf8ToWide(versionId) / "updater-status.json";
 }
 
+std::filesystem::path installedVersionDir(const std::filesystem::path& rootDir, const std::string& versionId) {
+    if (versionId.empty()) return std::filesystem::path();
+    return rootDir / "versions" / utf8ToWide(versionId);
+}
+
 AppState readAppState(const std::filesystem::path& rootDir, const std::filesystem::path& launcherPath) {
     AppState state;
     state.rootDir = rootDir;
     state.launcherPath = launcherPath;
     state.currentVersionId = readCurrentVersionId(rootDir);
+    state.currentVersion = state.currentVersionId;
     state.gameProcessCount = countProcessesByName(L"platformer.exe");
     state.updaterProcessCount = countProcessesByName(L"df-updater.exe");
+    const auto configPath = installedVersionDir(rootDir, state.currentVersionId) / "assets" / "config.json";
+    if (!configPath.empty() && std::filesystem::exists(configPath)) {
+        try {
+            const auto json = nlohmann::json::parse(readTextFile(configPath));
+            if (json.contains("version") && json["version"].is_string()) {
+                state.currentVersion = json["version"].get<std::string>();
+            }
+            if (json.contains("version_id")) {
+                if (json["version_id"].is_string()) {
+                    state.currentVersionId = json["version_id"].get<std::string>();
+                } else if (json["version_id"].is_number_integer()) {
+                    state.currentVersionId = std::to_string(json["version_id"].get<long long>());
+                } else if (json["version_id"].is_number_unsigned()) {
+                    state.currentVersionId = std::to_string(json["version_id"].get<unsigned long long>());
+                }
+            }
+            if (json.contains("windows_update_manifest_url") && json["windows_update_manifest_url"].is_string()) {
+                state.windowsUpdateManifestUrl = json["windows_update_manifest_url"].get<std::string>();
+            }
+        } catch (...) {
+        }
+    }
     const auto statusPath = updaterStatusPath(rootDir, state.currentVersionId);
     if (!statusPath.empty() && std::filesystem::exists(statusPath)) {
         try {
@@ -285,8 +315,28 @@ void launchUpdater(const AppState& state) {
         MessageBoxW(nullptr, L"df-updater.exe was not found.", L"Dorfplatformer Tray", MB_OK | MB_ICONERROR);
         return;
     }
+    const auto gameDir = installedVersionDir(state.rootDir, state.currentVersionId);
+    const auto statusFile = updaterStatusPath(state.rootDir, state.currentVersionId);
+    if (gameDir.empty() || !std::filesystem::exists(gameDir)) {
+        MessageBoxW(nullptr, L"The installed game version folder could not be found.", L"Dorfplatformer Tray", MB_OK | MB_ICONERROR);
+        return;
+    }
+    if (state.windowsUpdateManifestUrl.empty()) {
+        MessageBoxW(nullptr, L"No Windows update manifest URL is configured for the installed version.", L"Dorfplatformer Tray", MB_OK | MB_ICONERROR);
+        return;
+    }
     std::wstring cmdLine = quoteWindowsArg(updaterPath.wstring());
     cmdLine += L" --mode check";
+    cmdLine += L" --current-version ";
+    cmdLine += quoteWindowsArg(utf8ToWide(state.currentVersion.empty() ? state.currentVersionId : state.currentVersion));
+    cmdLine += L" --current-version-id ";
+    cmdLine += quoteWindowsArg(utf8ToWide(state.currentVersionId));
+    cmdLine += L" --app-dir ";
+    cmdLine += quoteWindowsArg(gameDir.wstring());
+    cmdLine += L" --status-file ";
+    cmdLine += quoteWindowsArg(statusFile.wstring());
+    cmdLine += L" --manifest-url ";
+    cmdLine += quoteWindowsArg(utf8ToWide(state.windowsUpdateManifestUrl));
 
     STARTUPINFOW si{};
     si.cb = sizeof(si);

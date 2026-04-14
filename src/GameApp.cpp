@@ -140,9 +140,6 @@ int RunGameApp(int argc, char** argv) {
             },
             nullptr);
     }
-    allowDevTools = false;// disable when a debugger is needed else a to prevent players from cheating ingame using a debuger
-    //allowDevTools = true;// enable for debuging
-
     const std::string buildUuid = makeBuildUuid();
     auto reportStartupError = [](const char* title, const std::string& msg, SDL_Window* parent) {
 #if defined(__ANDROID__)
@@ -1494,7 +1491,7 @@ int RunGameApp(int argc, char** argv) {
     bool muteAllAudio = false;
     KeyboardBindings keybinds{};
     constexpr int kUiScaleMinPercent = 50;
-    constexpr int kUiScaleMaxPercent = 200;
+    constexpr int kUiScaleMaxPercent = 400;
     int uiScalePercent = kUiScaleMaxPercent;
     std::array<bool, 55> extraSettings{};
     extraSettings[44] = true; // PRIVACY+ -> SEND ANONYMOUS METRICS
@@ -1692,7 +1689,6 @@ int RunGameApp(int argc, char** argv) {
                         fastTravelChangeDelay = 0.0f;
                     }
                 }
-                debugModeEnabled = false; //disable for prod
                 if (s.contains("telemetry") && s["telemetry"].is_object()) {
                     const auto& t = s["telemetry"];
                     if (t.contains("telemetry_webhook_url") && t["telemetry_webhook_url"].is_string()) {
@@ -1725,7 +1721,6 @@ int RunGameApp(int argc, char** argv) {
             }
 
             // Legacy flat format fallback.
-            debugModeEnabled = false; //disable for prod
             if (j.contains("fullscreen") && j["fullscreen"].is_boolean()) fullscreen = j["fullscreen"].get<bool>();
             if (j.contains("vsync") && j["vsync"].is_boolean()) vsyncEnabled = j["vsync"].get<bool>();
             if (j.contains("clamp_cam_x") && j["clamp_cam_x"].is_boolean()) clampCamX = j["clamp_cam_x"].get<bool>();
@@ -1819,8 +1814,7 @@ int RunGameApp(int argc, char** argv) {
     if (!levelServerAccountUsername.empty()) {
         SDL_Log("Level server account username: %s", levelServerAccountUsername.c_str());
     }
-    debugModeEnabled = false; //disable for prod
-    if (!debugModeEnabled) {
+    if (!(allowDevTools && debugModeEnabled)) {
         defaultShowFpsCounter = false;
         defaultShowDetailedDebugger = false;
         defaultShowHitboxes = false;
@@ -2310,12 +2304,21 @@ int RunGameApp(int argc, char** argv) {
         }
         const std::filesystem::path modulePath(modulePathBuf);
         const std::filesystem::path appDir = modulePath.parent_path();
+        std::filesystem::path updaterPath;
+        for (const auto& candidate : {
+                 appDir / "df-updater.exe",
+                 appDir.parent_path() / "df-updater.exe",
+                 appDir.parent_path().parent_path() / "df-updater.exe" }) {
+            if (!candidate.empty() && std::filesystem::exists(candidate)) {
+                updaterPath = candidate;
+                break;
+            }
+        }
         updaterStatus->path = appDir / "updater-status.json";
-        const std::filesystem::path updaterPath = appDir / "df-updater.exe";
         if (!std::filesystem::exists(updaterPath)) {
             writeUpdaterStatus("error", "df-updater.exe is missing.");
             SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Updater Missing",
-                                     "df-updater.exe was not found next to the game executable.", win);
+                                     "df-updater.exe was not found beside the game executable or in the install root.", win);
             return false;
         }
         if (windowsUpdateManifestUrl.empty()) {
@@ -2627,6 +2630,11 @@ int RunGameApp(int argc, char** argv) {
                 bossState.y = std::clamp(mapH * 0.42f, 96.0f, std::max(96.0f, mapH - 96.0f));
                 bossState.vx = -260.0f;
                 bossState.vy = 240.0f;
+            } else if (bossState.sourceWorld == 4) {
+                bossState.x = 1315.0f + kGameplayViewW * 0.5f;
+                bossState.y = 202.0f + kGameplayViewH * 0.5f;
+                bossState.vx = -250.0f;
+                bossState.vy = 240.0f;
             } else {
                 const float phase = (float)(bossProfileWorld % 6) / 6.0f;
                 bossState.x = std::clamp(mapW * (0.32f + phase * 0.36f), 96.0f, std::max(96.0f, mapW - 96.0f));
@@ -2937,7 +2945,8 @@ int RunGameApp(int argc, char** argv) {
         bool showDemoPath = false;
         bool hideUnknownObjectTypes = defaultHideUnknownObjectTypes;
         bool showFpsCounter = defaultShowFpsCounter;
-        if (!allowDevTools) {
+        const bool debugToolsEnabled = allowDevTools && debugModeEnabled;
+        if (!debugToolsEnabled) {
             defaultShowDetailedDebugger = false;
             showDetailedDebugger = false;
             if (debugWin) {
@@ -2949,7 +2958,7 @@ int RunGameApp(int argc, char** argv) {
                 debugWin = nullptr;
             }
         }
-        if (allowDevTools && showDetailedDebugger && !debugWin) {
+        if (debugToolsEnabled && showDetailedDebugger && !debugWin) {
 #if defined(__ANDROID__)
             debugWin = win;
             debugRen = ren;
@@ -3332,12 +3341,12 @@ int RunGameApp(int argc, char** argv) {
             return false;
         };
         auto toggleDetailedDebugger = [&]() {
-            if (!allowDevTools) {
+            if (!debugToolsEnabled) {
                 showDetailedDebugger = false;
                 return;
             }
             showDetailedDebugger = !showDetailedDebugger;
-            if (allowDevTools && showDetailedDebugger && !debugWin) {
+            if (debugToolsEnabled && showDetailedDebugger && !debugWin) {
 #if defined(__ANDROID__)
                 debugWin = win;
                 debugRen = ren;
@@ -3523,7 +3532,7 @@ int RunGameApp(int argc, char** argv) {
         };
 
         while (levelRunning) {
-            if (!allowDevTools && debugWin && debugWin != win) {
+            if (!debugToolsEnabled && debugWin && debugWin != win) {
                 showDetailedDebugger = false;
                 SDL_HideWindow(debugWin);
             }
@@ -3532,7 +3541,7 @@ int RunGameApp(int argc, char** argv) {
             Uint32 now = SDL_GetTicks();
             float dt = (now - lastTicks) / 1000.0f;
             lastTicks = now;
-            SetTextScaleMultiplier(std::clamp((float)uiScalePercent / 100.0f, 0.5f, 2.0f));
+            SetTextScaleMultiplier(std::clamp((float)uiScalePercent / 100.0f, 0.5f, 4.0f));
             auto isVerticalWrapEnabledAtX = [&](float x) -> bool {
                 if (((currentLevelId == 29 && x > 1250.0f) ||
                      (currentLevelId == 30 && x > 1250.0f) ||
@@ -3720,7 +3729,7 @@ int RunGameApp(int argc, char** argv) {
         bool inputDown = false;
         int screenW = kBaseScreenW;
         int screenH = kBaseScreenH;
-        const float mobileUiScale = std::clamp((float)uiScalePercent / 100.0f, 0.5f, 2.0f);
+        const float mobileUiScale = std::clamp((float)uiScalePercent / 100.0f, 0.5f, 4.0f);
         const float minScreenDim = std::min((float)screenW, (float)screenH);
         const float baseUiSize = std::clamp(minScreenDim * 0.16f, 110.0f, 190.0f);
         float uiSize = std::clamp(baseUiSize * 2.0f * mobileUiScale, 96.0f, minScreenDim * 0.45f);
@@ -3859,7 +3868,7 @@ int RunGameApp(int argc, char** argv) {
                     const int my = (int)std::lround(e.tfinger.y * dbgH);
                     consumedByDebugger = handleDetailedDebuggerTap(mx, my);
                 }
-                if (allowDevTools && !consumedByDebugger && e.tfinger.windowID == mainWindowId) {
+                if (debugToolsEnabled && !consumedByDebugger && e.tfinger.windowID == mainWindowId) {
                     // Touch hotspot (top-right) to toggle detailed debugger on mobile.
                     if (e.tfinger.x >= 0.92f && e.tfinger.y <= 0.10f) {
                         toggleDetailedDebugger();
@@ -3902,32 +3911,32 @@ int RunGameApp(int argc, char** argv) {
                     if (applyFullscreen(nextFullscreen)) fullscreen = nextFullscreen;
 #endif
                 }
-                if (allowDevTools && e.key.key == SDLK_F12) {
+                if (debugToolsEnabled && e.key.key == SDLK_F12) {
                     showHitboxes = !showHitboxes;
                 }
-                if (allowDevTools && e.key.key == SDLK_F8) {
+                if (debugToolsEnabled && e.key.key == SDLK_F8) {
                     const bool next = !(showHitboxes && showPlayerHitbox && showDebugView);
                     showHitboxes = next;
                     showPlayerHitbox = next;
                     showDebugView = next;
                 }
-                if (allowDevTools && e.key.key == SDLK_F7) {
+                if (debugToolsEnabled && e.key.key == SDLK_F7) {
                     showDebugView = !showDebugView;
                 }
-                if (allowDevTools && e.key.key == SDLK_p) {
+                if (debugToolsEnabled && e.key.key == SDLK_p) {
                     showDemoPath = !showDemoPath;
                 }
-                if (e.key.key == SDLK_F6) {
+                if (debugToolsEnabled && e.key.key == SDLK_F6) {
                     showFpsCounter = !showFpsCounter;
                 }
-                if (e.key.key == SDLK_F10) {
+                if (debugToolsEnabled && e.key.key == SDLK_F10) {
                     clampCamX = !clampCamX;
                 }
-                if (allowDevTools && e.key.key == SDLK_F5) {
+                if (debugToolsEnabled && e.key.key == SDLK_F5) {
                     stopDebugButtonEditing();
                     toggleDetailedDebugger();
                 }
-                if (allowDevTools && e.key.key == SDLK_F4) {
+                if (debugToolsEnabled && e.key.key == SDLK_F4) {
                     detailedDebugSubmenu = (detailedDebugSubmenu + 1) % kDetailedDebugTabCount;
                     if (detailedDebugSubmenu != 0) stopDebugButtonEditing();
                 }
@@ -3970,13 +3979,13 @@ int RunGameApp(int argc, char** argv) {
                     if (e.key.key == SDLK_UP || e.key.key == SDLK_LEFT) detailedDebugTextureIndex--;
                     if (e.key.key == SDLK_DOWN || e.key.key == SDLK_RIGHT) detailedDebugTextureIndex++;
                 }
-                if (allowDevTools && e.key.key == SDLK_F9) {
+                if (debugToolsEnabled && e.key.key == SDLK_F9) {
                     if (allowNextLevelProgression) {
                         std::string nextPath = levelManager.nextLevelPath();
                         (void)transitionToLevelPath(nextPath);
                     }
                 }
-                if (allowDevTools && e.key.key == SDLK_F3) {
+                if (debugToolsEnabled && e.key.key == SDLK_F3) {
                     demoState.enabled = !demoState.enabled;
                     demoState.jumpCooldown = 0.0f;
                     demoState.jumpHoldTimer = 0.0f;
@@ -3988,7 +3997,7 @@ int RunGameApp(int argc, char** argv) {
                     demoState.startTileSet = false;
                     SDL_Log("demo autoplay: %s", demoState.enabled ? "enabled" : "disabled");
                 }
-                if (allowDevTools && e.key.key == SDLK_F2) {
+                if (debugToolsEnabled && e.key.key == SDLK_F2) {
                     if (replayRecorder.enabled) {
                         stopReplayRecording("user_toggle_off");
                         SDL_Log("replay recording: disabled");
@@ -3997,7 +4006,7 @@ int RunGameApp(int argc, char** argv) {
                         SDL_Log("replay recording: enabled (%s)", replayRecorder.path.c_str());
                     }
                 }
-                if (allowDevTools && e.key.key == SDLK_F1) {
+                if (debugToolsEnabled && e.key.key == SDLK_F1) {
                     if (replayPlayback.active) {
                         stopReplayPlayback();
                         SDL_Log("replay playback: disabled");
@@ -5829,6 +5838,14 @@ int RunGameApp(int argc, char** argv) {
                 playerTouchesTileId(map, player, 30, 30, gameplayWrapX, gameplayWrapY)) {
                 startLevelCompleteSequence();
             }
+            const unsigned int specialCameraMovementMask =
+                MR_FAST_TRAVEL |
+                MR_WORLD_WRAP |
+                MR_SPRING |
+                MR_BUMPER;
+            if ((movementReasons & specialCameraMovementMask) != 0u) {
+                cameraSmoothingSuppressTimer = std::max(cameraSmoothingSuppressTimer, 0.12f);
+            }
             updatePlayerAnimState(inputMove, inputDown, dt);
         }
 
@@ -5924,8 +5941,11 @@ int RunGameApp(int argc, char** argv) {
         const float kLookAheadLerpSpeed = 3.0f;
         const float lookAheadStep = 1.0f - std::exp(-kLookAheadLerpSpeed * std::max(0.0f, dt));
         if (!forceBossCameraActive && !lockCameraToEndSign) {
-            // Target look-ahead based on facing direction (instant direction change prevented by lerp).
-            const float targetLookAhead = (float)player.facing * kLookAheadMax;
+            // Drive look-ahead from actual horizontal movement so camera shifts don't fight
+            // blocked input, bumps, or abrupt facing flips.
+            const float lookAheadSpeedRef = std::max(1.0f, movementCfg.maxSpeedGround);
+            const float targetLookAhead =
+                std::clamp(player.vx / lookAheadSpeedRef, -1.0f, 1.0f) * kLookAheadMax;
             if (cameraSmoothingSuppressTimer > 0.0f) {
                 cameraLookAheadX = targetLookAhead;
             } else {
@@ -6847,17 +6867,23 @@ int RunGameApp(int argc, char** argv) {
         int secs = hudSeconds % 60;
         std::ostringstream timerText;
         timerText << mins << "," << std::setw(2) << std::setfill('0') << secs;
-        const int hudSlideOutX = -(int)std::lround(levelCompleteUiLerp * 260.0f);
-        DrawText(ren, 16 + hudSlideOutX, 16, 2, "COINS");
-        DrawText(ren, 94 + hudSlideOutX, 16, 2, std::to_string(levelManager.coinCount()));
-        DrawText(ren, 16 + hudSlideOutX, 48, 2, "TIME");
-        DrawText(ren, 94 + hudSlideOutX, 48, 2, timerText.str());
-        DrawText(ren, 16 + hudSlideOutX, 80, 2, "SCORE");
-        DrawText(ren, 94 + hudSlideOutX, 80, 2, std::to_string(scoreCount));
+        const int hudScale = 4;
+        const int hudLeftX = 32;
+        const int hudValueX = 188;
+        const int hudTopY = 32;
+        const int hudLineGap = 64;
+        const int hudBottomMargin = 64;
+        const int hudSlideOutX = -(int)std::lround(levelCompleteUiLerp * 520.0f);
+        DrawText(ren, hudLeftX + hudSlideOutX, hudTopY, hudScale, "COINS");
+        DrawText(ren, hudValueX + hudSlideOutX, hudTopY, hudScale, std::to_string(levelManager.coinCount()));
+        DrawText(ren, hudLeftX + hudSlideOutX, hudTopY + hudLineGap, hudScale, "TIME");
+        DrawText(ren, hudValueX + hudSlideOutX, hudTopY + hudLineGap, hudScale, timerText.str());
+        DrawText(ren, hudLeftX + hudSlideOutX, hudTopY + hudLineGap * 2, hudScale, "SCORE");
+        DrawText(ren, hudValueX + hudSlideOutX, hudTopY + hudLineGap * 2, hudScale, std::to_string(scoreCount));
 
         // HUD: lives counter (bottom-left).
-        DrawText(ren, 16 + hudSlideOutX, screenH - 32, 2, "LIVES");
-        DrawText(ren, 94 + hudSlideOutX, screenH - 32, 2, std::to_string(livesCount));
+        DrawText(ren, hudLeftX + hudSlideOutX, screenH - hudBottomMargin, hudScale, "LIVES");
+        DrawText(ren, hudValueX + hudSlideOutX, screenH - hudBottomMargin, hudScale, std::to_string(livesCount));
         if (levelReloadTitleTimer > 0.0f) {
             const float showT = std::clamp(levelReloadTitleTimer / 2.0f, 0.0f, 1.0f);
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
@@ -6872,7 +6898,7 @@ int RunGameApp(int argc, char** argv) {
         }
 
         if (paused) {
-            const float uiButtonScale = std::clamp((float)uiScalePercent / 100.0f, 0.5f, 2.0f);
+            const float uiButtonScale = std::clamp((float)uiScalePercent / 100.0f, 0.5f, 4.0f);
             auto scaleRectCentered = [&](const SDL_Rect& in) -> SDL_Rect {
                 const float cx = (float)in.x + (float)in.w * 0.5f;
                 const float cy = (float)in.y + (float)in.h * 0.5f;
@@ -6980,17 +7006,17 @@ int RunGameApp(int argc, char** argv) {
             };
             const std::string titleTop = "DIRK HAS";
             std::string titleBottom = std::string("PASSED AREA ") + std::to_string(levelCompleteAreaId);
-            const int titleScale = 3;
+            const int titleScale = 6;
             int topW = MeasureTextWidth(titleScale, titleTop);
             int bottomW = MeasureTextWidth(titleScale, titleBottom);
-            const int titleTopY = centerY - 130;
-            const int titleBottomY = centerY - 110;
+            const int titleTopY = centerY - 260;
+            const int titleBottomY = centerY - 220;
             DrawText(ren, screenW / 2 - topW / 2 + completeSlideInXForY(titleTopY), titleTopY, titleScale, titleTop);
             DrawText(ren, screenW / 2 - bottomW / 2 + completeSlideInXForY(titleBottomY), titleBottomY, titleScale, titleBottom);
 
-            const int bonusScale = 2;
-            const int bonusLineGap = 18;
-            const int bonusStartY = centerY - 50;
+            const int bonusScale = 4;
+            const int bonusLineGap = 36;
+            const int bonusStartY = centerY - 100;
             const std::string bonusLine1 = std::string("COIN BONUS: ") + std::to_string(levelCompleteCoinBonus);
             const std::string bonusLine2 = std::string("TIME BONUS: ") + std::to_string(levelCompleteTimeScore);
             const std::string bonusLine3 = std::string("TOTAL SCORE: ") + std::to_string(levelCompleteAccountedScore);
