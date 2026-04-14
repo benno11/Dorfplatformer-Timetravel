@@ -744,6 +744,14 @@ if ($LASTEXITCODE -ne 0) {
     throw "Build failed."
 }
 
+if ($IsWindows -or ($env:OS -eq "Windows_NT")) {
+    Write-Host "Packaging Windows bundle and installer..."
+    & cmake --build $BuildDir --config $Config --target windows-installer
+    if ($LASTEXITCODE -ne 0) {
+        throw "Windows packaging failed."
+    }
+}
+
 if ($Run) {
     $exeCandidates = @(
         (Join-Path $BuildDir $Config "platformer.exe"),

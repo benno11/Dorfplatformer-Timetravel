@@ -10,6 +10,7 @@ set(PLATFORMER_APP_VERSION_MAJOR 0)
 set(PLATFORMER_APP_VERSION_MINOR 0)
 set(PLATFORMER_APP_VERSION_PATCH 0)
 set(PLATFORMER_APP_VERSION_BUILD 0)
+set(PLATFORMER_APP_VERSION_ID "0")
 set(_platformer_config_json "${CMAKE_SOURCE_DIR}/assets/config.json")
 if(EXISTS "${_platformer_config_json}")
   file(READ "${_platformer_config_json}" _platformer_config_text)
@@ -28,8 +29,13 @@ if(EXISTS "${_platformer_config_json}")
       list(GET _platformer_all_version_parts 3 PLATFORMER_APP_VERSION_BUILD)
     endif()
   endif()
+  string(REGEX MATCH "\"version_id\"[ \t\r\n]*:[ \t\r\n]*([0-9]+)" _platformer_version_id_match "${_platformer_config_text}")
+  if(CMAKE_MATCH_1)
+    set(PLATFORMER_APP_VERSION_ID "${CMAKE_MATCH_1}")
+  endif()
 endif()
 message(STATUS "App version: ${PLATFORMER_APP_VERSION_STRING}")
+message(STATUS "App version id: ${PLATFORMER_APP_VERSION_ID}")
 
 # Keep generated files out of the source tree.
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
@@ -653,4 +659,77 @@ if(WIN32)
   endif()
   platformer_apply_windows_exe_hardening(df-tray)
   message(STATUS "Added target: df-tray")
+endif()
+
+if(WIN32)
+  set(PLATFORMER_WINDOWS_DIST_DIR "${CMAKE_SOURCE_DIR}/dist/windows-installer")
+  set(PLATFORMER_WINDOWS_ROOT_DIR "${PLATFORMER_WINDOWS_DIST_DIR}/root")
+  set(PLATFORMER_WINDOWS_APP_DIR "${PLATFORMER_WINDOWS_DIST_DIR}/app")
+  set(PLATFORMER_WINDOWS_INSTALLER_OUTPUT "${PLATFORMER_WINDOWS_DIST_DIR}/output/df-platformer-windows-installer.exe")
+
+  set(_platformer_windows_stage_deps
+    platformer
+    sheet_config
+    df-launcher
+    df-tray
+  )
+  set(_platformer_windows_updater_path "")
+  if(TARGET df-updater)
+    list(APPEND _platformer_windows_stage_deps df-updater)
+    set(_platformer_windows_updater_path "$<TARGET_FILE:df-updater>")
+  endif()
+
+  add_custom_target(windows-package ALL
+    COMMAND ${CMAKE_COMMAND}
+      -DROOT_DIR=${PLATFORMER_WINDOWS_ROOT_DIR}
+      -DAPP_DIR=${PLATFORMER_WINDOWS_APP_DIR}
+      -DASSETS_DIR=${CMAKE_SOURCE_DIR}/assets
+      -DVERSION_ID=${PLATFORMER_APP_VERSION_ID}
+      -DPLATFORMER_EXE=$<TARGET_FILE:platformer>
+      -DSHEET_CONFIG_EXE=$<TARGET_FILE:sheet_config>
+      -DLAUNCHER_EXE=$<TARGET_FILE:df-launcher>
+      -DTRAY_EXE=$<TARGET_FILE:df-tray>
+      -DUPDATER_EXE=${_platformer_windows_updater_path}
+      -DREADME_FILE=${CMAKE_SOURCE_DIR}/README.md
+      -DLICENSE_FILE=${CMAKE_SOURCE_DIR}/LICENSE
+      -DOBJECT_TYPE_MAP_FILE=${CMAKE_SOURCE_DIR}/object_type_map.json
+      -DRUNTIME_DLL_DIR=$<TARGET_FILE_DIR:platformer>
+      -P ${CMAKE_SOURCE_DIR}/cmake/StageWindowsBundle.cmake
+    DEPENDS ${_platformer_windows_stage_deps}
+    COMMENT "Staging Windows bundle in dist/windows-installer"
+    VERBATIM
+  )
+
+  find_program(INNO_SETUP_COMPILER
+    NAMES ISCC.exe ISCC
+    PATHS
+      "C:/Program Files (x86)/Inno Setup 6"
+      "C:/Program Files/Inno Setup 6"
+  )
+
+  if(INNO_SETUP_COMPILER)
+    add_custom_command(
+      OUTPUT "${PLATFORMER_WINDOWS_INSTALLER_OUTPUT}"
+      COMMAND ${CMAKE_COMMAND} -E make_directory "${PLATFORMER_WINDOWS_DIST_DIR}/output"
+      COMMAND "${INNO_SETUP_COMPILER}"
+        /Qp
+        /DMyAppVersion=${PLATFORMER_APP_VERSION_STRING}
+        /DMyAppVersionId=${PLATFORMER_APP_VERSION_ID}
+        "${CMAKE_SOURCE_DIR}/installer/windows/df-platformer.iss"
+      DEPENDS windows-package "${CMAKE_SOURCE_DIR}/installer/windows/df-platformer.iss"
+      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+      COMMENT "Building Windows installer with Inno Setup"
+      VERBATIM
+    )
+    add_custom_target(windows-installer
+      DEPENDS "${PLATFORMER_WINDOWS_INSTALLER_OUTPUT}"
+    )
+  else()
+    add_custom_target(windows-installer
+      COMMAND ${CMAKE_COMMAND} -E cmake_echo_color --yellow
+        "Inno Setup was not found. Built the staged Windows bundle only."
+      DEPENDS windows-package
+      VERBATIM
+    )
+  endif()
 endif()

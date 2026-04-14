@@ -104,6 +104,7 @@ jobs:
         shell: pwsh
         run: |
           choco install ninja -y --no-progress
+          choco install innosetup -y --no-progress
 
       - name: Set up MSVC
         if: runner.os == 'Windows'
@@ -174,6 +175,9 @@ jobs:
         shell: pwsh
         run: |
           cmake --build build-ci --config Release --parallel
+          if ($env:RUNNER_OS -eq "Windows") {
+            cmake --build build-ci --config Release --target windows-installer --parallel
+          }
 
       - name: Package desktop release
         if: needs.prepare_release.outputs.release_enabled == 'true'
@@ -181,7 +185,11 @@ jobs:
         run: |
           $packageRoot = Join-Path $env:GITHUB_WORKSPACE ("release-" + "${{ matrix.triplet }}")
           $archiveRoot = Join-Path $env:GITHUB_WORKSPACE "release"
-          $assetName = "platformer-${{ matrix.triplet }}.zip"
+          $assetName = if ($env:RUNNER_OS -eq "Windows") {
+            "platformer-${{ matrix.triplet }}-installer.exe"
+          } else {
+            "platformer-${{ matrix.triplet }}.zip"
+          }
           $assetPath = Join-Path $archiveRoot $assetName
           $vcpkgBin = Join-Path $env:GITHUB_WORKSPACE ".ci/vcpkg/installed/${{ matrix.triplet }}/bin"
           $bundledMixerBin = ""
@@ -207,33 +215,22 @@ jobs:
           New-Item -ItemType Directory -Force -Path $packageRoot | Out-Null
           New-Item -ItemType Directory -Force -Path $archiveRoot | Out-Null
 
-          Copy-Item "assets" -Destination (Join-Path $packageRoot "assets") -Recurse -Force
-          Copy-Item "README.md" -Destination $packageRoot -Force
-          Copy-Item "LICENSE" -Destination $packageRoot -Force
-
           if ($env:RUNNER_OS -eq "Windows") {
-            Copy-Item "build-ci/platformer.exe" -Destination $packageRoot -Force
-            if (Test-Path "build-ci/sheet_config.exe") {
-              Copy-Item "build-ci/sheet_config.exe" -Destination $packageRoot -Force
+            $installerOutput = Join-Path $env:GITHUB_WORKSPACE "dist/windows-installer/output/df-platformer-windows-installer.exe"
+            if (-not (Test-Path $installerOutput)) {
+              throw "Windows installer was not produced at $installerOutput"
             }
-            Get-ChildItem "build-ci" -Filter "*.dll" -File -Recurse -ErrorAction SilentlyContinue | Copy-Item -Destination $packageRoot -Force
-            if (Test-Path $vcpkgBin) {
-              Get-ChildItem $vcpkgBin -Filter "*.dll" -File -Recurse -ErrorAction SilentlyContinue | Copy-Item -Destination $packageRoot -Force
-            }
-            if ($bundledMixerBin -and (Test-Path $bundledMixerBin)) {
-              Get-ChildItem $bundledMixerBin -Filter "*.dll" -File -ErrorAction SilentlyContinue | Copy-Item -Destination $packageRoot -Force
-            }
-            if ($bundledMixerOptional -and (Test-Path $bundledMixerOptional)) {
-              Get-ChildItem $bundledMixerOptional -Filter "*.dll" -File -ErrorAction SilentlyContinue | Copy-Item -Destination $packageRoot -Force
-            }
+            Copy-Item $installerOutput -Destination $assetPath -Force
           } else {
+            Copy-Item "assets" -Destination (Join-Path $packageRoot "assets") -Recurse -Force
+            Copy-Item "README.md" -Destination $packageRoot -Force
+            Copy-Item "LICENSE" -Destination $packageRoot -Force
             Copy-Item "build-ci/platformer" -Destination $packageRoot -Force
             if (Test-Path "build-ci/sheet_config") {
               Copy-Item "build-ci/sheet_config" -Destination $packageRoot -Force
             }
+            Compress-Archive -Path (Join-Path $packageRoot "*") -DestinationPath $assetPath -Force
           }
-
-          Compress-Archive -Path (Join-Path $packageRoot "*") -DestinationPath $assetPath -Force
 
       - name: Upload desktop release assets
         if: needs.prepare_release.outputs.release_enabled == 'true'
@@ -245,7 +242,7 @@ jobs:
           draft: true
           overwrite_files: true
           fail_on_unmatched_files: true
-          files: release/*.zip
+          files: release/*
 
   android:
     name: Android APK
