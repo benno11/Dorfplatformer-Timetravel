@@ -5920,12 +5920,12 @@ int RunGameApp(int argc, char** argv) {
 
         // Look-ahead: smoothly shift the camera toward the direction the player faces/moves.
         // Only apply look-ahead during normal gameplay (not boss camera, not end-sign lock).
-        const float kLookAheadMax = (float)worldViewW * 0.18f; // max lead in pixels (~18 % of view width)
+        const float kLookAheadMax = (float)worldViewW * 0.18f; // max lead in pixels (~18% of view width)
         const float kLookAheadLerpSpeed = 3.0f;
+        const float lookAheadStep = 1.0f - std::exp(-kLookAheadLerpSpeed * std::max(0.0f, dt));
         if (!forceBossCameraActive && !lockCameraToEndSign) {
             // Target look-ahead based on facing direction (instant direction change prevented by lerp).
             const float targetLookAhead = (float)player.facing * kLookAheadMax;
-            const float lookAheadStep = 1.0f - std::exp(-kLookAheadLerpSpeed * std::max(0.0f, dt));
             if (cameraSmoothingSuppressTimer > 0.0f) {
                 cameraLookAheadX = targetLookAhead;
             } else {
@@ -5933,7 +5933,6 @@ int RunGameApp(int argc, char** argv) {
             }
         } else {
             // Fade out look-ahead during boss/end-sign camera.
-            const float lookAheadStep = 1.0f - std::exp(-kLookAheadLerpSpeed * std::max(0.0f, dt));
             cameraLookAheadX += (0.0f - cameraLookAheadX) * lookAheadStep;
         }
 
