@@ -2704,9 +2704,6 @@ int RunGameApp(int argc, char** argv) {
         float playerSpawnLockX = 0.0f;
         float playerSpawnLockY = 0.0f;
         float cameraSmoothingSuppressTimer = 0.0f;
-        float smoothCamX = 0.0f;
-        float smoothCamY = 0.0f;
-        bool smoothCamInitialized = false;
         float cameraLookAheadX = 0.0f; // current look-ahead offset in world pixels (X)
         bool levelCompleteCameraLocked = false;
         float levelCompleteCameraX = 0.0f;
@@ -2846,7 +2843,6 @@ int RunGameApp(int argc, char** argv) {
             demoState.startTileSet = false;
             demoState.startTile = SDL_Point{0, 0};
             cameraSmoothingSuppressTimer = 0.20f;
-            smoothCamInitialized = false;
             cameraLookAheadX = 0.0f;
             setFastTravelActiveDir(-1, "reload");
             fastTravelOverlapWasActive = false;
@@ -5984,25 +5980,6 @@ int RunGameApp(int argc, char** argv) {
             camYClampBlend += (clampTarget - camYClampBlend) * clampBlendStep;
         }
         camY = freeCamY * (1.0f - camYClampBlend) + clampedCamY * camYClampBlend;
-
-        // Smooth camera: exponential lerp of the render position toward the desired position.
-        // Skip smoothing during boss/end-sign locks (those are handled separately below).
-        const float kCamSmoothSpeed = 200.0f;
-        const float camSmoothStep = 1.0f - std::exp(-kCamSmoothSpeed * std::max(0.0f, dt));
-        if (!smoothCamInitialized || cameraSmoothingSuppressTimer > 0.0f) {
-            smoothCamX = camX;
-            smoothCamY = camY;
-            smoothCamInitialized = true;
-        } else if (!forceBossCameraActive && !lockCameraToEndSign && !levelCompleteActive) {
-            smoothCamX += (camX - smoothCamX) * camSmoothStep;
-            smoothCamY += (camY - smoothCamY) * camSmoothStep;
-            camX = smoothCamX;
-            camY = smoothCamY;
-        } else {
-            // For locked-camera states, follow the locked position immediately.
-            smoothCamX = camX;
-            smoothCamY = camY;
-        }
 
         if (lockCameraToEndSign) {
             if (!endSignCameraLocked) {
