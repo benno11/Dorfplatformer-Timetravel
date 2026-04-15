@@ -2635,6 +2635,11 @@ int RunGameApp(int argc, char** argv) {
                 bossState.y = 202.0f + kGameplayViewH * 0.5f;
                 bossState.vx = -250.0f;
                 bossState.vy = 240.0f;
+            } else if (bossProfileWorld == 5) {
+                bossState.x = std::clamp(96.0f + (float)kGameplayViewW - 64.0f, 96.0f, std::max(96.0f, mapW - 96.0f));
+                bossState.y = std::clamp(mapH * 0.38f, 96.0f, std::max(96.0f, mapH - 96.0f));
+                bossState.vx = -250.0f;
+                bossState.vy = 220.0f;
             } else {
                 const float phase = (float)(bossProfileWorld % 6) / 6.0f;
                 bossState.x = std::clamp(mapW * (0.32f + phase * 0.36f), 96.0f, std::max(96.0f, mapW - 96.0f));
