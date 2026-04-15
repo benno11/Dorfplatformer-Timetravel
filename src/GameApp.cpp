@@ -1487,6 +1487,7 @@ int RunGameApp(int argc, char** argv) {
     bool powerManagementEnabled = true;
     bool lowPowerModeEnabled = false;
     bool showExperimentalFeatures = false;
+    bool levelSelectEnabled = true;
     bool menuMusicEnabled = true;
     bool muteAllAudio = false;
     KeyboardBindings keybinds{};
@@ -1547,6 +1548,7 @@ int RunGameApp(int argc, char** argv) {
             {"power_management", powerManagementEnabled},
             {"low_power_mode", lowPowerModeEnabled},
             {"show_experimental_features", showExperimentalFeatures},
+            {"level_select_enabled", levelSelectEnabled},
             {"debug_mode_enabled", debugModeEnabled},
             {"fast_travel_delay", fastTravelChangeDelay}
         };
@@ -1579,6 +1581,7 @@ int RunGameApp(int argc, char** argv) {
         j["power_management"] = powerManagementEnabled;
         j["low_power_mode"] = lowPowerModeEnabled;
         j["show_experimental_features"] = showExperimentalFeatures;
+        j["level_select_enabled"] = levelSelectEnabled;
         j["debug_mode_enabled"] = debugModeEnabled;
         j["menu_music_enabled"] = menuMusicEnabled;
         j["mute_all_audio"] = muteAllAudio;
@@ -1683,6 +1686,9 @@ int RunGameApp(int argc, char** argv) {
                     if (g.contains("show_experimental_features") && g["show_experimental_features"].is_boolean()) {
                         showExperimentalFeatures = g["show_experimental_features"].get<bool>();
                     }
+                    if (g.contains("level_select_enabled") && g["level_select_enabled"].is_boolean()) {
+                        levelSelectEnabled = g["level_select_enabled"].get<bool>();
+                    }
                     if (g.contains("debug_mode_enabled") && g["debug_mode_enabled"].is_boolean()) debugModeEnabled = g["debug_mode_enabled"].get<bool>();
                     if (g.contains("fast_travel_delay") && g["fast_travel_delay"].is_number()) {
                         // Deprecated: delay removed in favor of immediate smooth transitions.
@@ -1734,6 +1740,9 @@ int RunGameApp(int argc, char** argv) {
             if (j.contains("low_power_mode") && j["low_power_mode"].is_boolean()) lowPowerModeEnabled = j["low_power_mode"].get<bool>();
             if (j.contains("show_experimental_features") && j["show_experimental_features"].is_boolean()) {
                 showExperimentalFeatures = j["show_experimental_features"].get<bool>();
+            }
+            if (j.contains("level_select_enabled") && j["level_select_enabled"].is_boolean()) {
+                levelSelectEnabled = j["level_select_enabled"].get<bool>();
             }
             if (j.contains("debug_mode_enabled") && j["debug_mode_enabled"].is_boolean()) debugModeEnabled = j["debug_mode_enabled"].get<bool>();
             if (j.contains("menu_music_enabled") && j["menu_music_enabled"].is_boolean()) menuMusicEnabled = j["menu_music_enabled"].get<bool>();
@@ -2088,6 +2097,7 @@ int RunGameApp(int argc, char** argv) {
     frontendCtx.powerManagementEnabled = &powerManagementEnabled;
     frontendCtx.lowPowerModeEnabled = &lowPowerModeEnabled;
     frontendCtx.showExperimentalFeatures = &showExperimentalFeatures;
+    frontendCtx.levelSelectEnabled = &levelSelectEnabled;
     frontendCtx.menuMusicEnabled = &menuMusicEnabled;
     frontendCtx.muteAllAudio = &muteAllAudio;
     frontendCtx.keyMoveLeft = &keybinds.moveLeft;
