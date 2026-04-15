@@ -36,6 +36,7 @@ struct FrontendMenuContext {
     bool* powerManagementEnabled = nullptr;
     bool* lowPowerModeEnabled = nullptr;
     bool* showExperimentalFeatures = nullptr;
+    bool* levelSelectEnabled = nullptr;
     bool* menuMusicEnabled = nullptr;
     bool* muteAllAudio = nullptr;
     SDL_Scancode* keyMoveLeft = nullptr;

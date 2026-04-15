@@ -43,6 +43,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     bool& lowPowerModeEnabled = ctx.lowPowerModeEnabled ? *ctx.lowPowerModeEnabled : lowPowerModeEnabledLocal;
     bool showExperimentalFeaturesLocal = false;
     bool& showExperimentalFeatures = ctx.showExperimentalFeatures ? *ctx.showExperimentalFeatures : showExperimentalFeaturesLocal;
+    bool levelSelectEnabledLocal = true;
+    bool& levelSelectEnabled = ctx.levelSelectEnabled ? *ctx.levelSelectEnabled : levelSelectEnabledLocal;
     bool& menuMusicEnabled = *ctx.menuMusicEnabled;
     bool& muteAllAudio = *ctx.muteAllAudio;
     auto updaterStatusText = [&]() -> std::string {
@@ -349,9 +351,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     constexpr int IDX_MUSIC = 8;
     constexpr int IDX_SFX = 9;
     constexpr int IDX_SHOW_EXPERIMENTAL = 10;
-    constexpr int IDX_ABOUT = 11;
-    constexpr int IDX_BACK = 12;
-    constexpr int kSettingsCount = 13;
+    constexpr int IDX_LEVEL_SELECT = 11;
+    constexpr int IDX_ABOUT = 12;
+    constexpr int IDX_BACK = 13;
+    constexpr int kSettingsCount = 14;
 #else
 #if defined(_WIN32)
     constexpr int IDX_FULLSCREEN = 0;
@@ -366,10 +369,11 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     constexpr int IDX_MUSIC = 9;
     constexpr int IDX_SFX = 10;
     constexpr int IDX_SHOW_EXPERIMENTAL = 11;
-    constexpr int IDX_UPDATE = 12;
-    constexpr int IDX_ABOUT = 13;
-    constexpr int IDX_BACK = 14;
-    constexpr int kSettingsCount = 15;
+    constexpr int IDX_LEVEL_SELECT = 12;
+    constexpr int IDX_UPDATE = 13;
+    constexpr int IDX_ABOUT = 14;
+    constexpr int IDX_BACK = 15;
+    constexpr int kSettingsCount = 16;
 #else
     constexpr int IDX_FULLSCREEN = 0;
     constexpr int IDX_VSYNC = 1;
@@ -383,9 +387,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     constexpr int IDX_MUSIC = 9;
     constexpr int IDX_SFX = 10;
     constexpr int IDX_SHOW_EXPERIMENTAL = 11;
-    constexpr int IDX_ABOUT = 12;
-    constexpr int IDX_BACK = 13;
-    constexpr int kSettingsCount = 14;
+    constexpr int IDX_LEVEL_SELECT = 12;
+    constexpr int IDX_ABOUT = 13;
+    constexpr int IDX_BACK = 14;
+    constexpr int kSettingsCount = 15;
 #endif
 #endif
     int settingsSel = 0;
@@ -1353,6 +1358,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         else if (settingsSel == IDX_MUSIC && dir != 0) musicVolume = std::clamp(musicVolume + dir * 8, 0, 128);
         else if (settingsSel == IDX_SFX && dir != 0) sfxVolume = std::clamp(sfxVolume + dir * 8, 0, 128);
         else if (settingsSel == IDX_SHOW_EXPERIMENTAL) showExperimentalFeatures = !showExperimentalFeatures;
+        else if (settingsSel == IDX_LEVEL_SELECT) levelSelectEnabled = !levelSelectEnabled;
         else if (settingsSel == IDX_ABOUT) { openSettingsTab(4); }
         else setInSettings(false);
 #else
@@ -1368,6 +1374,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         else if (settingsSel == IDX_MUSIC && dir != 0) musicVolume = std::clamp(musicVolume + dir * 8, 0, 128);
         else if (settingsSel == IDX_SFX && dir != 0) sfxVolume = std::clamp(sfxVolume + dir * 8, 0, 128);
         else if (settingsSel == IDX_SHOW_EXPERIMENTAL) showExperimentalFeatures = !showExperimentalFeatures;
+        else if (settingsSel == IDX_LEVEL_SELECT) levelSelectEnabled = !levelSelectEnabled;
 #if defined(_WIN32)
         else if (settingsSel == IDX_UPDATE && ctx.launchUpdater) {
             openSettingsTab(IDX_UPDATER_TAB);
@@ -1519,6 +1526,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     };
     auto tryStartCustomLevel = [&]() -> bool {
         if (!ctx.selectedLevelPath) return false;
+        if (!levelSelectEnabled) return false;
         std::string path = RunCustomLevelSelect(ctx.win, ctx.ren);
         if (path.empty()) return false;
         *ctx.selectedLevelPath = path;
@@ -2181,6 +2189,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_Rect playerHitBtn = settingsRowBtn(IDX_SHOW_PLAYER_HITBOX);
                     SDL_Rect debugViewBtn = settingsRowBtn(IDX_SHOW_DEBUG_VIEW);
                     SDL_Rect experimentalBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_SHOW_EXPERIMENTAL));
+                    SDL_Rect levelSelectBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_LEVEL_SELECT));
                     if (SDL_PointInRect(&pt, &vsyncBtn)) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
                     else if (SDL_PointInRect(&pt, &camBtn)) clampCamX = !clampCamX;
                     else if (SDL_PointInRect(&pt, &uiScaleSliderHit) || SDL_PointInRect(&pt, &uiScaleBtn)) {
@@ -2193,6 +2202,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     else if (SDL_PointInRect(&pt, &playerHitBtn) && debugModeEnabled) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
                     else if (SDL_PointInRect(&pt, &debugViewBtn) && debugModeEnabled) defaultShowDebugView = !defaultShowDebugView;
                     else if (SDL_PointInRect(&pt, &experimentalBtn)) showExperimentalFeatures = !showExperimentalFeatures;
+                    else if (SDL_PointInRect(&pt, &levelSelectBtn)) levelSelectEnabled = !levelSelectEnabled;
                     else if (SDL_PointInRect(&pt, &aboutBtn)) { openSettingsTab(4); }
                     else if (SDL_PointInRect(&pt, &backBtn)) setInSettings(false);
 #else
@@ -2208,6 +2218,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_Rect playerHitBtn = settingsRowBtn(IDX_SHOW_PLAYER_HITBOX);
                     SDL_Rect debugViewBtn = settingsRowBtn(IDX_SHOW_DEBUG_VIEW);
                     SDL_Rect experimentalBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_SHOW_EXPERIMENTAL));
+                    SDL_Rect levelSelectBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_LEVEL_SELECT));
 #if defined(_WIN32)
                     SDL_Rect updateBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_UPDATE));
 #endif
@@ -2224,6 +2235,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     else if (SDL_PointInRect(&pt, &playerHitBtn) && debugModeEnabled) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
                     else if (SDL_PointInRect(&pt, &debugViewBtn) && debugModeEnabled) defaultShowDebugView = !defaultShowDebugView;
                     else if (SDL_PointInRect(&pt, &experimentalBtn)) showExperimentalFeatures = !showExperimentalFeatures;
+                    else if (SDL_PointInRect(&pt, &levelSelectBtn)) levelSelectEnabled = !levelSelectEnabled;
 #if defined(_WIN32)
                     else if (SDL_PointInRect(&pt, &updateBtn) && ctx.launchUpdater) {
                         openSettingsTab(IDX_UPDATER_TAB);
@@ -2457,6 +2469,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_Rect hitBtn = settingsRowBtn(IDX_SHOW_HITBOXES);
                     SDL_Rect playerHitBtn = settingsRowBtn(IDX_SHOW_PLAYER_HITBOX);
                     SDL_Rect debugViewBtn = settingsRowBtn(IDX_SHOW_DEBUG_VIEW);
+                    SDL_Rect experimentalBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_SHOW_EXPERIMENTAL));
+                    SDL_Rect levelSelectBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_LEVEL_SELECT));
                     if (SDL_PointInRect(&pt, &vsyncBtn)) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
                     else if (SDL_PointInRect(&pt, &camBtn)) clampCamX = !clampCamX;
                     else if (SDL_PointInRect(&pt, &uiScaleSliderHit) || SDL_PointInRect(&pt, &uiScaleBtn)) {
@@ -2469,6 +2483,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     else if (SDL_PointInRect(&pt, &hitBtn) && debugModeEnabled) defaultShowHitboxes = !defaultShowHitboxes;
                     else if (SDL_PointInRect(&pt, &playerHitBtn) && debugModeEnabled) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
                     else if (SDL_PointInRect(&pt, &debugViewBtn) && debugModeEnabled) defaultShowDebugView = !defaultShowDebugView;
+                    else if (SDL_PointInRect(&pt, &experimentalBtn)) showExperimentalFeatures = !showExperimentalFeatures;
+                    else if (SDL_PointInRect(&pt, &levelSelectBtn)) levelSelectEnabled = !levelSelectEnabled;
                     else if (SDL_PointInRect(&pt, &aboutBtn)) { openSettingsTab(4); }
                     else if (SDL_PointInRect(&pt, &backBtn)) setInSettings(false);
 #else
@@ -2483,6 +2499,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_Rect hitBtn = settingsRowBtn(IDX_SHOW_HITBOXES);
                     SDL_Rect playerHitBtn = settingsRowBtn(IDX_SHOW_PLAYER_HITBOX);
                     SDL_Rect debugViewBtn = settingsRowBtn(IDX_SHOW_DEBUG_VIEW);
+                    SDL_Rect experimentalBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_SHOW_EXPERIMENTAL));
+                    SDL_Rect levelSelectBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_LEVEL_SELECT));
 #if defined(_WIN32)
                     SDL_Rect updateBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_UPDATE));
 #endif
@@ -2499,6 +2517,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     else if (SDL_PointInRect(&pt, &hitBtn) && debugModeEnabled) defaultShowHitboxes = !defaultShowHitboxes;
                     else if (SDL_PointInRect(&pt, &playerHitBtn) && debugModeEnabled) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
                     else if (SDL_PointInRect(&pt, &debugViewBtn) && debugModeEnabled) defaultShowDebugView = !defaultShowDebugView;
+                    else if (SDL_PointInRect(&pt, &experimentalBtn)) showExperimentalFeatures = !showExperimentalFeatures;
+                    else if (SDL_PointInRect(&pt, &levelSelectBtn)) levelSelectEnabled = !levelSelectEnabled;
 #if defined(_WIN32)
                     else if (SDL_PointInRect(&pt, &updateBtn) && ctx.launchUpdater) {
                         if (ctx.saveClientSettings) ctx.saveClientSettings();
@@ -3260,6 +3280,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     std::string("MUSIC: ") + std::to_string((musicVolume * 100) / 128) + "%",
                     std::string("SFX: ") + std::to_string((sfxVolume * 100) / 128) + "%",
                     std::string("SHOW EXPERIMENTAL FEATURES: ") + (showExperimentalFeatures ? "ON" : "OFF"),
+                    std::string("LEVEL SELECT: ") + (levelSelectEnabled ? "ON" : "OFF"),
                     "ABOUT",
                     "BACK"
                 };
@@ -3277,6 +3298,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     std::string("MUSIC: ") + std::to_string((musicVolume * 100) / 128) + "%",
                     std::string("SFX: ") + std::to_string((sfxVolume * 100) / 128) + "%",
                     std::string("SHOW EXPERIMENTAL FEATURES: ") + (showExperimentalFeatures ? "ON" : "OFF"),
+                    std::string("LEVEL SELECT: ") + (levelSelectEnabled ? "ON" : "OFF"),
 #if defined(_WIN32)
                     std::string("UPDATER: ") + updaterStatusText(),
 #endif
@@ -3297,6 +3319,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     if (i == 6) drawToggleCheckbox(drawIdx, defaultShowPlayerHitbox);
                     if (i == 7) drawToggleCheckbox(drawIdx, defaultShowDebugView);
                     if (i == IDX_SHOW_EXPERIMENTAL) drawToggleCheckbox(drawIdx, showExperimentalFeatures);
+                    if (i == IDX_LEVEL_SELECT) drawToggleCheckbox(drawIdx, levelSelectEnabled);
 #else
                     if (i == 0) drawToggleCheckbox(drawIdx, fullscreen);
                     if (i == 1) drawToggleCheckbox(drawIdx, vsyncEnabled);
@@ -3307,6 +3330,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     if (i == 7) drawToggleCheckbox(drawIdx, defaultShowPlayerHitbox);
                     if (i == 8) drawToggleCheckbox(drawIdx, defaultShowDebugView);
                     if (i == IDX_SHOW_EXPERIMENTAL) drawToggleCheckbox(drawIdx, showExperimentalFeatures);
+                    if (i == IDX_LEVEL_SELECT) drawToggleCheckbox(drawIdx, levelSelectEnabled);
 #endif
                     int y = settingsRowY(drawIdx);
                     if (i == settingsSel) {
