@@ -235,7 +235,7 @@ PlayerUpdateResult UpdatePlayerMovement(
         return PlayerUpdateResult::Normal;
     }
 
-    const bool bufferedJumpReady = player.jumpBufferTime > 0.0f;
+    bool bufferedJumpReady = player.jumpBufferTime > 0.0f;
     if (!jumpDown)
     {
         bufferedJumpReady = false;
