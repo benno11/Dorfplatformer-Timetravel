@@ -31,6 +31,7 @@
     },
     "gameplay": {
       "power_management": true,
+      "low_power_mode": false,
       "debug_mode_enabled": false
     },
     "network": {

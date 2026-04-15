@@ -715,6 +715,7 @@ int RunGameApp(int argc, char** argv) {
     SDL_Texture* bgTexWorld4 = nullptr;
     SDL_Texture* bgTexWorld5 = nullptr;
     SDL_Texture* bgTexWorld6 = nullptr;
+    int bgWorldIdForLoad = 0; // which world's bg sheet to load; set before calling loadGameplayAssets()
     std::unordered_map<std::string, Frame> bgFrameByNameWorld1;
     std::unordered_map<std::string, Frame> bgFrameByNameWorld2;
     std::unordered_map<std::string, Frame> bgFrameByNameWorld4;
@@ -752,41 +753,7 @@ int RunGameApp(int argc, char** argv) {
             for (const auto& e : bgFrameList) outAnimFrames->push_back(e.frame);
         }
     };
-    loadBgSheet(
-        texPath("textures", "background_world1", "assets/Sheets/DF_Back_1-uhd.png"),
-        texPath("plists", "background_world1", "assets/Sheets/DF_Back_1-uhd.plist"),
-        bgTexWorld1,
-        bgFrameByNameWorld1,
-        &bgFrameListWorld1
-    );
-    loadBgSheet(
-        texPath("textures", "background_world2", "assets/Sheets/DF_Back_2-uhd.png"),
-        texPath("plists", "background_world2", "assets/Sheets/DF_Back_2-uhd.plist"),
-        bgTexWorld2,
-        bgFrameByNameWorld2,
-        &bgFrameListWorld2
-    );
-    loadBgSheet(
-        texPath("textures", "background_world4", "assets/Sheets/DF_Back_4-uhd.png"),
-        texPath("plists", "background_world4", "assets/Sheets/DF_Back_4-uhd.plist"),
-        bgTexWorld4,
-        bgFrameByNameWorld4,
-        &bgFrameListWorld4
-    );
-    loadBgSheet(
-        texPath("textures", "background_world5", "assets/Sheets/DF_Back_5-uhd.png"),
-        texPath("plists", "background_world5", "assets/Sheets/DF_Back_5-uhd.plist"),
-        bgTexWorld5,
-        bgFrameByNameWorld5,
-        &bgFrameListWorld5
-    );
-    loadBgSheet(
-        texPath("textures", "background_world6", "assets/Sheets/DF_Back_6-uhd.png"),
-        texPath("plists", "background_world6", "assets/Sheets/DF_Back_6-uhd.plist"),
-        bgTexWorld6,
-        bgFrameByNameWorld6,
-        &bgAnimFramesWorld6
-    );
+    // Background sheets are loaded lazily via syncWorldBackground() once the level world is known.
     SDL_Texture* introCardTex = loadTextureSafe(ren, "assets/Sheets/Introcard-uhd.png", nullptr);
     if (introCardTex) SDL_SetTextureScaleMode(introCardTex, SDL_SCALEMODE_NEAREST);
     auto introCardFrames = loadPlistFrames("assets/Sheets/Introcard-uhd.plist");
@@ -984,14 +951,14 @@ int RunGameApp(int argc, char** argv) {
         for (const auto& n : names) out.push_back(getPlayerFrame(n));
         return out;
     };
-    const std::vector<const Frame*> animIdleFrames = framesFromNames(animCfg.idle);
-    const std::vector<const Frame*> animWalkFrames = framesFromNames(animCfg.walk);
-    const std::vector<const Frame*> animJumpFrames = framesFromNames(animCfg.jump);
-    const std::vector<const Frame*> animFallFrames = framesFromNames(animCfg.fall);
-    const std::vector<const Frame*> animCrouchFrames = framesFromNames(animCfg.crouch);
-    const std::vector<const Frame*> animSkidFrames = framesFromNames(animCfg.skid);
-    const std::vector<const Frame*> animHurtFrames = framesFromNames(animCfg.hurt);
-    const std::vector<const Frame*> animDeathFrames = framesFromNames(animCfg.death);
+    std::vector<const Frame*> animIdleFrames = framesFromNames(animCfg.idle);
+    std::vector<const Frame*> animWalkFrames = framesFromNames(animCfg.walk);
+    std::vector<const Frame*> animJumpFrames = framesFromNames(animCfg.jump);
+    std::vector<const Frame*> animFallFrames = framesFromNames(animCfg.fall);
+    std::vector<const Frame*> animCrouchFrames = framesFromNames(animCfg.crouch);
+    std::vector<const Frame*> animSkidFrames = framesFromNames(animCfg.skid);
+    std::vector<const Frame*> animHurtFrames = framesFromNames(animCfg.hurt);
+    std::vector<const Frame*> animDeathFrames = framesFromNames(animCfg.death);
     std::string levelServerUrl;
     std::string levelServerAuthToken;
     std::string levelServerAccountUsername;
@@ -1235,7 +1202,8 @@ int RunGameApp(int argc, char** argv) {
         blocksFrameByName.clear();
         blocksFrameByName.reserve(blocksFrameList.size());
         for (const auto& e : blocksFrameList) blocksFrameByName[e.name] = e.frame;
-        std::fill(blocksFrameById.begin(), blocksFrameById.end(), nullptr);
+        // Use assign() so this works whether blocksFrameById was freed (size==0) or not.
+        blocksFrameById.assign(65536, nullptr);
         for (const auto& e : blocksFrameList) {
             bool numeric = !e.name.empty();
             for (char ch : e.name) {
@@ -1328,6 +1296,11 @@ int RunGameApp(int argc, char** argv) {
 
         ensureTextureAndFrames("blocks", blocksTex, blocksFrameList, &blocksFrameByName);
         ensureTextureAndFrames("player", playerTex, playerFrameList, &playerFramesByName);
+        // ensureTextureAndFrames may have pushed a fallback entry into playerFrameList
+        // when playerTex was null; update fallbackPlayerFrame to reflect that.
+        if (!fallbackPlayerFrame && !playerFrameList.empty()) {
+            fallbackPlayerFrame = &playerFrameList[0].frame;
+        }
         if (!pauseTex) {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Asset fallback: missing pause texture, using placeholder");
             pauseTex = createFallbackTexture(32, 32, 32, 255);
@@ -1357,27 +1330,29 @@ int RunGameApp(int argc, char** argv) {
         destroyTextureRef(pauseTex);
         destroyTextureRef(worldTarget);
         destroyTextureRef(gameTarget);
-        pauseFrames.clear();
-        blocksFrameList.clear();
-        blocksFrameByName.clear();
-        std::fill(blocksFrameById.begin(), blocksFrameById.end(), nullptr);
-        endSignFrames.clear();
-        introCardFrames.clear();
-        bossesFrames.clear();
-        entitiesFrameList.clear();
-        entitiesFrameByName.clear();
-        playerFrameList.clear();
-        playerFramesByName.clear();
-        bgFrameByNameWorld1.clear();
-        bgFrameByNameWorld2.clear();
-        bgFrameByNameWorld4.clear();
-        bgFrameByNameWorld5.clear();
-        bgFrameByNameWorld6.clear();
-        bgFrameListWorld1.clear();
-        bgFrameListWorld2.clear();
-        bgFrameListWorld4.clear();
-        bgFrameListWorld5.clear();
-        bgAnimFramesWorld6.clear();
+        // Release all heap allocations so suspend uses no RAM for assets.
+        // Using "= {}" instead of .clear() to actually free the underlying buffers.
+        pauseFrames        = {};
+        blocksFrameList    = {};
+        blocksFrameByName  = {};
+        blocksFrameById    = {};   // 65536-slot vector (~512 KB) fully freed
+        endSignFrames      = {};
+        introCardFrames    = {};
+        bossesFrames       = {};
+        entitiesFrameList  = {};
+        entitiesFrameByName= {};
+        playerFrameList    = {};
+        playerFramesByName = {};
+        bgFrameByNameWorld1= {};
+        bgFrameByNameWorld2= {};
+        bgFrameByNameWorld4= {};
+        bgFrameByNameWorld5= {};
+        bgFrameByNameWorld6= {};
+        bgFrameListWorld1  = {};
+        bgFrameListWorld2  = {};
+        bgFrameListWorld4  = {};
+        bgFrameListWorld5  = {};
+        bgAnimFramesWorld6 = {};
         defaultEndSignFrame = nullptr;
         bossNormalFrame = nullptr;
         bossHurtFrame = nullptr;
@@ -1409,26 +1384,12 @@ int RunGameApp(int argc, char** argv) {
         blocksTex = loadTextureWithColorKey(ren, texPath("textures", "blocks", "assets/Sheets/DF_Blocks-uhd.png"), 0x9f, 0x61, 0xff);
         blocksFrameList = loadPlistFrameList(blocksPlist);
 
-        loadBgSheet(
-            texPath("textures", "background_world1", "assets/Sheets/DF_Back_1-uhd.png"),
-            texPath("plists", "background_world1", "assets/Sheets/DF_Back_1-uhd.plist"),
-            bgTexWorld1, bgFrameByNameWorld1, &bgFrameListWorld1);
-        loadBgSheet(
-            texPath("textures", "background_world2", "assets/Sheets/DF_Back_2-uhd.png"),
-            texPath("plists", "background_world2", "assets/Sheets/DF_Back_2-uhd.plist"),
-            bgTexWorld2, bgFrameByNameWorld2, &bgFrameListWorld2);
-        loadBgSheet(
-            texPath("textures", "background_world4", "assets/Sheets/DF_Back_4-uhd.png"),
-            texPath("plists", "background_world4", "assets/Sheets/DF_Back_4-uhd.plist"),
-            bgTexWorld4, bgFrameByNameWorld4, &bgFrameListWorld4);
-        loadBgSheet(
-            texPath("textures", "background_world5", "assets/Sheets/DF_Back_5-uhd.png"),
-            texPath("plists", "background_world5", "assets/Sheets/DF_Back_5-uhd.plist"),
-            bgTexWorld5, bgFrameByNameWorld5, &bgFrameListWorld5);
-        loadBgSheet(
-            texPath("textures", "background_world6", "assets/Sheets/DF_Back_6-uhd.png"),
-            texPath("plists", "background_world6", "assets/Sheets/DF_Back_6-uhd.plist"),
-            bgTexWorld6, bgFrameByNameWorld6, &bgAnimFramesWorld6);
+        // Only reload the background for the active world (bgWorldIdForLoad set by caller).
+        if (bgWorldIdForLoad == 1) loadBgSheet(texPath("textures", "background_world1", "assets/Sheets/DF_Back_1-uhd.png"), texPath("plists", "background_world1", "assets/Sheets/DF_Back_1-uhd.plist"), bgTexWorld1, bgFrameByNameWorld1, &bgFrameListWorld1);
+        if (bgWorldIdForLoad == 2) loadBgSheet(texPath("textures", "background_world2", "assets/Sheets/DF_Back_2-uhd.png"), texPath("plists", "background_world2", "assets/Sheets/DF_Back_2-uhd.plist"), bgTexWorld2, bgFrameByNameWorld2, &bgFrameListWorld2);
+        if (bgWorldIdForLoad == 4) loadBgSheet(texPath("textures", "background_world4", "assets/Sheets/DF_Back_4-uhd.png"), texPath("plists", "background_world4", "assets/Sheets/DF_Back_4-uhd.plist"), bgTexWorld4, bgFrameByNameWorld4, &bgFrameListWorld4);
+        if (bgWorldIdForLoad == 5) loadBgSheet(texPath("textures", "background_world5", "assets/Sheets/DF_Back_5-uhd.png"), texPath("plists", "background_world5", "assets/Sheets/DF_Back_5-uhd.plist"), bgTexWorld5, bgFrameByNameWorld5, &bgFrameListWorld5);
+        if (bgWorldIdForLoad == 6) loadBgSheet(texPath("textures", "background_world6", "assets/Sheets/DF_Back_6-uhd.png"), texPath("plists", "background_world6", "assets/Sheets/DF_Back_6-uhd.plist"), bgTexWorld6, bgFrameByNameWorld6, &bgAnimFramesWorld6);
 
         introCardTex = loadTextureSafe(ren, "assets/Sheets/Introcard-uhd.png", nullptr);
         if (introCardTex) SDL_SetTextureScaleMode(introCardTex, SDL_SCALEMODE_NEAREST);
@@ -1944,6 +1905,22 @@ int RunGameApp(int argc, char** argv) {
         SDL_Log("audio.recover: restart ok");
     };
     bool running = true;
+    // Loads only the active world's background sheet and unloads all others.
+    // Must be called whenever the active world changes (level selection or level transition).
+    auto syncWorldBackground = [&]() {
+        const int w = levelManager.worldId();
+        bgWorldIdForLoad = w;
+        if (w != 1) { destroyTextureRef(bgTexWorld1); bgFrameByNameWorld1 = {}; bgFrameListWorld1 = {}; }
+        if (w != 2) { destroyTextureRef(bgTexWorld2); bgFrameByNameWorld2 = {}; bgFrameListWorld2 = {}; }
+        if (w != 4) { destroyTextureRef(bgTexWorld4); bgFrameByNameWorld4 = {}; bgFrameListWorld4 = {}; }
+        if (w != 5) { destroyTextureRef(bgTexWorld5); bgFrameByNameWorld5 = {}; bgFrameListWorld5 = {}; }
+        if (w != 6) { destroyTextureRef(bgTexWorld6); bgFrameByNameWorld6 = {}; bgAnimFramesWorld6 = {}; }
+        if      (w == 1 && !bgTexWorld1) loadBgSheet(texPath("textures", "background_world1", "assets/Sheets/DF_Back_1-uhd.png"), texPath("plists", "background_world1", "assets/Sheets/DF_Back_1-uhd.plist"), bgTexWorld1, bgFrameByNameWorld1, &bgFrameListWorld1);
+        else if (w == 2 && !bgTexWorld2) loadBgSheet(texPath("textures", "background_world2", "assets/Sheets/DF_Back_2-uhd.png"), texPath("plists", "background_world2", "assets/Sheets/DF_Back_2-uhd.plist"), bgTexWorld2, bgFrameByNameWorld2, &bgFrameListWorld2);
+        else if (w == 4 && !bgTexWorld4) loadBgSheet(texPath("textures", "background_world4", "assets/Sheets/DF_Back_4-uhd.png"), texPath("plists", "background_world4", "assets/Sheets/DF_Back_4-uhd.plist"), bgTexWorld4, bgFrameByNameWorld4, &bgFrameListWorld4);
+        else if (w == 5 && !bgTexWorld5) loadBgSheet(texPath("textures", "background_world5", "assets/Sheets/DF_Back_5-uhd.png"), texPath("plists", "background_world5", "assets/Sheets/DF_Back_5-uhd.plist"), bgTexWorld5, bgFrameByNameWorld5, &bgFrameListWorld5);
+        else if (w == 6 && !bgTexWorld6) loadBgSheet(texPath("textures", "background_world6", "assets/Sheets/DF_Back_6-uhd.png"), texPath("plists", "background_world6", "assets/Sheets/DF_Back_6-uhd.plist"), bgTexWorld6, bgFrameByNameWorld6, &bgAnimFramesWorld6);
+    };
     std::string currentFancyLevelName = "LEVEL";
     std::string currentAreaIdText = "1";
     auto buildFancyLevelName = [&]() -> std::string {
@@ -2487,6 +2464,7 @@ int RunGameApp(int argc, char** argv) {
         const bool allowNextLevelProgression = !selectedFromUserMenu;
         audio.haltMusic();
         levelManager.setLevelPath(selectedLevelPath);
+        syncWorldBackground();
 
         TileMap map;
         std::vector<ObjectInstance> objects;
@@ -2504,6 +2482,8 @@ int RunGameApp(int argc, char** argv) {
         int levelCompleteAccountedScore = 0;
         int levelCompleteSnapshotSeconds = 0;
         float levelCompleteUiLerp = 0.0f;
+        bool levelCompleteFlag = false;         // set this to trigger level completion programmatically
+        Uint32 nextLevelCompleteFlagCheckTicks = 0u; // 8 Hz poll timer
         enum class EndSignPhase {
             Idle,
             SignForward,
@@ -2815,6 +2795,8 @@ int RunGameApp(int argc, char** argv) {
             levelCompleteAccountedScore = 0;
             levelCompleteSnapshotSeconds = 0;
             levelCompleteUiLerp = 0.0f;
+            levelCompleteFlag = false;
+            nextLevelCompleteFlagCheckTicks = 0u;
             levelCompleteCameraLocked = false;
             levelCompleteCameraX = 0.0f;
             levelCompleteCameraY = 0.0f;
@@ -2945,6 +2927,7 @@ int RunGameApp(int argc, char** argv) {
         auto transitionToLevelPath = [&](const std::string& path) -> bool {
             if (path.empty()) return false;
             levelManager.setLevelPath(path);
+            syncWorldBackground();
             droppedCoins.clear();
             reloadLevel();
             return true;
@@ -3319,6 +3302,7 @@ int RunGameApp(int argc, char** argv) {
         };
         auto exitLowPowerSuspend = [&]() -> bool {
             if (!lowPowerSuspendActive) return true;
+            bgWorldIdForLoad = levelManager.worldId(); // ensure only the active world's bg is restored
             if (!loadGameplayAssets()) {
                 reportStartupError("Low Power Recovery Error",
                                    std::string("Failed to restore gameplay assets: ") + SDL_GetError(),
@@ -3327,6 +3311,17 @@ int RunGameApp(int argc, char** argv) {
                 levelRunning = false;
                 return false;
             }
+            // Rebuild player animation frame pointer arrays: they held pointers into
+            // playerFramesByName which was cleared by unloadGameplayAssets(), and
+            // loadGameplayAssets() just rebuilt playerFramesByName at new addresses.
+            animIdleFrames   = framesFromNames(animCfg.idle);
+            animWalkFrames   = framesFromNames(animCfg.walk);
+            animJumpFrames   = framesFromNames(animCfg.jump);
+            animFallFrames   = framesFromNames(animCfg.fall);
+            animCrouchFrames = framesFromNames(animCfg.crouch);
+            animSkidFrames   = framesFromNames(animCfg.skid);
+            animHurtFrames   = framesFromNames(animCfg.hurt);
+            animDeathFrames  = framesFromNames(animCfg.death);
             applyAudioVolumes();
             if (audio.isReady()) {
                 audio.loadLevelMusic(levelManager.musicPath());
@@ -4122,6 +4117,18 @@ int RunGameApp(int argc, char** argv) {
             }
         }
         computeTouchButtons();
+
+        // Level-complete flag: polled 8 times per second (every 125 ms).
+        {
+            const Uint32 flagNow = SDL_GetTicks();
+            if (flagNow >= nextLevelCompleteFlagCheckTicks) {
+                nextLevelCompleteFlagCheckTicks = flagNow + 125u;
+                if (levelCompleteFlag && !levelCompleteActive) {
+                    levelCompleteFlag = false;
+                    startLevelCompleteSequence();
+                }
+            }
+        }
 
         if (deathSequenceActive && !paused) {
             deathTimer += dt;
@@ -7694,6 +7701,7 @@ int RunGameApp(int argc, char** argv) {
         }
     }
 
+    if (playerTex) SDL_DestroyTexture(playerTex);
     if (blocksTex) SDL_DestroyTexture(blocksTex);
     if (entitiesTex) SDL_DestroyTexture(entitiesTex);
     if (bossesTex) SDL_DestroyTexture(bossesTex);
