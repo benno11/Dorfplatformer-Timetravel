@@ -178,7 +178,7 @@ PlayerUpdateResult UpdatePlayerMovement(
         // Preserve jump momentum: air steering should gently influence velocity,
         // not scrub speed the way ground friction/braking does.
         controlAccel *= 0.38f;
-        controlFriction = 0.0f;
+        controlFriction = 1.0f;
     }
 
     if (move != 0.0f) {
@@ -236,6 +236,11 @@ PlayerUpdateResult UpdatePlayerMovement(
     }
 
     const bool bufferedJumpReady = player.jumpBufferTime > 0.0f;
+    if (!jumpDown)
+    {
+        bufferedJumpReady = false;
+
+    }
     if ((player.onGround || inWater) && bufferedJumpReady) {
         player.vy = -jumpSpeed;
         if (player.onGround) player.onGround = false;
