@@ -10,6 +10,7 @@
 #include <sstream>
 #include <cctype>
 #include <cstring>
+#include <thread>
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -560,11 +561,13 @@ SDL_Texture* loadTextureWithColorKey(SDL_Renderer* ren, const std::string& path,
 SDL_Texture* loadTextureSafe(SDL_Renderer* ren, const std::string& path, std::string* errorOut) {
     const std::string resolved = ResolveAssetPath(path);
     if (errorOut) errorOut->clear();
+    SDL_Texture* tex = nullptr;
+    constexpr int kTextureLoadAttempts = 3;
+    for (int attempt = 1; attempt <= kTextureLoadAttempts && !tex; ++attempt) {
+        tex = IMG_LoadTexture(ren, resolved.c_str());
+        if (tex) break;
 
-    SDL_Texture* tex = IMG_LoadTexture(ren, resolved.c_str());
-    if (!tex) {
         std::string texErr = SDL_GetError() ? SDL_GetError() : "unknown SDL error";
-
         SDL_Surface* surf = IMG_Load(resolved.c_str());
         if (surf) {
             tex = SDL_CreateTextureFromSurface(ren, surf);
@@ -586,6 +589,9 @@ SDL_Texture* loadTextureSafe(SDL_Renderer* ren, const std::string& path, std::st
             }
         }
 #endif
+        if (!tex && attempt < kTextureLoadAttempts) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(15));
+        }
     }
 
     if (tex) {

@@ -6,6 +6,7 @@
 #include <cctype>
 #include <chrono>
 #include <filesystem>
+#include <thread>
 #include <vector>
 #if defined(__ANDROID__)
 #include <jni.h>
@@ -207,42 +208,57 @@ std::string ReadTextFile(const std::string& path) {
         return {};
     }
 #endif
-    SDL_IOStream* io = SDL_IOFromFile(resolved.c_str(), "rb");
-    if (!io) {
-        if (shouldLogAssetPath(path)) {
-            SDL_Log("ASSET READ: failed path='%s' resolved='%s' err='%s'",
-                    path.c_str(), resolved.c_str(), SDL_GetError());
+    constexpr int kAssetReadAttempts = 3;
+    for (int attempt = 1; attempt <= kAssetReadAttempts; ++attempt) {
+        SDL_IOStream* io = SDL_IOFromFile(resolved.c_str(), "rb");
+        if (!io) {
+            if (attempt == kAssetReadAttempts) {
+                if (shouldLogAssetPath(path)) {
+                    SDL_Log("ASSET READ: failed path='%s' resolved='%s' err='%s'",
+                            path.c_str(), resolved.c_str(), SDL_GetError());
+                }
+                return {};
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            continue;
         }
-        return {};
-    }
 
-    const Sint64 sz = SDL_GetIOSize(io);
-    if (sz <= 0) {
+        const Sint64 sz = SDL_GetIOSize(io);
+        if (sz <= 0) {
+            SDL_CloseIO(io);
+            if (attempt == kAssetReadAttempts) {
+                if (shouldLogAssetPath(path)) {
+                    SDL_Log("ASSET READ: empty/unreadable path='%s' resolved='%s' size=%lld",
+                            path.c_str(), resolved.c_str(), (long long)sz);
+                }
+                return {};
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            continue;
+        }
+
+        std::vector<char> data(static_cast<size_t>(sz));
+        const size_t got = static_cast<size_t>(SDL_ReadIO(io, data.data(), data.size()));
         SDL_CloseIO(io);
-        if (shouldLogAssetPath(path)) {
-            SDL_Log("ASSET READ: empty/unreadable path='%s' resolved='%s' size=%lld",
-                    path.c_str(), resolved.c_str(), (long long)sz);
+        if (got != data.size()) {
+            if (attempt == kAssetReadAttempts) {
+                if (shouldLogAssetPath(path)) {
+                    SDL_Log("ASSET READ: short read path='%s' resolved='%s' got=%d expected=%d",
+                            path.c_str(), resolved.c_str(), (int)got, (int)data.size());
+                }
+                return {};
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            continue;
         }
-        return {};
-    }
 
-    std::vector<char> data(static_cast<size_t>(sz));
-    const size_t got = static_cast<size_t>(SDL_ReadIO(io, data.data(), data.size()));
-    SDL_CloseIO(io);
-    if (got != data.size()) {
         if (shouldLogAssetPath(path)) {
-            SDL_Log("ASSET READ: short read path='%s' resolved='%s' got=%d expected=%d",
-                    path.c_str(), resolved.c_str(), (int)got, (int)data.size());
+            SDL_Log("ASSET READ: ok path='%s' resolved='%s' bytes=%d",
+                    path.c_str(), resolved.c_str(), (int)data.size());
         }
-        return {};
+        return std::string(data.begin(), data.end());
     }
-
-    if (shouldLogAssetPath(path)) {
-        SDL_Log("ASSET READ: ok path='%s' resolved='%s' bytes=%d",
-                path.c_str(), resolved.c_str(), (int)data.size());
-    }
-
-    return std::string(data.begin(), data.end());
+    return {};
 }
 
 bool FileExists(const std::string& path) {

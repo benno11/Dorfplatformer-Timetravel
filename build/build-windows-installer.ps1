@@ -426,7 +426,7 @@ if (Test-Path $launcherExe) {
 }
 $trayExe = Resolve-BuildOutput -repoRootPath $repoRoot -buildDirName $BuildDir -configName $Config -fileName "df-tray.exe"
 if (Test-Path $trayExe) {
-    Copy-Item $trayExe -Destination $rootDir -Force
+    Copy-Item $trayExe -Destination $appDir -Force
 }
 $sheetConfigExe = Resolve-BuildOutput -repoRootPath $repoRoot -buildDirName $BuildDir -configName $Config -fileName "sheet_config.exe"
 if (Test-Path $sheetConfigExe) {

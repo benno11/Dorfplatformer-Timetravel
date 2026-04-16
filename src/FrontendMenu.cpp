@@ -289,7 +289,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         return used + 1; // + BACK
     };
     auto tabIsVisible = [&](int tab) -> bool {
-        if (tab == 2) return true;
+        if (tab == 2) return false;
         if (tab == 8) return true; // NETWORK+ hosts account manager UI.
         if (tab == IDX_UPDATER_TAB) return true;
         if (!isExtraTab(tab)) return true;
@@ -450,6 +450,20 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         aboutScrollY += dy;
         clampAboutScroll();
     };
+    auto generalSettingsRowHidden = [&](int idx) -> bool {
+        return idx == IDX_DEBUG_MODE ||
+               idx == IDX_SHOW_DETAILED ||
+               idx == IDX_SHOW_HITBOXES ||
+               idx == IDX_SHOW_PLAYER_HITBOX ||
+               idx == IDX_SHOW_DEBUG_VIEW;
+    };
+    auto generalSettingsRowCount = [&]() -> int {
+        int count = 0;
+        for (int i = 0; i < kSettingsCount; ++i) {
+            if (!generalSettingsRowHidden(i)) ++count;
+        }
+        return count;
+    };
     auto settingsRowsForTab = [&](int tab) -> int {
         if (tab == 1) return 5;
         if (tab == 2) return 6;
@@ -465,11 +479,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         if (tab == IDX_UPDATER_TAB) return 3;
         if (tab == 4) return 0;
         if (isExtraTab(tab)) return extraTabRowCountForTab(tab);
-        return kSettingsCount;
-    };
-    auto generalSettingsRowHidden = [&](int idx) -> bool {
-        (void)idx;
-        return false;
+        return generalSettingsRowCount();
     };
     auto visibleGeneralSettingsRowIndex = [&](int rawIdx) -> int {
         int visibleIdx = 0;
@@ -477,6 +487,15 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             if (!generalSettingsRowHidden(i)) ++visibleIdx;
         }
         return visibleIdx;
+    };
+    auto generalSettingsRawIndexFromVisible = [&](int visibleIdx) -> int {
+        int currentVisible = 0;
+        for (int rawIdx = 0; rawIdx < kSettingsCount; ++rawIdx) {
+            if (generalSettingsRowHidden(rawIdx)) continue;
+            if (currentVisible == visibleIdx) return rawIdx;
+            ++currentVisible;
+        }
+        return IDX_BACK;
     };
     auto activeSettingsSelectionRef = [&]() -> int& {
         if (settingsTab == 1) return settingsSelAudio;
@@ -1170,6 +1189,46 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             std::max(20, panel.h - topPad - bottomPad)
         };
     };
+    auto aboutOpenMainLevelSelectRect = [&]() -> SDL_Rect {
+        if (!showExperimentalFeatures) return SDL_Rect{0, 0, 0, 0};
+        const int aboutHeadScale = std::clamp((int)std::lround(2.0f + 0.35f * settingsMenuScale()), 2, 3);
+        const int aboutBodyScale = std::clamp((int)std::lround(1.3f + 0.35f * settingsMenuScale()), 2, 3);
+        int y = settingsListTop + std::max(8, (int)std::lround(10.0f * settingsMenuScale())) - aboutScrollY;
+        auto advanceAboutLine = [&](int scale, int gapMul) {
+            y += std::max(14, (10 * scale) + gapMul);
+        };
+        advanceAboutLine(aboutHeadScale, 8);
+        advanceAboutLine(aboutBodyScale, 6);
+#if defined(_WIN32)
+        advanceAboutLine(aboutBodyScale, 6);
+#endif
+        advanceAboutLine(aboutBodyScale, 6);
+        advanceAboutLine(aboutBodyScale, 6);
+        advanceAboutLine(aboutBodyScale, 6);
+        advanceAboutLine(aboutBodyScale, 6);
+        advanceAboutLine(aboutBodyScale, 6);
+        advanceAboutLine(aboutBodyScale, 6);
+        advanceAboutLine(aboutBodyScale, 6);
+        advanceAboutLine(aboutBodyScale, 6);
+        advanceAboutLine(aboutBodyScale, 6);
+        advanceAboutLine(aboutBodyScale, 2);
+        advanceAboutLine(aboutBodyScale, 8);
+        advanceAboutLine(aboutBodyScale, 2);
+        advanceAboutLine(aboutBodyScale, 6);
+#if defined(_WIN32)
+        advanceAboutLine(aboutBodyScale, 6);
+        advanceAboutLine(aboutBodyScale, 6);
+#endif
+        const std::string actionText = "OPEN MAIN LEVEL SELECT";
+        const int textW = MeasureTextWidth(aboutBodyScale, actionText);
+        const int textH = 10 * aboutBodyScale;
+        return SDL_Rect{
+            ctx.baseScreenW / 2 - textW / 2 - 8,
+            y - 4,
+            textW + 16,
+            textH + 8
+        };
+    };
     auto resetSelectionForTab = [&](int tab) {
         if (tab == 1) settingsSelAudio = 0;
         if (tab == 2) settingsSelDebug = 0;
@@ -1348,46 +1407,38 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             return;
         }
 #if defined(__ANDROID__)
-        if (settingsSel == IDX_VSYNC) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
-        else if (settingsSel == IDX_CAM_CLAMP) clampCamX = !clampCamX;
-        else if (settingsSel == IDX_UI_SCALE && dir != 0) uiScalePercent = std::clamp(uiScalePercent + dir * 5, kUiScaleMinPercent, kUiScaleMaxPercent);
-        else if (settingsSel == IDX_DEBUG_MODE) { debugModeEnabled = !debugModeEnabled; normalizeSettingsTab(); if (ctx.saveClientSettings) ctx.saveClientSettings(); }
-        else if (settingsSel == IDX_SHOW_FPS) defaultShowFpsCounter = !defaultShowFpsCounter;
-        else if (settingsSel == IDX_SHOW_DETAILED) defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
-        else if (settingsSel == IDX_SHOW_HITBOXES) defaultShowHitboxes = !defaultShowHitboxes;
-        else if (settingsSel == IDX_SHOW_PLAYER_HITBOX) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
-        else if (settingsSel == IDX_SHOW_DEBUG_VIEW) defaultShowDebugView = !defaultShowDebugView;
-        else if (settingsSel == IDX_POWER_MANAGEMENT) powerManagementEnabled = !powerManagementEnabled;
-        else if (settingsSel == IDX_LOW_POWER_MODE) lowPowerModeEnabled = !lowPowerModeEnabled;
-        else if (settingsSel == IDX_MUSIC && dir != 0) musicVolume = std::clamp(musicVolume + dir * 8, 0, 128);
-        else if (settingsSel == IDX_SFX && dir != 0) sfxVolume = std::clamp(sfxVolume + dir * 8, 0, 128);
-        else if (settingsSel == IDX_SHOW_EXPERIMENTAL) showExperimentalFeatures = !showExperimentalFeatures;
-        else if (settingsSel == IDX_LEVEL_SELECT) levelSelectEnabled = !levelSelectEnabled;
-        else if (settingsSel == IDX_ABOUT) { openSettingsTab(4); }
+        const int rawGeneralSel = generalSettingsRawIndexFromVisible(settingsSel);
+        if (rawGeneralSel == IDX_VSYNC) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
+        else if (rawGeneralSel == IDX_CAM_CLAMP) clampCamX = !clampCamX;
+        else if (rawGeneralSel == IDX_UI_SCALE && dir != 0) uiScalePercent = std::clamp(uiScalePercent + dir * 5, kUiScaleMinPercent, kUiScaleMaxPercent);
+        else if (rawGeneralSel == IDX_SHOW_FPS) defaultShowFpsCounter = !defaultShowFpsCounter;
+        else if (rawGeneralSel == IDX_POWER_MANAGEMENT) powerManagementEnabled = !powerManagementEnabled;
+        else if (rawGeneralSel == IDX_LOW_POWER_MODE) lowPowerModeEnabled = !lowPowerModeEnabled;
+        else if (rawGeneralSel == IDX_MUSIC && dir != 0) musicVolume = std::clamp(musicVolume + dir * 8, 0, 128);
+        else if (rawGeneralSel == IDX_SFX && dir != 0) sfxVolume = std::clamp(sfxVolume + dir * 8, 0, 128);
+        else if (rawGeneralSel == IDX_SHOW_EXPERIMENTAL) showExperimentalFeatures = !showExperimentalFeatures;
+        else if (rawGeneralSel == IDX_LEVEL_SELECT) levelSelectEnabled = !levelSelectEnabled;
+        else if (rawGeneralSel == IDX_ABOUT) { openSettingsTab(4); }
         else setInSettings(false);
 #else
-        if (settingsSel == IDX_FULLSCREEN) { (void)applyFullscreen(!fullscreen); }
-        else if (settingsSel == IDX_VSYNC) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
-        else if (settingsSel == IDX_CAM_CLAMP) clampCamX = !clampCamX;
-        else if (settingsSel == IDX_UI_SCALE && dir != 0) uiScalePercent = std::clamp(uiScalePercent + dir * 5, kUiScaleMinPercent, kUiScaleMaxPercent);
-        else if (settingsSel == IDX_DEBUG_MODE) { debugModeEnabled = !debugModeEnabled; normalizeSettingsTab(); if (ctx.saveClientSettings) ctx.saveClientSettings(); }
-        else if (settingsSel == IDX_SHOW_FPS) defaultShowFpsCounter = !defaultShowFpsCounter;
-        else if (settingsSel == IDX_SHOW_DETAILED) defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
-        else if (settingsSel == IDX_SHOW_HITBOXES) defaultShowHitboxes = !defaultShowHitboxes;
-        else if (settingsSel == IDX_SHOW_PLAYER_HITBOX) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
-        else if (settingsSel == IDX_SHOW_DEBUG_VIEW) defaultShowDebugView = !defaultShowDebugView;
-        else if (settingsSel == IDX_POWER_MANAGEMENT) powerManagementEnabled = !powerManagementEnabled;
-        else if (settingsSel == IDX_LOW_POWER_MODE) lowPowerModeEnabled = !lowPowerModeEnabled;
-        else if (settingsSel == IDX_MUSIC && dir != 0) musicVolume = std::clamp(musicVolume + dir * 8, 0, 128);
-        else if (settingsSel == IDX_SFX && dir != 0) sfxVolume = std::clamp(sfxVolume + dir * 8, 0, 128);
-        else if (settingsSel == IDX_SHOW_EXPERIMENTAL) showExperimentalFeatures = !showExperimentalFeatures;
-        else if (settingsSel == IDX_LEVEL_SELECT) levelSelectEnabled = !levelSelectEnabled;
+        const int rawGeneralSel = generalSettingsRawIndexFromVisible(settingsSel);
+        if (rawGeneralSel == IDX_FULLSCREEN) { (void)applyFullscreen(!fullscreen); }
+        else if (rawGeneralSel == IDX_VSYNC) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
+        else if (rawGeneralSel == IDX_CAM_CLAMP) clampCamX = !clampCamX;
+        else if (rawGeneralSel == IDX_UI_SCALE && dir != 0) uiScalePercent = std::clamp(uiScalePercent + dir * 5, kUiScaleMinPercent, kUiScaleMaxPercent);
+        else if (rawGeneralSel == IDX_SHOW_FPS) defaultShowFpsCounter = !defaultShowFpsCounter;
+        else if (rawGeneralSel == IDX_POWER_MANAGEMENT) powerManagementEnabled = !powerManagementEnabled;
+        else if (rawGeneralSel == IDX_LOW_POWER_MODE) lowPowerModeEnabled = !lowPowerModeEnabled;
+        else if (rawGeneralSel == IDX_MUSIC && dir != 0) musicVolume = std::clamp(musicVolume + dir * 8, 0, 128);
+        else if (rawGeneralSel == IDX_SFX && dir != 0) sfxVolume = std::clamp(sfxVolume + dir * 8, 0, 128);
+        else if (rawGeneralSel == IDX_SHOW_EXPERIMENTAL) showExperimentalFeatures = !showExperimentalFeatures;
+        else if (rawGeneralSel == IDX_LEVEL_SELECT) levelSelectEnabled = !levelSelectEnabled;
 #if defined(_WIN32)
-        else if (settingsSel == IDX_UPDATE && ctx.launchUpdater) {
+        else if (rawGeneralSel == IDX_UPDATE && ctx.launchUpdater) {
             openSettingsTab(IDX_UPDATER_TAB);
         }
 #endif
-        else if (settingsSel == IDX_ABOUT) { openSettingsTab(4); }
+        else if (rawGeneralSel == IDX_ABOUT) { openSettingsTab(4); }
         else setInSettings(false);
 #endif
         if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
@@ -1535,6 +1586,14 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         if (!ctx.selectedLevelPath) return false;
         if (!levelSelectEnabled) return false;
         std::string path = RunCustomLevelSelect(ctx.win, ctx.ren);
+        if (path.empty()) return false;
+        *ctx.selectedLevelPath = path;
+        cleanupMenuAssets();
+        return true;
+    };
+    auto tryStartMainLevelSelect = [&]() -> bool {
+        if (!ctx.selectedLevelPath) return false;
+        std::string path = RunCampaignLevelSelect(ctx.win, ctx.ren);
         if (path.empty()) return false;
         *ctx.selectedLevelPath = path;
         cleanupMenuAssets();
@@ -2041,6 +2100,17 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                             continue;
                         }
                     }
+                    if (settingsTab == 4) {
+                        if (showExperimentalFeatures) {
+                            SDL_Rect mainLevelSelectRect = aboutOpenMainLevelSelectRect();
+                            if (mainLevelSelectRect.w > 0 && mainLevelSelectRect.h > 0 &&
+                                SDL_PointInRect(&pt, &mainLevelSelectRect)) {
+                                if (tryStartMainLevelSelect()) return FrontendAction::StartGame;
+                                continue;
+                            }
+                        }
+                        continue;
+                    }
                     if (settingsTab != 3 && settingsTab != 4 && settingsMaxScroll(settingsTab) > 0) {
                         SDL_Rect scrollbarTrack = settingsScrollbarTrackRect();
                         SDL_Rect scrollbarThumb = settingsScrollbarThumbRect();
@@ -2054,7 +2124,6 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                             continue;
                         }
                     }
-                    if (settingsTab == 4) continue;
                     if (settingsTab == 3) {
                         for (int i = 0; i < 6; ++i) {
                             SDL_Rect row = settingsRowBtn(i);
@@ -2181,13 +2250,9 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_Rect uiScaleBtn = settingsRowBtn(IDX_UI_SCALE);
                     SDL_Rect uiScaleSlider = uiScaleSliderRect();
                     SDL_Rect uiScaleSliderHit = sliderHitRect(uiScaleSlider);
-                    SDL_Rect fpsBtn = settingsRowBtn(IDX_SHOW_FPS);
-                    SDL_Rect dbgBtn = settingsRowBtn(IDX_SHOW_DETAILED);
-                    SDL_Rect hitBtn = settingsRowBtn(IDX_SHOW_HITBOXES);
-                    SDL_Rect playerHitBtn = settingsRowBtn(IDX_SHOW_PLAYER_HITBOX);
-                    SDL_Rect debugViewBtn = settingsRowBtn(IDX_SHOW_DEBUG_VIEW);
-                    SDL_Rect powerMgmtBtn = settingsRowBtn(IDX_POWER_MANAGEMENT);
-                    SDL_Rect lowPowerBtn = settingsRowBtn(IDX_LOW_POWER_MODE);
+                    SDL_Rect fpsBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_SHOW_FPS));
+                    SDL_Rect powerMgmtBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_POWER_MANAGEMENT));
+                    SDL_Rect lowPowerBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_LOW_POWER_MODE));
                     SDL_Rect experimentalBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_SHOW_EXPERIMENTAL));
                     SDL_Rect levelSelectBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_LEVEL_SELECT));
                     if (SDL_PointInRect(&pt, &vsyncBtn)) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
@@ -2197,10 +2262,6 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         sliderDrag = SliderDragTarget::UiScale;
                     }
                     else if (SDL_PointInRect(&pt, &fpsBtn)) defaultShowFpsCounter = !defaultShowFpsCounter;
-                    else if (SDL_PointInRect(&pt, &dbgBtn)) defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
-                    else if (SDL_PointInRect(&pt, &hitBtn)) defaultShowHitboxes = !defaultShowHitboxes;
-                    else if (SDL_PointInRect(&pt, &playerHitBtn)) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
-                    else if (SDL_PointInRect(&pt, &debugViewBtn)) defaultShowDebugView = !defaultShowDebugView;
                     else if (SDL_PointInRect(&pt, &powerMgmtBtn)) powerManagementEnabled = !powerManagementEnabled;
                     else if (SDL_PointInRect(&pt, &lowPowerBtn)) lowPowerModeEnabled = !lowPowerModeEnabled;
                     else if (SDL_PointInRect(&pt, &experimentalBtn)) showExperimentalFeatures = !showExperimentalFeatures;
@@ -2214,13 +2275,9 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_Rect uiScaleBtn = settingsRowBtn(IDX_UI_SCALE);
                     SDL_Rect uiScaleSlider = uiScaleSliderRect();
                     SDL_Rect uiScaleSliderHit = sliderHitRect(uiScaleSlider);
-                    SDL_Rect fpsBtn = settingsRowBtn(IDX_SHOW_FPS);
-                    SDL_Rect dbgBtn = settingsRowBtn(IDX_SHOW_DETAILED);
-                    SDL_Rect hitBtn = settingsRowBtn(IDX_SHOW_HITBOXES);
-                    SDL_Rect playerHitBtn = settingsRowBtn(IDX_SHOW_PLAYER_HITBOX);
-                    SDL_Rect debugViewBtn = settingsRowBtn(IDX_SHOW_DEBUG_VIEW);
-                    SDL_Rect powerMgmtBtn = settingsRowBtn(IDX_POWER_MANAGEMENT);
-                    SDL_Rect lowPowerBtn = settingsRowBtn(IDX_LOW_POWER_MODE);
+                    SDL_Rect fpsBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_SHOW_FPS));
+                    SDL_Rect powerMgmtBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_POWER_MANAGEMENT));
+                    SDL_Rect lowPowerBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_LOW_POWER_MODE));
                     SDL_Rect experimentalBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_SHOW_EXPERIMENTAL));
                     SDL_Rect levelSelectBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_LEVEL_SELECT));
 #if defined(_WIN32)
@@ -2234,10 +2291,6 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         sliderDrag = SliderDragTarget::UiScale;
                     }
                     else if (SDL_PointInRect(&pt, &fpsBtn)) defaultShowFpsCounter = !defaultShowFpsCounter;
-                    else if (SDL_PointInRect(&pt, &dbgBtn)) defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
-                    else if (SDL_PointInRect(&pt, &hitBtn)) defaultShowHitboxes = !defaultShowHitboxes;
-                    else if (SDL_PointInRect(&pt, &playerHitBtn)) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
-                    else if (SDL_PointInRect(&pt, &debugViewBtn)) defaultShowDebugView = !defaultShowDebugView;
                     else if (SDL_PointInRect(&pt, &powerMgmtBtn)) powerManagementEnabled = !powerManagementEnabled;
                     else if (SDL_PointInRect(&pt, &lowPowerBtn)) lowPowerModeEnabled = !lowPowerModeEnabled;
                     else if (SDL_PointInRect(&pt, &experimentalBtn)) showExperimentalFeatures = !showExperimentalFeatures;
@@ -2461,13 +2514,9 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_Rect uiScaleBtn = settingsRowBtn(IDX_UI_SCALE);
                     SDL_Rect uiScaleSlider = uiScaleSliderRect();
                     SDL_Rect uiScaleSliderHit = sliderHitRect(uiScaleSlider);
-                    SDL_Rect fpsBtn = settingsRowBtn(IDX_SHOW_FPS);
-                    SDL_Rect dbgBtn = settingsRowBtn(IDX_SHOW_DETAILED);
-                    SDL_Rect hitBtn = settingsRowBtn(IDX_SHOW_HITBOXES);
-                    SDL_Rect playerHitBtn = settingsRowBtn(IDX_SHOW_PLAYER_HITBOX);
-                    SDL_Rect debugViewBtn = settingsRowBtn(IDX_SHOW_DEBUG_VIEW);
-                    SDL_Rect powerMgmtBtn = settingsRowBtn(IDX_POWER_MANAGEMENT);
-                    SDL_Rect lowPowerBtn = settingsRowBtn(IDX_LOW_POWER_MODE);
+                    SDL_Rect fpsBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_SHOW_FPS));
+                    SDL_Rect powerMgmtBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_POWER_MANAGEMENT));
+                    SDL_Rect lowPowerBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_LOW_POWER_MODE));
                     SDL_Rect experimentalBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_SHOW_EXPERIMENTAL));
                     SDL_Rect levelSelectBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_LEVEL_SELECT));
                     if (SDL_PointInRect(&pt, &vsyncBtn)) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
@@ -2478,10 +2527,6 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         sliderDragFinger = e.tfinger.fingerID;
                     }
                     else if (SDL_PointInRect(&pt, &fpsBtn)) defaultShowFpsCounter = !defaultShowFpsCounter;
-                    else if (SDL_PointInRect(&pt, &dbgBtn)) defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
-                    else if (SDL_PointInRect(&pt, &hitBtn)) defaultShowHitboxes = !defaultShowHitboxes;
-                    else if (SDL_PointInRect(&pt, &playerHitBtn)) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
-                    else if (SDL_PointInRect(&pt, &debugViewBtn)) defaultShowDebugView = !defaultShowDebugView;
                     else if (SDL_PointInRect(&pt, &powerMgmtBtn)) powerManagementEnabled = !powerManagementEnabled;
                     else if (SDL_PointInRect(&pt, &lowPowerBtn)) lowPowerModeEnabled = !lowPowerModeEnabled;
                     else if (SDL_PointInRect(&pt, &experimentalBtn)) showExperimentalFeatures = !showExperimentalFeatures;
@@ -2495,13 +2540,9 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_Rect uiScaleBtn = settingsRowBtn(IDX_UI_SCALE);
                     SDL_Rect uiScaleSlider = uiScaleSliderRect();
                     SDL_Rect uiScaleSliderHit = sliderHitRect(uiScaleSlider);
-                    SDL_Rect fpsBtn = settingsRowBtn(IDX_SHOW_FPS);
-                    SDL_Rect dbgBtn = settingsRowBtn(IDX_SHOW_DETAILED);
-                    SDL_Rect hitBtn = settingsRowBtn(IDX_SHOW_HITBOXES);
-                    SDL_Rect playerHitBtn = settingsRowBtn(IDX_SHOW_PLAYER_HITBOX);
-                    SDL_Rect debugViewBtn = settingsRowBtn(IDX_SHOW_DEBUG_VIEW);
-                    SDL_Rect powerMgmtBtn = settingsRowBtn(IDX_POWER_MANAGEMENT);
-                    SDL_Rect lowPowerBtn = settingsRowBtn(IDX_LOW_POWER_MODE);
+                    SDL_Rect fpsBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_SHOW_FPS));
+                    SDL_Rect powerMgmtBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_POWER_MANAGEMENT));
+                    SDL_Rect lowPowerBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_LOW_POWER_MODE));
                     SDL_Rect experimentalBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_SHOW_EXPERIMENTAL));
                     SDL_Rect levelSelectBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_LEVEL_SELECT));
 #if defined(_WIN32)
@@ -2516,10 +2557,6 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         sliderDragFinger = e.tfinger.fingerID;
                     }
                     else if (SDL_PointInRect(&pt, &fpsBtn)) defaultShowFpsCounter = !defaultShowFpsCounter;
-                    else if (SDL_PointInRect(&pt, &dbgBtn)) defaultShowDetailedDebugger = !defaultShowDetailedDebugger;
-                    else if (SDL_PointInRect(&pt, &hitBtn)) defaultShowHitboxes = !defaultShowHitboxes;
-                    else if (SDL_PointInRect(&pt, &playerHitBtn)) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
-                    else if (SDL_PointInRect(&pt, &debugViewBtn)) defaultShowDebugView = !defaultShowDebugView;
                     else if (SDL_PointInRect(&pt, &powerMgmtBtn)) powerManagementEnabled = !powerManagementEnabled;
                     else if (SDL_PointInRect(&pt, &lowPowerBtn)) lowPowerModeEnabled = !lowPowerModeEnabled;
                     else if (SDL_PointInRect(&pt, &experimentalBtn)) showExperimentalFeatures = !showExperimentalFeatures;
@@ -2770,7 +2807,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             }
 #endif
             const std::string copyrightText = "Copyright (c) Benno111 2024 - 2026";
-            const int footerScale = std::max(1, (int)std::lround(2.0f * menuCanvasScale() * mainMenuScale()));
+            const int footerScale = std::max(2, (int)std::lround(2.0f * menuCanvasScale() * mainMenuScale()));
             const int footerY = (int)std::lround(menuCanvasOriginY() + 496.0f * menuCanvasScale());
             const int edgePad = std::max(8, (int)std::lround(12.0f * menuCanvasScale()));
             DrawText(ctx.ren, edgePad, footerY, footerScale, versionText);
@@ -2992,7 +3029,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 SDL_Rect listClip = settingsListClipRect();
                 SDL_SetRenderClipRect(ctx.ren, &listClip);
                 const int aboutHeadScale = std::clamp((int)std::lround(2.0f + 0.35f * settingsMenuScale()), 2, 3);
-                const int aboutBodyScale = std::clamp((int)std::lround(1.0f + 0.30f * settingsMenuScale()), 1, 2);
+                const int aboutBodyScale = std::clamp((int)std::lround(1.3f + 0.35f * settingsMenuScale()), 2, 3);
                 int y = settingsListTop + std::max(8, (int)std::lround(10.0f * settingsMenuScale())) - aboutScrollY;
                 auto drawAboutLine = [&](int scale, const std::string& text, int gapMul) {
                     DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(scale, text) / 2, y, scale, text);
@@ -3023,6 +3060,20 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                               6);
                 drawAboutLine(aboutBodyScale, "PRESS U OR USE SETTINGS > CHECK FOR UPDATES", 6);
 #endif
+                if (showExperimentalFeatures) {
+                    const std::string actionText = "OPEN MAIN LEVEL SELECT";
+                    SDL_Rect actionRect = aboutOpenMainLevelSelectRect();
+                    SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_BLEND);
+                    SDL_SetRenderDrawColor(ctx.ren, 255, 255, 255, 36);
+                    SDL_RenderFillRect(ctx.ren, &actionRect);
+                    SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_NONE);
+                    DrawText(ctx.ren,
+                             ctx.baseScreenW / 2 - MeasureTextWidth(aboutBodyScale, actionText) / 2,
+                             actionRect.y + 4,
+                             aboutBodyScale,
+                             actionText);
+                    y = actionRect.y + actionRect.h + std::max(8, (int)std::lround(10.0f * settingsMenuScale()));
+                }
                 aboutContentBottomY = y + aboutScrollY;
                 SDL_SetRenderClipRect(ctx.ren, nullptr);
             } else if (settingsTab == 3) {
@@ -3222,7 +3273,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     drawRowText(i, rows[i]);
                 }
                 int infoY = settingsRowY((int)rows.size()) + std::max(8, (int)std::lround(10.0f * settingsMenuScale()));
-                const int infoScale = std::clamp((int)std::lround(1.0f + 0.30f * settingsMenuScale()), 1, 2);
+                const int infoScale = std::clamp((int)std::lround(1.3f + 0.35f * settingsMenuScale()), 2, 3);
                 const int infoX = settingsRowBtn(0).x + std::max(6, (int)std::lround(8.0f * settingsMenuScale()));
                 auto drawInfo = [&](const std::string& line) {
                     if (line.empty()) return;
@@ -3336,16 +3387,11 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 int drawIdx = 0;
                 for (int i = 0; i < (int)rows.size(); ++i) {
                     if (generalSettingsRowHidden(i)) continue;
-                    drawToggleHitbox(drawIdx, i == settingsSel);
+                    drawToggleHitbox(drawIdx, drawIdx == settingsSel);
 #if defined(__ANDROID__)
                     if (i == 0) drawToggleCheckbox(drawIdx, vsyncEnabled);
                     if (i == 1) drawToggleCheckbox(drawIdx, clampCamX);
-                    if (i == IDX_DEBUG_MODE) drawToggleCheckbox(drawIdx, debugModeEnabled);
                     if (i == IDX_SHOW_FPS) drawToggleCheckbox(drawIdx, defaultShowFpsCounter);
-                    if (i == IDX_SHOW_DETAILED) drawToggleCheckbox(drawIdx, defaultShowDetailedDebugger);
-                    if (i == IDX_SHOW_HITBOXES) drawToggleCheckbox(drawIdx, defaultShowHitboxes);
-                    if (i == IDX_SHOW_PLAYER_HITBOX) drawToggleCheckbox(drawIdx, defaultShowPlayerHitbox);
-                    if (i == IDX_SHOW_DEBUG_VIEW) drawToggleCheckbox(drawIdx, defaultShowDebugView);
                     if (i == IDX_POWER_MANAGEMENT) drawToggleCheckbox(drawIdx, powerManagementEnabled);
                     if (i == IDX_LOW_POWER_MODE) drawToggleCheckbox(drawIdx, lowPowerModeEnabled);
                     if (i == IDX_SHOW_EXPERIMENTAL) drawToggleCheckbox(drawIdx, showExperimentalFeatures);
@@ -3354,19 +3400,14 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     if (i == 0) drawToggleCheckbox(drawIdx, fullscreen);
                     if (i == 1) drawToggleCheckbox(drawIdx, vsyncEnabled);
                     if (i == 2) drawToggleCheckbox(drawIdx, clampCamX);
-                    if (i == IDX_DEBUG_MODE) drawToggleCheckbox(drawIdx, debugModeEnabled);
                     if (i == IDX_SHOW_FPS) drawToggleCheckbox(drawIdx, defaultShowFpsCounter);
-                    if (i == IDX_SHOW_DETAILED) drawToggleCheckbox(drawIdx, defaultShowDetailedDebugger);
-                    if (i == IDX_SHOW_HITBOXES) drawToggleCheckbox(drawIdx, defaultShowHitboxes);
-                    if (i == IDX_SHOW_PLAYER_HITBOX) drawToggleCheckbox(drawIdx, defaultShowPlayerHitbox);
-                    if (i == IDX_SHOW_DEBUG_VIEW) drawToggleCheckbox(drawIdx, defaultShowDebugView);
                     if (i == IDX_POWER_MANAGEMENT) drawToggleCheckbox(drawIdx, powerManagementEnabled);
                     if (i == IDX_LOW_POWER_MODE) drawToggleCheckbox(drawIdx, lowPowerModeEnabled);
                     if (i == IDX_SHOW_EXPERIMENTAL) drawToggleCheckbox(drawIdx, showExperimentalFeatures);
                     if (i == IDX_LEVEL_SELECT) drawToggleCheckbox(drawIdx, levelSelectEnabled);
 #endif
                     int y = settingsRowY(drawIdx);
-                    if (i == settingsSel) {
+                    if (drawIdx == settingsSel) {
                         SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_BLEND);
                         SDL_SetRenderDrawColor(ctx.ren, 255, 255, 255, 76);
                         SDL_Rect hl = settingsRowBtn(drawIdx);

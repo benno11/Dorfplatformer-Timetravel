@@ -95,6 +95,16 @@ void showError(const std::wstring& message) {
     MessageBoxW(nullptr, message.c_str(), L"Dorfplatformer Launcher", MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
 }
 
+bool hasArg(int argc, wchar_t** argv, const wchar_t* expected) {
+    if (!expected) return false;
+    for (int i = 1; i < argc; ++i) {
+        if (argv[i] && _wcsicmp(argv[i], expected) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void launchTrayHelperIfNeeded(const std::filesystem::path& rootDir) {
     HANDLE existingMutex = OpenMutexW(SYNCHRONIZE, FALSE, L"Local\\DFNewTrayAppMutex");
     if (existingMutex) {
@@ -102,7 +112,15 @@ void launchTrayHelperIfNeeded(const std::filesystem::path& rootDir) {
         return;
     }
 
-    const std::filesystem::path trayExe = rootDir / "df-tray.exe";
+    std::string versionId = readCurrentVersionId(rootDir);
+    if (versionId.empty()) {
+        versionId = findHighestInstalledVersionId(rootDir);
+    }
+    if (versionId.empty()) {
+        return;
+    }
+
+    const std::filesystem::path trayExe = rootDir / "versions" / utf8ToWide(versionId) / "df-tray.exe";
     if (!std::filesystem::exists(trayExe)) {
         return;
     }
@@ -121,7 +139,7 @@ void launchTrayHelperIfNeeded(const std::filesystem::path& rootDir) {
         FALSE,
         CREATE_NEW_PROCESS_GROUP,
         nullptr,
-        rootDir.c_str(),
+        trayExe.parent_path().c_str(),
         &si,
         &pi);
     if (!started) {
@@ -130,18 +148,82 @@ void launchTrayHelperIfNeeded(const std::filesystem::path& rootDir) {
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
 }
+
+bool launchTrayOnly(const std::filesystem::path& rootDir) {
+    HANDLE existingMutex = OpenMutexW(SYNCHRONIZE, FALSE, L"Local\\DFNewTrayAppMutex");
+    if (existingMutex) {
+        CloseHandle(existingMutex);
+        return true;
+    }
+
+    std::string versionId = readCurrentVersionId(rootDir);
+    if (versionId.empty()) {
+        versionId = findHighestInstalledVersionId(rootDir);
+    }
+    if (versionId.empty()) {
+        showError(L"No installed tray companion version was found.");
+        return false;
+    }
+
+    const std::filesystem::path trayExe = rootDir / "versions" / utf8ToWide(versionId) / "df-tray.exe";
+    if (!std::filesystem::exists(trayExe)) {
+        std::wstring msg = L"The tray companion could not be launched:\n\n" + trayExe.wstring();
+        showError(msg);
+        return false;
+    }
+
+    std::wstring cmdLine = quoteWindowsArg(trayExe.wstring());
+    STARTUPINFOW si{};
+    si.cb = sizeof(si);
+    PROCESS_INFORMATION pi{};
+    std::vector<wchar_t> mutableCmd(cmdLine.begin(), cmdLine.end());
+    mutableCmd.push_back(L'\0');
+    const BOOL started = CreateProcessW(
+        trayExe.c_str(),
+        mutableCmd.data(),
+        nullptr,
+        nullptr,
+        FALSE,
+        CREATE_NEW_PROCESS_GROUP,
+        nullptr,
+        trayExe.parent_path().c_str(),
+        &si,
+        &pi);
+    if (!started) {
+        std::wstringstream ss;
+        ss << L"Could not launch the tray companion.\n\nWin32 error: " << GetLastError();
+        showError(ss.str());
+        return false;
+    }
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    return true;
+}
 } // namespace
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
+    int argc = 0;
+    wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+
     wchar_t modulePathBuf[MAX_PATH] = {};
     const DWORD moduleLen = GetModuleFileNameW(nullptr, modulePathBuf, (DWORD)std::size(modulePathBuf));
     if (moduleLen == 0 || moduleLen >= std::size(modulePathBuf)) {
+        if (argv) LocalFree(argv);
         showError(L"Could not resolve the launcher path.");
         return 1;
     }
 
     const std::filesystem::path launcherPath(modulePathBuf);
     const std::filesystem::path rootDir = launcherPath.parent_path();
+
+    const bool trayOnly = argv && hasArg(argc, argv, L"--tray");
+    if (argv) {
+        LocalFree(argv);
+        argv = nullptr;
+    }
+    if (trayOnly) {
+        return launchTrayOnly(rootDir) ? 0 : 1;
+    }
 
     std::string versionId = readCurrentVersionId(rootDir);
     if (versionId.empty()) {
@@ -162,15 +244,15 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         return 1;
     }
 
-    int argc = 0;
-    wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    int launchArgc = 0;
+    wchar_t** launchArgv = CommandLineToArgvW(GetCommandLineW(), &launchArgc);
     std::wstring cmdLine = quoteWindowsArg(gameExe.wstring());
-    if (argv) {
-        for (int i = 1; i < argc; ++i) {
+    if (launchArgv) {
+        for (int i = 1; i < launchArgc; ++i) {
             cmdLine += L" ";
-            cmdLine += quoteWindowsArg(argv[i] ? argv[i] : L"");
+            cmdLine += quoteWindowsArg(launchArgv[i] ? launchArgv[i] : L"");
         }
-        LocalFree(argv);
+        LocalFree(launchArgv);
     }
 
     STARTUPINFOW si{};

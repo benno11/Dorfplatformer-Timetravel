@@ -147,6 +147,15 @@ std::filesystem::path installedVersionDir(const std::filesystem::path& rootDir, 
     return rootDir / "versions" / utf8ToWide(versionId);
 }
 
+std::filesystem::path detectRootDirFromModulePath(const std::filesystem::path& modulePath) {
+    const std::filesystem::path exeDir = modulePath.parent_path();
+    const std::filesystem::path parentDir = exeDir.parent_path();
+    if (!parentDir.empty() && _wcsicmp(parentDir.filename().c_str(), L"versions") == 0) {
+        return parentDir.parent_path();
+    }
+    return exeDir;
+}
+
 AppState readAppState(const std::filesystem::path& rootDir, const std::filesystem::path& launcherPath) {
     AppState state;
     state.rootDir = rootDir;
@@ -273,6 +282,14 @@ std::string updaterStateLabel(const AppState& state) {
     return "Updater: " + state.updaterState + " -> " + state.latestVersion;
 }
 
+bool isUpdaterBusyState(const std::string& state) {
+    return state == "checking" ||
+           state == "downloading" ||
+           state == "install_ready" ||
+           state == "awaiting_admin_approval" ||
+           state == "installing";
+}
+
 void launchViaLauncher(const AppState& state) {
     if (!std::filesystem::exists(state.launcherPath)) {
         MessageBoxW(nullptr, L"df-launcher.exe was not found.", L"Dorfplatformer Tray", MB_OK | MB_ICONERROR);
@@ -310,15 +327,15 @@ void openInstallFolder(const AppState& state) {
 }
 
 void launchUpdater(const AppState& state) {
-    const std::filesystem::path updaterPath = state.rootDir / "df-updater.exe";
-    if (!std::filesystem::exists(updaterPath)) {
-        MessageBoxW(nullptr, L"df-updater.exe was not found.", L"Dorfplatformer Tray", MB_OK | MB_ICONERROR);
-        return;
-    }
     const auto gameDir = installedVersionDir(state.rootDir, state.currentVersionId);
     const auto statusFile = updaterStatusPath(state.rootDir, state.currentVersionId);
     if (gameDir.empty() || !std::filesystem::exists(gameDir)) {
         MessageBoxW(nullptr, L"The installed game version folder could not be found.", L"Dorfplatformer Tray", MB_OK | MB_ICONERROR);
+        return;
+    }
+    const std::filesystem::path updaterPath = gameDir / "df-updater.exe";
+    if (!std::filesystem::exists(updaterPath)) {
+        MessageBoxW(nullptr, L"df-updater.exe was not found in the installed version folder.", L"Dorfplatformer Tray", MB_OK | MB_ICONERROR);
         return;
     }
     if (state.windowsUpdateManifestUrl.empty()) {
@@ -326,7 +343,7 @@ void launchUpdater(const AppState& state) {
         return;
     }
     std::wstring cmdLine = quoteWindowsArg(updaterPath.wstring());
-    cmdLine += L" --mode check";
+    cmdLine += L" --mode tray";
     cmdLine += L" --current-version ";
     cmdLine += quoteWindowsArg(utf8ToWide(state.currentVersion.empty() ? state.currentVersionId : state.currentVersion));
     cmdLine += L" --current-version-id ";
@@ -351,7 +368,7 @@ void launchUpdater(const AppState& state) {
         FALSE,
         CREATE_NEW_PROCESS_GROUP,
         nullptr,
-        state.rootDir.c_str(),
+        gameDir.c_str(),
         &si,
         &pi);
     if (!started) {
@@ -444,7 +461,7 @@ void refreshTrayUi(TrayContext& ctx) {
                            (ctx.state.updaterDetail.empty() ? "No active message." : ctx.state.updaterDetail)).c_str());
     SDL_SetTrayEntryEnabled(ctx.closeGameEntry, ctx.state.gameProcessCount > 0);
     SDL_SetTrayEntryEnabled(ctx.checkUpdatesEntry, ctx.state.updaterProcessCount == 0 &&
-                            (ctx.state.updaterState.empty() || ctx.state.updaterState == "idle"));
+                            !isUpdaterBusyState(ctx.state.updaterState));
 
     std::string tooltip = "Dorfplatformer";
     tooltip += "\nGame: ";
@@ -499,7 +516,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         return 1;
     }
     const std::filesystem::path modulePath(modulePathBuf);
-    const std::filesystem::path rootDir = modulePath.parent_path();
+    const std::filesystem::path rootDir = detectRootDirFromModulePath(modulePath);
     const std::filesystem::path launcherPath = rootDir / "df-launcher.exe";
 
     if (!SDL_Init(SDL_INIT_VIDEO)) {

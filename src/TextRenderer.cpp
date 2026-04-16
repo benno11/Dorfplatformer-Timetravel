@@ -13,7 +13,7 @@ bool gTtfInited = false;
 std::unordered_map<std::string, int> gDebugLabelWidthCache;
 constexpr int kFontRenderScale = 6;
 float gTextScaleMultiplier = 1.0f;
-constexpr SDL_ScaleMode kTextTextureScaleMode = SDL_SCALEMODE_LINEAR;
+constexpr SDL_ScaleMode kTextTextureScaleMode = SDL_SCALEMODE_NEAREST;
 struct TextCacheEntry {
     SDL_Texture* tex = nullptr;
     int w = 0;

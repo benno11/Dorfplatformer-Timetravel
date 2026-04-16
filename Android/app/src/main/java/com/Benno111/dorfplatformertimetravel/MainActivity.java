@@ -337,7 +337,7 @@ public class MainActivity extends SDLActivity {
             super.onCreate(savedInstanceState);
         }
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         getWindow().getDecorView().setOnSystemUiVisibilityChangeListener(systemUiListener);
         applyImmersiveMode();
         setupTouchDebuggerToggle();

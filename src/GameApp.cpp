@@ -2784,6 +2784,7 @@ int RunGameApp(int argc, char** argv) {
 
         auto reloadLevel = [&]() {
             levelManager.reloadLevel(map, objects, meta, player);
+            syncWorldBackground();
             levelTimerSeconds = 0.0f;
             levelCompleteActive = false;
             levelCompleteCounting = false;
@@ -3275,6 +3276,8 @@ int RunGameApp(int argc, char** argv) {
         SDL_Rect pauseBtnRestart{0,0,0,0};
         SDL_Rect pauseBtnExit{0,0,0,0};
         bool lowPowerSuspendActive = false;
+        Uint32 lowPowerSuspendEligibleTicks = 0;
+        constexpr Uint32 kLowPowerSuspendDelayMs = 1250;
 
         auto handlePauseSelect = [&](int sel) {
             pauseSelection = sel;
@@ -3303,7 +3306,14 @@ int RunGameApp(int argc, char** argv) {
         auto exitLowPowerSuspend = [&]() -> bool {
             if (!lowPowerSuspendActive) return true;
             bgWorldIdForLoad = levelManager.worldId(); // ensure only the active world's bg is restored
-            if (!loadGameplayAssets()) {
+            bool restored = false;
+            for (int attempt = 0; attempt < 3 && !restored; ++attempt) {
+                if (attempt > 0) {
+                    SDL_Delay(50);
+                }
+                restored = loadGameplayAssets();
+            }
+            if (!restored) {
                 reportStartupError("Low Power Recovery Error",
                                    std::string("Failed to restore gameplay assets: ") + SDL_GetError(),
                                    win);
@@ -3338,9 +3348,16 @@ int RunGameApp(int argc, char** argv) {
                                        powerManagementEnabled &&
                                        (mainWindowMinimized || !mainWindowFocused);
             if (shouldSuspend) {
-                enterLowPowerSuspend();
+                const Uint32 now = SDL_GetTicks();
+                if (lowPowerSuspendEligibleTicks == 0) {
+                    lowPowerSuspendEligibleTicks = now;
+                }
+                if ((now - lowPowerSuspendEligibleTicks) >= kLowPowerSuspendDelayMs) {
+                    enterLowPowerSuspend();
+                }
                 return true;
             }
+            lowPowerSuspendEligibleTicks = 0;
             if (lowPowerSuspendActive) {
                 return !exitLowPowerSuspend();
             }

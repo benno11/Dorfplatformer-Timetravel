@@ -30,6 +30,10 @@ struct Options {
     DWORD waitPid = 0;
 };
 
+bool isCheckLikeMode(const std::string& mode) {
+    return mode == "check" || mode == "tray";
+}
+
 struct Manifest {
     std::string version;
     std::string versionId;
@@ -471,7 +475,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         options.currentVersionId = options.currentVersion;
     }
 
-    if (options.mode == "check") {
+    if (isCheckLikeMode(options.mode)) {
         if (options.manifestUrl.empty()) {
             writeStatus(options.statusFile, "not_configured", "No update manifest URL was provided.",
                         options.currentVersion, options.currentVersionId);
@@ -498,13 +502,20 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
             return 0;
         }
 
-        writeStatus(options.statusFile, "update_available", "Update found.",
-                    options.currentVersion, options.currentVersionId, manifest);
-        curl_global_cleanup();
-        return 0;
+        if (options.mode == "tray") {
+            options.installerUrl = manifest.installerUrl;
+            options.latestVersion = manifest.version;
+            options.latestVersionId = manifest.versionId;
+            options.notes = manifest.notes;
+        } else {
+            writeStatus(options.statusFile, "update_available", "Update found.",
+                        options.currentVersion, options.currentVersionId, manifest);
+            curl_global_cleanup();
+            return 0;
+        }
     }
 
-    if (options.mode != "install") {
+    if (options.mode != "install" && options.mode != "tray") {
         writeStatus(options.statusFile, "error", "Unknown updater mode.",
                     options.currentVersion, options.currentVersionId);
         return 1;
@@ -548,26 +559,24 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         return 1;
     }
 
-    writeStatus(options.statusFile, "install_ready", "Installer downloaded. Requesting admin approval...",
+    writeStatus(options.statusFile, "install_ready", "Installer downloaded. Starting installer...",
                 options.currentVersion, options.currentVersionId, manifest, 1.0);
     std::wstring installerArgs = L"/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-";
     SHELLEXECUTEINFOW sei{};
     sei.cbSize = sizeof(sei);
     sei.fMask = SEE_MASK_NOCLOSEPROCESS;
     sei.hwnd = nullptr;
-    sei.lpVerb = L"runas";
+    sei.lpVerb = L"open";
     sei.lpFile = installerPath.c_str();
     sei.lpParameters = installerArgs.c_str();
     sei.lpDirectory = options.appDir.empty() ? nullptr : options.appDir.c_str();
     sei.nShow = SW_HIDE;
-    writeStatus(options.statusFile, "awaiting_admin_approval", "Waiting for Windows permission...",
-                options.currentVersion, options.currentVersionId, manifest, 1.0);
     const BOOL started = ShellExecuteExW(&sei);
     curl_global_cleanup();
     if (!started) {
         const DWORD launchErr = GetLastError();
         if (launchErr == ERROR_CANCELLED) {
-            writeStatus(options.statusFile, "cancelled", "Admin approval was cancelled.",
+            writeStatus(options.statusFile, "cancelled", "Installer launch was cancelled.",
                         options.currentVersion, options.currentVersionId, manifest, 1.0);
             return 0;
         }
@@ -590,8 +599,11 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         writeStatus(options.statusFile, "installing", "Update installed. Closing running game...",
                     options.currentVersion, options.currentVersionId, manifest, 1.0);
         waitForProcessExit(options.waitPid, 10000);
+        writeStatus(options.statusFile, "relaunch_ready", "Update installed. Relaunching game...",
+                    options.currentVersion, options.currentVersionId, manifest, 1.0);
+    } else {
+        writeStatus(options.statusFile, "up_to_date", "Update installed.",
+                    options.currentVersion, options.currentVersionId, manifest);
     }
-    writeStatus(options.statusFile, "relaunch_ready", "Update installed. Relaunching game...",
-                options.currentVersion, options.currentVersionId, manifest, 1.0);
     return 0;
 }
