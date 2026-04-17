@@ -42,6 +42,7 @@ void RenderParallaxBackground(
     const char* layerMidAltName = nullptr;
     const char* layerFrontName = "front.png";
     const char* layerFrontAltName = nullptr;
+    bool repeatVertically = false;
 
     if (currentWorldId == 2 && world2.texture) {
         active = &world2;
@@ -51,6 +52,9 @@ void RenderParallaxBackground(
         layerMidAltName = "middle.png";
     } else if (currentWorldId == 5 && world5.texture) {
         active = &world5;
+        repeatVertically = true;
+    } else if (currentWorldId == 3) {
+        repeatVertically = true;
     }
 
     if (!active->texture || !active->framesByName) return;
@@ -112,14 +116,19 @@ void RenderParallaxBackground(
         const int y = (int)std::floor(yF);
 
         SDL_SetTextureAlphaMod(active->texture, layer.alpha);
-        for (int x = -1; x <= worldViewW / fw + 1; ++x) {
-            SDL_Rect dst{
-                (int)(x * fw - ox),
-                y,
-                fw,
-                fh
-            };
-            renderFrame(ren, active->texture, *f, dst);
+        const int startTileY = repeatVertically ? -1 : 0;
+        const int endTileY = repeatVertically ? (worldViewH / fh + 1) : 0;
+        for (int tileY = startTileY; tileY <= endTileY; ++tileY) {
+            const int dstY = repeatVertically ? (int)(tileY * fh - oy) : y;
+            for (int x = -1; x <= worldViewW / fw + 1; ++x) {
+                SDL_Rect dst{
+                    (int)(x * fw - ox),
+                    dstY,
+                    fw,
+                    fh
+                };
+                renderFrame(ren, active->texture, *f, dst);
+            }
         }
     }
     SDL_SetTextureAlphaMod(active->texture, 255);
