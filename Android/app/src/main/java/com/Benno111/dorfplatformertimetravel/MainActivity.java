@@ -357,6 +357,12 @@ public class MainActivity extends SDLActivity {
         applyImmersiveMode();
     }
 
+    @Override
+    public void setOrientationBis(int w, int h, boolean resizable, String hint) {
+        // Keep the game in landscape even when SDL requests broader orientation modes.
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+    }
+
     private void applyImmersiveMode() {
         if (softKeyboardActive) return;
         View decorView = getWindow().getDecorView();
