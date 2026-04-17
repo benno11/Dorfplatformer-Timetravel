@@ -6046,21 +6046,8 @@ int RunGameApp(int argc, char** argv) {
 
         SDL_SetRenderTarget(ren, worldTarget);
         const int currentWorldId = levelManager.worldId();
-        if (currentWorldId == 5) {
-            const SDL_Color top{0x66, 0xea, 0xff, 0xff};    // #66eaff
-            const SDL_Color bottom{0xc0, 0x68, 0x72, 0xff}; // #c06872
-            for (int y = 0; y < worldViewH; ++y) {
-                const float t = (worldViewH > 1) ? ((float)y / (float)(worldViewH - 1)) : 0.0f;
-                const Uint8 r = (Uint8)std::lround((float)top.r + ((float)bottom.r - (float)top.r) * t);
-                const Uint8 g = (Uint8)std::lround((float)top.g + ((float)bottom.g - (float)top.g) * t);
-                const Uint8 b = (Uint8)std::lround((float)top.b + ((float)bottom.b - (float)top.b) * t);
-                SDL_SetRenderDrawColor(ren, r, g, b, 255);
-                SDL_RenderLine(ren, 0.0f, (float)y, (float)worldViewW, (float)y);
-            }
-        } else {
-            SDL_SetRenderDrawColor(ren, 221, 248, 255, 255); // #ddf8ff
-            SDL_RenderClear(ren);
-        }
+        SDL_SetRenderDrawColor(ren, 221, 248, 255, 255); // #ddf8ff
+        SDL_RenderClear(ren);
 
         // World 3 uses a full-screen block pattern from DF_Blocks (3.1..3.10).
         const bool renderedWorld3PatternBg = (currentWorldId == 3) &&
@@ -6103,22 +6090,6 @@ int RunGameApp(int argc, char** argv) {
                 ParallaxWorldAssets{bgTexWorld5, &bgFrameByNameWorld5, &bgFrameListWorld5}
             );
         }
-        if (currentWorldId == 5) {
-            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
-            const SDL_Color top{0x66, 0xea, 0xff, 0x58};    // #66eaff
-            const SDL_Color bottom{0xc0, 0x68, 0x72, 0x72}; // #c06872
-            for (int y = 0; y < worldViewH; ++y) {
-                const float t = (worldViewH > 1) ? ((float)y / (float)(worldViewH - 1)) : 0.0f;
-                const Uint8 r = (Uint8)std::lround((float)top.r + ((float)bottom.r - (float)top.r) * t);
-                const Uint8 g = (Uint8)std::lround((float)top.g + ((float)bottom.g - (float)top.g) * t);
-                const Uint8 b = (Uint8)std::lround((float)top.b + ((float)bottom.b - (float)top.b) * t);
-                const Uint8 a = (Uint8)std::lround((float)top.a + ((float)bottom.a - (float)top.a) * t);
-                SDL_SetRenderDrawColor(ren, r, g, b, a);
-                SDL_RenderLine(ren, 0.0f, (float)y, (float)worldViewW, (float)y);
-            }
-            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
-        }
-
         map.renderBgDebug(ren, camX, camY);
 
         const int tileMinX = renderWrapX
@@ -7748,5 +7719,4 @@ int RunGameApp(int argc, char** argv) {
     SDL_Quit();
     return 0;
 }
-
 
