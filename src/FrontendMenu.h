@@ -39,6 +39,7 @@ struct FrontendMenuContext {
     bool* levelSelectEnabled = nullptr;
     bool* menuMusicEnabled = nullptr;
     bool* muteAllAudio = nullptr;
+    bool* showOptionalSidebar = nullptr;
     SDL_Scancode* keyMoveLeft = nullptr;
     SDL_Scancode* keyMoveRight = nullptr;
     SDL_Scancode* keyMoveDown = nullptr;

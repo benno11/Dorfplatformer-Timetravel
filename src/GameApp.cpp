@@ -522,8 +522,8 @@ int RunGameApp(int argc, char** argv) {
             SDL_Log("Adaptive aspect target: %dx%d (display %dx%d)", kBaseScreenW, kBaseScreenH, displayMode->w, displayMode->h);
         }
     }
-    // Base resolution is 2x legacy (1920x1080 vs 960x540), so zoom must also be
-    // doubled to preserve the original gameplay/background framing.
+    // Gameplay framing stays at a fixed 3x camera zoom; the world target itself
+    // stays at base resolution and the camera/render scale handle the sizing.
     constexpr float kGameplayZoom = 3.0f;
     int kGameplayViewW = std::max(1, (int)std::lround((float)kBaseScreenW / kGameplayZoom));
     int kGameplayViewH = std::max(1, (int)std::lround((float)kBaseScreenH / kGameplayZoom));
@@ -621,7 +621,7 @@ int RunGameApp(int argc, char** argv) {
         ren,
         SDL_PIXELFORMAT_RGBA8888,
         SDL_TEXTUREACCESS_TARGET,
-        kGameplayViewW, kGameplayViewH
+        kBaseScreenW, kBaseScreenH
     );
     if (!gameTarget || !worldTarget) {
         reportStartupError("Render Target Error", std::string("SDL_CreateTexture failed: ") + SDL_GetError(), win);
@@ -1183,7 +1183,7 @@ int RunGameApp(int argc, char** argv) {
             ren,
             SDL_PIXELFORMAT_RGBA8888,
             SDL_TEXTUREACCESS_TARGET,
-            kGameplayViewW, kGameplayViewH
+            kBaseScreenW, kBaseScreenH
         );
         if (!newGameTarget || !newWorldTarget) {
             if (newWorldTarget) SDL_DestroyTexture(newWorldTarget);
@@ -1451,6 +1451,7 @@ int RunGameApp(int argc, char** argv) {
     bool levelSelectEnabled = true;
     bool menuMusicEnabled = true;
     bool muteAllAudio = false;
+    bool showOptionalSidebar = true;
     KeyboardBindings keybinds{};
     constexpr int kUiScaleMinPercent = 50;
     constexpr int kUiScaleMaxPercent = 400;
@@ -1476,6 +1477,9 @@ int RunGameApp(int argc, char** argv) {
         nlohmann::json j;
         j["build_uuid"] = buildUuid;
         nlohmann::json settings;
+        settings["ui"] = {
+            {"show_optional_sidebar", showOptionalSidebar}
+        };
         settings["display"] = {
             {"fullscreen", fullscreen},
             {"vsync", vsyncEnabled},
@@ -1532,6 +1536,7 @@ int RunGameApp(int argc, char** argv) {
         // Legacy flat keys kept for backward compatibility.
         j["fullscreen"] = fullscreen;
         j["vsync"] = vsyncEnabled;
+        j["show_optional_sidebar"] = showOptionalSidebar;
         j["clamp_cam_x"] = clampCamX;
         j["show_fps_counter"] = defaultShowFpsCounter;
         j["show_detailed_debugger"] = defaultShowDetailedDebugger;
@@ -1602,6 +1607,9 @@ int RunGameApp(int argc, char** argv) {
                 return (SDL_Scancode)raw;
             };
             const bool hasStructured = j.contains("settings") && j["settings"].is_object();
+            if (j.contains("show_optional_sidebar") && j["show_optional_sidebar"].is_boolean()) {
+                showOptionalSidebar = j["show_optional_sidebar"].get<bool>();
+            }
             if (hasStructured) {
                 const auto& s = j["settings"];
                 if (s.contains("display") && s["display"].is_object()) {
@@ -1610,6 +1618,12 @@ int RunGameApp(int argc, char** argv) {
                     if (d.contains("vsync") && d["vsync"].is_boolean()) vsyncEnabled = d["vsync"].get<bool>();
                     if (d.contains("ui_scale_percent") && d["ui_scale_percent"].is_number_integer()) {
                         uiScalePercent = std::clamp(d["ui_scale_percent"].get<int>(), kUiScaleMinPercent, kUiScaleMaxPercent);
+                    }
+                }
+                if (s.contains("ui") && s["ui"].is_object()) {
+                    const auto& ui = s["ui"];
+                    if (ui.contains("show_optional_sidebar") && ui["show_optional_sidebar"].is_boolean()) {
+                        showOptionalSidebar = ui["show_optional_sidebar"].get<bool>();
                     }
                 }
                 if (s.contains("camera") && s["camera"].is_object()) {
@@ -2093,6 +2107,7 @@ int RunGameApp(int argc, char** argv) {
     frontendCtx.extraSettings = extraSettings.data();
     frontendCtx.extraSettingsCount = (int)extraSettings.size();
     frontendCtx.devToolsEnabled = &allowDevTools;
+    frontendCtx.showOptionalSidebar = &showOptionalSidebar;
     std::string frontendSelectedLevelPath;
     frontendCtx.selectedLevelPath = &frontendSelectedLevelPath;
     frontendCtx.applyAudioVolumes = applyAudioVolumes;
@@ -2408,7 +2423,7 @@ int RunGameApp(int argc, char** argv) {
         SDL_Texture* newGameTarget = SDL_CreateTexture(
             ren, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, newBaseW, newBaseH);
         SDL_Texture* newWorldTarget = SDL_CreateTexture(
-            ren, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, newGameplayW, newGameplayH);
+            ren, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, newBaseW, newBaseH);
         if (!newGameTarget || !newWorldTarget) {
             if (newWorldTarget) SDL_DestroyTexture(newWorldTarget);
             if (newGameTarget) SDL_DestroyTexture(newGameTarget);
@@ -3560,7 +3575,6 @@ int RunGameApp(int argc, char** argv) {
                 SDL_HideWindow(debugWin);
             }
             recoverAudioIfNeeded(true);
-            applyDynamicResolutionFromWindow(false);
             Uint32 now = SDL_GetTicks();
             float dt = (now - lastTicks) / 1000.0f;
             lastTicks = now;
@@ -6045,8 +6059,9 @@ int RunGameApp(int argc, char** argv) {
         camY = std::round(camY);
 
         SDL_SetRenderTarget(ren, worldTarget);
+        SDL_SetRenderScale(ren, kGameplayZoom, kGameplayZoom);
         const int currentWorldId = levelManager.worldId();
-        SDL_SetRenderDrawColor(ren, 221, 248, 255, 255); // #ddf8ff
+        SDL_SetRenderDrawColor(ren, 118, 225, 255, 255); // #76e1ff
         SDL_RenderClear(ren);
 
         // World 3 uses a full-screen block pattern from DF_Blocks (3.1..3.10).
@@ -6844,6 +6859,7 @@ int RunGameApp(int argc, char** argv) {
             }
         }
 
+        SDL_SetRenderScale(ren, 1.0f, 1.0f);
         SDL_SetRenderTarget(ren, gameTarget);
         SDL_Rect worldDst{0, 0, screenW, screenH};
         SDL_RenderTexture(ren, worldTarget, nullptr, &worldDst);
@@ -7311,7 +7327,7 @@ int RunGameApp(int argc, char** argv) {
         int winW = 0, winH = 0;
         SDL_GetWindowSize(win, &winW, &winH);
         SDL_Rect presentDst = computePresentRect(winW, winH, kBaseScreenW, kBaseScreenH, 1.0f);
-        SDL_SetRenderDrawColor(ren, 221, 248, 255, 255); // #ddf8ff
+        SDL_SetRenderDrawColor(ren, 118, 225, 255, 255); // #76e1ff
         SDL_RenderClear(ren);
         SDL_RenderCopy(ren, gameTarget, nullptr, &presentDst);
         SDL_RenderPresent(ren);

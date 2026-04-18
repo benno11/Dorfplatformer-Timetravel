@@ -28,10 +28,10 @@ bool RenderWorld3PatternBackground(
 
     const int blockW = std::max(16, mapTileSize * 2);
     const int blockH = std::max(16, mapTileSize * 2);
-    const float world3BgParallaxX = 0.35f;
-    const float world3BgParallaxY = 0.25f;
-    const float bgCamX = camX * world3BgParallaxX;
-    const float bgCamY = camY * world3BgParallaxY;
+    // Keep the pattern anchored to level space so it repeats consistently
+    // across the whole World 3 map instead of drifting as a parallax layer.
+    const float bgCamX = camX;
+    const float bgCamY = camY;
     const int bgOffsetX = (int)std::floor(bgCamX) % blockW;
     const int bgOffsetY = (int)std::floor(bgCamY) % blockH;
     const int worldBaseGX = (int)std::floor(bgCamX / (float)blockW);

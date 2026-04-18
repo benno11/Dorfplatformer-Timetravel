@@ -429,7 +429,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     constexpr int kSyntheticMouseSuppressDistPx = 36;
     std::unordered_set<SDL_FingerID> activeTouchFingers;
     SDL_Event e;
-    const int settingsStartY = 150;
+    const int settingsStartY = 201;
     const int settingsRowH = 36;
     const int settingsTabY = 118;
     const int settingsTabW = 120;
@@ -438,8 +438,14 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     const int settingsListBottom = ctx.baseScreenH - 24;
     int settingsScrollY = 0;
     int aboutScrollY = 0;
-    bool showOptionalSidebar = true;
+    bool showOptionalSidebar = ctx.showOptionalSidebar ? *ctx.showOptionalSidebar : true;
     int aboutContentBottomY = 558;
+    auto setOptionalSidebar = [&](bool value) {
+        if (showOptionalSidebar == value) return;
+        showOptionalSidebar = value;
+        if (ctx.showOptionalSidebar) *ctx.showOptionalSidebar = value;
+        if (ctx.saveClientSettings) ctx.saveClientSettings();
+    };
     auto aboutMaxScroll = [&]() -> int {
         return std::max(0, aboutContentBottomY - settingsListBottom);
     };
@@ -1219,7 +1225,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         advanceAboutLine(aboutBodyScale, 6);
         advanceAboutLine(aboutBodyScale, 6);
 #endif
-        const std::string actionText = "OPEN MAIN LEVEL SELECT";
+        const std::string actionText = "OPEN CUSTOM LEVEL SELECT";
         const int textW = MeasureTextWidth(aboutBodyScale, actionText);
         const int textH = 10 * aboutBodyScale;
         return SDL_Rect{
@@ -1591,15 +1597,6 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         cleanupMenuAssets();
         return true;
     };
-    auto tryStartMainLevelSelect = [&]() -> bool {
-        if (!ctx.selectedLevelPath) return false;
-        std::string path = RunCampaignLevelSelect(ctx.win, ctx.ren);
-        if (path.empty()) return false;
-        *ctx.selectedLevelPath = path;
-        cleanupMenuAssets();
-        return true;
-    };
-
     // Apply persisted audio state before entering the menu loop.
     if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
     if (ctx.applyMenuMusicToggle) ctx.applyMenuMusicToggle();
@@ -1615,7 +1612,6 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 return FrontendAction::Quit;
             }
         }
-        if (ctx.updateDynamicResolution) ctx.updateDynamicResolution();
         SDL_Texture* gameTarget = (ctx.gameTargetRef && *ctx.gameTargetRef) ? *ctx.gameTargetRef : ctx.gameTarget;
         if (!gameTarget) {
             SDL_Delay(1);
@@ -1634,6 +1630,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 running = false;
                 cleanupMenuAssets();
                 return FrontendAction::Quit;
+            }
+            if ((e.type == SDL_EVENT_WINDOW_RESIZED || e.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) &&
+                e.window.windowID == SDL_GetWindowID(ctx.win)) {
+                if (ctx.updateDynamicResolution) ctx.updateDynamicResolution();
             }
             if (inputBlocked &&
                 e.type != SDL_MOUSEBUTTONDOWN &&
@@ -1697,7 +1697,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 }
                 if (e.gbutton.button == SDL_GAMEPAD_BUTTON_WEST ||
                     e.gbutton.button == SDL_GAMEPAD_BUTTON_NORTH) {
-                    showOptionalSidebar = !showOptionalSidebar;
+                    setOptionalSidebar(!showOptionalSidebar);
                     continue;
                 }
                 if (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_UP) {
@@ -1877,7 +1877,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         continue;
                     }
                     if (e.key.key == SDLK_b) {
-                        showOptionalSidebar = !showOptionalSidebar;
+                        setOptionalSidebar(!showOptionalSidebar);
                         continue;
                     }
                     {
@@ -2075,7 +2075,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 } else {
                     SDL_Rect sidebarToggleBtn = settingsSidebarToggleRect();
                     if (SDL_PointInRect(&pt, &sidebarToggleBtn)) {
-                        showOptionalSidebar = !showOptionalSidebar;
+                        setOptionalSidebar(!showOptionalSidebar);
                         continue;
                     }
                     const std::vector<int> tabs = sidebarTabList();
@@ -2105,7 +2105,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                             SDL_Rect mainLevelSelectRect = aboutOpenMainLevelSelectRect();
                             if (mainLevelSelectRect.w > 0 && mainLevelSelectRect.h > 0 &&
                                 SDL_PointInRect(&pt, &mainLevelSelectRect)) {
-                                if (tryStartMainLevelSelect()) return FrontendAction::StartGame;
+                                if (tryStartCustomLevel()) return FrontendAction::StartGame;
                                 continue;
                             }
                         }
@@ -2356,7 +2356,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 } else {
                     SDL_Rect sidebarToggleBtn = settingsSidebarToggleRect();
                     if (SDL_PointInRect(&pt, &sidebarToggleBtn)) {
-                        showOptionalSidebar = !showOptionalSidebar;
+                        setOptionalSidebar(!showOptionalSidebar);
                         continue;
                     }
                     const std::vector<int> tabs = sidebarTabList();
@@ -2643,7 +2643,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         }
 
         SDL_SetRenderTarget(ctx.ren, gameTarget);
-        SDL_SetRenderDrawColor(ctx.ren, 221, 248, 255, 255); // #ddf8ff
+        SDL_SetRenderDrawColor(ctx.ren, 118, 225, 255, 255); // #76e1ff
         SDL_RenderClear(ctx.ren);
         if (menuBgTex && !menuBgFrames.empty()) {
             auto getBgFrame = [&](const char* name) -> const Frame* {
@@ -3061,7 +3061,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 drawAboutLine(aboutBodyScale, "PRESS U OR USE SETTINGS > CHECK FOR UPDATES", 6);
 #endif
                 if (showExperimentalFeatures) {
-                    const std::string actionText = "OPEN MAIN LEVEL SELECT";
+                    const std::string actionText = "OPEN CUSTOM LEVEL SELECT";
                     SDL_Rect actionRect = aboutOpenMainLevelSelectRect();
                     SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_BLEND);
                     SDL_SetRenderDrawColor(ctx.ren, 255, 255, 255, 36);
@@ -3449,7 +3449,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         int winW = 0, winH = 0;
         SDL_GetWindowSize(ctx.win, &winW, &winH);
         SDL_Rect presentDst = computePresentRect(winW, winH, ctx.baseScreenW, ctx.baseScreenH, 1.0f);
-        SDL_SetRenderDrawColor(ctx.ren, 221, 248, 255, 255); // #ddf8ff
+        SDL_SetRenderDrawColor(ctx.ren, 118, 225, 255, 255); // #76e1ff
         SDL_RenderClear(ctx.ren);
         SDL_RenderCopy(ctx.ren, gameTarget, nullptr, &presentDst);
         SDL_RenderPresent(ctx.ren);

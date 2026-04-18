@@ -126,6 +126,20 @@ bool isNumericId(const std::string& s) {
     return true;
 }
 
+void drawChromeButton(SDL_Renderer* ren, const SDL_Rect& rect, bool active) {
+    SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(ren, active ? 68 : 44, active ? 92 : 56, active ? 138 : 74, 255);
+    SDL_RenderFillRect(ren, &rect);
+    SDL_SetRenderDrawColor(ren, 160, 182, 212, 255);
+    SDL_RenderDrawRect(ren, &rect);
+    if (active) {
+        SDL_Rect inner{rect.x + 2, rect.y + 2, std::max(0, rect.w - 4), std::max(0, rect.h - 4)};
+        SDL_SetRenderDrawColor(ren, 255, 255, 255, 32);
+        SDL_RenderDrawRect(ren, &inner);
+    }
+    SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
+}
+
 std::string downloadFolderPath();
 std::string localLevelsFolderPath();
 
@@ -1699,9 +1713,22 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
         int pad = std::max(10, (int)std::lround(16.0f * uiScale));
         int textScale = std::max(1, (int)std::lround(2.0f * uiScale));
         int tabH = std::max(30, (int)std::lround(40.0f * uiScale));
-        int tabY = pad;
-        int listTop = tabY + tabH + std::max(8, (int)std::lround(10.0f * uiScale));
-        SDL_Rect downloadBtn{winW - pad - 170, tabY, 170, tabH};
+        const int shellPad = std::max(12, (int)std::lround(16.0f * uiScale));
+        const int sidebarW = std::max(170, (int)std::lround(190.0f * uiScale));
+        const int infoW = (winW >= 880) ? std::max(180, (int)std::lround(220.0f * uiScale)) : 0;
+        const SDL_Rect shell{shellPad, shellPad, std::max(1, winW - shellPad * 2), std::max(1, winH - shellPad * 2)};
+        const SDL_Rect sidePanel{shell.x + shellPad, shell.y + shellPad, sidebarW, std::max(1, shell.h - shellPad * 2)};
+        const SDL_Rect infoPanel{
+            shell.x + shell.w - shellPad - infoW,
+            shell.y + shellPad,
+            infoW,
+            std::max(1, shell.h - shellPad * 2)
+        };
+        const int contentX = sidePanel.x + sidePanel.w + shellPad;
+        const int contentW = std::max(1, shell.w - (contentX - shell.x) - shellPad - infoW);
+        const SDL_Rect contentPanel{contentX, shell.y + shellPad, contentW, std::max(1, shell.h - shellPad * 2)};
+        int listTop = contentPanel.y + std::max(40, (int)std::lround(46.0f * uiScale));
+        SDL_Rect downloadBtn{contentPanel.x + contentPanel.w - std::max(170, (int)std::lround(190.0f * uiScale)), shell.y + shellPad, std::max(170, (int)std::lround(190.0f * uiScale)), tabH};
         int userTabIndex = -1;
         int localTabIndex = -1;
         std::vector<std::pair<std::string, const std::vector<LevelEntry>*>> tabs;
@@ -1726,13 +1753,13 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
         if (selectedIndex >= (int)levels.size()) selectedIndex = std::max(0, (int)levels.size() - 1);
 
         int contentH = (int)levels.size() * rowH;
-        int viewportH = std::max(1, winH - listTop - pad);
+        int viewportH = std::max(1, contentPanel.h - (listTop - contentPanel.y) - shellPad);
         int listBottom = listTop + viewportH;
         int maxScroll = std::max(0, contentH - viewportH);
         scroll = std::clamp(scroll, 0, maxScroll);
 
         int barW = std::max(10, (int)std::lround(14.0f * uiScale));
-        SDL_Rect track{winW - pad - barW, listTop, barW, viewportH};
+        SDL_Rect track{contentPanel.x + contentPanel.w - shellPad - barW, listTop, barW, viewportH};
         float visibleRatio = (contentH > 0) ? std::clamp((float)viewportH / (float)contentH, 0.0f, 1.0f) : 1.0f;
         int thumbH = std::max(std::max(24, (int)std::lround(36.0f * uiScale)), (int)std::lround(track.h * visibleRatio));
         int thumbTravel = std::max(1, track.h - thumbH);
@@ -1742,12 +1769,13 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
         const int sliderHitPadY = std::max(4, (int)std::lround(6.0f * uiScale));
         SDL_Rect trackHit{track.x - sliderHitPadX, track.y - sliderHitPadY, track.w + sliderHitPadX * 2, track.h + sliderHitPadY * 2};
         SDL_Rect thumbHit{thumb.x - sliderHitPadX, thumb.y - sliderHitPadY, thumb.w + sliderHitPadX * 2, thumb.h + sliderHitPadY * 2};
-        const int tabW = 170;
-        const int tabGap = 10;
+        const int tabW = sidePanel.w;
+        const int tabGap = std::max(8, (int)std::lround(10.0f * uiScale));
+        const int tabStartY = sidePanel.y + std::max(8, (int)std::lround(10.0f * uiScale));
         std::vector<SDL_Rect> tabRects;
         tabRects.reserve(tabs.size());
         for (int i = 0; i < (int)tabs.size(); ++i) {
-            tabRects.push_back(SDL_Rect{pad + i * (tabW + tabGap), tabY, tabW, tabH});
+            tabRects.push_back(SDL_Rect{sidePanel.x, tabStartY + i * (tabH + tabGap), tabW, tabH});
         }
 
         auto switchTab = [&](int tab) {
@@ -2189,37 +2217,76 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
             }
         }
 
-        SDL_SetRenderDrawColor(ren, 18, 18, 22, 255);
+        SDL_SetRenderDrawColor(ren, 23, 29, 40, 255);
         SDL_RenderClear(ren);
 
-        if (showTabs) {
-            for (int i = 0; i < (int)tabRects.size(); ++i) {
-                SDL_SetRenderDrawColor(ren, activeTab == i ? 70 : 48, activeTab == i ? 100 : 58, activeTab == i ? 150 : 76, 255);
-                SDL_RenderFillRect(ren, &tabRects[i]);
-                SDL_SetRenderDrawColor(ren, 220, 220, 220, 255);
-                SDL_RenderDrawRect(ren, &tabRects[i]);
-                DrawText(ren, tabRects[i].x + 10, tabRects[i].y + 8, textScale, tabs[i].first);
+        SDL_SetRenderDrawColor(ren, 34, 43, 56, 230);
+        SDL_RenderFillRect(ren, &shell);
+        SDL_SetRenderDrawColor(ren, 160, 182, 212, 255);
+        SDL_RenderDrawRect(ren, &shell);
+
+        SDL_SetRenderDrawColor(ren, 28, 36, 48, 220);
+        SDL_RenderFillRect(ren, &sidePanel);
+        SDL_SetRenderDrawColor(ren, 160, 182, 212, 255);
+        SDL_RenderDrawRect(ren, &sidePanel);
+
+        SDL_SetRenderDrawColor(ren, 28, 36, 48, 220);
+        SDL_RenderFillRect(ren, &contentPanel);
+        SDL_SetRenderDrawColor(ren, 160, 182, 212, 255);
+        SDL_RenderDrawRect(ren, &contentPanel);
+
+        if (infoW > 0) {
+            SDL_SetRenderDrawColor(ren, 28, 36, 48, 220);
+            SDL_RenderFillRect(ren, &infoPanel);
+            SDL_SetRenderDrawColor(ren, 160, 182, 212, 255);
+            SDL_RenderDrawRect(ren, &infoPanel);
+        }
+
+        DrawText(ren, sidePanel.x + 10, sidePanel.y + 10, std::clamp(2 + (int)std::lround(uiScale), 2, 4), "LEVEL SELECT");
+        for (int i = 0; i < (int)tabRects.size(); ++i) {
+            drawChromeButton(ren, tabRects[i], activeTab == i);
+            DrawText(ren, tabRects[i].x + 12, tabRects[i].y + std::max(8, (tabRects[i].h - 10 * textScale) / 2), textScale, tabs[i].first);
+        }
+
+        if (infoW > 0) {
+            const std::string activeName = tabs[activeTab].first;
+            const int infoScale = std::max(2, textScale);
+            DrawText(ren, infoPanel.x + 12, infoPanel.y + 12, infoScale, "QUICK INFO");
+            DrawText(ren, infoPanel.x + 12, infoPanel.y + 42, textScale, std::string("TAB: ") + activeName);
+            DrawText(ren, infoPanel.x + 12, infoPanel.y + 66, textScale, std::string("ROWS: ") + std::to_string((int)levels.size()));
+            DrawText(ren, infoPanel.x + 12, infoPanel.y + 90, textScale, currentTabAllowsDownload ? "D: DOWNLOAD" : "D: NO ACTION");
+            DrawText(ren, infoPanel.x + 12, infoPanel.y + 114, textScale, localTabIndex >= 0 && activeTab == localTabIndex ? "ENTER/P: OPEN LOCAL CARD" : "ENTER/P: PLAY");
+            DrawText(ren, infoPanel.x + 12, infoPanel.y + 138, textScale, "ESC/BACK: EXIT");
+            if (localTabIndex >= 0 && activeTab == localTabIndex) {
+                DrawText(ren, infoPanel.x + 12, infoPanel.y + 162, textScale, "E/NORTH: EDIT");
+                DrawText(ren, infoPanel.x + 12, infoPanel.y + 186, textScale, "U/SHOULDER: UPLOAD");
             }
-        } else if (includeCustom) {
-            DrawText(ren, pad, tabY + 8, textScale, menuLabels.userLevelsHeader);
+        }
+
+        {
+            const int titleScale = std::clamp((int)std::lround(2.0f + 0.35f * uiScale), 2, 4);
+            const std::string title = (activeTab >= 0 && activeTab < (int)tabs.size()) ? tabs[activeTab].first : std::string("LEVELS");
+            DrawText(ren, contentPanel.x + 12, contentPanel.y + 10, titleScale, title);
         }
 
         if (currentTabAllowsDownload) {
-            SDL_SetRenderDrawColor(ren, 50, 90, 70, 220);
-            SDL_RenderFillRect(ren, &downloadBtn);
-            SDL_SetRenderDrawColor(ren, 190, 230, 210, 255);
-            SDL_RenderDrawRect(ren, &downloadBtn);
+            drawChromeButton(ren, downloadBtn, true);
             DrawText(ren, downloadBtn.x + 12, downloadBtn.y + 8, textScale, menuLabels.downloadButton);
         }
 
-        SDL_Rect listClip{pad, listTop, winW - pad * 3 - barW, viewportH};
+        SDL_Rect listClip{
+            contentPanel.x + 12,
+            listTop + 2,
+            std::max(1, contentPanel.w - 24 - barW),
+            std::max(1, viewportH - 8)
+        };
         SDL_SetRenderClipRect(ren, &listClip);
         if (levels.empty()) {
-            DrawText(ren, pad, listTop + 8, textScale, menuLabels.emptyTitle);
+            DrawText(ren, listClip.x, listTop + 10, textScale, menuLabels.emptyTitle);
             if (activeTab == localTabIndex) {
-                DrawText(ren, pad, listTop + 8 + rowH, textScale, menuLabels.emptyLocalHint);
+                DrawText(ren, listClip.x, listTop + 10 + rowH, textScale, menuLabels.emptyLocalHint);
             } else {
-                DrawText(ren, pad, listTop + 8 + rowH, textScale,
+                DrawText(ren, listClip.x, listTop + 10 + rowH, textScale,
 #if defined(__ANDROID__)
                      menuLabels.emptyCustomHintAndroid);
 #else
@@ -2230,20 +2297,13 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
             for (int i = 0; i < (int)levels.size(); ++i) {
                 int y = listTop + i * rowH - scroll;
                 if (y + rowH < 0 || y > winH) continue;
-                if (i == selectedIndex) {
-                    SDL_SetRenderDrawColor(ren, 60, 90, 140, 255);
-                } else {
-                    SDL_SetRenderDrawColor(ren, 40, 50, 70, 255);
-                }
-                SDL_Rect r{pad, y, winW - pad * 3 - barW, rowH - 4};
-                SDL_RenderFillRect(ren, &r);
-
-                SDL_SetRenderDrawColor(ren, 235, 235, 235, 255);
-                DrawText(ren, r.x + 8, r.y + 6, textScale, levels[i].label);
+                SDL_Rect r{listClip.x, y, listClip.w, rowH - 4};
+                drawChromeButton(ren, r, i == selectedIndex);
+                DrawText(ren, r.x + 12, r.y + std::max(6, (r.h - 10 * textScale) / 2), textScale, levels[i].label);
             }
 
             if (maxScroll > 0) {
-                SDL_SetRenderDrawColor(ren, 48, 58, 76, 255);
+                SDL_SetRenderDrawColor(ren, 36, 45, 58, 255);
                 SDL_RenderFillRect(ren, &track);
                 SDL_SetRenderDrawColor(ren, draggingScrollbar ? 220 : 180, draggingScrollbar ? 220 : 180, draggingScrollbar ? 220 : 180, 255);
                 SDL_RenderFillRect(ren, &thumb);
@@ -2252,12 +2312,12 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
         SDL_SetRenderClipRect(ren, nullptr);
 
         if (!statusText.empty() && SDL_GetTicks() < statusUntilTicks) {
-            DrawText(ren, pad, winH - pad - std::max(16, (int)std::lround(18.0f * uiScale)), textScale, statusText);
+            DrawText(ren, contentPanel.x + 12, shell.y + shell.h - shellPad - std::max(16, (int)std::lround(18.0f * uiScale)), textScale, statusText);
         }
 
         if (localPageOpen && activeTab == localTabIndex) {
-            SDL_Rect panel{winW / 2 - 230, winH / 2 - 120, 460, 240};
-            SDL_SetRenderDrawColor(ren, 22, 26, 34, 255);
+            SDL_Rect panel{winW / 2 - 250, winH / 2 - 140, 500, 280};
+            SDL_SetRenderDrawColor(ren, 28, 36, 48, 245);
             SDL_RenderFillRect(ren, &panel);
             SDL_SetRenderDrawColor(ren, 180, 200, 230, 255);
             SDL_RenderDrawRect(ren, &panel);
@@ -2272,22 +2332,11 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
             SDL_Rect editBtn{panel.x + 240, panel.y + 140, 96, 40};
             SDL_Rect uploadBtn{panel.x + 350, panel.y + 140, 96, 40};
             SDL_Rect backBtn{panel.x + 180, panel.y + 188, 100, 36};
-            SDL_SetRenderDrawColor(ren, 55, 90, 60, 255);
-            SDL_RenderFillRect(ren, &playBtn);
-            SDL_SetRenderDrawColor(ren, 95, 55, 55, 255);
-            SDL_RenderFillRect(ren, &delBtn);
-            SDL_SetRenderDrawColor(ren, 60, 70, 110, 255);
-            SDL_RenderFillRect(ren, &editBtn);
-            SDL_SetRenderDrawColor(ren, 80, 85, 45, 255);
-            SDL_RenderFillRect(ren, &uploadBtn);
-            SDL_SetRenderDrawColor(ren, 55, 65, 90, 255);
-            SDL_RenderFillRect(ren, &backBtn);
-            SDL_SetRenderDrawColor(ren, 220, 220, 230, 255);
-            SDL_RenderDrawRect(ren, &playBtn);
-            SDL_RenderDrawRect(ren, &delBtn);
-            SDL_RenderDrawRect(ren, &editBtn);
-            SDL_RenderDrawRect(ren, &uploadBtn);
-            SDL_RenderDrawRect(ren, &backBtn);
+            drawChromeButton(ren, playBtn, true);
+            drawChromeButton(ren, delBtn, false);
+            drawChromeButton(ren, editBtn, false);
+            drawChromeButton(ren, uploadBtn, false);
+            drawChromeButton(ren, backBtn, false);
             DrawText(ren, playBtn.x + 24, playBtn.y + 11, textScale, menuLabels.buttonPlay);
             DrawText(ren, delBtn.x + 14, delBtn.y + 11, textScale, menuLabels.buttonDelete);
             DrawText(ren, editBtn.x + 24, editBtn.y + 11, textScale, menuLabels.buttonEdit);

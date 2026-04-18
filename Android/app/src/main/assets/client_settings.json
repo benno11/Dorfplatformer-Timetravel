@@ -5,6 +5,9 @@
       "vsync": true,
       "ui_scale_percent": 100
     },
+    "ui": {
+      "show_optional_sidebar": true
+    },
     "camera": {
       "clamp_cam_x": true
     },
