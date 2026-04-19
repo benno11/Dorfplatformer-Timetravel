@@ -454,7 +454,7 @@ void refreshTrayUi(TrayContext& ctx) {
                            (ctx.state.gameProcessCount > 0 ? ("Running x" + std::to_string(ctx.state.gameProcessCount)) : "Stopped")).c_str());
     SDL_SetTrayEntryLabel(ctx.updaterStatusEntry, updaterStateLabel(ctx.state).c_str());
     SDL_SetTrayEntryLabel(ctx.versionEntry,
-                          (std::string("Installed Version ID: ") +
+                          (std::string("Installed Version: ") +
                            (ctx.state.currentVersionId.empty() ? "unknown" : ctx.state.currentVersionId)).c_str());
     SDL_SetTrayEntryLabel(ctx.detailEntry,
                           (std::string("Detail: ") +
@@ -544,7 +544,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     SDL_TrayMenu* menu = SDL_CreateTrayMenu(tray);
     ctx.gameStatusEntry = SDL_InsertTrayEntryAt(menu, -1, "Game: ...", SDL_TRAYENTRY_BUTTON | SDL_TRAYENTRY_DISABLED);
     ctx.updaterStatusEntry = SDL_InsertTrayEntryAt(menu, -1, "Updater: ...", SDL_TRAYENTRY_BUTTON | SDL_TRAYENTRY_DISABLED);
-    ctx.versionEntry = SDL_InsertTrayEntryAt(menu, -1, "Installed Version ID: ...", SDL_TRAYENTRY_BUTTON | SDL_TRAYENTRY_DISABLED);
+    ctx.versionEntry = SDL_InsertTrayEntryAt(menu, -1, "Installed Version: ...", SDL_TRAYENTRY_BUTTON | SDL_TRAYENTRY_DISABLED);
     ctx.detailEntry = SDL_InsertTrayEntryAt(menu, -1, "Detail: ...", SDL_TRAYENTRY_BUTTON | SDL_TRAYENTRY_DISABLED);
     SDL_InsertTrayEntryAt(menu, -1, nullptr, SDL_TRAYENTRY_BUTTON);
     ctx.launchEntry = SDL_InsertTrayEntryAt(menu, -1, "Launch Game", SDL_TRAYENTRY_BUTTON);

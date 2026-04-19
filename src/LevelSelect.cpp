@@ -573,9 +573,33 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
     InputSystem editorInput;
     editorInput.scanConnected();
 
-    SDL_Texture* blocksTex = loadTextureSafe(ren, "assets/Sheets/DF_Blocks-uhd.png", nullptr);
+    nlohmann::json texJson;
+    {
+        const std::string text = ReadTextFile("assets/textures.json");
+        if (!text.empty()) {
+            try {
+                texJson = nlohmann::json::parse(text);
+            } catch (...) {
+                texJson = nlohmann::json();
+            }
+        }
+    }
+    auto texPath = [&](const std::string& section, const std::string& key, const std::string& fallback) -> std::string {
+        if (texJson.contains(section) && texJson[section].is_object()) {
+            const auto& sectionJson = texJson[section];
+            if (sectionJson.contains(key) && sectionJson[key].is_string()) {
+                return sectionJson[key].get<std::string>();
+            }
+        }
+        return fallback;
+    };
+
+    SDL_Texture* blocksTex = loadTextureWithColorKey(
+        ren,
+        texPath("textures", "blocks", "assets/Sheets/DF_Blocks-uhd.png"),
+        0x9f, 0x61, 0xff);
     if (blocksTex) SDL_SetTextureScaleMode(blocksTex, SDL_SCALEMODE_NEAREST);
-    auto blocksFrameList = loadPlistFrameList("assets/Sheets/DF_Blocks-uhd.plist");
+    auto blocksFrameList = loadPlistFrameList(texPath("plists", "blocks", "assets/Sheets/DF_Blocks-uhd.plist"));
     std::unordered_map<std::string, Frame> blocksFrameByName;
     blocksFrameByName.reserve(blocksFrameList.size());
     for (const auto& e : blocksFrameList) blocksFrameByName[e.name] = e.frame;

@@ -1,5 +1,6 @@
 #include <SDL3/SDL.h>
 #include <SDL3_image/SDL_image.h>
+#include <charconv>
 #include <vector>
 #include <string>
 #include <algorithm>
@@ -1468,11 +1469,19 @@ int RunGameApp(int argc, char** argv) {
     int sfxVolume = 96;   // 0..128
     const std::string localClientSettingsPath = "client_settings.json";
     const std::string appSaveRootPath = GetAppSaveRootPath();
+    constexpr const char* kSavedGameSelectionToken = "__DF_SAVEGAME_CONTINUE__";
+    constexpr int kSaveSlotCount = 3;
+    int activeSaveSlotIndex = 0;
+    const std::filesystem::path saveGameRootPath = std::filesystem::path(appSaveRootPath) / "saves";
     const std::filesystem::path replayDirPath = std::filesystem::path(appSaveRootPath) / "replays";
     std::string clientSettingsPath = localClientSettingsPath;
     if (!appSaveRootPath.empty()) {
         clientSettingsPath = (std::filesystem::path(appSaveRootPath) / "client_settings.json").string();
     }
+    auto saveGamePathForSlot = [&](int slotIndex) -> std::filesystem::path {
+        const int slot = std::clamp(slotIndex, 0, kSaveSlotCount - 1);
+        return saveGameRootPath / ("save_slot_" + std::to_string(slot + 1) + ".json");
+    };
     auto saveClientSettings = [&]() {
         nlohmann::json j;
         j["build_uuid"] = buildUuid;
@@ -1515,7 +1524,8 @@ int RunGameApp(int argc, char** argv) {
             {"show_experimental_features", showExperimentalFeatures},
             {"level_select_enabled", levelSelectEnabled},
             {"debug_mode_enabled", debugModeEnabled},
-            {"fast_travel_delay", fastTravelChangeDelay}
+            {"fast_travel_delay", fastTravelChangeDelay},
+            {"active_save_slot_index", activeSaveSlotIndex}
         };
         settings["telemetry"] = {
             {"telemetry_webhook_url", telemetryWebhookUrl}
@@ -1564,6 +1574,7 @@ int RunGameApp(int argc, char** argv) {
         j["level_server_account_username"] = levelServerAccountUsername;
         j["firebase_api_key"] = firebaseApiKey;
         j["fast_travel_delay"] = fastTravelChangeDelay;
+        j["active_save_slot_index"] = activeSaveSlotIndex;
         j["music_volume"] = musicVolume;
         j["sfx_volume"] = sfxVolume;
         auto tryWriteSettings = [&](const std::string& path) -> bool {
@@ -1669,6 +1680,9 @@ int RunGameApp(int argc, char** argv) {
                         // Deprecated: delay removed in favor of immediate smooth transitions.
                         fastTravelChangeDelay = 0.0f;
                     }
+                    if (g.contains("active_save_slot_index") && g["active_save_slot_index"].is_number_integer()) {
+                        activeSaveSlotIndex = std::clamp(g["active_save_slot_index"].get<int>(), 0, kSaveSlotCount - 1);
+                    }
                 }
                 if (s.contains("telemetry") && s["telemetry"].is_object()) {
                     const auto& t = s["telemetry"];
@@ -1722,6 +1736,9 @@ int RunGameApp(int argc, char** argv) {
             if (j.contains("debug_mode_enabled") && j["debug_mode_enabled"].is_boolean()) debugModeEnabled = j["debug_mode_enabled"].get<bool>();
             if (j.contains("menu_music_enabled") && j["menu_music_enabled"].is_boolean()) menuMusicEnabled = j["menu_music_enabled"].get<bool>();
             if (j.contains("mute_all_audio") && j["mute_all_audio"].is_boolean()) muteAllAudio = j["mute_all_audio"].get<bool>();
+            if (j.contains("active_save_slot_index") && j["active_save_slot_index"].is_number_integer()) {
+                activeSaveSlotIndex = std::clamp(j["active_save_slot_index"].get<int>(), 0, kSaveSlotCount - 1);
+            }
             if (j.contains("key_move_left")) keybinds.moveLeft = parseScancode(j["key_move_left"], keybinds.moveLeft);
             if (j.contains("key_move_right")) keybinds.moveRight = parseScancode(j["key_move_right"], keybinds.moveRight);
             if (j.contains("key_move_down")) keybinds.moveDown = parseScancode(j["key_move_down"], keybinds.moveDown);
@@ -2104,6 +2121,7 @@ int RunGameApp(int argc, char** argv) {
     frontendCtx.levelServerAccountUsername = &levelServerAccountUsername;
     frontendCtx.accountManagerUrl = &accountManagerUrl;
     frontendCtx.firebaseApiKey = &firebaseApiKey;
+    frontendCtx.activeSaveSlotIndex = &activeSaveSlotIndex;
     frontendCtx.extraSettings = extraSettings.data();
     frontendCtx.extraSettingsCount = (int)extraSettings.size();
     frontendCtx.devToolsEnabled = &allowDevTools;
@@ -2187,7 +2205,7 @@ int RunGameApp(int argc, char** argv) {
             updaterStatus->progress01 = progress01;
             if (state == "checking") updaterStatus->displayText = "CHECKING";
             else if (state == "update_available") {
-                updaterStatus->displayText = latestVersionId.empty() ? "UPDATE FOUND - PRESS ENTER" : ("UPDATE FOUND [ID " + latestVersionId + "] - PRESS ENTER");
+                updaterStatus->displayText = "UPDATE FOUND - PRESS ENTER";
             }
             else if (state == "downloading") {
                 const int percent = (int)std::lround(progress01 * 100.0f);
@@ -2223,10 +2241,7 @@ int RunGameApp(int argc, char** argv) {
     };
     frontendCtx.getUpdaterLatestVersionText = [updaterStatus, refreshUpdaterStatus]() {
         (void)refreshUpdaterStatus();
-        if (updaterStatus->latestVersion.empty() && updaterStatus->latestVersionId.empty()) return std::string();
-        if (updaterStatus->latestVersion.empty()) return std::string("ID ") + updaterStatus->latestVersionId;
-        if (updaterStatus->latestVersionId.empty()) return updaterStatus->latestVersion;
-        return updaterStatus->latestVersion + " [ID " + updaterStatus->latestVersionId + "]";
+        return updaterStatus->latestVersion;
     };
     frontendCtx.getUpdaterNotesText = [updaterStatus, refreshUpdaterStatus]() {
         (void)refreshUpdaterStatus();
@@ -2451,6 +2466,7 @@ int RunGameApp(int argc, char** argv) {
     applyDynamicResolutionFromWindow(true);
     // Enforce persisted startup audio state immediately.
     applyMenuMusicToggle();
+    std::function<bool()> saveGameToDisk;
     while (running) {
         recoverAudioIfNeeded(false);
         std::string selectedLevelPath;
@@ -2476,13 +2492,42 @@ int RunGameApp(int argc, char** argv) {
         if (selectedLevelPath.empty()) {
             continue;
         }
-        const bool allowNextLevelProgression = !selectedFromUserMenu;
+        bool loadSavedGame = false;
+        nlohmann::json savedGameRoot;
+        if (selectedLevelPath == kSavedGameSelectionToken) {
+            loadSavedGame = true;
+            const std::filesystem::path selectedSavePath = saveGamePathForSlot(activeSaveSlotIndex);
+            try {
+                std::ifstream in(selectedSavePath, std::ios::binary);
+                if (!in.is_open()) {
+                    SDL_Log("SAVE: continue requested but %s was not found", selectedSavePath.string().c_str());
+                    continue;
+                }
+                std::stringstream buffer;
+                buffer << in.rdbuf();
+                if (buffer.str().empty()) {
+                    SDL_Log("SAVE: continue requested but %s was empty", selectedSavePath.string().c_str());
+                    continue;
+                }
+                savedGameRoot = nlohmann::json::parse(buffer.str());
+            } catch (const std::exception& ex) {
+                SDL_Log("SAVE: failed to parse %s (%s)", selectedSavePath.string().c_str(), ex.what());
+                continue;
+            } catch (...) {
+                SDL_Log("SAVE: failed to parse %s", selectedSavePath.string().c_str());
+                continue;
+            }
+        }
+        bool allowNextLevelProgression = !selectedFromUserMenu;
         audio.haltMusic();
-        levelManager.setLevelPath(selectedLevelPath);
-        syncWorldBackground();
+        if (!loadSavedGame) {
+            levelManager.setLevelPath(selectedLevelPath);
+            syncWorldBackground();
+        }
 
         TileMap map;
         std::vector<ObjectInstance> objects;
+        std::vector<int> objectIds;
         LevelMeta meta;
         Player player;
         int livesCount = 5;
@@ -2499,6 +2544,21 @@ int RunGameApp(int argc, char** argv) {
         float levelCompleteUiLerp = 0.0f;
         bool levelCompleteFlag = false;         // set this to trigger level completion programmatically
         Uint32 nextLevelCompleteFlagCheckTicks = 0u; // 8 Hz poll timer
+        auto parseObjectId = [&](const std::string& idText) -> int {
+            int value = -1;
+            const char* begin = idText.c_str();
+            const char* end = begin + idText.size();
+            auto [ptr, ec] = std::from_chars(begin, end, value);
+            if (ec != std::errc() || ptr != end) return -1;
+            return value;
+        };
+        auto refreshObjectIdCache = [&]() {
+            objectIds.clear();
+            objectIds.reserve(objects.size());
+            for (const auto& obj : objects) {
+                objectIds.push_back(parseObjectId(obj.id));
+            }
+        };
         enum class EndSignPhase {
             Idle,
             SignForward,
@@ -2563,6 +2623,39 @@ int RunGameApp(int argc, char** argv) {
         BossRuntimeState bossState;
         std::vector<SecretFireball> secretFireballs;
         std::vector<SecretExplosion> secretExplosions;
+        auto bossRectHitsSolid = [&](float cx, float cy, float w, float h) -> bool {
+            return RectHitsSolid(map, cx - w * 0.5f, cy - h * 0.5f, (int)std::lround(w), (int)std::lround(h));
+        };
+        auto ejectBossFromSolid = [&](float& bx, float& by, float bossW, float bossH) -> bool {
+            if (!bossRectHitsSolid(bx, by, bossW, bossH)) return true;
+
+            const float step = std::max(4.0f, (float)map.tileSize * 0.5f);
+            const int maxRings = 16;
+            const float ringOffsets[8][2] = {
+                { 1.0f,  0.0f},
+                {-1.0f,  0.0f},
+                { 0.0f,  1.0f},
+                { 0.0f, -1.0f},
+                { 1.0f,  1.0f},
+                {-1.0f,  1.0f},
+                { 1.0f, -1.0f},
+                {-1.0f, -1.0f},
+            };
+            for (int ring = 1; ring <= maxRings; ++ring) {
+                const float dist = step * (float)ring;
+                for (const auto& o : ringOffsets) {
+                    float tx = bx + o[0] * dist;
+                    float ty = by + o[1] * dist;
+                    if (!bossRectHitsSolid(tx, ty, bossW, bossH)) {
+                        bx = tx;
+                        by = ty;
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        };
         auto resetBossStateForLoadedLevel = [&]() {
             bossState = BossRuntimeState{};
             secretFireballs.clear();
@@ -2641,8 +2734,10 @@ int RunGameApp(int argc, char** argv) {
                 bossState.vx = -250.0f;
                 bossState.vy = 240.0f;
             } else if (bossProfileWorld == 5) {
-                bossState.x = std::clamp(96.0f + (float)kGameplayViewW - 64.0f, 96.0f, std::max(96.0f, mapW - 96.0f));
-                bossState.y = std::clamp(mapH * 0.38f, 96.0f, std::max(96.0f, mapH - 96.0f));
+                const float bossCamCenterX = 5728.0f + kGameplayViewW * 0.5f;
+                const float bossCamCenterY = 2832.0f + kGameplayViewH * 0.5f;
+                bossState.x = bossCamCenterX + kGameplayViewW * 0.25f;
+                bossState.y = bossCamCenterY;
                 bossState.vx = -250.0f;
                 bossState.vy = 220.0f;
             } else {
@@ -2687,6 +2782,9 @@ int RunGameApp(int argc, char** argv) {
             if (bossState.sourceWorld == 4) {
                 bossState.rainbowTimer = 0.0f;
             }
+            const float spawnBossW = (bossState.sourceWorld == 7) ? 56.0f : 28.0f;
+            const float spawnBossH = (bossState.sourceWorld == 7) ? 56.0f : 28.0f;
+            (void)ejectBossFromSolid(bossState.x, bossState.y, spawnBossW, spawnBossH);
         };
         struct DemoRuntimeState {
             bool enabled = false;
@@ -2797,8 +2895,30 @@ int RunGameApp(int argc, char** argv) {
             }
         };
 
-        auto reloadLevel = [&]() {
+        auto refreshEndSignState = [&]() {
+            endSignState = EndSignRuntimeState{};
+            float nearestAheadDist = 1e30f;
+            int fallbackSignIndex = -1;
+            for (int i = 0; i < (int)objects.size(); ++i) {
+                if (i >= (int)objectIds.size() || objectIds[i] != 67) continue;
+                if (fallbackSignIndex < 0) fallbackSignIndex = i;
+                const float dx = objects[i].x - player.x;
+                if (dx >= 0.0f && dx < nearestAheadDist) {
+                    nearestAheadDist = dx;
+                    endSignState.objectIndex = i;
+                }
+            }
+            if (endSignState.objectIndex < 0) endSignState.objectIndex = fallbackSignIndex;
+            if (endSignState.objectIndex >= 0 && endSignState.objectIndex < (int)objects.size()) {
+                endSignState.present = true;
+                endSignState.objectX = objects[endSignState.objectIndex].x;
+                endSignState.objectY = objects[endSignState.objectIndex].y;
+            }
+        };
+
+        auto reloadLevel = [&](bool showIntroCard = true) {
             levelManager.reloadLevel(map, objects, meta, player);
+            refreshObjectIdCache();
             syncWorldBackground();
             levelTimerSeconds = 0.0f;
             levelCompleteActive = false;
@@ -2824,26 +2944,6 @@ int RunGameApp(int argc, char** argv) {
             for (const auto& obj : objects) {
                 if (obj.id == "67") endSignTemplates.push_back(obj);
             }
-            auto refreshEndSignState = [&]() {
-                endSignState = EndSignRuntimeState{};
-                float nearestAheadDist = 1e30f;
-                int fallbackSignIndex = -1;
-                for (int i = 0; i < (int)objects.size(); ++i) {
-                    if (objects[i].id != "67") continue;
-                    if (fallbackSignIndex < 0) fallbackSignIndex = i;
-                    const float dx = objects[i].x - player.x;
-                    if (dx >= 0.0f && dx < nearestAheadDist) {
-                        nearestAheadDist = dx;
-                        endSignState.objectIndex = i;
-                    }
-                }
-                if (endSignState.objectIndex < 0) endSignState.objectIndex = fallbackSignIndex;
-                if (endSignState.objectIndex >= 0 && endSignState.objectIndex < (int)objects.size()) {
-                    endSignState.present = true;
-                    endSignState.objectX = objects[endSignState.objectIndex].x;
-                    endSignState.objectY = objects[endSignState.objectIndex].y;
-                }
-            };
             refreshEndSignState();
             resetBossStateForLoadedLevel();
             demoState.jumpCooldown = 0.0f;
@@ -2892,7 +2992,7 @@ int RunGameApp(int argc, char** argv) {
             playerSpawnLockX = player.x;
             playerSpawnLockY = player.y;
             playerSpawnLockFrames = kPlayerSpawnLockFrames;
-            playSceneIntroCard();
+            if (showIntroCard) playSceneIntroCard();
         };
         auto startLevelCompleteSequence = [&]() {
             if (levelCompleteActive) return;
@@ -2922,7 +3022,176 @@ int RunGameApp(int argc, char** argv) {
             }
         };
 
-        reloadLevel();
+        if (loadSavedGame) {
+            if (!savedGameRoot.is_object()) {
+                SDL_Log("SAVE: continue requested but snapshot was invalid");
+                continue;
+            }
+            const std::string savedLevelPath = savedGameRoot.value("level_path", std::string());
+            if (savedLevelPath.empty()) {
+                SDL_Log("SAVE: continue requested but level path was missing");
+                continue;
+            }
+            levelManager.setLevelPath(savedLevelPath);
+            syncWorldBackground();
+            reloadLevel(false);
+            allowNextLevelProgression = savedGameRoot.value("allow_next_level_progression", allowNextLevelProgression);
+            if (savedGameRoot.contains("map") && savedGameRoot["map"].is_object()) {
+                const auto& mj = savedGameRoot["map"];
+                const int savedW = mj.value("w", map.w);
+                const int savedH = mj.value("h", map.h);
+                const int savedTileSize = mj.value("tile_size", map.tileSize);
+                if (savedW == map.w && savedH == map.h && savedTileSize == map.tileSize &&
+                    mj.contains("tile_ids") && mj["tile_ids"].is_array() &&
+                    mj.contains("bg") && mj["bg"].is_array()) {
+                    const auto& tileIds = mj["tile_ids"];
+                    const auto& bg = mj["bg"];
+                    const int count = std::min((int)tileIds.size(), (int)bg.size());
+                    const int limit = std::min(count, (int)map.tileIds.size());
+                    for (int i = 0; i < limit; ++i) {
+                        const unsigned short tileId = (unsigned short)std::clamp(tileIds[i].get<int>(), 0, 65535);
+                        levelManager.setTileAt(map, i, tileId);
+                        map.bg[i] = (unsigned short)std::clamp(bg[i].get<int>(), 0, 65535);
+                    }
+                } else {
+                    SDL_Log("SAVE: map size mismatch in %s", saveGamePathForSlot(activeSaveSlotIndex).string().c_str());
+                }
+            }
+            if (savedGameRoot.contains("player") && savedGameRoot["player"].is_object()) {
+                const auto& pj = savedGameRoot["player"];
+                player.x = pj.value("x", player.x);
+                player.y = pj.value("y", player.y);
+                player.vx = pj.value("vx", player.vx);
+                player.vy = pj.value("vy", player.vy);
+                player.w = pj.value("w", player.w);
+                player.h = pj.value("h", player.h);
+                player.onGround = pj.value("onGround", player.onGround);
+                player.jumpHeld = pj.value("jumpHeld", player.jumpHeld);
+                player.jumpWasDown = pj.value("jumpWasDown", player.jumpWasDown);
+                player.jumpHoldTime = pj.value("jumpHoldTime", player.jumpHoldTime);
+                player.jumpBufferTime = pj.value("jumpBufferTime", player.jumpBufferTime);
+                player.inWater = pj.value("inWater", player.inWater);
+                player.drownTimer = pj.value("drownTimer", player.drownTimer);
+                player.freeMove = pj.value("freeMove", player.freeMove);
+                player.facing = pj.value("facing", player.facing);
+                player.anim = pj.value("anim", player.anim);
+                player.animTime = pj.value("animTime", player.animTime);
+            }
+            if (savedGameRoot.contains("meta") && savedGameRoot["meta"].is_object()) {
+                const auto& mj = savedGameRoot["meta"];
+                meta.name = mj.value("name", meta.name);
+                meta.entitySpawnPos = mj.value("entity_spawn_pos", meta.entitySpawnPos);
+                meta.entitySpawnType = mj.value("entity_spawn_type", meta.entitySpawnType);
+            }
+            if (savedGameRoot.contains("objects") && savedGameRoot["objects"].is_array()) {
+                objects.clear();
+                objects.reserve(savedGameRoot["objects"].size());
+                for (const auto& objj : savedGameRoot["objects"]) {
+                    if (!objj.is_object()) continue;
+                    ObjectInstance obj;
+                    obj.id = objj.value("id", std::string());
+                    obj.x = objj.value("x", 0.0f);
+                    obj.y = objj.value("y", 0.0f);
+                    objects.push_back(std::move(obj));
+                }
+            }
+            refreshObjectIdCache();
+            if (savedGameRoot.contains("checkpoint") && savedGameRoot["checkpoint"].is_object()) {
+                const auto& cj = savedGameRoot["checkpoint"];
+                checkpointActive = cj.value("active", false);
+                checkpointLevelPath = cj.value("level_path", std::string());
+                checkpointTileX = cj.value("tile_x", -1);
+                checkpointTileY = cj.value("tile_y", -1);
+            }
+            levelTimerSeconds = savedGameRoot.value("level_timer_seconds", 0.0f);
+            livesCount = savedGameRoot.value("lives_count", livesCount);
+            scoreCount = savedGameRoot.value("score_count", scoreCount);
+            levelManager.resetCoinCount();
+            levelManager.addCoins(savedGameRoot.value("coin_count", 0));
+            playerInvincibleTimer = savedGameRoot.value("player_invincible_timer", playerInvincibleTimer);
+            levelLoadDeathGraceTimer = savedGameRoot.value("level_load_death_grace_timer", levelLoadDeathGraceTimer);
+            playerSpawnLockFrames = savedGameRoot.value("player_spawn_lock_frames", playerSpawnLockFrames);
+            playerSpawnLockX = savedGameRoot.value("player_spawn_lock_x", playerSpawnLockX);
+            playerSpawnLockY = savedGameRoot.value("player_spawn_lock_y", playerSpawnLockY);
+            cameraSmoothingSuppressTimer = savedGameRoot.value("camera_smoothing_suppress_timer", cameraSmoothingSuppressTimer);
+            cameraLookAheadX = savedGameRoot.value("camera_look_ahead_x", cameraLookAheadX);
+            minCamXOverride = savedGameRoot.value("min_cam_x_override", minCamXOverride);
+            timeTravelTriggerCooldown = savedGameRoot.value("time_travel_trigger_cooldown", timeTravelTriggerCooldown);
+            fastTravelActiveDir = savedGameRoot.value("fast_travel_active_dir", fastTravelActiveDir);
+            fastTravelOverlapWasActive = savedGameRoot.value("fast_travel_overlap_was_active", fastTravelOverlapWasActive);
+            fastTravelBlendVx = savedGameRoot.value("fast_travel_blend_vx", fastTravelBlendVx);
+            fastTravelBlendVy = savedGameRoot.value("fast_travel_blend_vy", fastTravelBlendVy);
+            levelManager.clearButtonAreasForDebug();
+            if (savedGameRoot.contains("active_button_world_areas") && savedGameRoot["active_button_world_areas"].is_array()) {
+                for (const auto& v : savedGameRoot["active_button_world_areas"]) {
+                    if (!v.is_number_integer()) continue;
+                    const int key = v.get<int>();
+                    if (key <= 0) continue;
+                    levelManager.setButtonAreaActiveForDebug(key / 10, key % 10, true);
+                }
+            }
+            resetBossStateForLoadedLevel();
+            if (savedGameRoot.contains("boss") && savedGameRoot["boss"].is_object()) {
+                const auto& bj = savedGameRoot["boss"];
+                bossState.active = bj.value("active", bossState.active);
+                bossState.world = bj.value("world", bossState.world);
+                bossState.sourceWorld = bj.value("source_world", bossState.sourceWorld);
+                bossState.activationCooldown = bj.value("activation_cooldown", bossState.activationCooldown);
+                bossState.health = bj.value("health", bossState.health);
+                bossState.maxHealth = bj.value("max_health", bossState.maxHealth);
+                bossState.x = bj.value("x", bossState.x);
+                bossState.y = bj.value("y", bossState.y);
+                bossState.vx = bj.value("vx", bossState.vx);
+                bossState.vy = bj.value("vy", bossState.vy);
+                bossState.hurtFlash = bj.value("hurt_flash", bossState.hurtFlash);
+                bossState.phase = bj.value("phase", bossState.phase);
+                if (bj.contains("replay_index") && bj["replay_index"].is_number_unsigned()) {
+                    bossState.replayIndex = (size_t)bj["replay_index"].get<uint64_t>();
+                }
+                bossState.replayFrameAcc = bj.value("replay_frame_acc", bossState.replayFrameAcc);
+                bossState.rainbowTimer = bj.value("rainbow_timer", bossState.rainbowTimer);
+                bossState.secretShotTimer = bj.value("secret_shot_timer", bossState.secretShotTimer);
+                bossState.secretTouchDamageCooldown = bj.value("secret_touch_damage_cooldown", bossState.secretTouchDamageCooldown);
+            }
+            secretFireballs.clear();
+            if (savedGameRoot.contains("secret_fireballs") && savedGameRoot["secret_fireballs"].is_array()) {
+                for (const auto& fj : savedGameRoot["secret_fireballs"]) {
+                    if (!fj.is_object()) continue;
+                    SecretFireball f;
+                    f.x = fj.value("x", f.x);
+                    f.y = fj.value("y", f.y);
+                    f.vx = fj.value("vx", f.vx);
+                    f.vy = fj.value("vy", f.vy);
+                    f.timer = fj.value("timer", f.timer);
+                    f.phase = fj.value("phase", f.phase);
+                    secretFireballs.push_back(f);
+                }
+            }
+            secretExplosions.clear();
+            if (savedGameRoot.contains("secret_explosions") && savedGameRoot["secret_explosions"].is_array()) {
+                for (const auto& ej : savedGameRoot["secret_explosions"]) {
+                    if (!ej.is_object()) continue;
+                    SecretExplosion ex;
+                    ex.x = ej.value("x", ex.x);
+                    ex.y = ej.value("y", ex.y);
+                    ex.radius = ej.value("radius", ex.radius);
+                    ex.life = ej.value("life", ex.life);
+                    ex.hitPlayer = ej.value("hitPlayer", ex.hitPlayer);
+                    ex.hitBoss = ej.value("hitBoss", ex.hitBoss);
+                    secretExplosions.push_back(ex);
+                }
+            }
+            if (bossState.active) {
+                const float bossW = (bossState.sourceWorld == 7) ? 56.0f : 28.0f;
+                const float bossH = (bossState.sourceWorld == 7) ? 56.0f : 28.0f;
+                (void)ejectBossFromSolid(bossState.x, bossState.y, bossW, bossH);
+            }
+            refreshEndSignState();
+            currentLevelId = parseLevelIdFromLevelPath(levelManager.levelPath());
+            levelReloadTitleTimer = 0.0f;
+        } else {
+            reloadLevel();
+        }
         if (!running) break;
 
         bool levelRunning = true;
@@ -3273,17 +3542,171 @@ int RunGameApp(int argc, char** argv) {
             replayPlayback.active = true;
             return true;
         };
+
+        auto saveObjectJson = [](const ObjectInstance& obj) {
+            nlohmann::json j;
+            j["id"] = obj.id;
+            j["x"] = obj.x;
+            j["y"] = obj.y;
+            return j;
+        };
+        auto savePlayerJson = [](const Player& p) {
+            nlohmann::json j;
+            j["x"] = p.x;
+            j["y"] = p.y;
+            j["vx"] = p.vx;
+            j["vy"] = p.vy;
+            j["w"] = p.w;
+            j["h"] = p.h;
+            j["onGround"] = p.onGround;
+            j["jumpHeld"] = p.jumpHeld;
+            j["jumpWasDown"] = p.jumpWasDown;
+            j["jumpHoldTime"] = p.jumpHoldTime;
+            j["jumpBufferTime"] = p.jumpBufferTime;
+            j["inWater"] = p.inWater;
+            j["drownTimer"] = p.drownTimer;
+            j["freeMove"] = p.freeMove;
+            j["facing"] = p.facing;
+            j["anim"] = p.anim;
+            j["animTime"] = p.animTime;
+            return j;
+        };
+        auto saveBossJson = [&](const BossRuntimeState& b) {
+            nlohmann::json j;
+            j["active"] = b.active;
+            j["world"] = b.world;
+            j["source_world"] = b.sourceWorld;
+            j["activation_cooldown"] = b.activationCooldown;
+            j["health"] = b.health;
+            j["max_health"] = b.maxHealth;
+            j["x"] = b.x;
+            j["y"] = b.y;
+            j["vx"] = b.vx;
+            j["vy"] = b.vy;
+            j["hurt_flash"] = b.hurtFlash;
+            j["phase"] = b.phase;
+            j["replay_index"] = (uint64_t)b.replayIndex;
+            j["replay_frame_acc"] = b.replayFrameAcc;
+            j["rainbow_timer"] = b.rainbowTimer;
+            j["secret_shot_timer"] = b.secretShotTimer;
+            j["secret_touch_damage_cooldown"] = b.secretTouchDamageCooldown;
+            return j;
+        };
+        auto saveSecretFireballJson = [](const SecretFireball& f) {
+            nlohmann::json j;
+            j["x"] = f.x;
+            j["y"] = f.y;
+            j["vx"] = f.vx;
+            j["vy"] = f.vy;
+            j["timer"] = f.timer;
+            j["phase"] = f.phase;
+            return j;
+        };
+        auto saveSecretExplosionJson = [](const SecretExplosion& e) {
+            nlohmann::json j;
+            j["x"] = e.x;
+            j["y"] = e.y;
+            j["radius"] = e.radius;
+            j["life"] = e.life;
+            j["hitPlayer"] = e.hitPlayer;
+            j["hitBoss"] = e.hitBoss;
+            return j;
+        };
+        saveGameToDisk = [&]() -> bool {
+            try {
+                if (levelManager.levelPath().empty()) return false;
+                const std::filesystem::path savePath = saveGamePathForSlot(activeSaveSlotIndex);
+                std::error_code ec;
+                std::filesystem::create_directories(savePath.parent_path(), ec);
+                nlohmann::json root;
+                root["version"] = 1;
+                root["level_path"] = levelManager.levelPath();
+                root["allow_next_level_progression"] = allowNextLevelProgression;
+                root["level_timer_seconds"] = levelTimerSeconds;
+                root["lives_count"] = livesCount;
+                root["score_count"] = scoreCount;
+                root["coin_count"] = levelManager.coinCount();
+                root["checkpoint"] = {
+                    {"active", checkpointActive},
+                    {"level_path", checkpointLevelPath},
+                    {"tile_x", checkpointTileX},
+                    {"tile_y", checkpointTileY}
+                };
+                root["player_invincible_timer"] = playerInvincibleTimer;
+                root["level_load_death_grace_timer"] = levelLoadDeathGraceTimer;
+                root["player_spawn_lock_frames"] = playerSpawnLockFrames;
+                root["player_spawn_lock_x"] = playerSpawnLockX;
+                root["player_spawn_lock_y"] = playerSpawnLockY;
+                root["camera_smoothing_suppress_timer"] = cameraSmoothingSuppressTimer;
+                root["camera_look_ahead_x"] = cameraLookAheadX;
+                root["min_cam_x_override"] = minCamXOverride;
+                root["time_travel_trigger_cooldown"] = timeTravelTriggerCooldown;
+                root["fast_travel_active_dir"] = fastTravelActiveDir;
+                root["fast_travel_overlap_was_active"] = fastTravelOverlapWasActive;
+                root["fast_travel_blend_vx"] = fastTravelBlendVx;
+                root["fast_travel_blend_vy"] = fastTravelBlendVy;
+                root["map"] = {
+                    {"tile_size", map.tileSize},
+                    {"w", map.w},
+                    {"h", map.h},
+                    {"tile_ids", map.tileIds},
+                    {"bg", map.bg}
+                };
+                root["player"] = savePlayerJson(player);
+                root["meta"] = {
+                    {"name", meta.name},
+                    {"entity_spawn_pos", meta.entitySpawnPos},
+                    {"entity_spawn_type", meta.entitySpawnType}
+                };
+                root["objects"] = nlohmann::json::array();
+                for (const auto& obj : objects) {
+                    root["objects"].push_back(saveObjectJson(obj));
+                }
+                root["active_button_world_areas"] = levelManager.activeButtonWorldAreas();
+                root["boss"] = saveBossJson(bossState);
+                root["secret_fireballs"] = nlohmann::json::array();
+                for (const auto& f : secretFireballs) {
+                    root["secret_fireballs"].push_back(saveSecretFireballJson(f));
+                }
+                root["secret_explosions"] = nlohmann::json::array();
+                for (const auto& ex : secretExplosions) {
+                    root["secret_explosions"].push_back(saveSecretExplosionJson(ex));
+                }
+                std::ofstream out(savePath, std::ios::binary | std::ios::trunc);
+                if (!out.is_open()) return false;
+                out << root.dump(2);
+                out.flush();
+                SDL_Log("SAVE: wrote %s", savePath.string().c_str());
+                return true;
+            } catch (const std::exception& ex) {
+                const std::filesystem::path savePath = saveGamePathForSlot(activeSaveSlotIndex);
+                SDL_Log("SAVE: failed to write %s (%s)", savePath.string().c_str(), ex.what());
+                return false;
+            } catch (...) {
+                const std::filesystem::path savePath = saveGamePathForSlot(activeSaveSlotIndex);
+                SDL_Log("SAVE: failed to write %s", savePath.string().c_str());
+                return false;
+            }
+        };
         // Replay recording is opt-in; keep disabled until user toggles it.
         SDL_Event e;
         Uint32 lastTicks = SDL_GetTicks();
+        Uint64 lastTicksNs = SDL_GetTicksNS();
         Uint32 lastPresentTicks = lastTicks;
+        Uint64 lastPresentTicksNs = lastTicksNs;
         Uint32 nextPresentTicks = lastTicks;
         Uint32 nextGarbageCollectTicks = lastTicks + 5000;
         bool mainWindowFocused = true;
         bool mainWindowMinimized = false;
-        constexpr int kFpsDisplayMax = 99999999;
-        float updateFpsSmoothed = 0.0f;
-        float renderFpsSmoothed = 0.0f;
+        constexpr double kFpsDisplayUpdatePeriodSec = 0.25;
+        double updateFpsSmoothed = 0.0;
+        double renderFpsSmoothed = 0.0;
+        double updateFpsAccumSec = 0.0;
+        double renderFpsAccumSec = 0.0;
+        int updateFpsAccumFrames = 0;
+        int renderFpsAccumFrames = 0;
+        double updateFpsDisplayValue = 0.0;
+        double renderFpsDisplayValue = 0.0;
         int updateFpsDisplay = 0;
         int renderFpsDisplay = 0;
 
@@ -3314,7 +3737,9 @@ int RunGameApp(int argc, char** argv) {
             unloadGameplayAssets();
             lowPowerSuspendActive = true;
             lastTicks = SDL_GetTicks();
+            lastTicksNs = SDL_GetTicksNS();
             lastPresentTicks = lastTicks;
+            lastPresentTicksNs = lastTicksNs;
             nextPresentTicks = lastTicks;
             SDL_Log("Low power mode: suspended reloadable assets");
         };
@@ -3353,7 +3778,9 @@ int RunGameApp(int argc, char** argv) {
             }
             lowPowerSuspendActive = false;
             lastTicks = SDL_GetTicks();
+            lastTicksNs = SDL_GetTicksNS();
             lastPresentTicks = lastTicks;
+            lastPresentTicksNs = lastTicksNs;
             nextPresentTicks = lastTicks;
             SDL_Log("Low power mode: restored gameplay assets");
             return true;
@@ -3575,9 +4002,11 @@ int RunGameApp(int argc, char** argv) {
                 SDL_HideWindow(debugWin);
             }
             recoverAudioIfNeeded(true);
-            Uint32 now = SDL_GetTicks();
-            float dt = (now - lastTicks) / 1000.0f;
-            lastTicks = now;
+            const Uint64 nowNs = SDL_GetTicksNS();
+            const double dtPrecise = (double)(nowNs - lastTicksNs) / 1000000000.0;
+            const float dt = (float)dtPrecise;
+            lastTicksNs = nowNs;
+            lastTicks = SDL_GetTicks();
             SetTextScaleMultiplier(std::clamp((float)uiScalePercent / 100.0f, 0.5f, 4.0f));
             auto isVerticalWrapEnabledAtX = [&](float x) -> bool {
                 if (((currentLevelId == 29 && x > 1250.0f) ||
@@ -3597,10 +4026,17 @@ int RunGameApp(int argc, char** argv) {
             if (levelCompleteActive) {
                 paused = false;
             }
-            const int updateFpsInstant = std::clamp((dt > 0.0f) ? (int)(1.0f / dt) : 0, 0, kFpsDisplayMax);
-            if (updateFpsSmoothed <= 0.0f) updateFpsSmoothed = (float)updateFpsInstant;
-            else updateFpsSmoothed += ((float)updateFpsInstant - updateFpsSmoothed) * 0.16f;
-            updateFpsDisplay = std::clamp((int)std::lround(updateFpsSmoothed), 0, kFpsDisplayMax);
+            updateFpsAccumSec += dtPrecise;
+            ++updateFpsAccumFrames;
+            if (updateFpsAccumSec >= kFpsDisplayUpdatePeriodSec) {
+                updateFpsDisplayValue = (updateFpsAccumSec > 0.0) ? (double)updateFpsAccumFrames / updateFpsAccumSec : 0.0;
+                if (updateFpsSmoothed <= 0.0) updateFpsSmoothed = updateFpsDisplayValue;
+                else updateFpsSmoothed += (updateFpsDisplayValue - updateFpsSmoothed) * 0.35;
+                updateFpsDisplayValue = std::max(0.0, updateFpsSmoothed);
+                updateFpsDisplay = (int)std::lround(updateFpsDisplayValue);
+                updateFpsAccumSec = std::fmod(updateFpsAccumSec, kFpsDisplayUpdatePeriodSec);
+                updateFpsAccumFrames = 0;
+            }
             bool temp1TouchedThisFrame = false;
             const bool gameplayWrapX = (currentLevelId == 39 || currentLevelId == 40);
             const bool gameplayWrapY = isVerticalWrapEnabledAtX(player.x);
@@ -3608,7 +4044,7 @@ int RunGameApp(int argc, char** argv) {
             activeBumperIndices.clear();
             SetHorizontalWrapCollision(gameplayWrapX);
             SetVerticalWrapCollision(gameplayWrapY);
-            frameMsHistory[frameMsHistoryHead] = dt * 1000.0f;
+            frameMsHistory[frameMsHistoryHead] = (float)(dtPrecise * 1000.0);
             {
                 long rssKB = -1, vmKB = -1;
                 if (readProcessMemoryKB(rssKB, vmKB) && rssKB >= 0) {
@@ -3754,7 +4190,13 @@ int RunGameApp(int argc, char** argv) {
                 }
                 if (levelCompleteCoinBonus <= 0 && levelCompleteTimeScore <= 0) {
                     if (!levelCompleteNextPath.empty()) {
-                        if (transitionToLevelPath(levelCompleteNextPath)) continue;
+                        const int completedWorldId = levelManager.worldId();
+                        if (transitionToLevelPath(levelCompleteNextPath)) {
+                            if (levelManager.worldId() != completedWorldId) {
+                                (void)saveGameToDisk();
+                            }
+                            continue;
+                        }
                     }
                     returnToSelect = true;
                     levelRunning = false;
@@ -4369,12 +4811,13 @@ int RunGameApp(int argc, char** argv) {
             };
             if (timeTravelTriggerCooldown <= 0.0f) {
                 int overlapDir = -1;
-                for (const auto& obj : objects) {
-                    int objId = 0;
-                    try { objId = std::stoi(obj.id); } catch (...) { continue; }
+                for (int objIndex = 0; objIndex < (int)objects.size(); ++objIndex) {
+                    if (objIndex >= (int)objectIds.size()) continue;
+                    const int objId = objectIds[objIndex];
                     if (objId < 57 || objId > 61) continue;
                     if (fastTravelCooldown > 0.0f) break;
 
+                    const auto& obj = objects[objIndex];
                     const float ox = obj.x - 16.0f;
                     const float oy = obj.y - 16.0f;
                     const float ow = 32.0f;
@@ -4596,9 +5039,11 @@ int RunGameApp(int argc, char** argv) {
                     auto indexOf = [&](int tx, int ty) { return ty * map.w + tx; };
                     // Hazard-aware costs: steer the route away from bumpers/time-warp objects.
                     std::vector<int> tileRisk((size_t)map.w * (size_t)map.h, 0);
-                    for (const auto& obj : objects) {
-                        int objId = 0;
-                        try { objId = std::stoi(obj.id); } catch (...) { continue; }
+                    for (int objIndex = 0; objIndex < (int)objects.size(); ++objIndex) {
+                        if (objIndex >= (int)objectIds.size()) continue;
+                        const int objId = objectIds[objIndex];
+                        if (objId < 0) continue;
+                        const auto& obj = objects[objIndex];
                         int basePenalty = 0;
                         int radiusX = 0;
                         int radiusY = 0;
@@ -4954,9 +5399,11 @@ int RunGameApp(int argc, char** argv) {
                 float nearestSpringCenterX = 0.0f;
                 const float playerCenterX = player.x + player.w * 0.5f;
                 const float playerCenterY = player.y + player.h * 0.5f;
-                for (const auto& obj : objects) {
-                    int objId = 0;
-                    try { objId = std::stoi(obj.id); } catch (...) { continue; }
+                for (int objIndex = 0; objIndex < (int)objects.size(); ++objIndex) {
+                    if (objIndex >= (int)objectIds.size()) continue;
+                    const int objId = objectIds[objIndex];
+                    if (objId < 0) continue;
+                    const auto& obj = objects[objIndex];
                     const float objCenterX = obj.x;
                     const float objCenterY = obj.y;
                     const float dx = wrapDeltaNear(objCenterX - playerCenterX, mapWrapW, gameplayWrapX);
@@ -5307,7 +5754,7 @@ int RunGameApp(int argc, char** argv) {
                         float nearestAheadDist = 1e30f;
                         int fallbackSignIndex = -1;
                         for (int i = 0; i < (int)objects.size(); ++i) {
-                            if (objects[i].id != "67") continue;
+                            if (i >= (int)objectIds.size() || objectIds[i] != 67) continue;
                             if (fallbackSignIndex < 0) fallbackSignIndex = i;
                             const float dx = wrapDeltaNear(objects[i].x - player.x, mapWrapW, gameplayWrapX);
                             if (dx >= 0.0f && dx < nearestAheadDist) {
@@ -5336,6 +5783,7 @@ int RunGameApp(int argc, char** argv) {
                 const float bossH = bossBaseSize;
                 const float halfW = bossW * 0.5f;
                 const float halfH = bossH * 0.5f;
+                (void)ejectBossFromSolid(bossState.x, bossState.y, bossW, bossH);
                 const float secretCenterX = (float)(map.w * map.tileSize) * 0.5f;
                 const float secretCenterY = (float)(map.h * map.tileSize) * 0.5f;
                 float arenaLeft = (float)map.tileSize * 2.0f;
@@ -5490,6 +5938,7 @@ int RunGameApp(int argc, char** argv) {
                             bossState.y = arenaBottom + halfH + 24.0f;
                             bossState.vy = -std::fabs(bossState.vy);
                         }
+                        (void)ejectBossFromSolid(bossState.x, bossState.y, bossW, bossH);
                     } else {
                         const int bossHitW = (int)std::lround(bossW);
                         const int bossHitH = (int)std::lround(bossH);
@@ -5522,6 +5971,7 @@ int RunGameApp(int argc, char** argv) {
                             bossState.y = arenaBottom - halfH;
                             bossState.vy = -std::fabs(bossState.vy);
                         }
+                        (void)ejectBossFromSolid(bossState.x, bossState.y, bossW, bossH);
                     }
                 }
                 if (isSecretBossLevel) {
@@ -5662,10 +6112,22 @@ int RunGameApp(int argc, char** argv) {
                                     const float maxX = std::max(arenaLeft + halfW + pad, arenaRight - halfW - pad);
                                     const float minY = std::min(arenaTop + halfH + pad, arenaBottom - halfH - pad);
                                     const float maxY = std::max(arenaTop + halfH + pad, arenaBottom - halfH - pad);
-                                    const float rx = (float)std::rand() / (float)RAND_MAX;
-                                    const float ry = (float)std::rand() / (float)RAND_MAX;
-                                    bossState.x = minX + (maxX - minX) * rx;
-                                    bossState.y = minY + (maxY - minY) * ry;
+                                    for (int attempt = 0; attempt < 32; ++attempt) {
+                                        const float rx = (float)std::rand() / (float)RAND_MAX;
+                                        const float ry = (float)std::rand() / (float)RAND_MAX;
+                                        const float tx = minX + (maxX - minX) * rx;
+                                        const float ty = minY + (maxY - minY) * ry;
+                                        if (!bossRectHitsSolid(tx, ty, bossW, bossH)) {
+                                            bossState.x = tx;
+                                            bossState.y = ty;
+                                            break;
+                                        }
+                                        if (attempt == 31) {
+                                            bossState.x = tx;
+                                            bossState.y = ty;
+                                            (void)ejectBossFromSolid(bossState.x, bossState.y, bossW, bossH);
+                                        }
+                                    }
                                 } else if (bossState.sourceWorld == 7) {
                                     const float minX = arenaLeft + halfW;
                                     const float maxX = std::max(minX, arenaRight - halfW);
@@ -5673,6 +6135,7 @@ int RunGameApp(int argc, char** argv) {
                                     bossState.x = minX + (maxX - minX) * rx;
                                     bossState.y = arenaBottom + halfH + 24.0f;
                                     bossState.vy = -std::fabs(bossState.vy);
+                                    (void)ejectBossFromSolid(bossState.x, bossState.y, bossW, bossH);
                                 }
                                 audio.playBumperSfx();
                             } else {
@@ -5853,7 +6316,7 @@ int RunGameApp(int argc, char** argv) {
                 float triggerY = 0.0f;
                 float bestDxNow = 1e30f;
                 for (int i = 0; i < (int)objects.size(); ++i) {
-                    if (objects[i].id != "67") continue;
+                    if (i >= (int)objectIds.size() || objectIds[i] != 67) continue;
                     const float signX = objects[i].x;
                     const float signY = objects[i].y;
                     const float dxNow = signX - playerCenterX;
@@ -6061,7 +6524,11 @@ int RunGameApp(int argc, char** argv) {
         SDL_SetRenderTarget(ren, worldTarget);
         SDL_SetRenderScale(ren, kGameplayZoom, kGameplayZoom);
         const int currentWorldId = levelManager.worldId();
-        SDL_SetRenderDrawColor(ren, 118, 225, 255, 255); // #76e1ff
+        if (currentWorldId == 4) {
+            SDL_SetRenderDrawColor(ren, 192, 104, 114, 255); // #c06872
+        } else {
+            SDL_SetRenderDrawColor(ren, 118, 225, 255, 255); // #76e1ff
+        }
         SDL_RenderClear(ren);
 
         // World 3 uses a full-screen block pattern from DF_Blocks (3.1..3.10).
@@ -6322,11 +6789,10 @@ int RunGameApp(int argc, char** argv) {
 
         for (int objIdx = 0; objIdx < (int)objects.size(); ++objIdx) {
             const auto& obj = objects[objIdx];
-            int objId = 0;
-            try { objId = std::stoi(obj.id); } catch (...) { objId = 0; }
+            const int objId = (objIdx < (int)objectIds.size()) ? objectIds[objIdx] : -1;
             const bool isFastTravelChanger = (objId >= 57 && objId <= 61);
-            const bool isBumper = (obj.id == "46");
-            const bool isEndSign = (obj.id == "67");
+            const bool isBumper = (objId == 46);
+            const bool isEndSign = (objId == 67);
             float entityBaseX = obj.x - 16.0f;
             float entityBaseY = obj.y - 16.0f;
             if (renderWrapX) {
@@ -6974,9 +7440,9 @@ int RunGameApp(int argc, char** argv) {
                 SDL_SetRenderDrawColor(ren, 230, 230, 230, 255);
                 DrawText(ren, screenW / 2 - MeasureTextWidth(3, "PAUSED") / 2, panel.y + (int)std::lround(22.0f * uiButtonScale), 3, "PAUSED");
 
-                SDL_Rect resumeBtn = scaleRectCentered(SDL_Rect{screenW / 2 - 140, screenH / 2 + 10, 100, 36});
-                SDL_Rect restartBtn = scaleRectCentered(SDL_Rect{screenW / 2 - 50, screenH / 2 + 10, 100, 36});
-                SDL_Rect quitBtn = scaleRectCentered(SDL_Rect{screenW / 2 + 40, screenH / 2 + 10, 100, 36});
+                SDL_Rect resumeBtn = scaleRectCentered(SDL_Rect{screenW / 2 - 132, screenH / 2 + 10, 86, 36});
+                SDL_Rect restartBtn = scaleRectCentered(SDL_Rect{screenW / 2 - 43, screenH / 2 + 10, 86, 36});
+                SDL_Rect quitBtn = scaleRectCentered(SDL_Rect{screenW / 2 + 46, screenH / 2 + 10, 86, 36});
                 const int labelLineH = std::max(10, (int)std::lround(16.0f * uiButtonScale));
                 pauseBtnContinue = resumeBtn;
                 pauseBtnRestart = restartBtn;
@@ -7027,9 +7493,14 @@ int RunGameApp(int argc, char** argv) {
             DrawText(ren, screenW / 2 - MeasureTextWidth(bonusScale, bonusLine2) / 2 + completeSlideInXForY(bonusStartY + bonusLineGap), bonusStartY + bonusLineGap, bonusScale, bonusLine2);
             DrawText(ren, screenW / 2 - MeasureTextWidth(bonusScale, bonusLine3) / 2 + completeSlideInXForY(bonusStartY + bonusLineGap * 2), bonusStartY + bonusLineGap * 2, bonusScale, bonusLine3);
         }
+        auto formatFpsValue = [&](double value) -> std::string {
+            std::ostringstream oss;
+            oss << std::fixed << std::setprecision(value >= 1000.0 ? 0 : 1) << value;
+            return oss.str();
+        };
         if (showFpsCounter) {
-            const std::string ufpsText = std::string("UFPS: ") + std::to_string(updateFpsDisplay);
-            const std::string rfpsText = std::string("RFPS: ") + std::to_string(renderFpsDisplay);
+            const std::string ufpsText = std::string("UFPS: ") + formatFpsValue(updateFpsDisplayValue);
+            const std::string rfpsText = std::string("RFPS: ") + formatFpsValue(renderFpsDisplayValue);
             const int fpsScale = 2;
             const int fpsX = screenW - 10 - std::max(MeasureTextWidth(fpsScale, ufpsText), MeasureTextWidth(fpsScale, rfpsText));
             DrawText(ren, fpsX, 10, fpsScale, ufpsText);
@@ -7240,8 +7711,12 @@ int RunGameApp(int argc, char** argv) {
 
             int y = 88;
             if (detailedDebugSubmenu == 0) {
-                DrawText(ren, 12, y, 2, std::string("UFPS/RFPS: ") + std::to_string(updateFpsDisplay) + "/" + std::to_string(renderFpsDisplay)); y += 20;
-                DrawText(ren, 12, y, 2, std::string("Frame ms: ") + std::to_string((int)std::lround(dt * 1000.0f))); y += 20;
+                DrawText(ren, 12, y, 2, std::string("UFPS/RFPS: ") + formatFpsValue(updateFpsDisplayValue) + "/" + formatFpsValue(renderFpsDisplayValue)); y += 20;
+                {
+                    std::ostringstream frameMs;
+                    frameMs << std::fixed << std::setprecision(3) << (dtPrecise * 1000.0);
+                    DrawText(ren, 12, y, 2, std::string("Frame ms: ") + frameMs.str()); y += 20;
+                }
                 DrawText(ren, 12, y, 2, std::string("Player X/Y: ") + std::to_string((int)player.x) + ", " + std::to_string((int)player.y)); y += 20;
                 DrawText(ren, 12, y, 2, std::string("Player VX/VY: ") + std::to_string((int)player.vx) + ", " + std::to_string((int)player.vy)); y += 20;
                 DrawText(ren, 12, y, 2, std::string("OnGround/InWater: ") + (player.onGround ? "1" : "0") + "/" + (player.inWater ? "1" : "0")); y += 20;
@@ -7269,7 +7744,11 @@ int RunGameApp(int argc, char** argv) {
                     DrawText(ren, 12, y, 2, std::string("Pos: ") + std::to_string((int)sel.x) + ", " + std::to_string((int)sel.y)); y += 20;
                 }
             } else if (detailedDebugSubmenu == 2) {
-                DrawText(ren, 12, y, 2, std::string("Frame ms: ") + std::to_string((int)std::lround(dt * 1000.0f))); y += 20;
+                {
+                    std::ostringstream frameMs;
+                    frameMs << std::fixed << std::setprecision(3) << (dtPrecise * 1000.0);
+                    DrawText(ren, 12, y, 2, std::string("Frame ms: ") + frameMs.str()); y += 20;
+                }
                 DrawText(ren, 12, y, 2, "Target: <16ms (60 FPS)"); y += 20;
                 DrawText(ren, 12, y, 2, "Use submenu for full perf details on desktop"); y += 20;
             } else if (detailedDebugSubmenu == 3) {
@@ -7333,12 +7812,21 @@ int RunGameApp(int argc, char** argv) {
         SDL_RenderPresent(ren);
         {
             const Uint32 presentedAt = SDL_GetTicks();
-            const Uint32 presentDelta = presentedAt - lastPresentTicks;
-            const int renderFpsInstant = std::clamp((presentDelta > 0) ? (int)(1000u / presentDelta) : 0, 0, kFpsDisplayMax);
-            if (renderFpsSmoothed <= 0.0f) renderFpsSmoothed = (float)renderFpsInstant;
-            else renderFpsSmoothed += ((float)renderFpsInstant - renderFpsSmoothed) * 0.20f;
-            renderFpsDisplay = std::clamp((int)std::lround(renderFpsSmoothed), 0, kFpsDisplayMax);
+            const Uint64 presentedAtNs = SDL_GetTicksNS();
+            const double presentDeltaSec = (double)(presentedAtNs - lastPresentTicksNs) / 1000000000.0;
+            lastPresentTicksNs = presentedAtNs;
             lastPresentTicks = presentedAt;
+            renderFpsAccumSec += presentDeltaSec;
+            ++renderFpsAccumFrames;
+            if (renderFpsAccumSec >= kFpsDisplayUpdatePeriodSec) {
+                renderFpsDisplayValue = (renderFpsAccumSec > 0.0) ? (double)renderFpsAccumFrames / renderFpsAccumSec : 0.0;
+                if (renderFpsSmoothed <= 0.0) renderFpsSmoothed = renderFpsDisplayValue;
+                else renderFpsSmoothed += (renderFpsDisplayValue - renderFpsSmoothed) * 0.35;
+                renderFpsDisplayValue = std::max(0.0, renderFpsSmoothed);
+                renderFpsDisplay = (int)std::lround(renderFpsDisplayValue);
+                renderFpsAccumSec = std::fmod(renderFpsAccumSec, kFpsDisplayUpdatePeriodSec);
+                renderFpsAccumFrames = 0;
+            }
             // Keep render cadence capped while updates remain independent.
             const int targetPresentIntervalMs =
                 (powerManagementEnabled && mainWindowMinimized) ? 250 :
@@ -7375,9 +7863,13 @@ int RunGameApp(int argc, char** argv) {
             if (detailedDebugSubmenu == 0) {
                 long rssKB = -1, vmKB = -1;
                 readProcessMemoryKB(rssKB, vmKB);
-                DrawText(debugRen, 12, y, 2, std::string("UFPS: ") + std::to_string(updateFpsDisplay)); y += 20;
-                DrawText(debugRen, 12, y, 2, std::string("RFPS: ") + std::to_string(renderFpsDisplay)); y += 20;
-                DrawText(debugRen, 12, y, 2, std::string("Frame ms: ") + std::to_string((int)std::lround(dt * 1000.0f))); y += 20;
+                DrawText(debugRen, 12, y, 2, std::string("UFPS: ") + formatFpsValue(updateFpsDisplayValue)); y += 20;
+                DrawText(debugRen, 12, y, 2, std::string("RFPS: ") + formatFpsValue(renderFpsDisplayValue)); y += 20;
+                {
+                    std::ostringstream frameMs;
+                    frameMs << std::fixed << std::setprecision(3) << (dtPrecise * 1000.0);
+                    DrawText(debugRen, 12, y, 2, std::string("Frame ms: ") + frameMs.str()); y += 20;
+                }
                 DrawText(debugRen, 12, y, 2, std::string("Memory RSS MB: ") + (rssKB >= 0 ? std::to_string((int)(rssKB / 1024)) : "N/A")); y += 20;
                 DrawText(debugRen, 12, y, 2, std::string("Memory VM MB: ") + (vmKB >= 0 ? std::to_string((int)(vmKB / 1024)) : "N/A")); y += 20;
                 DrawText(debugRen, 12, y, 2, std::string("Player X/Y: ") + std::to_string((int)player.x) + ", " + std::to_string((int)player.y)); y += 20;
@@ -7610,7 +8102,11 @@ int RunGameApp(int argc, char** argv) {
                 }
                 DrawText(debugRen, graphX + 8, graphY + 8, 2, "Frame Time History (0-50ms)");
                 DrawText(debugRen, graphX + 8, graphY + 28, 2, std::string("Samples: ") + std::to_string((int)frameMsHistory.size()));
-                DrawText(debugRen, graphX + 8, graphY + 48, 2, std::string("Current ms: ") + std::to_string((int)std::lround(dt * 1000.0f)));
+                {
+                    std::ostringstream currentMs;
+                    currentMs << std::fixed << std::setprecision(3) << (dtPrecise * 1000.0);
+                    DrawText(debugRen, graphX + 8, graphY + 48, 2, std::string("Current ms: ") + currentMs.str());
+                }
 
                 const int memGraphY = graphY + graphH + 12;
                 const int memGraphH = std::max(90, dbgH - memGraphY - 12);

@@ -46,13 +46,11 @@ bool RenderWorld3PatternBackground(
             const Frame* frame = world3PatternFrames[frameIndex];
             if (!frame) frame = fallbackFrame;
 
-            const int dstLeft = std::max(0, x);
-            const int dstTop = std::max(0, y);
-            const int dstRight = std::min(worldViewW, x + blockW);
-            const int dstBottom = std::min(worldViewH, y + blockH);
-            if (dstLeft >= dstRight || dstTop >= dstBottom) continue;
+            if (x + blockW <= 0 || y + blockH <= 0 || x >= worldViewW || y >= worldViewH) {
+                continue;
+            }
 
-            SDL_Rect dst{dstLeft, dstTop, dstRight - dstLeft, dstBottom - dstTop};
+            SDL_Rect dst{x, y, blockW, blockH};
             renderFrame(ren, blocksTex, *frame, dst);
         }
     }

@@ -53,6 +53,7 @@ struct FrontendMenuContext {
     std::string* levelServerAccountUsername = nullptr;
     std::string* accountManagerUrl = nullptr;
     std::string* firebaseApiKey = nullptr;
+    int* activeSaveSlotIndex = nullptr;
     bool* extraSettings = nullptr; // flattened [5 categories * 11 options]
     int extraSettingsCount = 0;
     std::string* selectedLevelPath = nullptr;

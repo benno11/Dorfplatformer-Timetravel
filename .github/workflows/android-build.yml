@@ -97,7 +97,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build autoconf autoconf-archive automake libtool pkg-config
+          sudo apt-get install -y build-essential ninja-build autoconf autoconf-archive automake libtool pkg-config zip unzip
 
       - name: Install Windows build tools
         if: runner.os == 'Windows'
@@ -124,7 +124,7 @@ jobs:
             .ci/vcpkg/buildtrees
             .ci/vcpkg/packages
             .ci/vcpkg/installed
-          key: vcpkg-${{ runner.os }}-${{ matrix.triplet }}-${{ hashFiles('CMakeLists.txt', '.github/workflows/build-game.yml') }}
+          key: vcpkg-${{ runner.os }}-${{ matrix.triplet }}-${{ hashFiles('CMakeLists.txt', '.github/workflows/android-build.yml') }}
 
       - name: Bootstrap vcpkg
         shell: pwsh
