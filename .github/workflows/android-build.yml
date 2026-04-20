@@ -63,9 +63,11 @@ jobs:
           echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
 
       - name: Create draft release
-        if: steps.release.outputs.release_enabled == 'true'
+        if: steps.release.outputs.release_enabled == 'true' && steps.release.outputs.release_tag != ''
+        continue-on-error: true
         uses: softprops/action-gh-release@v2
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           name: ${{ steps.release.outputs.release_tag }}
           tag_name: ${{ steps.release.outputs.release_tag }}
           target_commitish: ${{ github.sha }}
