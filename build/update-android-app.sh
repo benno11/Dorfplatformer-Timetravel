@@ -14,6 +14,7 @@ ANDROID_DIR="$ROOT_DIR/Android"
 APP_MAIN_DIR="$ANDROID_DIR/app/src/main"
 ASSETS_SRC="$ROOT_DIR/assets"
 ASSETS_DST="$APP_MAIN_DIR/assets"
+GENERATED_DIR="$ROOT_DIR/.build/generated"
 
 # Track caller intent before defaults are applied.
 ABI_WAS_SET=0
@@ -44,12 +45,28 @@ if [ ! -d "$ASSETS_SRC" ]; then
   exit 1
 fi
 
+mkdir -p "$GENERATED_DIR"
+
 SAVED_ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-}"
 
 if [ -f "$ROOT_DIR/build/android.env" ]; then
   # shellcheck disable=SC1091
   . "$ROOT_DIR/build/android.env"
 fi
+
+build_timestamp="$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || true)"
+build_timezone="$(date '+%Z (%z)' 2>/dev/null || true)"
+if [ -z "$build_timestamp" ]; then
+  build_timestamp="unknown"
+fi
+if [ -z "$build_timezone" ]; then
+  build_timezone="unknown"
+fi
+cat > "$GENERATED_DIR/BuildInfo.h" <<EOF
+#pragma once
+#define PLATFORMER_BUILD_TIMESTAMP "$build_timestamp"
+#define PLATFORMER_BUILD_TIMEZONE "$build_timezone"
+EOF
 
 if [ -n "$SAVED_ANDROID_NDK_HOME" ]; then
   ANDROID_NDK_HOME="$SAVED_ANDROID_NDK_HOME"

@@ -84,6 +84,23 @@ if [ ! -f "$BUILD_CODE_HEADER" ] || ! printf '%s' "$build_code_header_text" | cm
   printf '%s' "$build_code_header_text" > "$BUILD_CODE_HEADER"
 fi
 
+BUILD_INFO_HEADER="$PWD/.build/generated/BuildInfo.h"
+build_timestamp="$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || true)"
+build_timezone="$(date '+%Z (%z)' 2>/dev/null || true)"
+if [ -z "$build_timestamp" ]; then
+  build_timestamp="unknown"
+fi
+if [ -z "$build_timezone" ]; then
+  build_timezone="unknown"
+fi
+build_info_header_text="#pragma once
+#define PLATFORMER_BUILD_TIMESTAMP \"$build_timestamp\"
+#define PLATFORMER_BUILD_TIMEZONE \"$build_timezone\"
+"
+if [ ! -f "$BUILD_INFO_HEADER" ] || ! printf '%s' "$build_info_header_text" | cmp -s - "$BUILD_INFO_HEADER"; then
+  printf '%s' "$build_info_header_text" > "$BUILD_INFO_HEADER"
+fi
+
 FORCE_STAGED_SDL_ROOT="${FORCE_STAGED_SDL_ROOT:-1}"
 if [ "$FORCE_STAGED_SDL_ROOT" = "1" ]; then
   SDL3_ANDROID_ROOT="$PWD/deps/android"
@@ -448,6 +465,7 @@ CPPFLAGS=(
   -I"$SDL3_IMAGE_ROOT/include"
   -I"$SDL3_TTF_ROOT/include"
   -I"$SDL3_MIXER_ROOT/include"
+  -I"$PWD/.build/generated"
 )
 
 # Compatibility shim for include namespaces expected by the game code:
