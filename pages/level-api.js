@@ -117,6 +117,26 @@
     return userPart + "-" + levelPart;
   }
 
+  function readApiVersionId(cfg) {
+    if (!cfg || typeof cfg !== "object") return "";
+    if (typeof cfg.api_version_id === "string" && cfg.api_version_id.trim()) {
+      return cfg.api_version_id.trim();
+    }
+    if (typeof cfg.api_version_id === "number" && isFinite(cfg.api_version_id)) {
+      return String(Math.trunc(cfg.api_version_id));
+    }
+    if (cfg.level_write_contract && typeof cfg.level_write_contract === "object") {
+      var contract = cfg.level_write_contract;
+      if (typeof contract.api_version_id === "string" && contract.api_version_id.trim()) {
+        return contract.api_version_id.trim();
+      }
+      if (typeof contract.api_version_id === "number" && isFinite(contract.api_version_id)) {
+        return String(Math.trunc(contract.api_version_id));
+      }
+    }
+    return "";
+  }
+
   function loadStoredAccountSettings() {
     try {
       var raw = localStorage.getItem(ACCOUNT_STORAGE_KEY);
@@ -187,12 +207,20 @@
       return;
     }
 
+    var cfg = await loadApiConfig();
+    var apiVersionId = readApiVersionId(cfg);
+    if (!apiVersionId) {
+      log("API version is missing in api.json.", "err");
+      return;
+    }
+
     var url = base + "/levels/" + encodeURIComponent(levelId) + ".json" + authQuery(token);
     var nowSeconds = Math.floor(Date.now() / 1000);
     var payload = {
       name: levelName,
       owner: owner,
       level_id: levelId,
+      api_version_id: apiVersionId,
       data: data,
       uploaded_at: nowSeconds,
       source: "df-new-gh-pages-uploader"

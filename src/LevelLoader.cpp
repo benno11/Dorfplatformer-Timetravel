@@ -417,13 +417,13 @@ bool loadLevelBNNLVL(const std::string& path,
         return in.substr(a, b - a);
     };
     const std::string st = trim(s);
-    if (st.rfind("DFLVL2", 0) == 0) {
+    if (st.rfind("DFLVL2", 0) == 0 || st.rfind("DFLVL3", 0) == 0) {
         std::istringstream in(st);
         std::string magic;
         int w = 0;
         int h = 0;
         in >> magic >> w >> h;
-        if (magic != "DFLVL2" || w <= 0 || h <= 0 || w > 4096 || h > 4096) return false;
+        if ((magic != "DFLVL2" && magic != "DFLVL3") || w <= 0 || h <= 0 || w > 4096 || h > 4096) return false;
         map.resize(w, h);
         const int total = w * h;
         map.tileIds.assign(total, 2);
@@ -460,7 +460,7 @@ bool loadLevelBNNLVL(const std::string& path,
                 }
             }
         }
-        meta.name = "DFLVL2";
+        meta.name = magic;
         meta.entitySpawnPos.clear();
         meta.entitySpawnType.clear();
         return true;

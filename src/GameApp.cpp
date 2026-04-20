@@ -2842,6 +2842,13 @@ int RunGameApp(int argc, char** argv) {
             });
             return path;
         };
+        auto normalizeCheckpointTiles = [&](TileMap& levelMap) {
+            for (int i = 0; i < (int)levelMap.tileIds.size(); ++i) {
+                if ((int)levelMap.tileIds[i] == 50) {
+                    levelManager.setTileAt(levelMap, i, 49);
+                }
+            }
+        };
         enum FastTravelDir {
             FT_UP = 0,
             FT_DOWN = 1,
@@ -2992,9 +2999,7 @@ int RunGameApp(int argc, char** argv) {
             if (checkpointActive && checkpointLevelPath == normalizedActiveLevelPath) {
                 if (checkpointTileX >= 0 && checkpointTileX < map.w &&
                     checkpointTileY >= 0 && checkpointTileY < map.h) {
-                    for (int i = 0; i < (int)map.tileIds.size(); ++i) {
-                        if ((int)map.tileIds[i] == 50) levelManager.setTileAt(map, i, 49);
-                    }
+                    normalizeCheckpointTiles(map);
                     const int cpIdx = checkpointTileY * map.w + checkpointTileX;
                     levelManager.setTileAt(map, cpIdx, 50);
                     player.x = (float)(checkpointTileX * map.tileSize);
@@ -6212,9 +6217,7 @@ int RunGameApp(int argc, char** argv) {
                         levelManager.addCoins(5);
                         audio.playCoinSfx();
                     } else if (standingTileId == 49) {
-                        for (int i = 0; i < (int)map.tileIds.size(); ++i) {
-                            if ((int)map.tileIds[i] == 50) levelManager.setTileAt(map, i, 49);
-                        }
+                        normalizeCheckpointTiles(map);
                         levelManager.setTileAt(map, idx, 50);
                         checkpointActive = true;
                         checkpointLevelPath = normalizeLevelPath(levelManager.levelPath());

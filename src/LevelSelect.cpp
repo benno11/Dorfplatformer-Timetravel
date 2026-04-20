@@ -187,10 +187,10 @@ std::string writeLocalLevelFile(const std::vector<unsigned short>& rowMajorGrid,
                                 const std::vector<ObjectInstance>& objects = {}) {
     if (w <= 0 || h <= 0) return {};
     if ((int)rowMajorGrid.size() != w * h) return {};
-    // DFLVL2 stores exact engine row-major tile IDs, avoiding legacy axis/offset transforms.
+    // DFLVL3 stores exact engine row-major tile IDs, avoiding legacy axis/offset transforms.
     std::string data;
     data.reserve((size_t)w * (size_t)h * 4 + 64);
-    data += "DFLVL2 ";
+    data += "DFLVL3 ";
     data += std::to_string(w);
     data += " ";
     data += std::to_string(h);
@@ -2530,6 +2530,35 @@ bool resolveAccountUsernameFromToken(const std::string& authToken, std::string& 
     return false;
 }
 
+std::string readLevelApiVersionIdFromConfig() {
+    const std::string cfgText = ReadTextFile("assets/config.json");
+    if (cfgText.empty()) return {};
+    try {
+        const nlohmann::json cfgJson = nlohmann::json::parse(cfgText);
+        if (!cfgJson.is_object()) return {};
+        auto jsonValueToString = [](const nlohmann::json& value) -> std::string {
+            if (value.is_string()) return value.get<std::string>();
+            if (value.is_number_integer()) return std::to_string(value.get<long long>());
+            if (value.is_number_unsigned()) return std::to_string(value.get<unsigned long long>());
+            if (value.is_number_float()) {
+                std::ostringstream oss;
+                oss << value.get<double>();
+                return oss.str();
+            }
+            return std::string();
+        };
+        if (cfgJson.contains("level_api_version_id")) {
+            const std::string versionId = jsonValueToString(cfgJson["level_api_version_id"]);
+            if (!versionId.empty()) return versionId;
+        }
+        if (cfgJson.contains("version_id")) {
+            const std::string versionId = jsonValueToString(cfgJson["version_id"]);
+            if (!versionId.empty()) return versionId;
+        }
+    } catch (...) {}
+    return {};
+}
+
 bool uploadLocalLevelToServer(const LevelEntry& level, std::string& statusText) {
     if (level.path.empty() || level.path == "__local_editor__") {
         statusText = "No local level selected.";
@@ -2573,12 +2602,17 @@ bool uploadLocalLevelToServer(const LevelEntry& level, std::string& statusText) 
 
     const std::string levelName = sanitizeFilePart(level.label);
     const std::string levelId = accountUsername + "-" + levelName;
+    const std::string levelApiVersionId = readLevelApiVersionIdFromConfig();
     const std::string uploadUrl = buildFirebaseLevelUploadUrl(levelServerUrl, authToken, levelId);
     nlohmann::json payload;
     payload["name"] = level.label;
     payload["level_id"] = levelId;
     payload["owner"] = accountUsername;
     payload["source"] = "local";
+    if (!levelApiVersionId.empty()) {
+        payload["api_version_id"] = levelApiVersionId;
+        payload["level_api_version_id"] = levelApiVersionId;
+    }
     payload["data"] = levelData;
     payload["uploaded_at"] = (long long)std::time(nullptr);
     const std::string body = payload.dump();

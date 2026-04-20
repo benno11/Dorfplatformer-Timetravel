@@ -3,6 +3,7 @@
   "type": "client-side",
   "host": "GitHub Pages",
   "storage": "Firebase Realtime Database REST API",
+  "api_version_id": 22,
   "firebase": {
     "api_key": "AIzaSyC-lBtzoK98rO6TH6nQV4ugiPsVMbAJ-44",
     "level_server_url": "https://timetravel-server-default-rtdb.europe-west1.firebasedatabase.app"
@@ -19,6 +20,7 @@
       "name",
       "owner",
       "level_id",
+      "api_version_id",
       "uploaded_at"
     ]
   },
