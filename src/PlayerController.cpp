@@ -171,26 +171,17 @@ PlayerUpdateResult UpdatePlayerMovement(
     float swimUpSpeed = movement.swimUpSpeed;
     float swimRise = movement.swimRise;
 
-    const bool airborne = !inWater && !player.onGround;
     float controlAccel = accel;
     float controlFriction = friction;
-    if (airborne) {
-        // Preserve jump momentum: air steering should gently influence velocity,
-        // not scrub speed the way ground friction/braking does.
-        controlAccel *= 0.38f;
-        controlFriction = 1.0f;
-    }
 
     if (move != 0.0f) {
         const float targetVx = move * maxSpeed;
         const bool reversing = (player.vx * move) < 0.0f;
         if (reversing) {
-            if (!airborne) {
-                // Brake harder on direction flip so speed remains manageable.
-                const float turnBrake = controlFriction * 1.6f * dt;
-                if (player.vx > 0.0f) player.vx = std::max(0.0f, player.vx - turnBrake);
-                else player.vx = std::min(0.0f, player.vx + turnBrake);
-            }
+            // Brake harder on direction flip so speed remains manageable.
+            const float turnBrake = controlFriction * 1.6f * dt;
+            if (player.vx > 0.0f) player.vx = std::max(0.0f, player.vx - turnBrake);
+            else player.vx = std::min(0.0f, player.vx + turnBrake);
         }
         const float step = controlAccel * dt;
         if (player.vx < targetVx) player.vx = std::min(targetVx, player.vx + step);

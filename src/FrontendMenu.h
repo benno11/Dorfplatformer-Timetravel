@@ -18,6 +18,8 @@ struct FrontendMenuContext {
     int baseScreenW = 0;
     int baseScreenH = 0;
     std::string buildUuid;
+    std::string buildTimestamp;
+    std::string buildTimezone;
     std::string versionString;
     std::string versionIdString;
     std::string windowsUpdateManifestUrl;

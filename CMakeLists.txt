@@ -11,6 +11,9 @@ set(PLATFORMER_APP_VERSION_MINOR 0)
 set(PLATFORMER_APP_VERSION_PATCH 0)
 set(PLATFORMER_APP_VERSION_BUILD 0)
 set(PLATFORMER_APP_VERSION_ID "0")
+string(TIMESTAMP PLATFORMER_BUILD_TIMESTAMP "%Y-%m-%d %H:%M:%S")
+string(TIMESTAMP PLATFORMER_BUILD_TIMEZONE "%Z (%z)")
+configure_file("${CMAKE_SOURCE_DIR}/cmake/BuildInfo.h.in" "${CMAKE_CURRENT_BINARY_DIR}/BuildInfo.h" @ONLY)
 set(_platformer_config_json "${CMAKE_SOURCE_DIR}/assets/config.json")
 if(EXISTS "${_platformer_config_json}")
   file(READ "${_platformer_config_json}" _platformer_config_text)
@@ -138,6 +141,7 @@ add_executable(platformer
   src/ParallaxRenderer.cpp
   src/World3PatternBackground.cpp
 )
+target_include_directories(platformer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 if(WIN32)
   set_target_properties(platformer PROPERTIES WIN32_EXECUTABLE ON)
 endif()

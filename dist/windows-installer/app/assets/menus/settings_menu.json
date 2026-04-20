@@ -5,10 +5,11 @@
     "DEBUG",
     "CONTROLS",
     "ABOUT",
+    "FILE INFO",
     "GRAPHICS+",
     "GAMEPLAY+",
     "ACCESSIBILITY",
-    "ACCOUNT",
+    "USER PROFILE",
     "PRIVACY"
   ],
   "controls_rows": [

@@ -14,8 +14,8 @@ struct MovementConfig {
     float accelGround = 1200.0f;
     float maxSpeedInWater = 400.0f;
     float maxSpeedGround = 700.0f;
-    float frictionInWater = 200.0f;
-    float frictionGround = 400.0f;
+    float frictionInWater = 160.0f;
+    float frictionGround = 320.0f;
     float gravityInWater = 900.0f;
     float gravityGround = 2000.0f;
     float jumpSpeed = 900.0f;

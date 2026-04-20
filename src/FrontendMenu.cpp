@@ -122,7 +122,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     std::vector<std::string> settingsTabLabels = {
         "GENERAL", "AUDIO", "DEBUG", "CONTROLS", "ABOUT",
         "FILE INFO", "SAVES", "GRAPHICS+", "GAMEPLAY+", "ACCESSIBILITY",
-        "ACCOUNT", "PRIVACY", "UPDATER"
+        "USER PROFILE", "PRIVACY", "UPDATER"
     };
     std::vector<std::string> controlsLabels = {
         "MOVE LEFT", "MOVE RIGHT", "MOVE DOWN", "JUMP", "PAUSE", "BACK"
@@ -296,7 +296,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         }
         return localExtraTabValues[t][o];
     };
-    const char* extraTabNames[kExtraTabCount] = {"GRAPHICS+", "GAMEPLAY+", "ACCESSIBILITY", "ACCOUNT", "PRIVACY"};
+    const char* extraTabNames[kExtraTabCount] = {"GRAPHICS+", "GAMEPLAY+", "ACCESSIBILITY", "LOGIN", "PRIVACY"};
     const char* extraTabOptionLabels[kExtraTabCount][kExtraTabOptionCount] = {
         {"BLOOM", "MOTION BLUR", "FILM GRAIN", "CHROMATIC ABERRATION", "SHADOW BOOST", "LIGHT SHAFTS", "WATER REFLECTIONS", "PARTICLE DENSITY+", "DISTANT DETAIL", "RETRO PIXEL FILTER", "SCREEN SHAKE+"},
         {"AUTO SAVE", "AUTO CHECKPOINT", "TUTORIAL HINTS", "SMART CAMERA", "MAGNET COINS", "SLOW-MO ON DEATH", "ASSISTED JUMPS", "EXTENDED INVULN FRAMES", "QUICK RESTART", "ENEMY AGGRO REDUCE", "DROP SAFE MODE"},
@@ -1283,7 +1283,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         const int textH = 10 * aboutBodyScale;
         const int buttonPadX = std::max(12, (int)std::lround(14.0f * settingsMenuScale()));
         const int buttonPadY = std::max(6, (int)std::lround(8.0f * settingsMenuScale()));
-        y += std::max(18, (int)std::lround(18.0f * settingsMenuScale()));
+        y += std::max(64, (int)std::lround(64.0f * settingsMenuScale()));
         return SDL_Rect{
             ctx.baseScreenW / 2 - textW / 2 - buttonPadX,
             y - buttonPadY,
@@ -1390,15 +1390,14 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             return;
         }
         if (settingsTab == IDX_SAVES_TAB) {
+            settingsSelSaves = std::clamp(settingsSelSaves, 0, 4);
             if (settingsSelSaves >= 0 && settingsSelSaves <= 2) {
-                activeSaveSlotIndex = settingsSelSaves;
+                activeSaveSlotIndex = std::clamp(settingsSelSaves, 0, kSaveSlotCount - 1);
                 if (ctx.saveClientSettings) ctx.saveClientSettings();
                 return;
             }
             if (settingsSelSaves == 3) {
-                if (saveSlotExists(activeSaveSlotIndex)) {
-                    startSavedGameRequested = true;
-                }
+                startSavedGameRequested = true;
                 return;
             }
             setInSettings(false);
@@ -2305,6 +2304,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     }
                     if (settingsTab == IDX_SAVES_TAB) {
                         const int rows = std::max(1, settingsRowsForTab(settingsTab));
+                        settingsSelSaves = std::clamp(settingsSelSaves, 0, rows - 1);
                         for (int i = 0; i < rows; ++i) {
                             SDL_Rect row = settingsRowBtn(i);
                             if (!SDL_PointInRect(&pt, &row)) continue;
@@ -3269,23 +3269,24 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 SDL_SetRenderClipRect(ctx.ren, nullptr);
             } else if (settingsTab == IDX_SAVES_TAB) {
                 const int slotCount = std::max(1, kSaveSlotCount);
+                const int selectedSaveRow = std::clamp(settingsSelSaves, 0, 4);
                 auto saveSlotStatus = [&](int slotIdx) -> std::string {
                     if (slotIdx < 0 || slotIdx >= slotCount) return "UNKNOWN";
-                    if (activeSaveSlotIndex == slotIdx) return saveSlotExists(slotIdx) ? "ACTIVE" : "ACTIVE / EMPTY";
+                    if (activeSaveSlotIndex == slotIdx) return "ACTIVE";
                     return saveSlotExists(slotIdx) ? "READY" : "EMPTY";
                 };
                 auto drawSaveSlotRow = [&](int rowIdx, int slotIdx) {
                     SDL_Rect row = settingsRowBtn(rowIdx);
-                    drawChromeButton(row, settingsSelSaves == rowIdx);
+                    drawChromeButton(row, selectedSaveRow == rowIdx);
                     const std::string label = std::string("SLOT ") + std::to_string(slotIdx + 1) + ": " + saveSlotStatus(slotIdx);
                     DrawText(ctx.ren, row.x + 18, row.y + std::max(0, (row.h - 10 * settingsRowTextScale) / 2), settingsRowTextScale, label);
                 };
                 drawSaveSlotRow(0, 0);
                 drawSaveSlotRow(1, 1);
                 drawSaveSlotRow(2, 2);
-                drawChromeButton(settingsRowBtn(3), settingsSelSaves == 3);
+                drawChromeButton(settingsRowBtn(3), selectedSaveRow == 3);
                 DrawText(ctx.ren, settingsRowBtn(3).x + 18, settingsRowBtn(3).y + std::max(0, (settingsRowBtn(3).h - 10 * settingsRowTextScale) / 2), settingsRowTextScale, "LOAD ACTIVE SLOT");
-                drawChromeButton(settingsRowBtn(4), settingsSelSaves == 4);
+                drawChromeButton(settingsRowBtn(4), selectedSaveRow == 4);
                 DrawText(ctx.ren, settingsRowBtn(4).x + 18, settingsRowBtn(4).y + std::max(0, (settingsRowBtn(4).h - 10 * settingsRowTextScale) / 2), settingsRowTextScale, "BACK");
             } else if (settingsTab == IDX_SETTINGS_ABOUT) {
                 const int sdlVer = SDL_GetVersion();
@@ -3326,6 +3327,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 drawAboutLine(aboutBodyScale, sdlRevision ? sdlRevision : "unknown", 8);
                 drawAboutLine(aboutBodyScale, "BUILD UUID:", 2);
                 drawAboutLine(aboutBodyScale, ctx.buildUuid, 6);
+                drawAboutLine(aboutBodyScale, "BUILD TIME:", 2);
+                drawAboutLine(aboutBodyScale, ctx.buildTimestamp.empty() ? "unknown" : ctx.buildTimestamp, 6);
+                drawAboutLine(aboutBodyScale, "BUILD TIMEZONE:", 2);
+                drawAboutLine(aboutBodyScale, ctx.buildTimezone.empty() ? "unknown" : ctx.buildTimezone, 6);
 #if defined(_WIN32)
                 drawAboutLine(aboutBodyScale,
                               std::string("UPDATER: ") + updaterStatusText(),

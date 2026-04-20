@@ -52,6 +52,7 @@
 #include "AudioSystem.h"
 #include "InputSystem.h"
 #include "World3PatternBackground.h"
+#include "BuildInfo.h"
 
 namespace {
 static void setEnvCompat(const char* name, const char* value) {
@@ -2051,7 +2052,7 @@ int RunGameApp(int argc, char** argv) {
             renderFrame(ren, introCardTex, bgFrame, bgDst);
             renderFrame(ren, introCardTex, leftFrame, leftDst);
             renderFrame(ren, introCardTex, topFrame, topDst);
-            if (t > 0.30) {
+            if (t > 0.30 && t < 1.0) {
                 const int worldW = MeasureTextWidth(introWorldNameStyle.scale, currentFancyLevelName);
                 const int worldX = introWorldNameStyle.x - worldW / 2;
                 const int areaW = MeasureTextWidth(introAreaIdStyle.scale, currentAreaIdText);
@@ -2088,6 +2089,8 @@ int RunGameApp(int argc, char** argv) {
     frontendCtx.baseScreenW = kBaseScreenW;
     frontendCtx.baseScreenH = kBaseScreenH;
     frontendCtx.buildUuid = buildUuid;
+    frontendCtx.buildTimestamp = PLATFORMER_BUILD_TIMESTAMP;
+    frontendCtx.buildTimezone = PLATFORMER_BUILD_TIMEZONE;
     frontendCtx.versionString = appVersion;
     frontendCtx.versionIdString = appVersionId;
     frontendCtx.windowsUpdateManifestUrl = windowsUpdateManifestUrl;
@@ -2470,10 +2473,11 @@ int RunGameApp(int argc, char** argv) {
     while (running) {
         recoverAudioIfNeeded(false);
         std::string selectedLevelPath;
-        bool selectedFromUserMenu = false;
+        bool selectedFromCustomLevelMenu = false;
+        bool selectedFromFrontendMenu = false;
         if (reopenUserLevelMenu) {
             selectedLevelPath = RunCustomLevelSelect(win, ren);
-            selectedFromUserMenu = true;
+            selectedFromCustomLevelMenu = true;
             reopenUserLevelMenu = false;
         } else {
             frontendSelectedLevelPath.clear();
@@ -2483,7 +2487,7 @@ int RunGameApp(int argc, char** argv) {
 
             selectedLevelPath = frontendSelectedLevelPath;
             if (!selectedLevelPath.empty()) {
-                selectedFromUserMenu = true;
+                selectedFromFrontendMenu = true;
             } else {
                 selectedLevelPath = debugModeEnabled ? RunCampaignLevelSelect(win, ren)
                                                      : std::string("assets/levels/level_001.txt");
@@ -2518,7 +2522,7 @@ int RunGameApp(int argc, char** argv) {
                 continue;
             }
         }
-        bool allowNextLevelProgression = !selectedFromUserMenu;
+        bool allowNextLevelProgression = !selectedFromCustomLevelMenu && !selectedFromFrontendMenu;
         audio.haltMusic();
         if (!loadSavedGame) {
             levelManager.setLevelPath(selectedLevelPath);
@@ -2717,6 +2721,7 @@ int RunGameApp(int argc, char** argv) {
                 bossState.vx = 0.0f;
                 bossState.vy = 0.0f;
                 bossState.secretShotTimer = 0.60f;
+                audio.loadLevelMusic("assets/Audio/Music/Boss.mp3");
             }
             if (bossProfileWorld == 1) {
                 bossState.x = std::clamp(mapW * 0.72f, 96.0f, std::max(96.0f, mapW - 96.0f));
@@ -2813,6 +2818,13 @@ int RunGameApp(int argc, char** argv) {
         float playerSpawnLockY = 0.0f;
         float cameraSmoothingSuppressTimer = 0.0f;
         float cameraLookAheadX = 0.0f; // current look-ahead offset in world pixels (X)
+        bool cameraDisabledBySignpost = false;
+        bool cameraDisabledBySignpostLocked = false;
+        float cameraDisabledBySignpostX = 0.0f;
+        float cameraDisabledBySignpostY = 0.0f;
+        bool bossEndCameraFreezeEligible = false;
+        float previousCameraX = 0.0f;
+        float previousCameraY = 0.0f;
         bool levelCompleteCameraLocked = false;
         float levelCompleteCameraX = 0.0f;
         float levelCompleteCameraY = 0.0f;
@@ -2936,6 +2948,13 @@ int RunGameApp(int argc, char** argv) {
             levelCompleteCameraLocked = false;
             levelCompleteCameraX = 0.0f;
             levelCompleteCameraY = 0.0f;
+            cameraDisabledBySignpost = false;
+            cameraDisabledBySignpostLocked = false;
+            cameraDisabledBySignpostX = 0.0f;
+            cameraDisabledBySignpostY = 0.0f;
+            bossEndCameraFreezeEligible = false;
+            previousCameraX = 0.0f;
+            previousCameraY = 0.0f;
             endSignCameraLocked = false;
             endSignCameraX = 0.0f;
             minCamXOverride = -1.0f;
@@ -3189,6 +3208,7 @@ int RunGameApp(int argc, char** argv) {
             refreshEndSignState();
             currentLevelId = parseLevelIdFromLevelPath(levelManager.levelPath());
             levelReloadTitleTimer = 0.0f;
+            playSceneIntroCard();
         } else {
             reloadLevel();
         }
@@ -3970,16 +3990,27 @@ int RunGameApp(int argc, char** argv) {
 
             for (const auto& rawObj : rawObjects) {
                 if (rawObj.id != "67") continue;
-                bool exists = false;
+                bool repaired = false;
                 for (const auto& curObj : objects) {
                     if (curObj.id != "67") continue;
                     if (std::fabs(curObj.x - rawObj.x) <= 0.5f && std::fabs(curObj.y - rawObj.y) <= 0.5f) {
-                        exists = true;
+                        repaired = true;
                         break;
                     }
                 }
-                if (!exists) {
+                if (!repaired) {
                     objects.push_back(rawObj);
+                }
+            }
+
+            for (auto& curObj : objects) {
+                if (curObj.id == "67") continue;
+                for (const auto& rawObj : rawObjects) {
+                    if (rawObj.id != "67") continue;
+                    if (std::fabs(curObj.x - rawObj.x) <= 0.5f && std::fabs(curObj.y - rawObj.y) <= 0.5f) {
+                        curObj.id = "67";
+                        break;
+                    }
                 }
             }
 
@@ -3994,6 +4025,7 @@ int RunGameApp(int argc, char** argv) {
                     levelManager.setTileAt(map, dstIdx, 30);
                 }
             }
+            refreshObjectIdCache();
         };
 
         while (levelRunning) {
@@ -5702,6 +5734,8 @@ int RunGameApp(int argc, char** argv) {
                 !bossState.active && bossState.activationCooldown <= 0.0f &&
                 playerTouchesTileId(map, player, 68, 68, gameplayWrapX, gameplayWrapY)) {
                 bossState.active = true;
+                bossEndCameraFreezeEligible = true;
+                audio.loadLevelMusic("assets/Audio/Music/Boss.mp3");
                 if (bossState.sourceWorld != 1 && !preserveObjectsForLevel) {
                     removeTimewarpObjectsAndExit();
                 } else {
@@ -5741,11 +5775,12 @@ int RunGameApp(int argc, char** argv) {
                     if (bossState.health < oldHp) {
                         bossState.hurtFlash = 0.18f;
                     }
-                    if (bossState.health <= 0) {
-                        bossState.active = false;
-                        secretFireballs.clear();
-                        secretExplosions.clear();
-                        // Boss ended: remove all activator tiles and restore end signs.
+                if (bossState.health <= 0) {
+                    bossState.active = false;
+                    secretFireballs.clear();
+                    secretExplosions.clear();
+                        // Boss ended: remove all activator tiles and restore end signs
+                        // for worlds that actually clear them during the fight.
                         for (int i = 0; i < (int)map.tileIds.size(); ++i) {
                             if ((int)map.tileIds[i] == 68) levelManager.setTileAt(map, i, 2);
                         }
@@ -5771,9 +5806,19 @@ int RunGameApp(int argc, char** argv) {
                         if (bossState.sourceWorld == 1) {
                             clampCamX = true;
                             minCamXOverride = std::max((float)map.tileSize, 1170.0f - (float)kGameplayViewW * 0.5f);
-                            return;
+                            bossEndCameraFreezeEligible = false;
+                            cameraDisabledBySignpost = false;
+                            cameraDisabledBySignpostLocked = false;
+                            refreshEndSignState();
+                        } else if (bossEndCameraFreezeEligible) {
+                            cameraDisabledBySignpost = true;
+                            cameraDisabledBySignpostLocked = false;
+                            cameraDisabledBySignpostX = 0.0f;
+                            cameraDisabledBySignpostY = 0.0f;
                         }
-                        startLevelCompleteSequence();
+                        if (bossState.sourceWorld != 1) {
+                            startLevelCompleteSequence();
+                        }
                     }
                 };
 
@@ -6340,6 +6385,10 @@ int RunGameApp(int argc, char** argv) {
                     endSignState.triggered = true;
                     endSignState.phase = EndSignPhase::SignForward;
                     endSignState.frameTimer = 0.0f;
+                    cameraDisabledBySignpost = true;
+                    cameraDisabledBySignpostLocked = false;
+                    cameraDisabledBySignpostX = 0.0f;
+                    cameraDisabledBySignpostY = 0.0f;
                     endSignCameraLocked = false; // recapture stable X lock at trigger time
                     cameraSmoothingSuppressTimer = std::max(cameraSmoothingSuppressTimer, 0.12f);
                 }
@@ -6447,28 +6496,10 @@ int RunGameApp(int argc, char** argv) {
             ? forcedBossCameraY
             : (player.y + player.h * 0.5f);
 
-        // Look-ahead: smoothly shift the camera toward the direction the player faces/moves.
-        // Only apply look-ahead during normal gameplay (not boss camera, not end-sign lock).
-        const float kLookAheadMax = (float)worldViewW * 0.18f; // max lead in pixels (~18% of view width)
-        const float kLookAheadLerpSpeed = 3.0f;
-        const float lookAheadStep = 1.0f - std::exp(-kLookAheadLerpSpeed * std::max(0.0f, dt));
-        if (!forceBossCameraActive && !lockCameraToEndSign) {
-            // Drive look-ahead from actual horizontal movement so camera shifts don't fight
-            // blocked input, bumps, or abrupt facing flips.
-            const float lookAheadSpeedRef = std::max(1.0f, movementCfg.maxSpeedGround);
-            const float targetLookAhead =
-                std::clamp(player.vx / lookAheadSpeedRef, -1.0f, 1.0f) * kLookAheadMax;
-            if (cameraSmoothingSuppressTimer > 0.0f) {
-                cameraLookAheadX = targetLookAhead;
-            } else {
-                cameraLookAheadX += (targetLookAhead - cameraLookAheadX) * lookAheadStep;
-            }
-        } else {
-            // Fade out look-ahead during boss/end-sign camera.
-            cameraLookAheadX += (0.0f - cameraLookAheadX) * lookAheadStep;
-        }
+        // Look-ahead disabled: keep the camera centered on the player/boss target.
+        cameraLookAheadX = 0.0f;
 
-        // Desired camera top-left (before clamping), including look-ahead.
+        // Desired camera top-left (before clamping).
         const float freeCamX = cameraTargetX + cameraLookAheadX - worldViewW * 0.5f;
         float camX = freeCamX;
         const float freeCamY = cameraTargetY - worldViewH * 0.5f;
@@ -6506,6 +6537,17 @@ int RunGameApp(int argc, char** argv) {
         } else {
             endSignCameraLocked = false;
         }
+        if (cameraDisabledBySignpost) {
+            if (!cameraDisabledBySignpostLocked) {
+                cameraDisabledBySignpostLocked = true;
+                cameraDisabledBySignpostX = camX;
+                cameraDisabledBySignpostY = camY;
+            }
+            camX = cameraDisabledBySignpostX;
+            camY = cameraDisabledBySignpostY;
+        } else {
+            cameraDisabledBySignpostLocked = false;
+        }
         if (levelCompleteActive) {
             if (!levelCompleteCameraLocked) {
                 levelCompleteCameraLocked = true;
@@ -6517,9 +6559,16 @@ int RunGameApp(int argc, char** argv) {
         } else {
             levelCompleteCameraLocked = false;
         }
+        if (bossState.active && bossEndCameraFreezeEligible) {
+            if (std::fabs(camX - previousCameraX) > 0.5f || std::fabs(camY - previousCameraY) > 0.5f) {
+                bossEndCameraFreezeEligible = false;
+            }
+        }
         // Snap render camera to pixel grid to avoid subpixel shimmer across all worlds.
         camX = std::round(camX);
         camY = std::round(camY);
+        previousCameraX = camX;
+        previousCameraY = camY;
 
         SDL_SetRenderTarget(ren, worldTarget);
         SDL_SetRenderScale(ren, kGameplayZoom, kGameplayZoom);
@@ -7353,19 +7402,6 @@ int RunGameApp(int argc, char** argv) {
         // HUD: lives counter (bottom-left).
         DrawText(ren, hudLeftX + hudSlideOutX, screenH - hudBottomMargin, hudScale, "LIVES");
         DrawText(ren, hudValueX + hudSlideOutX, screenH - hudBottomMargin, hudScale, std::to_string(livesCount));
-        if (levelReloadTitleTimer > 0.0f) {
-            const float showT = std::clamp(levelReloadTitleTimer / 2.0f, 0.0f, 1.0f);
-            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
-            SDL_SetRenderDrawColor(ren, 8, 10, 14, (Uint8)std::lround(140.0f * showT));
-            SDL_FRect titleBackdrop{(float)(screenW / 2 - 300), 18.0f, 600.0f, 52.0f};
-            SDL_RenderFillRect(ren, &titleBackdrop);
-            SDL_SetRenderDrawColor(ren, 255, 255, 255, (Uint8)std::lround(255.0f * std::min(1.0f, showT * 2.0f)));
-            const int titleScale = 2;
-            const int titleW = MeasureTextWidth(titleScale, currentFancyLevelName);
-            DrawText(ren, screenW / 2 - titleW / 2, 32, titleScale, currentFancyLevelName);
-            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
-        }
-
         if (paused) {
             const float uiButtonScale = std::clamp((float)uiScalePercent / 100.0f, 0.5f, 4.0f);
             auto scaleRectCentered = [&](const SDL_Rect& in) -> SDL_Rect {
@@ -8196,7 +8232,7 @@ int RunGameApp(int argc, char** argv) {
         stopReplayRecording(returnToSelect ? "return_to_select" : "level_end");
         audio.unloadLevelMusic();
         if (returnToSelect) {
-            if (selectedFromUserMenu) reopenUserLevelMenu = true;
+            if (selectedFromCustomLevelMenu) reopenUserLevelMenu = true;
             continue;
         }
     }
