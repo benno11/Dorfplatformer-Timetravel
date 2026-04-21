@@ -6160,8 +6160,9 @@ int RunGameApp(int argc, char** argv) {
                                     const float pad = 20.0f;
                                     const float minX = std::min(arenaLeft + halfW + pad, arenaRight - halfW - pad);
                                     const float maxX = std::max(arenaLeft + halfW + pad, arenaRight - halfW - pad);
-                                    const float minY = std::min(arenaTop + halfH + pad, arenaBottom - halfH - pad);
-                                    const float maxY = std::max(arenaTop + halfH + pad, arenaBottom - halfH - pad);
+                                    const float arenaLowerHalf = arenaTop + (arenaBottom - arenaTop) * 0.5f;
+                                    const float minY = std::min(arenaLowerHalf + halfH + pad, arenaBottom - halfH - pad);
+                                    const float maxY = std::max(arenaLowerHalf + halfH + pad, arenaBottom - halfH - pad);
                                     for (int attempt = 0; attempt < 32; ++attempt) {
                                         const float rx = (float)std::rand() / (float)RAND_MAX;
                                         const float ry = (float)std::rand() / (float)RAND_MAX;
