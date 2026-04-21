@@ -6217,14 +6217,6 @@ int RunGameApp(int argc, char** argv) {
                         levelManager.setTileAt(map, idx, 21);
                         levelManager.addCoins(5);
                         audio.playCoinSfx();
-                    } else if (standingTileId == 49) {
-                        normalizeCheckpointTiles(map);
-                        levelManager.setTileAt(map, idx, 50);
-                        checkpointActive = true;
-                        checkpointLevelPath = normalizeLevelPath(levelManager.levelPath());
-                        checkpointTileX = tx;
-                        checkpointTileY = ty;
-                        audio.playCoinSfx();
                     } else if (standingTileId == 13 && playerInvincibleTimer <= 0.0f && levelLoadDeathGraceTimer <= 0.0f) {
                         const bool hasCoins = levelManager.coinCount() > 0;
                         if (hasCoins) {
@@ -6244,6 +6236,37 @@ int RunGameApp(int argc, char** argv) {
                             audio.haltMusic();
                             audio.playLoseSfx();
                             continue;
+                        }
+                    }
+                }
+            }
+
+            // Checkpoint detection: tile 49 is passthrough (non-solid), so detect by
+            // body overlap rather than requiring the player to stand on it.
+            if (!paused && !deathSequenceActive && !levelCompleteActive) {
+                const int cpT = map.tileSize;
+                const int cpLeft  = std::max(0, (int)std::floor(player.x / cpT));
+                const int cpRight = std::min(map.w - 1, (int)std::floor((player.x + player.w - 1) / cpT));
+                const int cpTop   = std::max(0, (int)std::floor(player.y / cpT));
+                const int cpBot   = std::min(map.h - 1, (int)std::floor((player.y + player.h - 1) / cpT));
+                bool cpFound = false;
+                for (int cpy = cpTop; cpy <= cpBot && !cpFound; ++cpy) {
+                    int qy = cpy;
+                    if (gameplayWrapY && map.h > 0) { qy %= map.h; if (qy < 0) qy += map.h; }
+                    for (int cpx = cpLeft; cpx <= cpRight && !cpFound; ++cpx) {
+                        int qx = cpx;
+                        if (gameplayWrapX && map.w > 0) { qx %= map.w; if (qx < 0) qx += map.w; }
+                        if (qx < 0 || qx >= map.w || qy < 0 || qy >= map.h) continue;
+                        const int cpIdx = qy * map.w + qx;
+                        if ((int)map.tileIds[cpIdx] == 49) {
+                            normalizeCheckpointTiles(map);
+                            levelManager.setTileAt(map, cpIdx, 50);
+                            checkpointActive = true;
+                            checkpointLevelPath = normalizeLevelPath(levelManager.levelPath());
+                            checkpointTileX = qx;
+                            checkpointTileY = qy;
+                            audio.playCoinSfx();
+                            cpFound = true;
                         }
                     }
                 }
