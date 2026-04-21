@@ -6602,6 +6602,8 @@ int RunGameApp(int argc, char** argv) {
         const int currentWorldId = levelManager.worldId();
         if (currentWorldId == 4) {
             SDL_SetRenderDrawColor(ren, 192, 104, 114, 255); // #c06872
+        } else if (currentWorldId == 3) {
+            SDL_SetRenderDrawColor(ren, 20, 20, 30, 255); // dark background for world 3
         } else {
             SDL_SetRenderDrawColor(ren, 118, 225, 255, 255); // #76e1ff
         }

@@ -37,7 +37,7 @@ bool RenderWorld3PatternBackground(
     const int worldBaseGX = (int)std::floor(bgCamX / (float)blockW);
     const int worldBaseGY = (int)std::floor(bgCamY / (float)blockH);
 
-    SDL_SetTextureColorMod(blocksTex, 150, 150, 150);
+    SDL_SetTextureColorMod(blocksTex, 80, 80, 80);
     for (int y = -bgOffsetY - blockH, gy = worldBaseGY - 1; y < worldViewH + blockH; y += blockH, ++gy) {
         for (int x = -bgOffsetX - blockW, gx = worldBaseGX - 1; x < worldViewW + blockW; x += blockW, ++gx) {
             unsigned int hash = (unsigned int)(gx * 73856093u) ^ (unsigned int)(gy * 19349663u) ^ 0x9e3779b9u;
