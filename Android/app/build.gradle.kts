@@ -24,7 +24,7 @@ android {
         minSdk = 24
         targetSdk = 36
         versionCode = 21
-        versionName = "2.3.0"
+        versionName = "2.2.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         proguardFiles("proguard-rules.pro")
