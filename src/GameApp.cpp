@@ -2904,8 +2904,10 @@ int RunGameApp(int argc, char** argv) {
                 const bool opposing = (player.vx > 20.0f && moveInput < -0.1f) || (player.vx < -20.0f && moveInput > 0.1f);
                 newAnim = opposing ? ANIM_SKID : ANIM_WALK;
             }
-            if (moveInput < -0.1f) player.facing = -1;
-            if (moveInput > 0.1f) player.facing = 1;
+            if (player.onGround || player.freeMove) {
+                if (moveInput < -0.1f) player.facing = -1;
+                if (moveInput > 0.1f) player.facing = 1;
+            }
             if (newAnim != player.anim) {
                 player.anim = newAnim;
                 player.animTime = 0.0f;
