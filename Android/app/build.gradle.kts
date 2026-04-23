@@ -23,8 +23,8 @@ android {
         applicationId = "com.Benno111.dorfplatformertimetravel"
         minSdk = 24
         targetSdk = 36
-        versionCode = 20
-        versionName = "2.2.0"
+        versionCode = 23
+        versionName = "2.2.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         proguardFiles("proguard-rules.pro")

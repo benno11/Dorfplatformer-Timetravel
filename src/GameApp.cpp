@@ -2607,6 +2607,7 @@ int RunGameApp(int argc, char** argv) {
             float rainbowTimer = 0.0f; // world4: teleport/invuln flash window
             float secretShotTimer = 0.0f; // level59: fireball cadence
             float secretTouchDamageCooldown = 0.0f; // level59: boss damage debounce on touch
+            float bossPlayerContactCooldown = 0.0f; // debounce for player-contact boss damage (stomp/bounce)
         };
         struct SecretFireball {
             float x = 0.0f;
@@ -2903,8 +2904,10 @@ int RunGameApp(int argc, char** argv) {
                 const bool opposing = (player.vx > 20.0f && moveInput < -0.1f) || (player.vx < -20.0f && moveInput > 0.1f);
                 newAnim = opposing ? ANIM_SKID : ANIM_WALK;
             }
-            if (moveInput < -0.1f) player.facing = -1;
-            if (moveInput > 0.1f) player.facing = 1;
+            if (player.onGround || player.freeMove) {
+                if (moveInput < -0.1f) player.facing = -1;
+                if (moveInput > 0.1f) player.facing = 1;
+            }
             if (newAnim != player.anim) {
                 player.anim = newAnim;
                 player.animTime = 0.0f;
@@ -3176,6 +3179,7 @@ int RunGameApp(int argc, char** argv) {
                 bossState.rainbowTimer = bj.value("rainbow_timer", bossState.rainbowTimer);
                 bossState.secretShotTimer = bj.value("secret_shot_timer", bossState.secretShotTimer);
                 bossState.secretTouchDamageCooldown = bj.value("secret_touch_damage_cooldown", bossState.secretTouchDamageCooldown);
+                bossState.bossPlayerContactCooldown = bj.value("boss_player_contact_cooldown", bossState.bossPlayerContactCooldown);
             }
             secretFireballs.clear();
             if (savedGameRoot.contains("secret_fireballs") && savedGameRoot["secret_fireballs"].is_array()) {
@@ -3615,6 +3619,7 @@ int RunGameApp(int argc, char** argv) {
             j["rainbow_timer"] = b.rainbowTimer;
             j["secret_shot_timer"] = b.secretShotTimer;
             j["secret_touch_damage_cooldown"] = b.secretTouchDamageCooldown;
+            j["boss_player_contact_cooldown"] = b.bossPlayerContactCooldown;
             return j;
         };
         auto saveSecretFireballJson = [](const SecretFireball& f) {
@@ -4115,6 +4120,9 @@ int RunGameApp(int argc, char** argv) {
             }
             if (bossState.secretTouchDamageCooldown > 0.0f) {
                 bossState.secretTouchDamageCooldown = std::max(0.0f, bossState.secretTouchDamageCooldown - dt);
+            }
+            if (bossState.bossPlayerContactCooldown > 0.0f) {
+                bossState.bossPlayerContactCooldown = std::max(0.0f, bossState.bossPlayerContactCooldown - dt);
             }
             if (playerInvincibleTimer > 0.0f) {
                 playerInvincibleTimer = std::max(0.0f, playerInvincibleTimer - dt);
@@ -6127,19 +6135,23 @@ int RunGameApp(int argc, char** argv) {
                             bossState.secretTouchDamageCooldown = 0.20f;
                             audio.playBumperSfx();
                         }
-                    } else if (playerInvincibleTimer <= 0.0f && levelLoadDeathGraceTimer <= 0.0f) {
-                        if (!bossCanMoveAndTakeDamage) {
+                    } else if (!bossCanMoveAndTakeDamage) {
+                        if (playerInvincibleTimer <= 0.0f && levelLoadDeathGraceTimer <= 0.0f) {
                             if (applyBossContactDamageToPlayer()) continue;
-                        } else {
-                            if (bossState.sourceWorld == 1) {
+                        }
+                    } else {
+                        if (bossState.sourceWorld == 1) {
+                            if (bossState.bossPlayerContactCooldown <= 0.0f && levelLoadDeathGraceTimer <= 0.0f) {
                                 player.y = testBy - (float)player.h;
                                 player.vy = -1000.0f;
                                 player.onGround = false;
-                                playerInvincibleTimer = 0.12f;
+                                playerInvincibleTimer = std::max(playerInvincibleTimer, 0.12f);
+                                bossState.bossPlayerContactCooldown = 0.12f;
                                 applyBossDamage(1);
                                 audio.playBumperSfx();
                                 continue;
                             }
+                        } else {
                             const float py2 = player.y + (float)player.h;
                             const float prevPy2 = frameStartY + (float)player.h;
                             const float playerCy = player.y + (float)player.h * 0.5f;
@@ -6149,11 +6161,12 @@ int RunGameApp(int argc, char** argv) {
                                 (prevPy2 <= testBy + bossH * 0.35f) &&
                                 (py2 <= testBy + bossH * 0.45f) &&
                                 (playerCy <= bossCy);
-                            if (stomp) {
+                            if (stomp && bossState.bossPlayerContactCooldown <= 0.0f && levelLoadDeathGraceTimer <= 0.0f) {
                                 player.y = testBy - (float)player.h;
                                 player.vy = -1000.0f;
                                 player.onGround = false;
-                                playerInvincibleTimer = 0.12f;
+                                playerInvincibleTimer = std::max(playerInvincibleTimer, 0.12f);
+                                bossState.bossPlayerContactCooldown = 0.12f;
                                 applyBossDamage(1);
                                 if (bossState.sourceWorld == 4) {
                                     bossState.rainbowTimer = 3.0f;
@@ -6189,7 +6202,7 @@ int RunGameApp(int argc, char** argv) {
                                     (void)ejectBossFromSolid(bossState.x, bossState.y, bossW, bossH);
                                 }
                                 audio.playBumperSfx();
-                            } else {
+                            } else if (!stomp && playerInvincibleTimer <= 0.0f && levelLoadDeathGraceTimer <= 0.0f) {
                                 if (applyBossContactDamageToPlayer()) continue;
                             }
                         }
