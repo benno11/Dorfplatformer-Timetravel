@@ -196,6 +196,15 @@ size_t writeToFile(void* contents, size_t size, size_t nmemb, void* userp) {
     return out->good() ? total : 0;
 }
 
+void setCompatibilityCurlOptions(CURL* curl) {
+    if (!curl) return;
+
+    // Older Windows Schannel builds can be temperamental when libcurl negotiates
+    // ALPN, so keep updater traffic on plain HTTP/1.1.
+    curl_easy_setopt(curl, CURLOPT_SSL_ENABLE_ALPN, 0L);
+    curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
+}
+
 bool httpGetText(const std::string& url, std::string& out, std::string& err) {
     CURL* curl = curl_easy_init();
     if (!curl) {
@@ -209,6 +218,7 @@ bool httpGetText(const std::string& url, std::string& out, std::string& err) {
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 20L);
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "DF-New-Updater/1.0");
+    setCompatibilityCurlOptions(curl);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, &writeToString);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &out);
     const CURLcode rc = curl_easy_perform(curl);
@@ -244,6 +254,7 @@ bool httpDownloadFile(const std::string& url,
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 0L);
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "DF-New-Updater/1.0");
+    setCompatibilityCurlOptions(curl);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, &writeToFile);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &out);
     if (progressCtx) {
