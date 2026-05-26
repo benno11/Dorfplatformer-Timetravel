@@ -289,7 +289,7 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
         if (active == promptTextInputActive) {
 #if defined(__ANDROID__)
             if (active) {
-                if (winW <= 0 || winH <= 0) SDL_GetWindowSize(win, &winW, &winH);
+                if (winW <= 0 || winH <= 0) getWindowSizeInPixelsCompat(win, winW, winH);
                 if (focusRect) {
                     ShowAndroidSoftKeyboard(
                         focusRect->x,
@@ -305,7 +305,7 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
         if (active) {
             SDL_StartTextInput(win);
 #if defined(__ANDROID__)
-            if (winW <= 0 || winH <= 0) SDL_GetWindowSize(win, &winW, &winH);
+            if (winW <= 0 || winH <= 0) getWindowSizeInPixelsCompat(win, winW, winH);
             if (focusRect) {
                 ShowAndroidSoftKeyboard(
                     focusRect->x,
@@ -358,7 +358,7 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
 
     while (running) {
         int winW = 0, winH = 0;
-        SDL_GetWindowSize(win, &winW, &winH);
+        getWindowSizeInPixelsCompat(win, winW, winH);
         SDL_Rect panel{winW / 2 - 260, winH / 2 - 160, 520, 320};
         SDL_Rect rowName{panel.x + 20, panel.y + 56, panel.w - 40, 38};
         SDL_Rect rowW{panel.x + 20, panel.y + 106, panel.w - 40, 38};
@@ -726,7 +726,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
 
     while (running) {
         int winW = 0, winH = 0;
-        SDL_GetWindowSize(win, &winW, &winH);
+        getWindowSizeInPixelsCompat(win, winW, winH);
         const int margin = 12;
         const int sideW = 240;
         const int gridX = margin;
@@ -1728,10 +1728,10 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
     int localPageIndex = -1;
 
     int winW = 960, winH = 540;
-    SDL_GetWindowSize(win, &winW, &winH);
+    getWindowSizeInPixelsCompat(win, winW, winH);
 
     while (running) {
-        SDL_GetWindowSize(win, &winW, &winH);
+        getWindowSizeInPixelsCompat(win, winW, winH);
         float uiScale = std::min((float)winW / 960.0f, (float)winH / 540.0f);
         uiScale = std::clamp(uiScale, 0.75f, 2.0f);
         int rowH = std::max(24, (int)std::lround(28.0f * uiScale));

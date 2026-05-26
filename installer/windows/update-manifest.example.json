@@ -1,6 +1,9 @@
 {
   "version": "2.2.1",
   "version_id": 23,
-  "installer_url": "https://example.com/downloads/df-platformer-windows-installer.exe",
+  "installer_urls": {
+    "x64": "https://example.com/downloads/df-platformer-windows-installer-x64.exe",
+    "x86": "https://example.com/downloads/df-platformer-windows-installer-x86.exe"
+  },
   "notes": "Bug fixes, performance improvements, and new content."
 }

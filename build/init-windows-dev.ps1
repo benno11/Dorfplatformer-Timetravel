@@ -197,4 +197,5 @@ if ($iscc) {
 Write-Host "[DONE] Windows build environment is ready."
 Write-Host "Next steps:"
 Write-Host "  .\build-local.ps1 -Compiler $Compiler"
-Write-Host "  .\build\build-windows-installer.ps1 -Version <your-version>"
+Write-Host "  .\build-local.ps1 -Compiler msvc -WindowsArch x86"
+Write-Host "  .\build\build-windows-installer.ps1 -Triplet x86-windows -Version <your-version>"

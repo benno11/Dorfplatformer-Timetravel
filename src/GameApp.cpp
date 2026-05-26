@@ -2069,7 +2069,7 @@ int RunGameApp(int argc, char** argv) {
 
             SDL_SetRenderTarget(ren, nullptr);
             int ww = 0, wh = 0;
-            SDL_GetWindowSize(win, &ww, &wh);
+            getWindowSizeInPixelsCompat(win, ww, wh);
             SDL_Rect presentRect = computePresentRect(ww, wh, kBaseScreenW, kBaseScreenH, 1.0f);
             SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
             SDL_RenderClear(ren);
@@ -2421,7 +2421,7 @@ int RunGameApp(int argc, char** argv) {
 #endif
     auto applyDynamicResolutionFromWindow = [&](bool force) -> bool {
         int winW = 0, winH = 0;
-        SDL_GetWindowSize(win, &winW, &winH);
+        getWindowSizeInPixelsCompat(win, winW, winH);
         if (winW <= 0 || winH <= 0) return true;
 
         float aspect = (float)winW / (float)winH;
@@ -4275,7 +4275,7 @@ int RunGameApp(int argc, char** argv) {
             touchJump = false;
             if (paused) return;
             int winW = 0, winH = 0;
-            SDL_GetWindowSize(win, &winW, &winH);
+            getWindowSizeInPixelsCompat(win, winW, winH);
             auto expandRect = [](const SDL_FRect& r, float pad) {
                 return SDL_FRect{r.x - pad, r.y - pad, r.w + pad * 2.0f, r.h + pad * 2.0f};
             };
@@ -4319,7 +4319,7 @@ int RunGameApp(int argc, char** argv) {
             if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
                 if (embeddedDetailedDebugger && e.button.windowID == mainWindowId) {
                     int winW = 0, winH = 0, gx = 0, gy = 0;
-                    SDL_GetWindowSize(win, &winW, &winH);
+                    getWindowSizeInPixelsCompat(win, winW, winH);
                     if (windowToGamePoint(e.button.x, e.button.y, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy, 1.0f)) {
                         if (handleDetailedDebuggerTap(gx, gy)) continue;
                     }
@@ -4378,7 +4378,7 @@ int RunGameApp(int argc, char** argv) {
                 if (embeddedDetailedDebugger &&
                     (e.tfinger.windowID == mainWindowId || e.tfinger.windowID == 0)) {
                     int winW = 0, winH = 0;
-                    SDL_GetWindowSize(win, &winW, &winH);
+                    getWindowSizeInPixelsCompat(win, winW, winH);
                     int wx = (int)std::lround(e.tfinger.x * winW);
                     int wy = (int)std::lround(e.tfinger.y * winH);
                     int gx = 0, gy = 0;
@@ -4586,7 +4586,7 @@ int RunGameApp(int argc, char** argv) {
             }
             if (paused && e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
                 int winW = 0, winH = 0, gx = 0, gy = 0;
-                SDL_GetWindowSize(win, &winW, &winH);
+                getWindowSizeInPixelsCompat(win, winW, winH);
                 if (windowToGamePoint(e.button.x, e.button.y, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy, 1.0f)) {
                     SDL_Point pt{gx, gy};
                     if (SDL_PointInRect(&pt, &pauseBtnContinue)) handlePauseSelect(0);
@@ -4597,7 +4597,7 @@ int RunGameApp(int argc, char** argv) {
             if (paused && e.type == SDL_EVENT_FINGER_DOWN &&
                 (e.tfinger.windowID == mainWindowId || e.tfinger.windowID == 0)) {
                 int winW = 0, winH = 0;
-                SDL_GetWindowSize(win, &winW, &winH);
+                getWindowSizeInPixelsCompat(win, winW, winH);
                 int wx = (int)(e.tfinger.x * winW);
                 int wy = (int)(e.tfinger.y * winH);
                 int gx = 0, gy = 0;
@@ -7882,7 +7882,7 @@ int RunGameApp(int argc, char** argv) {
 
         SDL_SetRenderTarget(ren, nullptr);
         int winW = 0, winH = 0;
-        SDL_GetWindowSize(win, &winW, &winH);
+        getWindowSizeInPixelsCompat(win, winW, winH);
         SDL_Rect presentDst = computePresentRect(winW, winH, kBaseScreenW, kBaseScreenH, 1.0f);
         SDL_SetRenderDrawColor(ren, 118, 225, 255, 255); // #76e1ff
         SDL_RenderClear(ren);

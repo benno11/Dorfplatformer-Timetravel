@@ -88,8 +88,13 @@ jobs:
         include:
           - os: ubuntu-latest
             triplet: x64-linux
+            windows_arch: x64
           - os: windows-latest
             triplet: x64-windows
+            windows_arch: x64
+          - os: windows-latest
+            triplet: x86-windows
+            windows_arch: x86
 
     steps:
       - name: Checkout game
@@ -111,6 +116,8 @@ jobs:
       - name: Set up MSVC
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.windows_arch }}
 
       - name: Checkout vcpkg
         uses: actions/checkout@v4

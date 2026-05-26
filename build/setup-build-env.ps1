@@ -3,6 +3,8 @@ param(
     [ValidateSet("Debug", "Release", "RelWithDebInfo", "MinSizeRel")]
     [string]$Config = "Release",
     [string]$Generator = "",
+    [ValidateSet("x64", "x86")]
+    [string]$WindowsArch = "x64",
     [switch]$UseVcpkg
 )
 
@@ -57,6 +59,20 @@ function Test-PathCompilerAvailable {
     if (Get-Command clang++ -ErrorAction SilentlyContinue) { return $true }
     if (Get-Command g++ -ErrorAction SilentlyContinue) { return $true }
     return $false
+}
+
+function Get-WindowsTriplet {
+    if ($WindowsArch -eq "x86") {
+        return "x86-windows"
+    }
+    return "x64-windows"
+}
+
+function Get-VsTargetArchitecture {
+    if ($WindowsArch -eq "x86") {
+        return "x86"
+    }
+    return "x64"
 }
 
 function Ensure-NinjaAvailable {
@@ -127,7 +143,7 @@ function Import-VsDevCmdEnvironment {
     }
 
     Write-Host "Importing Visual Studio developer environment from: $vsDevCmd"
-    $devArgs = "-arch=x64 -host_arch=x64"
+    $devArgs = "-arch=$(Get-VsTargetArchitecture) -host_arch=x64"
     if ($preferredVcvars) {
         $devArgs += " -vcvars_ver=$preferredVcvars"
         Write-Host "Using MSVC toolset preference: $preferredVcvars"
@@ -150,18 +166,19 @@ function Get-PreferredMsvcBinDir {
         return ""
     }
 
+    $targetArch = if ($WindowsArch -eq "x86") { "x86" } else { "x64" }
     $usable = Get-ChildItem $vcToolsRoot -Directory -ErrorAction SilentlyContinue |
         Sort-Object Name -Descending |
         Where-Object {
-            (Test-Path (Join-Path $_.FullName "bin\Hostx64\x64\cl.exe")) -and
-            (Test-Path (Join-Path $_.FullName "bin\Hostx64\x64\link.exe")) -and
-            (Test-Path (Join-Path $_.FullName "lib\x64\msvcrtd.lib"))
+            (Test-Path (Join-Path $_.FullName "bin\Hostx64\$targetArch\cl.exe")) -and
+            (Test-Path (Join-Path $_.FullName "bin\Hostx64\$targetArch\link.exe")) -and
+            (Test-Path (Join-Path $_.FullName "lib\$targetArch\msvcrtd.lib"))
         } |
         Select-Object -First 1
     if (-not $usable) {
         return ""
     }
-    return (Join-Path $usable.FullName "bin\Hostx64\x64")
+    return (Join-Path $usable.FullName "bin\Hostx64\$targetArch")
 }
 
 function Require-Tool([string]$name) {
@@ -227,7 +244,8 @@ function Get-ConfigureFingerprint {
     $fingerprintFiles = @(
         (Join-Path $repoRoot "CMakeLists.txt"),
         (Join-Path $repoRoot "build\setup-build-env.ps1"),
-        (Join-Path $repoRoot "cmake\WindowsVersionResource.rc.in")
+        (Join-Path $repoRoot "cmake\WindowsVersionResource.rc.in"),
+        (Join-Path $repoRoot "cmake\WindowsAppManifest.xml.in")
     )
 
     $parts = New-Object System.Collections.Generic.List[string]
@@ -246,7 +264,7 @@ $fingerprintPath = Join-Path $buildDirFull ".configure-fingerprint"
 $currentFingerprint = Get-ConfigureFingerprint
 $requestedPlatform = ""
 if ($Generator -and $Generator.Trim() -and ($Generator -like "Visual Studio*")) {
-    $requestedPlatform = "x64"
+    $requestedPlatform = if ($WindowsArch -eq "x86") { "Win32" } else { "x64" }
 }
 if ($Generator -and $Generator.Trim() -and ($Generator -like "Visual Studio*")) {
     Import-VsDevCmdEnvironment
@@ -319,7 +337,7 @@ if (Test-Path $cachePath) {
 if ($Generator -and $Generator.Trim()) {
     $cmakeArgs += @("-G", $Generator)
     if ($Generator -like "Visual Studio*") {
-        $cmakeArgs += @("-A", "x64")
+        $cmakeArgs += @("-A", ($(if ($WindowsArch -eq "x86") { "Win32" } else { "x64" })))
         $vsPlatformToolset = Get-VsPlatformToolset
         if ($script:PreferredVcvars -and $vsPlatformToolset) {
             $cmakeArgs += @("-T", "$vsPlatformToolset,version=$script:PreferredVcvars")
@@ -356,11 +374,7 @@ if ($useVcpkgNow) {
     $cmakeArgs += "-DCMAKE_TOOLCHAIN_FILE=$toolchainFile"
 
     if (-not $env:VCPKG_DEFAULT_TRIPLET) {
-        if ([Environment]::Is64BitOperatingSystem) {
-            $env:VCPKG_DEFAULT_TRIPLET = "x64-windows"
-        } else {
-            $env:VCPKG_DEFAULT_TRIPLET = "x86-windows"
-        }
+        $env:VCPKG_DEFAULT_TRIPLET = Get-WindowsTriplet
     }
     $cmakeArgs += "-DVCPKG_TARGET_TRIPLET=$($env:VCPKG_DEFAULT_TRIPLET)"
 

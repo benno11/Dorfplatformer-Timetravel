@@ -65,4 +65,5 @@ SDL_Texture* loadTextureSafe(SDL_Renderer* ren, const std::string& path, std::st
 
 SDL_Rect computePresentRect(int winW, int winH, int baseW, int baseH, float uiScale = 1.0f);
 bool windowToGamePoint(int wx, int wy, int winW, int winH, int baseW, int baseH, int& gx, int& gy, float uiScale = 1.0f);
+bool getWindowSizeInPixelsCompat(SDL_Window* win, int& w, int& h);
 

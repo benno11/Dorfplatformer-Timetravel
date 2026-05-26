@@ -10,6 +10,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -38,8 +39,34 @@ struct Manifest {
     std::string version;
     std::string versionId;
     std::string installerUrl;
+    std::string installerUrlX86;
+    std::string installerUrlX64;
     std::string notes;
 };
+
+std::string getCurrentWindowsArchKey() {
+#if defined(_M_IX86)
+    return "x86";
+#elif defined(_M_X64) || defined(_WIN64)
+    return "x64";
+#else
+    return "";
+#endif
+}
+
+std::string selectInstallerUrl(const Manifest& manifest) {
+    const std::string arch = getCurrentWindowsArchKey();
+    if (arch == "x86" && !manifest.installerUrlX86.empty()) {
+        return manifest.installerUrlX86;
+    }
+    if (arch == "x64" && !manifest.installerUrlX64.empty()) {
+        return manifest.installerUrlX64;
+    }
+    if (!manifest.installerUrl.empty()) {
+        return manifest.installerUrl;
+    }
+    return {};
+}
 
 struct ParsedVersion {
     std::vector<int> numbers;
@@ -436,9 +463,14 @@ bool loadManifest(const std::string& manifestUrl, Manifest& out, std::string& er
         err = std::string("Invalid manifest JSON: ") + ex.what();
         return false;
     }
-    if (!json.contains("version") || !json["version"].is_string() ||
-        !json.contains("installer_url") || !json["installer_url"].is_string()) {
-        err = "Manifest must contain string fields: version, installer_url";
+    if (!json.contains("version") || !json["version"].is_string()) {
+        err = "Manifest must contain a string field: version";
+        return false;
+    }
+    const bool hasInstallerUrl = json.contains("installer_url") && json["installer_url"].is_string();
+    const bool hasInstallerUrls = json.contains("installer_urls") && json["installer_urls"].is_object();
+    if (!hasInstallerUrl && !hasInstallerUrls) {
+        err = "Manifest must contain installer_url or installer_urls";
         return false;
     }
     auto jsonValueToString = [](const nlohmann::json& value) -> std::string {
@@ -459,9 +491,25 @@ bool loadManifest(const std::string& manifestUrl, Manifest& out, std::string& er
     } else {
         out.versionId = out.version;
     }
-    out.installerUrl = json["installer_url"].get<std::string>();
+    out.installerUrl = hasInstallerUrl ? json["installer_url"].get<std::string>() : std::string();
+    if (hasInstallerUrls) {
+        const auto& urls = json["installer_urls"];
+        if (urls.contains("x86") && urls["x86"].is_string()) {
+            out.installerUrlX86 = urls["x86"].get<std::string>();
+        }
+        if (urls.contains("x64") && urls["x64"].is_string()) {
+            out.installerUrlX64 = urls["x64"].get<std::string>();
+        }
+    }
     if (json.contains("notes") && json["notes"].is_string()) {
         out.notes = json["notes"].get<std::string>();
+    }
+    if (out.installerUrl.empty()) {
+        out.installerUrl = selectInstallerUrl(out);
+    }
+    if (out.installerUrl.empty()) {
+        err = "Manifest does not provide an installer URL for this build architecture.";
+        return false;
     }
     return true;
 }

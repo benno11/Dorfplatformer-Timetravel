@@ -3,8 +3,11 @@ Platformer Engine
 Build locally:
 - Windows PowerShell: `powershell -ExecutionPolicy Bypass -File .\build-local.ps1`
 - Windows PowerShell + run after build: `powershell -ExecutionPolicy Bypass -File .\build-local.ps1 -Run`
+- 32-bit Windows build: `powershell -ExecutionPolicy Bypass -File .\build-local.ps1 -WindowsArch x86`
 - Linux/macOS: `./build-local.sh`
 - Linux/macOS + run after build: `./build-local.sh --run`
+
+Windows releases now ship both x64 and x86 installers, and the embedded app manifest advertises compatibility from Windows Vista through Windows 11.
 
 Manual CMake (separate folder):
 - Configure: `cmake -S . -B .build`

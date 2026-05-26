@@ -7,6 +7,13 @@
 #endif
 #define MyAppPublisher "Benno111"
 #define MyAppExeName "df-launcher.exe"
+#ifndef MyVcRedistFile
+  #define MyVcRedistFile "vc_redist.x64.exe"
+#endif
+
+#ifdef MyInstallerIs64Bit
+  #define MyInstallIn64BitMode "x64"
+#endif
 
 [Setup]
 AppId={{D1BE0AE1-0D76-4A53-B02D-1CC6C36AB3AB}
@@ -19,7 +26,9 @@ UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma
 SolidCompression=yes
 WizardStyle=classic
-ArchitecturesInstallIn64BitMode=x64
+#ifdef MyInstallIn64BitMode
+ArchitecturesInstallIn64BitMode={#MyInstallIn64BitMode}
+#endif
 PrivilegesRequired=lowest
 OutputDir=..\..\dist\windows-installer\output
 OutputBaseFilename=df-platformer-windows-installer
@@ -34,7 +43,7 @@ Name: "startuptray"; Description: "Start tray companion with Windows"; GroupDesc
 [Files]
 Source: "..\..\dist\windows-installer\root\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\..\dist\windows-installer\app\*"; DestDir: "{app}\versions\{#MyAppVersionId}"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\..\dist\windows-installer\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
+Source: "..\..\dist\windows-installer\{#MyVcRedistFile}"; DestDir: "{tmp}"; Flags: deleteafterinstall
 
 [InstallDelete]
 ; Clean up files left by the legacy single-folder install layout.
@@ -74,7 +83,7 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDi
 Name: "{userstartup}\Dorfplatformer Tray"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--tray"; WorkingDir: "{app}"; Tasks: startuptray
 
 [Run]
-Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; Flags: waituntilterminated
+Filename: "{tmp}\{#MyVcRedistFile}"; Parameters: "/install /quiet /norestart"; Flags: waituntilterminated
 Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
 
 [Code]

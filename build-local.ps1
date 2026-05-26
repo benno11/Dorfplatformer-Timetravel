@@ -3,6 +3,8 @@ param(
     [string]$Config = "Release",
     [string]$BuildDir = ".build",
     [string]$Generator = "",
+    [ValidateSet("x64", "x86")]
+    [string]$WindowsArch = "x64",
     [ValidateSet("llvm", "msvc")]
     [string]$Compiler = "llvm",
     [switch]$NoCompilerAutoInstall,
@@ -69,6 +71,13 @@ function Test-LlvmInstalled {
     if (Get-Command clang++ -ErrorAction SilentlyContinue) { return $true }
     if (Test-Path "C:\Program Files\LLVM\bin\clang++.exe") { return $true }
     return $false
+}
+
+function Get-WindowsTriplet {
+    if ($WindowsArch -eq "x86") {
+        return "x86-windows"
+    }
+    return "x64-windows"
 }
 
 function Get-ClangMajorVersion {
@@ -386,7 +395,7 @@ function Ensure-LocalVcpkgExecutable {
 }
 
 function Ensure-ProjectDepsAvailable {
-    $triplet = if ([Environment]::Is64BitOperatingSystem) { "x64-windows" } else { "x86-windows" }
+    $triplet = Get-WindowsTriplet
     $vcpkgRoot = Join-Path $PSScriptRoot "vcpkg"
     $vcpkgExe = Join-Path $vcpkgRoot "vcpkg.exe"
     $prefix = Join-Path $vcpkgRoot "installed\$triplet"
@@ -635,6 +644,11 @@ function Ensure-ProjectDepsAvailable {
     if ($preferredMixerPrefix) { Write-Host "Using SDL3_mixer prefix: $preferredMixerPrefix" }
 }
 
+if (($WindowsArch -eq "x86") -and ($Compiler -eq "llvm")) {
+    Write-Host "Switching to MSVC for 32-bit Windows builds."
+    $Compiler = "msvc"
+}
+
 if ($NoCompilerAutoInstall) {
     if (-not (Test-CxxCompilerAvailable)) {
         throw "No C++ compiler/toolchain found and auto-install is disabled (-NoCompilerAutoInstall)."
@@ -666,7 +680,7 @@ if ($NoCompilerAutoInstall) {
 Ensure-ProjectDepsAvailable
 
 if (-not $Generator) {
-    if ($Compiler -eq "msvc") {
+    if (($Compiler -eq "msvc") -or ($WindowsArch -eq "x86")) {
         $Generator = Get-PreferredVisualStudioGenerator
     } elseif ($Compiler -eq "llvm") {
         $Generator = "Ninja"
@@ -682,6 +696,11 @@ if (-not $Generator) {
             $Generator = Get-PreferredVisualStudioGenerator
         }
     }
+}
+
+if (($WindowsArch -eq "x86") -and ($Generator -notlike "Visual Studio*")) {
+    Write-Host "Switching to Visual Studio generator for 32-bit Windows builds."
+    $Generator = Get-PreferredVisualStudioGenerator
 }
 
 if ($Compiler -eq "llvm") {
@@ -728,7 +747,8 @@ $setupArgs = @(
     "-File", "build/setup-build-env.ps1",
     "-BuildDir", $BuildDir,
     "-Config", $Config,
-    "-Generator", $Generator
+    "-Generator", $Generator,
+    "-WindowsArch", $WindowsArch
 )
 if ($UseVcpkg) {
     $setupArgs += "-UseVcpkg"

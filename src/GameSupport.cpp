@@ -625,3 +625,20 @@ bool windowToGamePoint(int wx, int wy, int winW, int winH, int baseW, int baseH,
     return true;
 }
 
+bool getWindowSizeInPixelsCompat(SDL_Window* win, int& w, int& h) {
+    if (!win) return false;
+    int pixelW = 0;
+    int pixelH = 0;
+    if (SDL_GetWindowSizeInPixels(win, &pixelW, &pixelH) && pixelW > 0 && pixelH > 0) {
+        w = pixelW;
+        h = pixelH;
+        return true;
+    }
+    if (SDL_GetWindowSize(win, &pixelW, &pixelH) && pixelW > 0 && pixelH > 0) {
+        w = pixelW;
+        h = pixelH;
+        return true;
+    }
+    return false;
+}
+

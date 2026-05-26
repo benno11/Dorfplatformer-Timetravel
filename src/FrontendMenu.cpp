@@ -610,7 +610,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
 #if defined(__ANDROID__)
         int winW = 0;
         int winH = 0;
-        SDL_GetWindowSize(ctx.win, &winW, &winH);
+        getWindowSizeInPixelsCompat(ctx.win, winW, winH);
         if (focusGameRect && ctx.baseScreenW > 0 && ctx.baseScreenH > 0 && winW > 0 && winH > 0) {
             SDL_Rect focusRect = *focusGameRect;
             const int focusPad = 12;
@@ -1125,7 +1125,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     };
     auto mouseToGamePoint = [&](int mx, int my, SDL_Point& pt) -> bool {
         int winW = 0, winH = 0, gx = 0, gy = 0;
-        SDL_GetWindowSize(ctx.win, &winW, &winH);
+        getWindowSizeInPixelsCompat(ctx.win, winW, winH);
         if (!windowToGamePoint(mx, my, winW, winH, ctx.baseScreenW, ctx.baseScreenH, gx, gy, 1.0f)) return false;
         pt.x = gx;
         pt.y = gy;
@@ -2493,7 +2493,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             if (e.type == SDL_EVENT_FINGER_DOWN) {
                 activeTouchFingers.insert(e.tfinger.fingerID);
                 int winW = 0, winH = 0;
-                SDL_GetWindowSize(ctx.win, &winW, &winH);
+                getWindowSizeInPixelsCompat(ctx.win, winW, winH);
                 int wx = (int)std::lround(e.tfinger.x * winW);
                 int wy = (int)std::lround(e.tfinger.y * winH);
                 lastTouchDownTicks = SDL_GetTicks();
@@ -2761,7 +2761,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 inSettings && sliderDrag != SliderDragTarget::None &&
                 e.tfinger.fingerID == sliderDragFinger) {
                 int winW = 0, winH = 0, gx = 0, gy = 0;
-                SDL_GetWindowSize(ctx.win, &winW, &winH);
+                getWindowSizeInPixelsCompat(ctx.win, winW, winH);
                 int wx = (int)std::lround(e.tfinger.x * winW);
                 int wy = (int)std::lround(e.tfinger.y * winH);
                 if (!windowToGamePoint(wx, wy, winW, winH, ctx.baseScreenW, ctx.baseScreenH, gx, gy, 1.0f)) continue;
@@ -2778,7 +2778,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 inSettings && scrollbarDrag != ScrollbarDragTarget::None &&
                 e.tfinger.fingerID == scrollbarDragFinger) {
                 int winW = 0, winH = 0, gx = 0, gy = 0;
-                SDL_GetWindowSize(ctx.win, &winW, &winH);
+                getWindowSizeInPixelsCompat(ctx.win, winW, winH);
                 int wx = (int)std::lround(e.tfinger.x * winW);
                 int wy = (int)std::lround(e.tfinger.y * winH);
                 if (!windowToGamePoint(wx, wy, winW, winH, ctx.baseScreenW, ctx.baseScreenH, gx, gy, 1.0f)) continue;
@@ -2805,7 +2805,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             }
             if (e.type == SDL_MOUSEMOTION && inSettings && sliderDrag != SliderDragTarget::None) {
                 int winW = 0, winH = 0, gx = 0, gy = 0;
-                SDL_GetWindowSize(ctx.win, &winW, &winH);
+                getWindowSizeInPixelsCompat(ctx.win, winW, winH);
                 if (!windowToGamePoint(e.motion.x, e.motion.y, winW, winH, ctx.baseScreenW, ctx.baseScreenH, gx, gy, 1.0f)) continue;
                 SDL_Point pt{gx, gy};
                 SDL_Rect musicSlider = musicSliderRect();
@@ -2818,7 +2818,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             }
             if (e.type == SDL_MOUSEMOTION && inSettings && scrollbarDrag != ScrollbarDragTarget::None) {
                 int winW = 0, winH = 0, gx = 0, gy = 0;
-                SDL_GetWindowSize(ctx.win, &winW, &winH);
+                getWindowSizeInPixelsCompat(ctx.win, winW, winH);
                 if (!windowToGamePoint(e.motion.x, e.motion.y, winW, winH, ctx.baseScreenW, ctx.baseScreenH, gx, gy, 1.0f)) continue;
                 if (scrollbarDrag == ScrollbarDragTarget::Settings) setSettingsScrollFromY(gy);
                 if (scrollbarDrag == ScrollbarDragTarget::About) setAboutScrollFromY(gy);
@@ -3301,7 +3301,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 const int logicalCpuCores = SDL_GetNumLogicalCPUCores();
                 const int systemRamMiB = SDL_GetSystemRAM();
                 int winW = 0, winH = 0;
-                SDL_GetWindowSize(ctx.win, &winW, &winH);
+                getWindowSizeInPixelsCompat(ctx.win, winW, winH);
                 SDL_Rect listClip = settingsListClipRect();
                 SDL_SetRenderClipRect(ctx.ren, &listClip);
                 const int aboutHeadScale = std::clamp((int)std::lround(2.0f + 0.35f * settingsMenuScale()), 2, 3);
@@ -3724,7 +3724,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
 
         SDL_SetRenderTarget(ctx.ren, nullptr);
         int winW = 0, winH = 0;
-        SDL_GetWindowSize(ctx.win, &winW, &winH);
+        getWindowSizeInPixelsCompat(ctx.win, winW, winH);
         SDL_Rect presentDst = computePresentRect(winW, winH, ctx.baseScreenW, ctx.baseScreenH, 1.0f);
         SDL_SetRenderDrawColor(ctx.ren, 118, 225, 255, 255); // #76e1ff
         SDL_RenderClear(ctx.ren);

@@ -110,8 +110,13 @@ function Import-VsDevCmdEnvironment {
         return $false
     }
 
+    $targetArch = Get-TripletArch $Triplet
+    if (-not $targetArch) {
+        $targetArch = "x64"
+    }
+
     Write-Host "[STEP] Importing Visual Studio developer environment"
-    $envDump = & cmd.exe /s /c """$vsDevCmd"" -arch=x64 -host_arch=x64 >nul && set"
+    $envDump = & cmd.exe /s /c """$vsDevCmd"" -arch=$targetArch -host_arch=x64 >nul && set"
     foreach ($line in $envDump) {
         if ($line -match "^([^=]+)=(.*)$") {
             [System.Environment]::SetEnvironmentVariable($matches[1], $matches[2], "Process")
@@ -159,6 +164,13 @@ function Copy-DllTree([string]$sourceDir, [string]$destDir) {
     if (-not (Test-Path $sourceDir)) { return }
     Get-ChildItem $sourceDir -Filter "*.dll" -File -Recurse -ErrorAction SilentlyContinue |
         Copy-Item -Destination $destDir -Force
+}
+
+function Get-TripletArch([string]$tripletName) {
+    if ($tripletName -match '^x86-') { return "x86" }
+    if ($tripletName -match '^x64-') { return "x64" }
+    if ($tripletName -match '^arm64-') { return "arm64" }
+    return ""
 }
 
 function Get-LocalSdl3MixerPrefix([string]$repoRootPath) {
@@ -257,7 +269,9 @@ function Get-ConfigureFingerprint([string]$repoRootPath) {
     $fingerprintFiles = @(
         (Join-Path $repoRootPath "CMakeLists.txt"),
         (Join-Path $repoRootPath "build\build-windows-installer.ps1"),
-        (Join-Path $repoRootPath "cmake\WindowsVersionResource.rc.in")
+        (Join-Path $repoRootPath "cmake\WindowsVersionResource.rc.in"),
+        (Join-Path $repoRootPath "cmake\WindowsAppManifest.xml.in"),
+        (Join-Path $repoRootPath "installer\windows\df-platformer.iss")
     )
 
     $parts = New-Object System.Collections.Generic.List[string]
@@ -277,7 +291,11 @@ $stageRoot = Join-Path $repoRoot "dist\windows-installer"
 $appDir = Join-Path $stageRoot "app"
 $rootDir = Join-Path $stageRoot "root"
 $installerScript = Join-Path $repoRoot "installer\windows\df-platformer.iss"
-$vcRedist = Join-Path $stageRoot "vc_redist.x64.exe"
+$tripletArch = Get-TripletArch $Triplet
+if (-not $tripletArch) {
+    $tripletArch = "x64"
+}
+$vcRedist = Join-Path $stageRoot ("vc_redist.$tripletArch.exe")
 
 if (-not $Version -or -not $Version.Trim()) {
     $Version = Get-AppVersionFromConfig -repoRootPath $repoRoot
@@ -311,9 +329,9 @@ if (-not $Generator -or -not $Generator.Trim()) {
     Write-Host "[STEP] Auto-selected generator: $Generator"
 }
 
-if ($Generator -like "Visual Studio*") {
+if (($Generator -like "Visual Studio*") -or ($tripletArch -eq "x86")) {
     if (-not (Import-VsDevCmdEnvironment)) {
-        throw "Visual Studio generator requested but the developer environment could not be loaded."
+        throw "Windows build environment could not be loaded."
     }
 } elseif ($Generator -eq "Ninja" -and -not (Ensure-NinjaAvailable)) {
     throw "Ninja generator requested but ninja.exe is not available."
@@ -396,7 +414,7 @@ $cmakeArgs = @(
     "-DPLATFORMER_REQUIRE_SDL3_MIXER=ON"
 )
 if ($Generator -like "Visual Studio*") {
-    $cmakeArgs += @("-A", "x64")
+    $cmakeArgs += @("-A", ($(if ($tripletArch -eq "x86") { "Win32" } else { "x64" })))
     $vsInstall = Get-VsInstallPath
     if ($vsInstall) {
         $cmakeArgs += "-DCMAKE_GENERATOR_INSTANCE=$vsInstall"
@@ -468,7 +486,12 @@ foreach ($runtimeName in $rootRuntimeFiles) {
 
 if (-not $SkipVcRedistDownload) {
     Write-Host "[STEP] Downloading VC++ Redistributable"
-    Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile $vcRedist
+    $vcRedistUrl = if ($tripletArch -eq "x86") {
+        "https://aka.ms/vs/17/release/vc_redist.x86.exe"
+    } else {
+        "https://aka.ms/vs/17/release/vc_redist.x64.exe"
+    }
+    Invoke-WebRequest -Uri $vcRedistUrl -OutFile $vcRedist
 } else {
     Write-Host "[STEP] Skipping VC++ Redistributable download"
 }
@@ -479,7 +502,15 @@ if (-not $iscc) {
 }
 
 Write-Host "[STEP] Building installer"
-& $iscc "/DMyAppVersion=$Version" "/DMyAppVersionId=$VersionId" $installerScript
+$isccArgs = @(
+    "/DMyAppVersion=$Version",
+    "/DMyAppVersionId=$VersionId",
+    "/DMyVcRedistFile=$(Split-Path $vcRedist -Leaf)"
+)
+if ($tripletArch -eq "x64") {
+    $isccArgs += "/DMyInstallerIs64Bit"
+}
+& $iscc @isccArgs $installerScript
 
 $outputDir = Join-Path $stageRoot "output"
 Write-Host "[DONE] Installer build complete."

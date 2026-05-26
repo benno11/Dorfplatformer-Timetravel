@@ -1,6 +1,6 @@
 {
-    "version": "2.2.1",
-  "version_id": 23,
+    "version": "2.3.0 alpha 1",
+  "version_id": 24,
   "experimental_render_thread": false,
   "movement": {
     "accel_in_water": 700.0,
