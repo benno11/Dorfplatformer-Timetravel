@@ -12,7 +12,9 @@
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@drawable/android_icon_192"
         android:label="Dorfplatformer Timetravel"
+        android:maxAspectRatio="4.0"
         android:roundIcon="@drawable/android_icon_192"
+        android:resizeableActivity="true"
         android:usesCleartextTraffic="true"
         android:supportsRtl="false"
         android:theme="@style/Theme.DorfplatformerTimetravel">

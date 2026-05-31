@@ -1437,7 +1437,12 @@ int RunGameApp(int argc, char** argv) {
         return 1;
     }
 
-    bool fullscreen = false;
+    bool fullscreen =
+#if defined(__ANDROID__)
+        true;
+#else
+        false;
+#endif
     bool vsyncEnabled = false;
     bool clampCamX = true;
     bool defaultShowFpsCounter = false;
@@ -1833,11 +1838,9 @@ int RunGameApp(int argc, char** argv) {
         SDL_Log("Renderer VSync toggle unsupported on this SDL version.");
 #endif
     };
-#if !defined(__ANDROID__)
     if (fullscreen) {
         if (!applyFullscreen(true)) fullscreen = false;
     }
-#endif
     applyRenderVsync();
     SDL_Log("Build UUID: %s", buildUuid.c_str());
     auto applyAudioVolumes = [&]() {
