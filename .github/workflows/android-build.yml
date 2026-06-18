@@ -188,6 +188,28 @@ jobs:
             cmake --build build-ci --config Release --target windows-installer --parallel
           }
 
+      - name: Install LLVM BOLT tools
+        if: runner.os == 'Linux' && hashFiles('build/profiles/desktop-bolt/*.fdata', 'build/profiles/desktop-bolt/*/*.fdata') != ''
+        env:
+          LLVM_BOLT_VERSION: "22.1.8"
+        run: |
+          set -euo pipefail
+          curl -L --retry 3 --fail \
+            "https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_BOLT_VERSION}/LLVM-${LLVM_BOLT_VERSION}-Linux-X64.tar.xz" \
+            -o "$RUNNER_TEMP/llvm-bolt.tar.xz"
+          mkdir -p "$RUNNER_TEMP/llvm-bolt"
+          tar -xJf "$RUNNER_TEMP/llvm-bolt.tar.xz" -C "$RUNNER_TEMP/llvm-bolt" --strip-components=1
+          echo "$RUNNER_TEMP/llvm-bolt/bin" >> "$GITHUB_PATH"
+
+      - name: Optimize desktop binary layout
+        shell: pwsh
+        run: |
+          if ($env:RUNNER_OS -eq "Linux") {
+            bash ./build/optimize-desktop-binary-layout.sh
+          } else {
+            Write-Host "[INFO] Skipping binary layout rewrite on Windows: llvm-bolt targets ELF binaries, not PE/COFF executables."
+          }
+
       - name: Package desktop release
         if: needs.prepare_release.outputs.release_enabled == 'true'
         shell: pwsh
@@ -304,9 +326,31 @@ jobs:
           SDL_TTF_REF: release-3.4.x
           SDL_MIXER_REF: release-3.2.x
           SDL_REQUIRED_VERSION: 3.4.0
+          STRIP_ANDROID_SO: "0"
           TERM: xterm
         run: |
           ./build/android-prod.sh
+
+      - name: Install LLVM BOLT tools
+        if: hashFiles('build/profiles/android-bolt/*.fdata', 'build/profiles/android-bolt/*/*.fdata', 'build/profiles/android-bolt/*/libplatformer.fdata') != ''
+        env:
+          LLVM_BOLT_VERSION: "22.1.8"
+        run: |
+          set -euo pipefail
+          curl -L --retry 3 --fail \
+            "https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_BOLT_VERSION}/LLVM-${LLVM_BOLT_VERSION}-Linux-X64.tar.xz" \
+            -o "$RUNNER_TEMP/llvm-bolt.tar.xz"
+          mkdir -p "$RUNNER_TEMP/llvm-bolt"
+          tar -xJf "$RUNNER_TEMP/llvm-bolt.tar.xz" -C "$RUNNER_TEMP/llvm-bolt" --strip-components=1
+          echo "$RUNNER_TEMP/llvm-bolt/bin" >> "$GITHUB_PATH"
+
+      - name: Optimize Android native library layout
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          ABIS: arm64-v8a,armeabi-v7a,x86_64,x86
+          ANDROID_BOLT_PROFILE_DIR: build/profiles/android-bolt
+        run: |
+          ./build/optimize-android-binary-layout.sh
 
       - name: Sync native library and assets
         env:

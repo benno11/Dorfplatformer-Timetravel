@@ -500,7 +500,6 @@ int RunGameApp(int argc, char** argv) {
             SDL_Log("active controller: <none>");
         }
     }
-
     int kBaseScreenW = 1920;
     int kBaseScreenH = 1080;
     int detectedDisplayW = 0;
@@ -542,7 +541,78 @@ int RunGameApp(int argc, char** argv) {
         startupWindowH = std::max(540, (int)std::lround((float)kBaseScreenH * s));
     }
 
-    SDL_Window* win = SDL_CreateWindow("Dorfplatformer Timetravel", startupWindowW, startupWindowH, SDL_WINDOW_RESIZABLE);
+    SDL_Window* win = nullptr;
+    SDL_Renderer* ren = nullptr;
+    float startupProgress01 = 0.05f;
+    bool startupLoadingVisible = true;
+    auto renderStartupLoading = [&]() {
+        if (!startupLoadingVisible || !win || !ren) return;
+
+        int screenW = startupWindowW;
+        int screenH = startupWindowH;
+        SDL_GetWindowSize(win, &screenW, &screenH);
+        if (screenW <= 0 || screenH <= 0) return;
+
+        const float scale = std::max(1.0f, std::min((float)screenW / 320.0f, (float)screenH / 180.0f));
+        const float cx = screenW * 0.5f;
+        const float cy = screenH * 0.44f;
+        const float diamondHalf = 22.0f * scale;
+        const float diamondTip = 40.0f * scale;
+        const float shadowW = 54.0f * scale;
+        const float shadowH = 4.0f * scale;
+        const float barW = 68.0f * scale;
+        const float barH = 3.0f * scale;
+        const float barX = cx - barW * 0.5f;
+        const float barY = cy + 32.0f * scale;
+
+        auto drawTriangle = [&](const SDL_FPoint& a, const SDL_FPoint& b, const SDL_FPoint& c,
+                                float red, float green, float blue) {
+            const SDL_FColor color{red, green, blue, 1.0f};
+            SDL_Vertex verts[3] = {
+                {a, color, SDL_FPoint{0.0f, 0.0f}},
+                {b, color, SDL_FPoint{0.0f, 0.0f}},
+                {c, color, SDL_FPoint{0.0f, 0.0f}},
+            };
+            SDL_RenderGeometry(ren, nullptr, verts, 3, nullptr, 0);
+        };
+
+        SDL_SetRenderTarget(ren, nullptr);
+        SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+        SDL_RenderClear(ren);
+
+        SDL_SetRenderDrawColor(ren, 28, 28, 28, 180);
+        SDL_FRect shadow{cx - shadowW * 0.5f, cy + diamondHalf + 4.0f * scale, shadowW, shadowH};
+        SDL_RenderFillRect(ren, &shadow);
+
+        const SDL_FPoint left{cx - diamondTip, cy};
+        const SDL_FPoint top{cx, cy - diamondHalf};
+        const SDL_FPoint right{cx + diamondTip, cy};
+        const SDL_FPoint bottom{cx, cy + diamondTip};
+        const SDL_FPoint center{cx, cy + 2.0f * scale};
+        drawTriangle(left, top, center, 1.0f, 0.945f, 0.0f);
+        drawTriangle(top, right, center, 1.0f, 0.2f, 0.2f);
+        drawTriangle(left, center, bottom, 0.0f, 0.702f, 0.29f);
+        drawTriangle(center, right, bottom, 0.0f, 0.471f, 1.0f);
+
+        SDL_SetRenderDrawColor(ren, 255, 255, 255, 24);
+        SDL_FRect track{barX, barY, barW, barH};
+        SDL_RenderFillRect(ren, &track);
+        SDL_SetRenderDrawColor(ren, 255, 255, 255, 255);
+        SDL_FRect fill{barX, barY, barW * std::clamp(startupProgress01, 0.0f, 1.0f), barH};
+        SDL_RenderFillRect(ren, &fill);
+        SDL_RenderPresent(ren);
+    };
+    auto setStartupProgress = [&](float progress01) {
+        startupProgress01 = std::clamp(progress01, 0.0f, 1.0f);
+        renderStartupLoading();
+    };
+    auto finishStartupLoading = [&]() {
+        startupProgress01 = 1.0f;
+        renderStartupLoading();
+        startupLoadingVisible = false;
+    };
+
+    win = SDL_CreateWindow("Dorfplatformer Timetravel", startupWindowW, startupWindowH, SDL_WINDOW_RESIZABLE);
     if (!win) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "SDL_CreateWindow(resizable) failed: %s", SDL_GetError());
         win = SDL_CreateWindow("Dorfplatformer Timetravel", startupWindowW, startupWindowH, 0);
@@ -554,6 +624,7 @@ int RunGameApp(int argc, char** argv) {
         SDL_Quit();
         return 1;
     }
+    setStartupProgress(0.18f);
     auto applyFullscreen = [&](bool enabled) -> bool {
         static int restoreX = SDL_WINDOWPOS_CENTERED;
         static int restoreY = SDL_WINDOWPOS_CENTERED;
@@ -579,7 +650,6 @@ int RunGameApp(int argc, char** argv) {
         return true;
     };
 
-    SDL_Renderer* ren = nullptr;
 #if defined(_WIN32)
     auto createRendererWithPreferredDrivers = [](SDL_Window* targetWin) -> SDL_Renderer* {
         const char* preferredDrivers[] = {"direct3d12", "direct3d11", "direct3d", nullptr, "software"};
@@ -613,6 +683,7 @@ int RunGameApp(int argc, char** argv) {
         return 1;
     }
     SDL_Log("Window and renderer created");
+    setStartupProgress(0.30f);
     SDL_Texture* gameTarget = SDL_CreateTexture(
         ren,
         SDL_PIXELFORMAT_RGBA8888,
@@ -636,6 +707,7 @@ int RunGameApp(int argc, char** argv) {
         SDL_Quit();
         return 1;
     }
+    setStartupProgress(0.40f);
     SDL_SetTextureScaleMode(worldTarget, SDL_SCALEMODE_NEAREST);
     SDL_SetTextureScaleMode(gameTarget, SDL_SCALEMODE_NEAREST);
     SDL_Window* debugWin = nullptr;
@@ -796,6 +868,7 @@ int RunGameApp(int argc, char** argv) {
     std::unordered_map<std::string, std::string> entityFrameKeyByObjectId;
     entityFrameKeyByObjectId["31"] = "Spring";
     const Frame* defaultEntityFrame = !entitiesFrameList.empty() ? &entitiesFrameList[0].frame : nullptr;
+    setStartupProgress(0.60f);
 
     std::unordered_map<int, std::string> tileFrameById;
     {
@@ -835,6 +908,7 @@ int RunGameApp(int argc, char** argv) {
         playerFramesByName["fallback"] = f;
     }
     const Frame* fallbackPlayerFrame = !playerFrameList.empty() ? &playerFrameList[0].frame : nullptr;
+    setStartupProgress(0.76f);
     audio.loadGlobalAssets();
     std::unordered_map<int, std::string> worldNamesById;
     struct IntroTextStyle {
@@ -1055,6 +1129,7 @@ int RunGameApp(int argc, char** argv) {
             }
         }
     }
+    setStartupProgress(0.90f);
     if (enableGameLog) {
         const std::string text = ReadTextFile("assets/log_settings.json");
         if (!text.empty()) {
@@ -1910,6 +1985,7 @@ int RunGameApp(int argc, char** argv) {
         {"video_driver", SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "unknown"},
         {"audio_driver", SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver() : "unknown"}
     });
+    finishStartupLoading();
     LevelManager levelManager;
     Uint64 nextAudioRecoverTick = 0;
     auto recoverAudioIfNeeded = [&](bool inLevel) {
