@@ -1538,6 +1538,9 @@ int RunGameApp(int argc, char** argv) {
     constexpr int kUiScaleMinPercent = 50;
     constexpr int kUiScaleMaxPercent = 400;
     int uiScalePercent = kUiScaleMaxPercent;
+    constexpr int kUiEdgePaddingMin = 0;
+    constexpr int kUiEdgePaddingMax = 96;
+    int uiEdgePadding = 0;
     std::array<bool, 55> extraSettings{};
     extraSettings[44] = true; // PRIVACY+ -> SEND ANONYMOUS METRICS
     const std::string defaultTelemetryWebhook = "https://discord.com/api/webhooks/1471610164829356085/at2iXFzt7euIGzvIaN8iQEgNS6m1RfKUShwq6RPyIUUefIO7Id-uWxdB9Mo4wP1WKVWj";
@@ -1568,7 +1571,8 @@ int RunGameApp(int argc, char** argv) {
         j["build_uuid"] = buildUuid;
         nlohmann::json settings;
         settings["ui"] = {
-            {"show_optional_sidebar", showOptionalSidebar}
+            {"show_optional_sidebar", showOptionalSidebar},
+            {"edge_padding", uiEdgePadding}
         };
         settings["display"] = {
             {"fullscreen", fullscreen},
@@ -1648,6 +1652,7 @@ int RunGameApp(int argc, char** argv) {
         j["key_jump"] = (int)keybinds.jump;
         j["key_pause"] = (int)keybinds.pause;
         j["ui_scale_percent"] = uiScalePercent;
+        j["ui_edge_padding"] = uiEdgePadding;
         j["extra_settings"] = j["settings"]["extra_settings"];
         j["telemetry_webhook_url"] = telemetryWebhookUrl;
         j["level_server_url"] = levelServerUrl;
@@ -1716,6 +1721,9 @@ int RunGameApp(int argc, char** argv) {
                     const auto& ui = s["ui"];
                     if (ui.contains("show_optional_sidebar") && ui["show_optional_sidebar"].is_boolean()) {
                         showOptionalSidebar = ui["show_optional_sidebar"].get<bool>();
+                    }
+                    if (ui.contains("edge_padding") && ui["edge_padding"].is_number_integer()) {
+                        uiEdgePadding = std::clamp(ui["edge_padding"].get<int>(), kUiEdgePaddingMin, kUiEdgePaddingMax);
                     }
                 }
                 if (s.contains("camera") && s["camera"].is_object()) {
@@ -1827,6 +1835,9 @@ int RunGameApp(int argc, char** argv) {
             if (j.contains("key_pause")) keybinds.pause = parseScancode(j["key_pause"], keybinds.pause);
             if (j.contains("ui_scale_percent") && j["ui_scale_percent"].is_number_integer()) {
                 uiScalePercent = std::clamp(j["ui_scale_percent"].get<int>(), kUiScaleMinPercent, kUiScaleMaxPercent);
+            }
+            if (j.contains("ui_edge_padding") && j["ui_edge_padding"].is_number_integer()) {
+                uiEdgePadding = std::clamp(j["ui_edge_padding"].get<int>(), kUiEdgePaddingMin, kUiEdgePaddingMax);
             }
             if (j.contains("extra_settings") && j["extra_settings"].is_array()) {
                 const auto& a = j["extra_settings"];
@@ -2198,6 +2209,7 @@ int RunGameApp(int argc, char** argv) {
     frontendCtx.musicVolume = &musicVolume;
     frontendCtx.sfxVolume = &sfxVolume;
     frontendCtx.uiScalePercent = &uiScalePercent;
+    frontendCtx.uiEdgePadding = &uiEdgePadding;
     frontendCtx.levelServerUrl = &levelServerUrl;
     frontendCtx.levelServerAuthToken = &levelServerAuthToken;
     frontendCtx.levelServerAccountUsername = &levelServerAccountUsername;
@@ -4336,7 +4348,7 @@ int RunGameApp(int argc, char** argv) {
         const float minScreenDim = std::min((float)screenW, (float)screenH);
         const float baseUiSize = std::clamp(minScreenDim * 0.16f, 110.0f, 190.0f);
         float uiSize = std::clamp(baseUiSize * 2.0f * mobileUiScale, 96.0f, minScreenDim * 0.45f);
-        float uiPad = std::clamp(uiSize * 0.22f, 20.0f, 44.0f);
+        float uiPad = std::clamp(uiSize * 0.22f, 20.0f, 44.0f) + (float)uiEdgePadding;
         float uiGap = std::clamp(uiSize * 0.18f, 12.0f, 34.0f);
         SDL_FRect touchLeftBtn{uiPad, screenH - uiPad - uiSize, uiSize, uiSize};
         SDL_FRect touchRightBtn{uiPad + uiSize + uiGap, screenH - uiPad - uiSize, uiSize, uiSize};
@@ -7507,11 +7519,12 @@ int RunGameApp(int argc, char** argv) {
         std::ostringstream timerText;
         timerText << mins << "," << std::setw(2) << std::setfill('0') << secs;
         const int hudScale = 4;
-        const int hudLeftX = 32;
-        const int hudValueX = 188;
-        const int hudTopY = 32;
+        const int uiEdgeOffset = std::clamp(uiEdgePadding, kUiEdgePaddingMin, kUiEdgePaddingMax);
+        const int hudLeftX = 32 + uiEdgeOffset;
+        const int hudValueX = 188 + uiEdgeOffset;
+        const int hudTopY = 32 + uiEdgeOffset;
         const int hudLineGap = 64;
-        const int hudBottomMargin = 64;
+        const int hudBottomMargin = 64 + uiEdgeOffset;
         const int hudSlideOutX = -(int)std::lround(levelCompleteUiLerp * 520.0f);
         DrawText(ren, hudLeftX + hudSlideOutX, hudTopY, hudScale, "COINS");
         DrawText(ren, hudValueX + hudSlideOutX, hudTopY, hudScale, std::to_string(levelManager.coinCount()));

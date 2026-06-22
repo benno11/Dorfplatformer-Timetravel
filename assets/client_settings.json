@@ -6,7 +6,8 @@
       "ui_scale_percent": 100
     },
     "ui": {
-      "show_optional_sidebar": true
+      "show_optional_sidebar": true,
+      "edge_padding": 0
     },
     "camera": {
       "clamp_cam_x": true

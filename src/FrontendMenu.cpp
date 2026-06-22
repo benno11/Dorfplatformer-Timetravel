@@ -98,6 +98,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     int& musicVolume = *ctx.musicVolume;
     int& sfxVolume = *ctx.sfxVolume;
     int& uiScalePercent = *ctx.uiScalePercent;
+    int uiEdgePaddingLocal = 0;
+    int& uiEdgePadding = ctx.uiEdgePadding ? *ctx.uiEdgePadding : uiEdgePaddingLocal;
     std::string networkServerUrlLocal;
     std::string networkAuthTokenLocal;
     std::string networkUsernameLocal;
@@ -112,6 +114,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     int& activeSaveSlotIndex = ctx.activeSaveSlotIndex ? *ctx.activeSaveSlotIndex : activeSaveSlotIndexLocal;
     constexpr int kUiScaleMinPercent = 50;
     constexpr int kUiScaleMaxPercent = 400;
+    constexpr int kUiEdgePaddingMin = 0;
+    constexpr int kUiEdgePaddingMax = 96;
     auto uiButtonScale = [&]() -> float {
         return std::clamp((float)uiScalePercent / 100.0f, 0.5f, 4.0f);
     };
@@ -377,48 +381,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     constexpr int IDX_VSYNC = 1;
     constexpr int IDX_CAM_CLAMP = 1;
     constexpr int IDX_UI_SCALE = 2;
-    constexpr int IDX_DEBUG_MODE = 3;
-    constexpr int IDX_SHOW_FPS = 4;
-    constexpr int IDX_SHOW_DETAILED = 5;
-    constexpr int IDX_SHOW_HITBOXES = 6;
-    constexpr int IDX_SHOW_PLAYER_HITBOX = 7;
-    constexpr int IDX_SHOW_DEBUG_VIEW = 8;
-    constexpr int IDX_POWER_MANAGEMENT = 9;
-    constexpr int IDX_LOW_POWER_MODE = 10;
-    constexpr int IDX_MUSIC = 11;
-    constexpr int IDX_SFX = 12;
-    constexpr int IDX_SHOW_EXPERIMENTAL = 13;
-    constexpr int IDX_LEVEL_SELECT = 14;
-    constexpr int IDX_ABOUT = 15;
-    constexpr int IDX_BACK = 16;
-    constexpr int kSettingsCount = 17;
-#else
-#if defined(_WIN32)
-    constexpr int IDX_FULLSCREEN = 0;
-    constexpr int IDX_VSYNC = 0;
-    constexpr int IDX_CAM_CLAMP = 2;
-    constexpr int IDX_UI_SCALE = 3;
-    constexpr int IDX_DEBUG_MODE = 4;
-    constexpr int IDX_SHOW_FPS = 5;
-    constexpr int IDX_SHOW_DETAILED = 6;
-    constexpr int IDX_SHOW_HITBOXES = 7;
-    constexpr int IDX_SHOW_PLAYER_HITBOX = 8;
-    constexpr int IDX_SHOW_DEBUG_VIEW = 9;
-    constexpr int IDX_POWER_MANAGEMENT = 10;
-    constexpr int IDX_LOW_POWER_MODE = 11;
-    constexpr int IDX_MUSIC = 12;
-    constexpr int IDX_SFX = 13;
-    constexpr int IDX_SHOW_EXPERIMENTAL = 14;
-    constexpr int IDX_LEVEL_SELECT = 15;
-    constexpr int IDX_UPDATE = 16;
-    constexpr int IDX_ABOUT = 17;
-    constexpr int IDX_BACK = 18;
-    constexpr int kSettingsCount = 19;
-#else
-    constexpr int IDX_FULLSCREEN = 0;
-    constexpr int IDX_VSYNC = 0;
-    constexpr int IDX_CAM_CLAMP = 2;
-    constexpr int IDX_UI_SCALE = 3;
+    constexpr int IDX_UI_EDGE_PADDING = 3;
     constexpr int IDX_DEBUG_MODE = 4;
     constexpr int IDX_SHOW_FPS = 5;
     constexpr int IDX_SHOW_DETAILED = 6;
@@ -434,10 +397,54 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     constexpr int IDX_ABOUT = 16;
     constexpr int IDX_BACK = 17;
     constexpr int kSettingsCount = 18;
+#else
+#if defined(_WIN32)
+    constexpr int IDX_FULLSCREEN = 0;
+    constexpr int IDX_VSYNC = 0;
+    constexpr int IDX_CAM_CLAMP = 2;
+    constexpr int IDX_UI_SCALE = 3;
+    constexpr int IDX_UI_EDGE_PADDING = 4;
+    constexpr int IDX_DEBUG_MODE = 5;
+    constexpr int IDX_SHOW_FPS = 6;
+    constexpr int IDX_SHOW_DETAILED = 7;
+    constexpr int IDX_SHOW_HITBOXES = 8;
+    constexpr int IDX_SHOW_PLAYER_HITBOX = 9;
+    constexpr int IDX_SHOW_DEBUG_VIEW = 10;
+    constexpr int IDX_POWER_MANAGEMENT = 11;
+    constexpr int IDX_LOW_POWER_MODE = 12;
+    constexpr int IDX_MUSIC = 13;
+    constexpr int IDX_SFX = 14;
+    constexpr int IDX_SHOW_EXPERIMENTAL = 15;
+    constexpr int IDX_LEVEL_SELECT = 16;
+    constexpr int IDX_UPDATE = 17;
+    constexpr int IDX_ABOUT = 18;
+    constexpr int IDX_BACK = 19;
+    constexpr int kSettingsCount = 20;
+#else
+    constexpr int IDX_FULLSCREEN = 0;
+    constexpr int IDX_VSYNC = 0;
+    constexpr int IDX_CAM_CLAMP = 2;
+    constexpr int IDX_UI_SCALE = 3;
+    constexpr int IDX_UI_EDGE_PADDING = 4;
+    constexpr int IDX_DEBUG_MODE = 5;
+    constexpr int IDX_SHOW_FPS = 6;
+    constexpr int IDX_SHOW_DETAILED = 7;
+    constexpr int IDX_SHOW_HITBOXES = 8;
+    constexpr int IDX_SHOW_PLAYER_HITBOX = 9;
+    constexpr int IDX_SHOW_DEBUG_VIEW = 10;
+    constexpr int IDX_POWER_MANAGEMENT = 11;
+    constexpr int IDX_LOW_POWER_MODE = 12;
+    constexpr int IDX_MUSIC = 13;
+    constexpr int IDX_SFX = 14;
+    constexpr int IDX_SHOW_EXPERIMENTAL = 15;
+    constexpr int IDX_LEVEL_SELECT = 16;
+    constexpr int IDX_ABOUT = 17;
+    constexpr int IDX_BACK = 18;
+    constexpr int kSettingsCount = 19;
 #endif
 #endif
     int settingsSel = 0;
-    enum class SliderDragTarget { None, Music, Sfx, UiScale };
+    enum class SliderDragTarget { None, Music, Sfx, UiScale, UiEdgePadding };
     SliderDragTarget sliderDrag = SliderDragTarget::None;
     SDL_FingerID sliderDragFinger = 0;
     enum class ScrollbarDragTarget { None, Settings, About };
@@ -1104,6 +1111,14 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         const int sliderYPad = std::max(2, (int)std::lround(3.0f * settingsMenuScale()));
         return SDL_Rect{row.x + (row.w - sliderW) / 2, row.y + row.h - sliderH - sliderYPad, sliderW, sliderH};
     };
+    auto uiEdgePaddingSliderRect = [&]() -> SDL_Rect {
+        const SDL_Rect row = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_UI_EDGE_PADDING));
+        const int inset = std::max(14, (int)std::lround(22.0f * settingsMenuScale()));
+        const int sliderW = std::max(80, row.w - inset * 2);
+        const int sliderH = std::clamp((int)std::lround(10.0f * settingsMenuScale()), 10, 22);
+        const int sliderYPad = std::max(2, (int)std::lround(3.0f * settingsMenuScale()));
+        return SDL_Rect{row.x + (row.w - sliderW) / 2, row.y + row.h - sliderH - sliderYPad, sliderW, sliderH};
+    };
     auto sliderHitRect = [&](const SDL_Rect& slider) -> SDL_Rect {
         const int padX = std::max(4, (int)std::lround(5.0f * settingsMenuScale()));
         const int padY = std::max(6, (int)std::lround(8.0f * settingsMenuScale()));
@@ -1122,6 +1137,14 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         const float t = rel / (float)std::max(1, slider.w);
         return std::clamp((int)std::lround(kUiScaleMinPercent + t * (kUiScaleMaxPercent - kUiScaleMinPercent)),
                           kUiScaleMinPercent, kUiScaleMaxPercent);
+    };
+    auto uiEdgePaddingFromPoint = [&](int x, const SDL_Rect& slider) -> int {
+        int rel = x - slider.x;
+        if (rel < 0) rel = 0;
+        if (rel > slider.w) rel = slider.w;
+        const float t = rel / (float)std::max(1, slider.w);
+        return std::clamp((int)std::lround(kUiEdgePaddingMin + t * (kUiEdgePaddingMax - kUiEdgePaddingMin)),
+                          kUiEdgePaddingMin, kUiEdgePaddingMax);
     };
     auto mouseToGamePoint = [&](int mx, int my, SDL_Point& pt) -> bool {
         int winW = 0, winH = 0, gx = 0, gy = 0;
@@ -1511,6 +1534,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         if (rawGeneralSel == IDX_VSYNC) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
         else if (rawGeneralSel == IDX_CAM_CLAMP) clampCamX = !clampCamX;
         else if (rawGeneralSel == IDX_UI_SCALE && dir != 0) uiScalePercent = std::clamp(uiScalePercent + dir * 5, kUiScaleMinPercent, kUiScaleMaxPercent);
+        else if (rawGeneralSel == IDX_UI_EDGE_PADDING && dir != 0) uiEdgePadding = std::clamp(uiEdgePadding + dir * 4, kUiEdgePaddingMin, kUiEdgePaddingMax);
         else if (rawGeneralSel == IDX_SHOW_FPS) defaultShowFpsCounter = !defaultShowFpsCounter;
         else if (rawGeneralSel == IDX_POWER_MANAGEMENT) powerManagementEnabled = !powerManagementEnabled;
         else if (rawGeneralSel == IDX_LOW_POWER_MODE) lowPowerModeEnabled = !lowPowerModeEnabled;
@@ -1526,6 +1550,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         else if (rawGeneralSel == IDX_VSYNC) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
         else if (rawGeneralSel == IDX_CAM_CLAMP) clampCamX = !clampCamX;
         else if (rawGeneralSel == IDX_UI_SCALE && dir != 0) uiScalePercent = std::clamp(uiScalePercent + dir * 5, kUiScaleMinPercent, kUiScaleMaxPercent);
+        else if (rawGeneralSel == IDX_UI_EDGE_PADDING && dir != 0) uiEdgePadding = std::clamp(uiEdgePadding + dir * 4, kUiEdgePaddingMin, kUiEdgePaddingMax);
         else if (rawGeneralSel == IDX_SHOW_FPS) defaultShowFpsCounter = !defaultShowFpsCounter;
         else if (rawGeneralSel == IDX_POWER_MANAGEMENT) powerManagementEnabled = !powerManagementEnabled;
         else if (rawGeneralSel == IDX_LOW_POWER_MODE) lowPowerModeEnabled = !lowPowerModeEnabled;
@@ -2434,6 +2459,9 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_Rect uiScaleBtn = settingsRowBtn(IDX_UI_SCALE);
                     SDL_Rect uiScaleSlider = uiScaleSliderRect();
                     SDL_Rect uiScaleSliderHit = sliderHitRect(uiScaleSlider);
+                    SDL_Rect uiEdgePaddingBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_UI_EDGE_PADDING));
+                    SDL_Rect uiEdgePaddingSlider = uiEdgePaddingSliderRect();
+                    SDL_Rect uiEdgePaddingSliderHit = sliderHitRect(uiEdgePaddingSlider);
                     SDL_Rect fpsBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_SHOW_FPS));
                     SDL_Rect powerMgmtBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_POWER_MANAGEMENT));
                     SDL_Rect lowPowerBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_LOW_POWER_MODE));
@@ -2444,6 +2472,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     else if (SDL_PointInRect(&pt, &uiScaleSliderHit) || SDL_PointInRect(&pt, &uiScaleBtn)) {
                         uiScalePercent = uiScalePercentFromPoint(pt.x, uiScaleSlider);
                         sliderDrag = SliderDragTarget::UiScale;
+                    }
+                    else if (SDL_PointInRect(&pt, &uiEdgePaddingSliderHit) || SDL_PointInRect(&pt, &uiEdgePaddingBtn)) {
+                        uiEdgePadding = uiEdgePaddingFromPoint(pt.x, uiEdgePaddingSlider);
+                        sliderDrag = SliderDragTarget::UiEdgePadding;
                     }
                     else if (SDL_PointInRect(&pt, &fpsBtn)) defaultShowFpsCounter = !defaultShowFpsCounter;
                     else if (SDL_PointInRect(&pt, &powerMgmtBtn)) powerManagementEnabled = !powerManagementEnabled;
@@ -2459,6 +2491,9 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_Rect uiScaleBtn = settingsRowBtn(IDX_UI_SCALE);
                     SDL_Rect uiScaleSlider = uiScaleSliderRect();
                     SDL_Rect uiScaleSliderHit = sliderHitRect(uiScaleSlider);
+                    SDL_Rect uiEdgePaddingBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_UI_EDGE_PADDING));
+                    SDL_Rect uiEdgePaddingSlider = uiEdgePaddingSliderRect();
+                    SDL_Rect uiEdgePaddingSliderHit = sliderHitRect(uiEdgePaddingSlider);
                     SDL_Rect fpsBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_SHOW_FPS));
                     SDL_Rect powerMgmtBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_POWER_MANAGEMENT));
                     SDL_Rect lowPowerBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_LOW_POWER_MODE));
@@ -2473,6 +2508,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     else if (SDL_PointInRect(&pt, &uiScaleSliderHit) || SDL_PointInRect(&pt, &uiScaleBtn)) {
                         uiScalePercent = uiScalePercentFromPoint(pt.x, uiScaleSlider);
                         sliderDrag = SliderDragTarget::UiScale;
+                    }
+                    else if (SDL_PointInRect(&pt, &uiEdgePaddingSliderHit) || SDL_PointInRect(&pt, &uiEdgePaddingBtn)) {
+                        uiEdgePadding = uiEdgePaddingFromPoint(pt.x, uiEdgePaddingSlider);
+                        sliderDrag = SliderDragTarget::UiEdgePadding;
                     }
                     else if (SDL_PointInRect(&pt, &fpsBtn)) defaultShowFpsCounter = !defaultShowFpsCounter;
                     else if (SDL_PointInRect(&pt, &powerMgmtBtn)) powerManagementEnabled = !powerManagementEnabled;
@@ -2698,6 +2737,9 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_Rect uiScaleBtn = settingsRowBtn(IDX_UI_SCALE);
                     SDL_Rect uiScaleSlider = uiScaleSliderRect();
                     SDL_Rect uiScaleSliderHit = sliderHitRect(uiScaleSlider);
+                    SDL_Rect uiEdgePaddingBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_UI_EDGE_PADDING));
+                    SDL_Rect uiEdgePaddingSlider = uiEdgePaddingSliderRect();
+                    SDL_Rect uiEdgePaddingSliderHit = sliderHitRect(uiEdgePaddingSlider);
                     SDL_Rect fpsBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_SHOW_FPS));
                     SDL_Rect powerMgmtBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_POWER_MANAGEMENT));
                     SDL_Rect lowPowerBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_LOW_POWER_MODE));
@@ -2708,6 +2750,11 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     else if (SDL_PointInRect(&pt, &uiScaleSliderHit) || SDL_PointInRect(&pt, &uiScaleBtn)) {
                         uiScalePercent = uiScalePercentFromPoint(pt.x, uiScaleSlider);
                         sliderDrag = SliderDragTarget::UiScale;
+                        sliderDragFinger = e.tfinger.fingerID;
+                    }
+                    else if (SDL_PointInRect(&pt, &uiEdgePaddingSliderHit) || SDL_PointInRect(&pt, &uiEdgePaddingBtn)) {
+                        uiEdgePadding = uiEdgePaddingFromPoint(pt.x, uiEdgePaddingSlider);
+                        sliderDrag = SliderDragTarget::UiEdgePadding;
                         sliderDragFinger = e.tfinger.fingerID;
                     }
                     else if (SDL_PointInRect(&pt, &fpsBtn)) defaultShowFpsCounter = !defaultShowFpsCounter;
@@ -2724,6 +2771,9 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_Rect uiScaleBtn = settingsRowBtn(IDX_UI_SCALE);
                     SDL_Rect uiScaleSlider = uiScaleSliderRect();
                     SDL_Rect uiScaleSliderHit = sliderHitRect(uiScaleSlider);
+                    SDL_Rect uiEdgePaddingBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_UI_EDGE_PADDING));
+                    SDL_Rect uiEdgePaddingSlider = uiEdgePaddingSliderRect();
+                    SDL_Rect uiEdgePaddingSliderHit = sliderHitRect(uiEdgePaddingSlider);
                     SDL_Rect fpsBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_SHOW_FPS));
                     SDL_Rect powerMgmtBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_POWER_MANAGEMENT));
                     SDL_Rect lowPowerBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_LOW_POWER_MODE));
@@ -2738,6 +2788,11 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     else if (SDL_PointInRect(&pt, &uiScaleSliderHit) || SDL_PointInRect(&pt, &uiScaleBtn)) {
                         uiScalePercent = uiScalePercentFromPoint(pt.x, uiScaleSlider);
                         sliderDrag = SliderDragTarget::UiScale;
+                        sliderDragFinger = e.tfinger.fingerID;
+                    }
+                    else if (SDL_PointInRect(&pt, &uiEdgePaddingSliderHit) || SDL_PointInRect(&pt, &uiEdgePaddingBtn)) {
+                        uiEdgePadding = uiEdgePaddingFromPoint(pt.x, uiEdgePaddingSlider);
+                        sliderDrag = SliderDragTarget::UiEdgePadding;
                         sliderDragFinger = e.tfinger.fingerID;
                     }
                     else if (SDL_PointInRect(&pt, &fpsBtn)) defaultShowFpsCounter = !defaultShowFpsCounter;
@@ -2769,9 +2824,11 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 SDL_Rect musicSlider = musicSliderRect();
                 SDL_Rect sfxSlider = sfxSliderRect();
                 SDL_Rect uiSlider = uiScaleSliderRect();
+                SDL_Rect uiEdgeSlider = uiEdgePaddingSliderRect();
                 if (sliderDrag == SliderDragTarget::Music) musicVolume = sliderValueFromPoint(pt.x, musicSlider);
                 if (sliderDrag == SliderDragTarget::Sfx) sfxVolume = sliderValueFromPoint(pt.x, sfxSlider);
                 if (sliderDrag == SliderDragTarget::UiScale) uiScalePercent = uiScalePercentFromPoint(pt.x, uiSlider);
+                if (sliderDrag == SliderDragTarget::UiEdgePadding) uiEdgePadding = uiEdgePaddingFromPoint(pt.x, uiEdgeSlider);
                 if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
             }
             if (e.type == SDL_EVENT_FINGER_MOTION &&
@@ -2811,9 +2868,11 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 SDL_Rect musicSlider = musicSliderRect();
                 SDL_Rect sfxSlider = sfxSliderRect();
                 SDL_Rect uiSlider = uiScaleSliderRect();
+                SDL_Rect uiEdgeSlider = uiEdgePaddingSliderRect();
                 if (sliderDrag == SliderDragTarget::Music) musicVolume = sliderValueFromPoint(pt.x, musicSlider);
                 if (sliderDrag == SliderDragTarget::Sfx) sfxVolume = sliderValueFromPoint(pt.x, sfxSlider);
                 if (sliderDrag == SliderDragTarget::UiScale) uiScalePercent = uiScalePercentFromPoint(pt.x, uiSlider);
+                if (sliderDrag == SliderDragTarget::UiEdgePadding) uiEdgePadding = uiEdgePaddingFromPoint(pt.x, uiEdgeSlider);
                 if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
             }
             if (e.type == SDL_MOUSEMOTION && inSettings && scrollbarDrag != ScrollbarDragTarget::None) {
@@ -3319,6 +3378,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 drawAboutLine(aboutBodyScale, std::string("WINDOW: ") + std::to_string(winW) + "x" + std::to_string(winH), 6);
                 drawAboutLine(aboutBodyScale, std::string("BASE: ") + std::to_string(ctx.baseScreenW) + "x" + std::to_string(ctx.baseScreenH), 6);
                 drawAboutLine(aboutBodyScale, std::string("UI SCALE: ") + std::to_string(uiScalePercent) + "%", 6);
+                drawAboutLine(aboutBodyScale, std::string("UI EDGE PAD: ") + std::to_string(uiEdgePadding) + " PX", 6);
                 drawAboutLine(aboutBodyScale, std::string("VIDEO DRIVER: ") + (videoDriver ? videoDriver : "unknown"), 6);
                 drawAboutLine(aboutBodyScale, std::string("AUDIO DRIVER: ") + (audioDriver ? audioDriver : "unknown"), 6);
                 drawAboutLine(aboutBodyScale, std::string("CPU CORES: ") + std::to_string(logicalCpuCores), 6);
@@ -3621,6 +3681,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     std::string("VSYNC: ") + (vsyncEnabled ? "ON" : "OFF"),
                     std::string("CAM CLAMP: ") + (clampCamX ? "ON" : "OFF"),
                     std::string("UI SCALE: ") + std::to_string(uiScalePercent) + "%",
+                    std::string("UI EDGE PAD: ") + std::to_string(uiEdgePadding) + " PX",
                     std::string("DEBUG MODE: ") + (debugModeEnabled ? "ON" : "OFF"),
                     std::string("FPS COUNTER: ") + (defaultShowFpsCounter ? "ON" : "OFF"),
                     std::string("DETAILED DEBUGGER: ") + (defaultShowDetailedDebugger ? "ON" : "OFF"),
@@ -3642,6 +3703,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     std::string("VSYNC: ") + (vsyncEnabled ? "ON" : "OFF"),
                     std::string("CAM CLAMP: ") + (clampCamX ? "ON" : "OFF"),
                     std::string("UI SCALE: ") + std::to_string(uiScalePercent) + "%",
+                    std::string("UI EDGE PAD: ") + std::to_string(uiEdgePadding) + " PX",
                     std::string("DEBUG MODE: ") + (debugModeEnabled ? "ON" : "OFF"),
                     std::string("FPS COUNTER: ") + (defaultShowFpsCounter ? "ON" : "OFF"),
                     std::string("DETAILED DEBUGGER: ") + (defaultShowDetailedDebugger ? "ON" : "OFF"),
@@ -3694,18 +3756,18 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     drawRowText(drawIdx, rows[i]);
                     drawIdx++;
                 }
-                {
-                    SDL_Rect slider = uiScaleSliderRect();
+                auto drawGeneralSlider = [&](const SDL_Rect& slider, float t) {
                     SDL_SetRenderDrawColor(ctx.ren, 70, 80, 95, 255);
                     SDL_RenderFillRect(ctx.ren, &slider);
                     SDL_SetRenderDrawColor(ctx.ren, 130, 150, 180, 255);
                     SDL_RenderDrawRect(ctx.ren, &slider);
-                    const float t = (uiScalePercent - kUiScaleMinPercent) / (float)(kUiScaleMaxPercent - kUiScaleMinPercent);
                     int fillW = (int)std::lround(std::clamp(t, 0.0f, 1.0f) * slider.w);
                     SDL_Rect fill{slider.x, slider.y, std::clamp(fillW, 0, slider.w), slider.h};
                     SDL_SetRenderDrawColor(ctx.ren, 180, 220, 255, 255);
                     SDL_RenderFillRect(ctx.ren, &fill);
-                }
+                };
+                drawGeneralSlider(uiScaleSliderRect(), (uiScalePercent - kUiScaleMinPercent) / (float)(kUiScaleMaxPercent - kUiScaleMinPercent));
+                drawGeneralSlider(uiEdgePaddingSliderRect(), (uiEdgePadding - kUiEdgePaddingMin) / (float)(kUiEdgePaddingMax - kUiEdgePaddingMin));
                 SDL_SetRenderClipRect(ctx.ren, nullptr);
             }
             if ((settingsTab != IDX_SETTINGS_ABOUT && settingsMaxScroll(settingsTab) > 0) ||

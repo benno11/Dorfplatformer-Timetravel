@@ -50,6 +50,7 @@ struct FrontendMenuContext {
     int* musicVolume = nullptr;
     int* sfxVolume = nullptr;
     int* uiScalePercent = nullptr;
+    int* uiEdgePadding = nullptr;
     std::string* levelServerUrl = nullptr;
     std::string* levelServerAuthToken = nullptr;
     std::string* levelServerAccountUsername = nullptr;
