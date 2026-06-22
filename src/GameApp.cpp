@@ -1538,6 +1538,9 @@ int RunGameApp(int argc, char** argv) {
     constexpr int kUiScaleMinPercent = 50;
     constexpr int kUiScaleMaxPercent = 400;
     int uiScalePercent = kUiScaleMaxPercent;
+    constexpr int kUiEdgePaddingMin = 0;
+    constexpr int kUiEdgePaddingMax = 96;
+    int uiEdgePadding = 0;
     std::array<bool, 55> extraSettings{};
     extraSettings[44] = true; // PRIVACY+ -> SEND ANONYMOUS METRICS
     const std::string defaultTelemetryWebhook = "https://discord.com/api/webhooks/1471610164829356085/at2iXFzt7euIGzvIaN8iQEgNS6m1RfKUShwq6RPyIUUefIO7Id-uWxdB9Mo4wP1WKVWj";
@@ -1568,7 +1571,8 @@ int RunGameApp(int argc, char** argv) {
         j["build_uuid"] = buildUuid;
         nlohmann::json settings;
         settings["ui"] = {
-            {"show_optional_sidebar", showOptionalSidebar}
+            {"show_optional_sidebar", showOptionalSidebar},
+            {"edge_padding", uiEdgePadding}
         };
         settings["display"] = {
             {"fullscreen", fullscreen},
@@ -1648,6 +1652,7 @@ int RunGameApp(int argc, char** argv) {
         j["key_jump"] = (int)keybinds.jump;
         j["key_pause"] = (int)keybinds.pause;
         j["ui_scale_percent"] = uiScalePercent;
+        j["ui_edge_padding"] = uiEdgePadding;
         j["extra_settings"] = j["settings"]["extra_settings"];
         j["telemetry_webhook_url"] = telemetryWebhookUrl;
         j["level_server_url"] = levelServerUrl;
@@ -1716,6 +1721,9 @@ int RunGameApp(int argc, char** argv) {
                     const auto& ui = s["ui"];
                     if (ui.contains("show_optional_sidebar") && ui["show_optional_sidebar"].is_boolean()) {
                         showOptionalSidebar = ui["show_optional_sidebar"].get<bool>();
+                    }
+                    if (ui.contains("edge_padding") && ui["edge_padding"].is_number_integer()) {
+                        uiEdgePadding = std::clamp(ui["edge_padding"].get<int>(), kUiEdgePaddingMin, kUiEdgePaddingMax);
                     }
                 }
                 if (s.contains("camera") && s["camera"].is_object()) {
@@ -1827,6 +1835,9 @@ int RunGameApp(int argc, char** argv) {
             if (j.contains("key_pause")) keybinds.pause = parseScancode(j["key_pause"], keybinds.pause);
             if (j.contains("ui_scale_percent") && j["ui_scale_percent"].is_number_integer()) {
                 uiScalePercent = std::clamp(j["ui_scale_percent"].get<int>(), kUiScaleMinPercent, kUiScaleMaxPercent);
+            }
+            if (j.contains("ui_edge_padding") && j["ui_edge_padding"].is_number_integer()) {
+                uiEdgePadding = std::clamp(j["ui_edge_padding"].get<int>(), kUiEdgePaddingMin, kUiEdgePaddingMax);
             }
             if (j.contains("extra_settings") && j["extra_settings"].is_array()) {
                 const auto& a = j["extra_settings"];
@@ -2198,6 +2209,7 @@ int RunGameApp(int argc, char** argv) {
     frontendCtx.musicVolume = &musicVolume;
     frontendCtx.sfxVolume = &sfxVolume;
     frontendCtx.uiScalePercent = &uiScalePercent;
+    frontendCtx.uiEdgePadding = &uiEdgePadding;
     frontendCtx.levelServerUrl = &levelServerUrl;
     frontendCtx.levelServerAuthToken = &levelServerAuthToken;
     frontendCtx.levelServerAccountUsername = &levelServerAccountUsername;
@@ -3822,18 +3834,37 @@ int RunGameApp(int argc, char** argv) {
         SDL_Rect pauseBtnContinue{0,0,0,0};
         SDL_Rect pauseBtnRestart{0,0,0,0};
         SDL_Rect pauseBtnExit{0,0,0,0};
+        constexpr float kPauseMenuAnimDurationSec = 0.22f;
+        constexpr float kPauseButtonFadeDelay = 0.46f;
+        float pauseMenuAnim = 0.0f;
+        bool pauseMenuClosing = false;
         bool lowPowerSuspendActive = false;
         Uint32 lowPowerSuspendEligibleTicks = 0;
         constexpr Uint32 kLowPowerSuspendDelayMs = 1250;
 
+        auto openPauseMenu = [&]() {
+            if (levelCompleteActive) return;
+            paused = true;
+            pauseMenuClosing = false;
+        };
+        auto closePauseMenu = [&]() {
+            if (!paused) return;
+            pauseMenuClosing = true;
+        };
+        auto togglePauseMenu = [&]() {
+            if (paused && !pauseMenuClosing) closePauseMenu();
+            else openPauseMenu();
+        };
         auto handlePauseSelect = [&](int sel) {
             pauseSelection = sel;
             if (pauseSelection == 0) {
-                paused = false;
+                closePauseMenu();
             } else if (pauseSelection == 1) {
                 droppedCoins.clear();
                 reloadLevel();
                 paused = false;
+                pauseMenuAnim = 0.0f;
+                pauseMenuClosing = false;
             } else {
                 returnToSelect = true;
                 levelRunning = false;
@@ -4146,6 +4177,21 @@ int RunGameApp(int argc, char** argv) {
             };
             if (levelCompleteActive) {
                 paused = false;
+                pauseMenuAnim = 0.0f;
+                pauseMenuClosing = false;
+            }
+            if (paused) {
+                const float animStep = (kPauseMenuAnimDurationSec > 0.0f) ? (dt / kPauseMenuAnimDurationSec) : 1.0f;
+                pauseMenuAnim += pauseMenuClosing ? -animStep : animStep;
+                if (pauseMenuAnim <= 0.0f) {
+                    pauseMenuAnim = 0.0f;
+                    if (pauseMenuClosing) {
+                        paused = false;
+                        pauseMenuClosing = false;
+                    }
+                } else if (pauseMenuAnim >= 1.0f) {
+                    pauseMenuAnim = 1.0f;
+                }
             }
             updateFpsAccumSec += dtPrecise;
             ++updateFpsAccumFrames;
@@ -4336,7 +4382,7 @@ int RunGameApp(int argc, char** argv) {
         const float minScreenDim = std::min((float)screenW, (float)screenH);
         const float baseUiSize = std::clamp(minScreenDim * 0.16f, 110.0f, 190.0f);
         float uiSize = std::clamp(baseUiSize * 2.0f * mobileUiScale, 96.0f, minScreenDim * 0.45f);
-        float uiPad = std::clamp(uiSize * 0.22f, 20.0f, 44.0f);
+        float uiPad = std::clamp(uiSize * 0.22f, 20.0f, 44.0f) + (float)uiEdgePadding;
         float uiGap = std::clamp(uiSize * 0.18f, 12.0f, 34.0f);
         SDL_FRect touchLeftBtn{uiPad, screenH - uiPad - uiSize, uiSize, uiSize};
         SDL_FRect touchRightBtn{uiPad + uiSize + uiGap, screenH - uiPad - uiSize, uiSize, uiSize};
@@ -4412,7 +4458,7 @@ int RunGameApp(int argc, char** argv) {
             if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST) {
                 if (e.window.windowID == mainWindowId) {
                     mainWindowFocused = false;
-                    paused = true;
+                    openPauseMenu();
                 }
             }
             if (e.type == SDL_EVENT_WINDOW_FOCUS_GAINED) {
@@ -4507,6 +4553,8 @@ int RunGameApp(int argc, char** argv) {
                 (e.type == SDL_EVENT_KEY_DOWN) ||
 #endif
                 (e.type == SDL_KEYDOWN);
+            const bool isKeyPauseToggleEvent = isKeyDownEvent && e.key.repeat == 0 && !levelCompleteActive &&
+                (e.key.key == SDLK_AC_BACK || e.key.key == SDL_GetKeyFromScancode(keybinds.pause, SDL_KMOD_NONE, false));
             if (isKeyDownEvent && e.key.repeat == 0) {
                 if (e.key.key == SDLK_F11) {
 #if !defined(__ANDROID__)
@@ -4636,8 +4684,8 @@ int RunGameApp(int argc, char** argv) {
                         }
                     }
                 }
-                if (!levelCompleteActive && (e.key.key == SDLK_AC_BACK || e.key.key == SDL_GetKeyFromScancode(keybinds.pause, SDL_KMOD_NONE, false))) {
-                    paused = !paused;
+                if (isKeyPauseToggleEvent) {
+                    togglePauseMenu();
                 }
                 if (paused) {
                     if (e.key.key == SDLK_LEFT || e.key.key == SDLK_a) {
@@ -4651,8 +4699,8 @@ int RunGameApp(int argc, char** argv) {
                     }
                 }
             }
-            if (!levelCompleteActive && InputSystem::isPauseToggleEvent(e)) {
-                paused = !paused;
+            if (!isKeyPauseToggleEvent && !levelCompleteActive && InputSystem::isPauseToggleEvent(e)) {
+                togglePauseMenu();
             }
             if (paused && InputSystem::isLeftEvent(e)) {
                 pauseSelection = std::max(0, pauseSelection - 1);
@@ -4663,7 +4711,8 @@ int RunGameApp(int argc, char** argv) {
             if (paused && InputSystem::isAcceptEvent(e)) {
                 handlePauseSelect(pauseSelection);
             }
-            if (paused && e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
+            const bool pauseButtonsInteractive = paused && !pauseMenuClosing && pauseMenuAnim >= 0.98f;
+            if (pauseButtonsInteractive && e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
                 int winW = 0, winH = 0, gx = 0, gy = 0;
                 getWindowSizeInPixelsCompat(win, winW, winH);
                 if (windowToGamePoint(e.button.x, e.button.y, winW, winH, kBaseScreenW, kBaseScreenH, gx, gy, 1.0f)) {
@@ -4673,7 +4722,7 @@ int RunGameApp(int argc, char** argv) {
                     else if (SDL_PointInRect(&pt, &pauseBtnExit)) handlePauseSelect(2);
                 }
             }
-            if (paused && e.type == SDL_EVENT_FINGER_DOWN &&
+            if (pauseButtonsInteractive && e.type == SDL_EVENT_FINGER_DOWN &&
                 (e.tfinger.windowID == mainWindowId || e.tfinger.windowID == 0)) {
                 int winW = 0, winH = 0;
                 getWindowSizeInPixelsCompat(win, winW, winH);
@@ -7507,11 +7556,12 @@ int RunGameApp(int argc, char** argv) {
         std::ostringstream timerText;
         timerText << mins << "," << std::setw(2) << std::setfill('0') << secs;
         const int hudScale = 4;
-        const int hudLeftX = 32;
-        const int hudValueX = 188;
-        const int hudTopY = 32;
+        const int uiEdgeOffset = std::clamp(uiEdgePadding, kUiEdgePaddingMin, kUiEdgePaddingMax);
+        const int hudLeftX = 32 + uiEdgeOffset;
+        const int hudValueX = 188 + uiEdgeOffset;
+        const int hudTopY = 32 + uiEdgeOffset;
         const int hudLineGap = 64;
-        const int hudBottomMargin = 64;
+        const int hudBottomMargin = 64 + uiEdgeOffset;
         const int hudSlideOutX = -(int)std::lround(levelCompleteUiLerp * 520.0f);
         DrawText(ren, hudLeftX + hudSlideOutX, hudTopY, hudScale, "COINS");
         DrawText(ren, hudValueX + hudSlideOutX, hudTopY, hudScale, std::to_string(levelManager.coinCount()));
@@ -7523,7 +7573,13 @@ int RunGameApp(int argc, char** argv) {
         // HUD: lives counter (bottom-left).
         DrawText(ren, hudLeftX + hudSlideOutX, screenH - hudBottomMargin, hudScale, "LIVES");
         DrawText(ren, hudValueX + hudSlideOutX, screenH - hudBottomMargin, hudScale, std::to_string(livesCount));
-        if (paused) {
+        if (paused || pauseMenuAnim > 0.001f) {
+            const float pauseEase = pauseMenuAnim * pauseMenuAnim * (3.0f - 2.0f * pauseMenuAnim);
+            const float pauseButtonT = std::clamp((pauseEase - kPauseButtonFadeDelay) / (1.0f - kPauseButtonFadeDelay), 0.0f, 1.0f);
+            const Uint8 pauseOverlayAlpha = (Uint8)std::clamp((int)std::lround(180.0f * pauseEase), 0, 180);
+            const Uint8 pausePanelAlpha = (Uint8)std::clamp((int)std::lround(255.0f * pauseEase), 0, 255);
+            const Uint8 pauseButtonAlpha = (Uint8)std::clamp((int)std::lround(255.0f * pauseButtonT), 0, 255);
+            const int pauseSlideY = -(int)std::lround((1.0f - pauseEase) * (float)screenH * 0.55f);
             const float uiButtonScale = std::clamp((float)uiScalePercent / 100.0f, 0.5f, 4.0f);
             auto scaleRectCentered = [&](const SDL_Rect& in) -> SDL_Rect {
                 const float cx = (float)in.x + (float)in.w * 0.5f;
@@ -7538,7 +7594,7 @@ int RunGameApp(int argc, char** argv) {
                 };
             };
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
-            SDL_SetRenderDrawColor(ren, 10, 10, 14, 180);
+            SDL_SetRenderDrawColor(ren, 10, 10, 14, pauseOverlayAlpha);
             SDL_Rect overlay{0, 0, screenW, screenH};
             SDL_RenderFillRect(ren, &overlay);
 
@@ -7555,7 +7611,10 @@ int RunGameApp(int argc, char** argv) {
                     panelFrame.rect.w,
                     panelFrame.rect.h
                 });
+                panelDst.y += pauseSlideY;
+                SDL_SetTextureAlphaMod(pauseTex, pausePanelAlpha);
                 renderFrame(ren, pauseTex, panelFrame, panelDst);
+                SDL_SetTextureAlphaMod(pauseTex, pauseButtonAlpha);
 
                 const Frame& continueFrame = pauseFrames["Continuebtn"];
                 const Frame& restartFrame = pauseFrames["Retartbtn"];
@@ -7571,7 +7630,7 @@ int RunGameApp(int argc, char** argv) {
                 int spacing = std::max(8, (int)std::lround(18.0f * uiButtonScale));
                 int totalW = contW + restartW + exitW + spacing * 2;
                 int startX = screenW / 2 - totalW / 2;
-                int centerY = screenH / 2 + (int)std::lround(30.0f * uiButtonScale);
+                int centerY = screenH / 2 + (int)std::lround(30.0f * uiButtonScale) + pauseSlideY;
 
                 SDL_Rect contDst{startX, centerY - contH / 2, contW, contH};
                 SDL_Rect restartDst{startX + contW + spacing, centerY - restartH / 2, restartW, restartH};
@@ -7584,41 +7643,47 @@ int RunGameApp(int argc, char** argv) {
                 renderFrame(ren, pauseTex, restartFrame, restartDst);
                 renderFrame(ren, pauseTex, exitFrame, exitDst);
 
-                SDL_SetRenderDrawColor(ren, 255, 255, 255, 200);
+                SDL_SetTextureAlphaMod(pauseTex, 255);
+
+                SDL_SetRenderDrawColor(ren, 255, 255, 255, (Uint8)std::clamp((int)std::lround(200.0f * pauseButtonT), 0, 200));
                 SDL_Rect highlight = (pauseSelection == 0) ? contDst : (pauseSelection == 1 ? restartDst : exitDst);
                 SDL_RenderDrawRect(ren, &highlight);
             } else {
                 SDL_Rect panel = scaleRectCentered(SDL_Rect{screenW / 2 - 140, screenH / 2 - 90, 280, 180});
-                SDL_SetRenderDrawColor(ren, 30, 30, 38, 230);
+                panel.y += pauseSlideY;
+                SDL_SetRenderDrawColor(ren, 30, 30, 38, (Uint8)std::clamp((int)std::lround(230.0f * pauseEase), 0, 230));
                 SDL_RenderFillRect(ren, &panel);
-                SDL_SetRenderDrawColor(ren, 80, 90, 110, 255);
+                SDL_SetRenderDrawColor(ren, 80, 90, 110, pausePanelAlpha);
                 SDL_RenderDrawRect(ren, &panel);
 
-                SDL_SetRenderDrawColor(ren, 230, 230, 230, 255);
-                DrawText(ren, screenW / 2 - MeasureTextWidth(3, "PAUSED") / 2, panel.y + (int)std::lround(22.0f * uiButtonScale), 3, "PAUSED");
+                SDL_SetRenderDrawColor(ren, 230, 230, 230, pausePanelAlpha);
+                DrawTextColored(ren, screenW / 2 - MeasureTextWidth(3, "PAUSED") / 2, panel.y + (int)std::lround(22.0f * uiButtonScale), 3, "PAUSED", SDL_Color{255, 255, 255, pausePanelAlpha});
 
                 SDL_Rect resumeBtn = scaleRectCentered(SDL_Rect{screenW / 2 - 132, screenH / 2 + 10, 86, 36});
                 SDL_Rect restartBtn = scaleRectCentered(SDL_Rect{screenW / 2 - 43, screenH / 2 + 10, 86, 36});
                 SDL_Rect quitBtn = scaleRectCentered(SDL_Rect{screenW / 2 + 46, screenH / 2 + 10, 86, 36});
+                resumeBtn.y += pauseSlideY;
+                restartBtn.y += pauseSlideY;
+                quitBtn.y += pauseSlideY;
                 const int labelLineH = std::max(10, (int)std::lround(16.0f * uiButtonScale));
                 pauseBtnContinue = resumeBtn;
                 pauseBtnRestart = restartBtn;
                 pauseBtnExit = quitBtn;
 
-                SDL_SetRenderDrawColor(ren, pauseSelection == 0 ? 70 : 45, pauseSelection == 0 ? 120 : 70, pauseSelection == 0 ? 170 : 90, 255);
+                SDL_SetRenderDrawColor(ren, pauseSelection == 0 ? 70 : 45, pauseSelection == 0 ? 120 : 70, pauseSelection == 0 ? 170 : 90, pauseButtonAlpha);
                 SDL_RenderFillRect(ren, &resumeBtn);
-                SDL_SetRenderDrawColor(ren, 200, 200, 200, 255);
-                DrawText(ren, resumeBtn.x + (resumeBtn.w - MeasureTextWidth(2, "RESUME")) / 2, resumeBtn.y + (resumeBtn.h - labelLineH) / 2, 2, "RESUME");
+                SDL_SetRenderDrawColor(ren, 200, 200, 200, pauseButtonAlpha);
+                DrawTextColored(ren, resumeBtn.x + (resumeBtn.w - MeasureTextWidth(2, "RESUME")) / 2, resumeBtn.y + (resumeBtn.h - labelLineH) / 2, 2, "RESUME", SDL_Color{255, 255, 255, pauseButtonAlpha});
 
-                SDL_SetRenderDrawColor(ren, pauseSelection == 1 ? 70 : 45, pauseSelection == 1 ? 120 : 70, pauseSelection == 1 ? 170 : 90, 255);
+                SDL_SetRenderDrawColor(ren, pauseSelection == 1 ? 70 : 45, pauseSelection == 1 ? 120 : 70, pauseSelection == 1 ? 170 : 90, pauseButtonAlpha);
                 SDL_RenderFillRect(ren, &restartBtn);
-                SDL_SetRenderDrawColor(ren, 200, 200, 200, 255);
-                DrawText(ren, restartBtn.x + (restartBtn.w - MeasureTextWidth(2, "RESTART")) / 2, restartBtn.y + (restartBtn.h - labelLineH) / 2, 2, "RESTART");
+                SDL_SetRenderDrawColor(ren, 200, 200, 200, pauseButtonAlpha);
+                DrawTextColored(ren, restartBtn.x + (restartBtn.w - MeasureTextWidth(2, "RESTART")) / 2, restartBtn.y + (restartBtn.h - labelLineH) / 2, 2, "RESTART", SDL_Color{255, 255, 255, pauseButtonAlpha});
 
-                SDL_SetRenderDrawColor(ren, pauseSelection == 2 ? 120 : 70, pauseSelection == 2 ? 70 : 50, pauseSelection == 2 ? 70 : 60, 255);
+                SDL_SetRenderDrawColor(ren, pauseSelection == 2 ? 120 : 70, pauseSelection == 2 ? 70 : 50, pauseSelection == 2 ? 70 : 60, pauseButtonAlpha);
                 SDL_RenderFillRect(ren, &quitBtn);
-                SDL_SetRenderDrawColor(ren, 200, 200, 200, 255);
-                DrawText(ren, quitBtn.x + (quitBtn.w - MeasureTextWidth(2, "QUIT")) / 2, quitBtn.y + (quitBtn.h - labelLineH) / 2, 2, "QUIT");
+                SDL_SetRenderDrawColor(ren, 200, 200, 200, pauseButtonAlpha);
+                DrawTextColored(ren, quitBtn.x + (quitBtn.w - MeasureTextWidth(2, "QUIT")) / 2, quitBtn.y + (quitBtn.h - labelLineH) / 2, 2, "QUIT", SDL_Color{255, 255, 255, pauseButtonAlpha});
             }
 
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
