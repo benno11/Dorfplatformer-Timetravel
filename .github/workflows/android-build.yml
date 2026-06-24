@@ -335,8 +335,17 @@ jobs:
         if: hashFiles('build/profiles/android-bolt/*.fdata', 'build/profiles/android-bolt/*/*.fdata', 'build/profiles/android-bolt/*/libplatformer.fdata') != ''
         env:
           LLVM_BOLT_VERSION: "22.1.8"
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
           set -euo pipefail
+          ndk_bolt_bin="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-bolt"
+          if [[ -x "$ndk_bolt_bin" ]]; then
+            echo "[info] Using llvm-bolt from the Android NDK toolchain."
+            echo "$(dirname "$ndk_bolt_bin")" >> "$GITHUB_PATH"
+            exit 0
+          fi
+
+          echo "[info] Android NDK did not provide llvm-bolt; downloading upstream LLVM ${LLVM_BOLT_VERSION}."
           curl -L --retry 3 --fail \
             "https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_BOLT_VERSION}/LLVM-${LLVM_BOLT_VERSION}-Linux-X64.tar.xz" \
             -o "$RUNNER_TEMP/llvm-bolt.tar.xz"

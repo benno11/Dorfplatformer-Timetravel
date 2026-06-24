@@ -28,6 +28,7 @@
 #include "InputSystem.h"
 #include "LevelSelect.h"
 #include "TextRenderer.h"
+#include "UiScale.h"
 
 FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     constexpr const char* kSavedGameSelectionToken = "__DF_SAVEGAME_CONTINUE__";
@@ -112,16 +113,11 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     std::string& firebaseApiKey = ctx.firebaseApiKey ? *ctx.firebaseApiKey : firebaseApiKeyLocal;
     int activeSaveSlotIndexLocal = 0;
     int& activeSaveSlotIndex = ctx.activeSaveSlotIndex ? *ctx.activeSaveSlotIndex : activeSaveSlotIndexLocal;
-    constexpr int kUiScaleMinPercent = 50;
-    constexpr int kUiScaleMaxPercent = 400;
-    constexpr int kUiEdgePaddingMin = 0;
-    constexpr int kUiEdgePaddingMax = 96;
     auto uiButtonScale = [&]() -> float {
-        return std::clamp((float)uiScalePercent / 100.0f, 0.5f, 4.0f);
+        return UiScale::multiplier(uiScalePercent);
     };
     auto settingsMenuScale = [&]() -> float {
-        // Keep the enlarged settings look while allowing the higher UI-scale ceiling.
-        return std::clamp(uiButtonScale() * 2.0f, 1.0f, 4.7f);
+        return UiScale::settingsMultiplier(uiScalePercent);
     };
     std::vector<std::string> settingsTabLabels = {
         "GENERAL", "AUDIO", "DEBUG", "CONTROLS", "ABOUT",
@@ -194,17 +190,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         return std::clamp(desired * fit, 0.55f, 5.0f);
     };
     auto scaleRectCentered = [&](const SDL_Rect& in, float scale) -> SDL_Rect {
-        if (scale <= 0.0f) return in;
-        const float cx = (float)in.x + (float)in.w * 0.5f;
-        const float cy = (float)in.y + (float)in.h * 0.5f;
-        const int nw = std::max(1, (int)std::lround((float)in.w * scale));
-        const int nh = std::max(1, (int)std::lround((float)in.h * scale));
-        return SDL_Rect{
-            (int)std::lround(cx - (float)nw * 0.5f),
-            (int)std::lround(cy - (float)nh * 0.5f),
-            nw,
-            nh
-        };
+        return UiScale::scaleRectCentered(in, scale);
     };
 
     auto applyRenderVsync = [&]() {
@@ -1131,20 +1117,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         return (int)std::lround((rel / (double)std::max(1, slider.w)) * 128.0);
     };
     auto uiScalePercentFromPoint = [&](int x, const SDL_Rect& slider) -> int {
-        int rel = x - slider.x;
-        if (rel < 0) rel = 0;
-        if (rel > slider.w) rel = slider.w;
-        const float t = rel / (float)std::max(1, slider.w);
-        return std::clamp((int)std::lround(kUiScaleMinPercent + t * (kUiScaleMaxPercent - kUiScaleMinPercent)),
-                          kUiScaleMinPercent, kUiScaleMaxPercent);
+        return UiScale::percentFromSliderX(x, slider);
     };
     auto uiEdgePaddingFromPoint = [&](int x, const SDL_Rect& slider) -> int {
-        int rel = x - slider.x;
-        if (rel < 0) rel = 0;
-        if (rel > slider.w) rel = slider.w;
-        const float t = rel / (float)std::max(1, slider.w);
-        return std::clamp((int)std::lround(kUiEdgePaddingMin + t * (kUiEdgePaddingMax - kUiEdgePaddingMin)),
-                          kUiEdgePaddingMin, kUiEdgePaddingMax);
+        return UiScale::edgePaddingFromSliderX(x, slider);
     };
     auto mouseToGamePoint = [&](int mx, int my, SDL_Point& pt) -> bool {
         int winW = 0, winH = 0, gx = 0, gy = 0;
@@ -1533,8 +1509,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         const int rawGeneralSel = generalSettingsRawIndexFromVisible(settingsSel);
         if (rawGeneralSel == IDX_VSYNC) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
         else if (rawGeneralSel == IDX_CAM_CLAMP) clampCamX = !clampCamX;
-        else if (rawGeneralSel == IDX_UI_SCALE && dir != 0) uiScalePercent = std::clamp(uiScalePercent + dir * 5, kUiScaleMinPercent, kUiScaleMaxPercent);
-        else if (rawGeneralSel == IDX_UI_EDGE_PADDING && dir != 0) uiEdgePadding = std::clamp(uiEdgePadding + dir * 4, kUiEdgePaddingMin, kUiEdgePaddingMax);
+        else if (rawGeneralSel == IDX_UI_SCALE && dir != 0) uiScalePercent = UiScale::stepPercent(uiScalePercent, dir);
+        else if (rawGeneralSel == IDX_UI_EDGE_PADDING && dir != 0) uiEdgePadding = UiScale::stepEdgePadding(uiEdgePadding, dir);
         else if (rawGeneralSel == IDX_SHOW_FPS) defaultShowFpsCounter = !defaultShowFpsCounter;
         else if (rawGeneralSel == IDX_POWER_MANAGEMENT) powerManagementEnabled = !powerManagementEnabled;
         else if (rawGeneralSel == IDX_LOW_POWER_MODE) lowPowerModeEnabled = !lowPowerModeEnabled;
@@ -1549,8 +1525,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         if (rawGeneralSel == IDX_FULLSCREEN) { (void)applyFullscreen(!fullscreen); }
         else if (rawGeneralSel == IDX_VSYNC) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
         else if (rawGeneralSel == IDX_CAM_CLAMP) clampCamX = !clampCamX;
-        else if (rawGeneralSel == IDX_UI_SCALE && dir != 0) uiScalePercent = std::clamp(uiScalePercent + dir * 5, kUiScaleMinPercent, kUiScaleMaxPercent);
-        else if (rawGeneralSel == IDX_UI_EDGE_PADDING && dir != 0) uiEdgePadding = std::clamp(uiEdgePadding + dir * 4, kUiEdgePaddingMin, kUiEdgePaddingMax);
+        else if (rawGeneralSel == IDX_UI_SCALE && dir != 0) uiScalePercent = UiScale::stepPercent(uiScalePercent, dir);
+        else if (rawGeneralSel == IDX_UI_EDGE_PADDING && dir != 0) uiEdgePadding = UiScale::stepEdgePadding(uiEdgePadding, dir);
         else if (rawGeneralSel == IDX_SHOW_FPS) defaultShowFpsCounter = !defaultShowFpsCounter;
         else if (rawGeneralSel == IDX_POWER_MANAGEMENT) powerManagementEnabled = !powerManagementEnabled;
         else if (rawGeneralSel == IDX_LOW_POWER_MODE) lowPowerModeEnabled = !lowPowerModeEnabled;
@@ -1775,7 +1751,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             SDL_Delay(1);
             continue;
         }
-        SetTextScaleMultiplier(std::clamp((float)uiScalePercent / 100.0f, 0.5f, 4.0f));
+        SetTextScaleMultiplier(UiScale::multiplier(uiScalePercent));
         applySettingsExitCleanup();
         // Keep menu music alive even when no audio-settings input occurs.
         if (ctx.applyMenuMusicToggle) ctx.applyMenuMusicToggle();
@@ -3766,8 +3742,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_SetRenderDrawColor(ctx.ren, 180, 220, 255, 255);
                     SDL_RenderFillRect(ctx.ren, &fill);
                 };
-                drawGeneralSlider(uiScaleSliderRect(), (uiScalePercent - kUiScaleMinPercent) / (float)(kUiScaleMaxPercent - kUiScaleMinPercent));
-                drawGeneralSlider(uiEdgePaddingSliderRect(), (uiEdgePadding - kUiEdgePaddingMin) / (float)(kUiEdgePaddingMax - kUiEdgePaddingMin));
+                drawGeneralSlider(uiScaleSliderRect(), UiScale::normalizedPercent(uiScalePercent));
+                drawGeneralSlider(uiEdgePaddingSliderRect(), UiScale::normalizedEdgePadding(uiEdgePadding));
                 SDL_SetRenderClipRect(ctx.ren, nullptr);
             }
             if ((settingsTab != IDX_SETTINGS_ABOUT && settingsMaxScroll(settingsTab) > 0) ||

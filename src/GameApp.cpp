@@ -51,6 +51,7 @@
 #include "CrashReporter.h"
 #include "AudioSystem.h"
 #include "InputSystem.h"
+#include "UiScale.h"
 #include "World3PatternBackground.h"
 #include "BuildInfo.h"
 
@@ -1535,11 +1536,7 @@ int RunGameApp(int argc, char** argv) {
     bool muteAllAudio = false;
     bool showOptionalSidebar = true;
     KeyboardBindings keybinds{};
-    constexpr int kUiScaleMinPercent = 50;
-    constexpr int kUiScaleMaxPercent = 400;
-    int uiScalePercent = kUiScaleMaxPercent;
-    constexpr int kUiEdgePaddingMin = 0;
-    constexpr int kUiEdgePaddingMax = 96;
+    int uiScalePercent = UiScale::kMaxPercent;
     int uiEdgePadding = 0;
     std::array<bool, 55> extraSettings{};
     extraSettings[44] = true; // PRIVACY+ -> SEND ANONYMOUS METRICS
@@ -1714,7 +1711,7 @@ int RunGameApp(int argc, char** argv) {
                     if (d.contains("fullscreen") && d["fullscreen"].is_boolean()) fullscreen = d["fullscreen"].get<bool>();
                     if (d.contains("vsync") && d["vsync"].is_boolean()) vsyncEnabled = d["vsync"].get<bool>();
                     if (d.contains("ui_scale_percent") && d["ui_scale_percent"].is_number_integer()) {
-                        uiScalePercent = std::clamp(d["ui_scale_percent"].get<int>(), kUiScaleMinPercent, kUiScaleMaxPercent);
+                        uiScalePercent = UiScale::clampPercent(d["ui_scale_percent"].get<int>());
                     }
                 }
                 if (s.contains("ui") && s["ui"].is_object()) {
@@ -1723,7 +1720,7 @@ int RunGameApp(int argc, char** argv) {
                         showOptionalSidebar = ui["show_optional_sidebar"].get<bool>();
                     }
                     if (ui.contains("edge_padding") && ui["edge_padding"].is_number_integer()) {
-                        uiEdgePadding = std::clamp(ui["edge_padding"].get<int>(), kUiEdgePaddingMin, kUiEdgePaddingMax);
+                        uiEdgePadding = UiScale::clampEdgePadding(ui["edge_padding"].get<int>());
                     }
                 }
                 if (s.contains("camera") && s["camera"].is_object()) {
@@ -1834,10 +1831,10 @@ int RunGameApp(int argc, char** argv) {
             if (j.contains("key_jump")) keybinds.jump = parseScancode(j["key_jump"], keybinds.jump);
             if (j.contains("key_pause")) keybinds.pause = parseScancode(j["key_pause"], keybinds.pause);
             if (j.contains("ui_scale_percent") && j["ui_scale_percent"].is_number_integer()) {
-                uiScalePercent = std::clamp(j["ui_scale_percent"].get<int>(), kUiScaleMinPercent, kUiScaleMaxPercent);
+                uiScalePercent = UiScale::clampPercent(j["ui_scale_percent"].get<int>());
             }
             if (j.contains("ui_edge_padding") && j["ui_edge_padding"].is_number_integer()) {
-                uiEdgePadding = std::clamp(j["ui_edge_padding"].get<int>(), kUiEdgePaddingMin, kUiEdgePaddingMax);
+                uiEdgePadding = UiScale::clampEdgePadding(j["ui_edge_padding"].get<int>());
             }
             if (j.contains("extra_settings") && j["extra_settings"].is_array()) {
                 const auto& a = j["extra_settings"];
@@ -4159,7 +4156,7 @@ int RunGameApp(int argc, char** argv) {
             const float dt = (float)dtPrecise;
             lastTicksNs = nowNs;
             lastTicks = SDL_GetTicks();
-            SetTextScaleMultiplier(std::clamp((float)uiScalePercent / 100.0f, 0.5f, 4.0f));
+            SetTextScaleMultiplier(UiScale::multiplier(uiScalePercent));
             auto isVerticalWrapEnabledAtX = [&](float x) -> bool {
                 if (((currentLevelId == 29 && x > 1250.0f) ||
                      (currentLevelId == 30 && x > 1250.0f) ||
@@ -4378,7 +4375,7 @@ int RunGameApp(int argc, char** argv) {
         bool inputDown = false;
         int screenW = kBaseScreenW;
         int screenH = kBaseScreenH;
-        const float mobileUiScale = std::clamp((float)uiScalePercent / 100.0f, 0.5f, 4.0f);
+        const float mobileUiScale = UiScale::multiplier(uiScalePercent);
         const float minScreenDim = std::min((float)screenW, (float)screenH);
         const float baseUiSize = std::clamp(minScreenDim * 0.16f, 110.0f, 190.0f);
         float uiSize = std::clamp(baseUiSize * 2.0f * mobileUiScale, 96.0f, minScreenDim * 0.45f);
@@ -7556,7 +7553,7 @@ int RunGameApp(int argc, char** argv) {
         std::ostringstream timerText;
         timerText << mins << "," << std::setw(2) << std::setfill('0') << secs;
         const int hudScale = 4;
-        const int uiEdgeOffset = std::clamp(uiEdgePadding, kUiEdgePaddingMin, kUiEdgePaddingMax);
+        const int uiEdgeOffset = UiScale::clampEdgePadding(uiEdgePadding);
         const int hudLeftX = 32 + uiEdgeOffset;
         const int hudValueX = 188 + uiEdgeOffset;
         const int hudTopY = 32 + uiEdgeOffset;
@@ -7580,18 +7577,9 @@ int RunGameApp(int argc, char** argv) {
             const Uint8 pausePanelAlpha = (Uint8)std::clamp((int)std::lround(255.0f * pauseEase), 0, 255);
             const Uint8 pauseButtonAlpha = (Uint8)std::clamp((int)std::lround(255.0f * pauseButtonT), 0, 255);
             const int pauseSlideY = -(int)std::lround((1.0f - pauseEase) * (float)screenH * 0.55f);
-            const float uiButtonScale = std::clamp((float)uiScalePercent / 100.0f, 0.5f, 4.0f);
+            const float uiButtonScale = UiScale::multiplier(uiScalePercent);
             auto scaleRectCentered = [&](const SDL_Rect& in) -> SDL_Rect {
-                const float cx = (float)in.x + (float)in.w * 0.5f;
-                const float cy = (float)in.y + (float)in.h * 0.5f;
-                const int nw = std::max(1, (int)std::lround((float)in.w * uiButtonScale));
-                const int nh = std::max(1, (int)std::lround((float)in.h * uiButtonScale));
-                return SDL_Rect{
-                    (int)std::lround(cx - (float)nw * 0.5f),
-                    (int)std::lround(cy - (float)nh * 0.5f),
-                    nw,
-                    nh
-                };
+                return UiScale::scaleRectCentered(in, uiButtonScale);
             };
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
             SDL_SetRenderDrawColor(ren, 10, 10, 14, pauseOverlayAlpha);

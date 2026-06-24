@@ -561,6 +561,7 @@ LDFLAGS=(
   -lEGL
   -Wl,--no-undefined
   -Wl,--gc-sections
+  -Wl,--emit-relocs
 )
 if [ ! -d "$(component_lib_dir "$SDL3_MIXER_ROOT" "$ABI")" ]; then
   echo "[ERROR] Missing staged SDL_mixer libs: $(component_lib_dir "$SDL3_MIXER_ROOT" "$ABI")"
