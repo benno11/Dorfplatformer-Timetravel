@@ -3497,6 +3497,20 @@ int RunGameApp(int argc, char** argv) {
         std::vector<SDL_FRect> waterHitboxes;
         std::vector<SDL_FRect> airDebugHitboxes;
         std::unordered_set<int> activeBumperIndices;
+        struct WaterParticle {
+            float x = 0.0f;
+            float y = 0.0f;
+            float vx = 0.0f;
+            float vy = 0.0f;
+            float life = 0.0f;
+            float maxLife = 1.0f;
+            float size = 2.0f;
+            bool splash = false;
+        };
+        std::vector<WaterParticle> waterParticles;
+        float waterBubbleEmitTimer = 0.0f;
+        float waterKickBurstCooldown = 0.0f;
+        bool playerWasInWaterLastFrame = false;
         int pauseSelection = 0; // 0 = Resume, 1 = Restart, 2 = Quit
         bool returnToSelect = false;
         std::unordered_map<SDL_FingerID, SDL_FPoint> activeTouches;
@@ -4087,6 +4101,55 @@ int RunGameApp(int argc, char** argv) {
                 idx++;
             }
         };
+
+        auto spawnWaterParticle = [&](float x, float y, float vx, float vy, float life, float size, bool splash) {
+            if (waterParticles.size() > 160) {
+                waterParticles.erase(waterParticles.begin(), waterParticles.begin() + std::min<std::size_t>(waterParticles.size(), 24));
+            }
+            WaterParticle p{};
+            p.x = x;
+            p.y = y;
+            p.vx = vx;
+            p.vy = vy;
+            p.life = life;
+            p.maxLife = std::max(0.05f, life);
+            p.size = size;
+            p.splash = splash;
+            waterParticles.push_back(p);
+        };
+        auto spawnPlayerWaterBurst = [&](const Player& p, bool entering) {
+            const float cx = p.x + p.w * 0.5f;
+            const float surfaceY = entering ? (p.y + p.h * 0.18f) : (p.y + p.h * 0.55f);
+            const int count = entering ? 10 : 5;
+            waterParticles.reserve(std::min<std::size_t>(180, waterParticles.size() + count));
+            for (int i = 0; i < count; ++i) {
+                const float t = (count <= 1) ? 0.0f : (i / (float)(count - 1)) * 2.0f - 1.0f;
+                const float speedBias = entering ? 1.0f : 0.55f;
+                spawnWaterParticle(
+                    cx + t * p.w * 0.55f,
+                    surfaceY + std::sin((float)i * 1.7f) * 2.0f,
+                    t * 95.0f * speedBias + p.vx * 0.08f,
+                    -70.0f * speedBias - std::fabs(t) * 28.0f,
+                    entering ? 0.55f : 0.38f,
+                    entering ? 3.4f : 2.5f,
+                    true
+                );
+            }
+        };
+        auto spawnPlayerBubble = [&](const Player& p, float seed) {
+            const float bob = std::sin(seed * 12.9898f) * 0.5f + 0.5f;
+            const float side = std::sin(seed * 78.233f);
+            spawnWaterParticle(
+                p.x + p.w * (0.25f + 0.5f * bob),
+                p.y + p.h * (0.30f + 0.35f * (1.0f - bob)),
+                side * 16.0f - p.vx * 0.035f,
+                -26.0f - bob * 26.0f,
+                0.95f + bob * 0.45f,
+                1.8f + bob * 2.1f,
+                false
+            );
+        };
+
         auto removeTimewarpObjectsAndExit = [&]() {
             // Keep map objects intact when a boss starts (do not destroy end post or other markers).
             setFastTravelActiveDir(-1, "boss_start_disable_timewarp");
@@ -5714,6 +5777,7 @@ int RunGameApp(int argc, char** argv) {
                 inputDown = false;
             }
             PlayerUpdateResult upd = PlayerUpdateResult::RenderOnly;
+            const bool wasInWaterBeforeMovement = player.inWater;
             const float beforeNormalX = player.x;
             const float beforeNormalY = player.y;
                 if (!fastTravelEnabled) {
@@ -5733,6 +5797,50 @@ int RunGameApp(int argc, char** argv) {
                 inputMove = 0.0f;
                 inputDown = false;
             }
+            waterKickBurstCooldown = std::max(0.0f, waterKickBurstCooldown - dt);
+            if (player.inWater) {
+                waterBubbleEmitTimer -= dt;
+                const float speed01 = std::clamp((std::fabs(player.vx) + std::fabs(player.vy)) / 260.0f, 0.0f, 1.0f);
+                const float bubbleInterval = 0.22f - speed01 * 0.11f;
+                if (!wasInWaterBeforeMovement || !playerWasInWaterLastFrame) {
+                    spawnPlayerWaterBurst(player, true);
+                    waterBubbleEmitTimer = 0.08f;
+                }
+                while (waterBubbleEmitTimer <= 0.0f) {
+                    const float seed = (float)SDL_GetTicks() * 0.001f + (float)waterParticles.size() * 0.37f;
+                    spawnPlayerBubble(player, seed);
+                    waterBubbleEmitTimer += bubbleInterval;
+                }
+                if ((std::fabs(player.vx) > 120.0f || std::fabs(player.vy) > 150.0f) && waterKickBurstCooldown <= 0.0f) {
+                    spawnPlayerWaterBurst(player, false);
+                    waterKickBurstCooldown = 0.18f;
+                }
+            } else {
+                if (wasInWaterBeforeMovement || playerWasInWaterLastFrame) {
+                    spawnPlayerWaterBurst(player, true);
+                }
+                waterBubbleEmitTimer = 0.0f;
+            }
+            playerWasInWaterLastFrame = player.inWater;
+
+            for (auto it = waterParticles.begin(); it != waterParticles.end();) {
+                it->life -= dt;
+                if (it->life <= 0.0f) {
+                    it = waterParticles.erase(it);
+                    continue;
+                }
+                it->x += it->vx * dt;
+                it->y += it->vy * dt;
+                if (it->splash) {
+                    it->vy += 190.0f * dt;
+                    it->vx *= std::max(0.0f, 1.0f - 2.4f * dt);
+                } else {
+                    it->vy -= 5.0f * dt;
+                    it->x += std::sin((it->maxLife - it->life) * 9.0f + it->size) * 4.0f * dt;
+                }
+                ++it;
+            }
+
             replayInput.touchMove = touchMove;
             replayInput.touchDown = touchDown;
             replayInput.touchJump = touchJump;
@@ -7391,6 +7499,52 @@ int RunGameApp(int argc, char** argv) {
             }
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
             DrawText(ren, 12, 82, 2, "PATH S->F");
+        }
+
+        if (!waterParticles.empty()) {
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+            const float wrapW = renderWrapX ? (float)(map.w * map.tileSize) : 0.0f;
+            const float wrapH = renderWrapY ? (float)(map.h * map.tileSize) : 0.0f;
+            auto renderWaterParticleAt = [&](const WaterParticle& p, float x, float y) {
+                if (x < -12.0f || y < -12.0f || x > worldViewW + 12.0f || y > worldViewH + 12.0f) return;
+                const float t = std::clamp(p.life / std::max(0.01f, p.maxLife), 0.0f, 1.0f);
+                const Uint8 alpha = (Uint8)std::clamp((int)std::lround((p.splash ? 150.0f : 185.0f) * t), 0, 210);
+                const float sz = std::max(1.0f, p.size * (p.splash ? (0.7f + 0.7f * (1.0f - t)) : (0.75f + 0.45f * t)));
+                SDL_FRect r{x - sz * 0.5f, y - sz * 0.5f, sz, sz};
+                if (p.splash) {
+                    SDL_SetRenderDrawColor(ren, 140, 215, 255, alpha);
+                    SDL_RenderFillRectF(ren, &r);
+                    SDL_SetRenderDrawColor(ren, 235, 250, 255, alpha);
+                    SDL_RenderLine(ren, x - sz, y, x + sz, y);
+                } else {
+                    SDL_SetRenderDrawColor(ren, 200, 240, 255, (Uint8)std::clamp((int)alpha / 3, 18, 80));
+                    SDL_RenderFillRectF(ren, &r);
+                    SDL_SetRenderDrawColor(ren, 230, 250, 255, alpha);
+                    SDL_RenderDrawRectF(ren, &r);
+                }
+            };
+            for (const WaterParticle& p : waterParticles) {
+                float px = p.x - camX;
+                float py = p.y - camY;
+                if (renderWrapX) {
+                    while (px < -wrapW * 0.5f) px += wrapW;
+                    while (px >  wrapW * 0.5f) px -= wrapW;
+                }
+                if (renderWrapY) {
+                    while (py < -wrapH * 0.5f) py += wrapH;
+                    while (py >  wrapH * 0.5f) py -= wrapH;
+                }
+                renderWaterParticleAt(p, px, py);
+                if (renderWrapX) {
+                    renderWaterParticleAt(p, px - wrapW, py);
+                    renderWaterParticleAt(p, px + wrapW, py);
+                }
+                if (renderWrapY) {
+                    renderWaterParticleAt(p, px, py - wrapH);
+                    renderWaterParticleAt(p, px, py + wrapH);
+                }
+            }
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
         }
 
         SDL_FRect pr{ player.x - camX, player.y - camY, (float)player.w, (float)player.h };

@@ -6,11 +6,13 @@
     "CONTROLS",
     "ABOUT",
     "FILE INFO",
-    "GRAPHICS+",
-    "GAMEPLAY+",
+    "SAVES",
+    "GRAPHICS",
+    "GAMEPLAY",
     "ACCESSIBILITY",
     "USER PROFILE",
-    "PRIVACY"
+    "PRIVACY",
+    "UPDATER"
   ],
   "controls_rows": [
     "MOVE LEFT",

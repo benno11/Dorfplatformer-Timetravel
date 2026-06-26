@@ -121,7 +121,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     };
     std::vector<std::string> settingsTabLabels = {
         "GENERAL", "AUDIO", "DEBUG", "CONTROLS", "ABOUT",
-        "FILE INFO", "SAVES", "GRAPHICS+", "GAMEPLAY+", "ACCESSIBILITY",
+        "FILE INFO", "SAVES", "GRAPHICS", "GAMEPLAY", "ACCESSIBILITY",
         "USER PROFILE", "PRIVACY", "UPDATER"
     };
     std::vector<std::string> controlsLabels = {
@@ -147,23 +147,16 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     }
                     if ((int)tmp.size() >= expectedMin) out = std::move(tmp);
                 };
-                readStringArray("tabs", settingsTabLabels, 11);
+                readStringArray("tabs", settingsTabLabels, 13);
                 readStringArray("controls_rows", controlsLabels, 6);
                 readStringArray("audio_rows", audioLabels, 5);
                 readStringArray("debug_rows", debugLabels, 6);
             } catch (...) {}
         }
     }
-    if ((int)settingsTabLabels.size() < 11) settingsTabLabels.resize(11, "TAB");
-    {
-        std::vector<std::string> prior = settingsTabLabels;
-        settingsTabLabels.assign(13, "TAB");
-        for (int i = 0; i < 5 && i < (int)prior.size(); ++i) settingsTabLabels[i] = prior[i];
-        settingsTabLabels[5] = (prior.size() > 5) ? prior[5] : std::string("FILE INFO");
-        settingsTabLabels[6] = "SAVES";
-        for (int i = 6; i < 11 && i < (int)prior.size(); ++i) settingsTabLabels[i + 1] = prior[i];
-        settingsTabLabels[12] = "UPDATER";
-    }
+    if ((int)settingsTabLabels.size() < 13) settingsTabLabels.resize(13, "TAB");
+    settingsTabLabels[6] = settingsTabLabels[6] == "TAB" ? "SAVES" : settingsTabLabels[6];
+    settingsTabLabels[12] = settingsTabLabels[12] == "TAB" ? "UPDATER" : settingsTabLabels[12];
     constexpr float kMenuAuthorW = 960.0f;
     constexpr float kMenuAuthorH = 540.0f;
     auto menuCanvasScale = [&]() -> float {
@@ -286,7 +279,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         }
         return localExtraTabValues[t][o];
     };
-    const char* extraTabNames[kExtraTabCount] = {"GRAPHICS+", "GAMEPLAY+", "ACCESSIBILITY", "LOGIN", "PRIVACY"};
+    const char* extraTabNames[kExtraTabCount] = {"GRAPHICS", "GAMEPLAY", "ACCESSIBILITY", "USER PROFILE", "PRIVACY"};
     const char* extraTabOptionLabels[kExtraTabCount][kExtraTabOptionCount] = {
         {"BLOOM", "MOTION BLUR", "FILM GRAIN", "CHROMATIC ABERRATION", "SHADOW BOOST", "LIGHT SHAFTS", "WATER REFLECTIONS", "PARTICLE DENSITY+", "DISTANT DETAIL", "RETRO PIXEL FILTER", "SCREEN SHAKE+"},
         {"AUTO SAVE", "AUTO CHECKPOINT", "TUTORIAL HINTS", "SMART CAMERA", "MAGNET COINS", "SLOW-MO ON DEATH", "ASSISTED JUMPS", "EXTENDED INVULN FRAMES", "QUICK RESTART", "ENEMY AGGRO REDUCE", "DROP SAFE MODE"},
@@ -294,16 +287,16 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         {"AUTO RETRY CONNECTION", "LIMIT BACKGROUND FETCH", "SYNC CLOUD PROGRESS", "USE CDN MIRROR", "LOW BANDWIDTH MODE", "UPLOAD CRASH LOGS", "PING DIAGNOSTICS", "NET DEBUG OVERLAY", "FORCE IPV4", "TLS STRICT MODE", "CACHE REMOTE LEVELS"},
         {"SEND ANONYMOUS METRICS", "PERSONALIZED CONTENT", "SESSION TELEMETRY", "ERROR REPORT DETAILS", "LOCAL HISTORY LOG", "CROSS-DEVICE IDS", "ALLOW SOCIAL FEATURES", "FRIEND PRESENCE", "SHOW ONLINE STATUS", "DELETE TEMP DATA ON EXIT", "PRIVACY LOCKDOWN"}
     };
-    auto isExtraTab = [&](int tab) -> bool { return tab >= kExtraTabStart && tab < kSettingsTabCount; };
+    auto isExtraTab = [&](int tab) -> bool { return tab >= kExtraTabStart && tab < IDX_UPDATER_TAB; };
     auto extraTabIndex = [&](int tab) -> int { return std::clamp(tab - kExtraTabStart, 0, kExtraTabCount - 1); };
     auto extraTabUsedOptionCount = [&](int tab) -> int {
         // Keep only wired options visible.
-        // PRIVACY+ currently has one hooked option: SEND ANONYMOUS METRICS.
-        if (tab == 10) return 1;
+        // PRIVACY currently has one hooked option: SEND ANONYMOUS METRICS.
+        if (tab == IDX_SETTINGS_PRIVACY) return 1;
         return 0;
     };
     auto extraTabOptionAtVisibleRow = [&](int tab, int row) -> int {
-        if (tab == 10 && row == 0) return 0;
+        if (tab == IDX_SETTINGS_PRIVACY && row == 0) return 0;
         return -1;
     };
     auto extraTabRowCountForTab = [&](int tab) -> int {
@@ -321,16 +314,12 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     auto visibleTabList = [&]() -> std::vector<int> {
         std::vector<int> tabs;
         for (int i = 0; i < kSettingsTabCount; ++i) {
-            if (i == IDX_SETTINGS_ABOUT || i == IDX_UPDATER_TAB) continue;
             if (tabIsVisible(i)) tabs.push_back(i);
         }
         return tabs;
     };
     auto sidebarTabList = [&]() -> std::vector<int> {
-        std::vector<int> tabs = visibleTabList();
-        tabs.erase(std::remove(tabs.begin(), tabs.end(), IDX_SETTINGS_ABOUT), tabs.end()); // Hide ABOUT tab button from left sidebar.
-        tabs.erase(std::remove(tabs.begin(), tabs.end(), IDX_UPDATER_TAB), tabs.end()); // Hide UPDATER from left sidebar.
-        return tabs;
+        return visibleTabList();
     };
     auto firstVisibleTab = [&]() -> int {
         for (int i = 0; i < kSettingsTabCount; ++i) {
@@ -902,7 +891,12 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         return std::min(scaled, std::max(84, (int)std::lround((float)ctx.baseScreenW * 0.24f)));
     };
     auto settingsTabHeightPx = [&]() -> int {
-        return std::max(20, (int)std::lround((float)settingsTabH * settingsMenuScale()));
+        const int desired = std::max(20, (int)std::lround((float)settingsTabH * settingsMenuScale()));
+        const int gap = std::max(4, (int)std::lround(6.0f * settingsMenuScale()));
+        const int visibleCount = std::max(1, (int)visibleTabList().size());
+        const int availableH = std::max(visibleCount * 18, ctx.baseScreenH - settingsTabY - 24);
+        const int fit = (availableH - gap * (visibleCount - 1)) / visibleCount;
+        return std::clamp(std::min(desired, fit), 18, desired);
     };
     auto settingsTabGapPx = [&]() -> int {
         return std::max(4, (int)std::lround(6.0f * settingsMenuScale()));
@@ -1712,8 +1706,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         }
         if (sel == 0) return false;
         if (sel == 1) {
-            cleanupMenuAssets();
-            return true;
+            return tryStartLevelSelect();
         }
         if (sel == 2) {
             return tryStartCustomLevel();
@@ -1738,7 +1731,19 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     InputSystem menuInput;
     menuInput.scanConnected();
 
+    Uint64 fpsLastSampleTicks = SDL_GetTicks();
+    int fpsFramesSinceSample = 0;
+    int menuFps = 0;
+
     while (running) {
+        const Uint64 frameTicks = SDL_GetTicks();
+        ++fpsFramesSinceSample;
+        const Uint64 sampleElapsed = frameTicks - fpsLastSampleTicks;
+        if (sampleElapsed >= 250) {
+            menuFps = (int)std::lround((double)fpsFramesSinceSample * 1000.0 / (double)std::max<Uint64>(1, sampleElapsed));
+            fpsFramesSinceSample = 0;
+            fpsLastSampleTicks = frameTicks;
+        }
         if (ctx.pollUpdaterAutoRelaunch) {
             ctx.pollUpdaterAutoRelaunch();
             if (!running) {
@@ -3217,11 +3222,46 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_RenderRect(ctx.ren, &side);
                 }
                 const std::string tabName = (settingsTab >= 0 && settingsTab < (int)settingsTabLabels.size()) ? settingsTabLabels[settingsTab] : std::string("UNKNOWN");
+                auto selectedRowIndex = [&]() -> int {
+                    if (settingsTab == IDX_SETTINGS_AUDIO) return settingsSelAudio;
+                    if (settingsTab == IDX_SETTINGS_DEBUG) return settingsSelDebug;
+                    if (settingsTab == IDX_SETTINGS_CONTROLS) return settingsSelControls;
+                    if (settingsTab == IDX_SAVES_TAB) return settingsSelSaves;
+                    if (settingsTab == IDX_SETTINGS_ACCOUNT) return settingsSelNetwork;
+                    return settingsSel;
+                };
+                auto selectedRowHelp = [&]() -> std::string {
+                    if (settingsTab == IDX_SETTINGS_AUDIO) {
+                        if (settingsSelAudio == 0) return "Toggle menu music playback.";
+                        if (settingsSelAudio == 1) return "Silence all music and sound effects.";
+                        if (settingsSelAudio == 2) return "Drag or press left/right to set music volume.";
+                        if (settingsSelAudio == 3) return "Drag or press left/right to set effects volume.";
+                    }
+                    if (settingsTab == IDX_SETTINGS_CONTROLS) return "Press Enter to rebind the selected action.";
+                    if (settingsTab == IDX_SETTINGS_ACCOUNT) {
+                        if (settingsSelNetwork <= 1) return "Enter account credentials or manage them online.";
+                        return "Sign in, repair, log out, or open account tools.";
+                    }
+                    if (settingsTab == IDX_SAVES_TAB) return "Choose a save slot or load the active slot.";
+                    if (settingsTab == IDX_UPDATER_TAB) return "Check for updates and install releases.";
+                    if (settingsTab == IDX_SETTINGS_ABOUT) return "Review build, platform, and runtime details.";
+                    if (settingsTab == IDX_SETTINGS_FILEINFO) return "Review save and config file locations.";
+                    if (settingsTab == IDX_SETTINGS_PRIVACY) return "Control privacy and telemetry options.";
+                    const int rawGeneralSel = generalSettingsRawIndexFromVisible(settingsSel);
+                    if (rawGeneralSel == IDX_UI_SCALE) return "Adjust menu and HUD scale.";
+                    if (rawGeneralSel == IDX_UI_EDGE_PADDING) return "Move UI away from screen edges.";
+                    if (rawGeneralSel == IDX_SHOW_FPS) return "Show a live FPS badge in the menu interface.";
+                    if (rawGeneralSel == IDX_VSYNC) return "Reduce tearing by syncing to display refresh.";
+                    if (rawGeneralSel == IDX_LEVEL_SELECT) return "Show or hide level select from the main menu.";
+                    return "Use Enter to toggle, arrows to move, Q/E for tabs.";
+                };
                 DrawText(ctx.ren, side.x + 10, side.y + 10, 2, "QUICK INFO");
                 DrawText(ctx.ren, side.x + 10, side.y + 34, 2, std::string("TAB: ") + tabName);
-                DrawText(ctx.ren, side.x + 10, side.y + 58, 2, std::string("B: TOGGLE SIDEBAR"));
-                DrawText(ctx.ren, side.x + 10, side.y + 82, 2, std::string("Q/E: NEXT TAB"));
-                DrawText(ctx.ren, side.x + 10, side.y + 106, 2, std::string("ESC: BACK"));
+                DrawText(ctx.ren, side.x + 10, side.y + 58, 2, std::string("ROW: ") + std::to_string(selectedRowIndex() + 1));
+                DrawText(ctx.ren, side.x + 10, side.y + 82, 2, selectedRowHelp());
+                DrawText(ctx.ren, side.x + 10, side.y + side.h - 82, 2, std::string("B: TOGGLE SIDEBAR"));
+                DrawText(ctx.ren, side.x + 10, side.y + side.h - 58, 2, std::string("Q/E: NEXT TAB"));
+                DrawText(ctx.ren, side.x + 10, side.y + side.h - 34, 2, std::string("ESC: BACK"));
                 if (settingsTab == IDX_SETTINGS_ACCOUNT) {
                     const bool hasUser = !levelServerAccountUsername.empty();
                     const bool hasToken = !levelServerAuthToken.empty();
@@ -3229,7 +3269,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     std::string status = "LOGGED OUT";
                     if (invalidLogin) status = "LOGIN NEEDS REPAIR";
                     else if (hasUser && hasToken) status = "LOGGED IN";
-                    DrawText(ctx.ren, side.x + 10, side.y + 130, 2, std::string("STATUS: ") + status);
+                    DrawText(ctx.ren, side.x + 10, side.y + 106, 2, std::string("STATUS: ") + status);
                 }
             }
             aboutContentBottomY = settingsListBottom;
@@ -3758,6 +3798,28 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 SDL_SetRenderDrawColor(ctx.ren, 176, 198, 230, 255);
                 SDL_RenderFillRect(ctx.ren, &thumb);
             }
+        }
+
+        if (defaultShowFpsCounter) {
+            const std::string fpsText = std::string("FPS: ") + std::to_string(menuFps);
+            const int fpsScale = std::max(2, (int)std::lround(2.0f * settingsMenuScale()));
+            const int fpsPadX = std::max(8, (int)std::lround(10.0f * settingsMenuScale()));
+            const int fpsPadY = std::max(5, (int)std::lround(6.0f * settingsMenuScale()));
+            const int fpsTextW = MeasureTextWidth(fpsScale, fpsText);
+            const int fpsTextH = 10 * fpsScale;
+            SDL_Rect fpsBadge{
+                ctx.baseScreenW - fpsTextW - fpsPadX * 2 - std::max(8, uiEdgePadding),
+                std::max(8, uiEdgePadding),
+                fpsTextW + fpsPadX * 2,
+                fpsTextH + fpsPadY * 2
+            };
+            SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_BLEND);
+            SDL_SetRenderDrawColor(ctx.ren, 18, 25, 36, 205);
+            SDL_RenderFillRect(ctx.ren, &fpsBadge);
+            SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_NONE);
+            SDL_SetRenderDrawColor(ctx.ren, 176, 198, 230, 255);
+            SDL_RenderRect(ctx.ren, &fpsBadge);
+            DrawText(ctx.ren, fpsBadge.x + fpsPadX, fpsBadge.y + fpsPadY, fpsScale, fpsText);
         }
 
         SDL_SetRenderTarget(ctx.ren, nullptr);
