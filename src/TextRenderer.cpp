@@ -11,9 +11,11 @@ std::unordered_map<int, TTF_Font*> gFontCache;
 std::string gFontPath;
 bool gTtfInited = false;
 std::unordered_map<std::string, int> gDebugLabelWidthCache;
-constexpr int kFontRenderScale = 6;
+// Render text well above logical UI size, then downsample with linear filtering
+// so menu and HUD text stays sharp without the chunky low-res edges.
+constexpr int kFontRenderScale = 10;
 float gTextScaleMultiplier = 1.0f;
-constexpr SDL_ScaleMode kTextTextureScaleMode = SDL_SCALEMODE_NEAREST;
+constexpr SDL_ScaleMode kTextTextureScaleMode = SDL_SCALEMODE_LINEAR;
 struct TextCacheEntry {
     SDL_Texture* tex = nullptr;
     int w = 0;
@@ -42,7 +44,7 @@ TTF_Font* getFont(int scale) {
     if (it != gFontCache.end()) return it->second;
     TTF_Font* font = TTF_OpenFont(gFontPath.c_str(), pt);
     if (!font) return nullptr;
-    TTF_SetFontHinting(font, TTF_HINTING_LIGHT);
+    TTF_SetFontHinting(font, TTF_HINTING_NORMAL);
     gFontCache[pt] = font;
     return font;
 }
