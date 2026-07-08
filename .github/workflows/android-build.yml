@@ -416,12 +416,22 @@ jobs:
           files: Android/app/build/outputs/apk/**/*.apk
 
   ios:
-    name: iOS Simulator App
+    name: iOS Device App
     runs-on: macos-latest
     timeout-minutes: 90
     permissions:
       contents: write
     needs: prepare_release
+    env:
+      IOS_BUNDLE_ID: ${{ vars.IOS_BUNDLE_ID || 'com.benno111.dorfplatformertimetravel' }}
+      IOS_EXPORT_METHOD: ${{ vars.IOS_EXPORT_METHOD || 'development' }}
+      IOS_BUILD_CERTIFICATE_BASE64: ${{ secrets.IOS_BUILD_CERTIFICATE_BASE64 }}
+      IOS_P12_PASSWORD: ${{ secrets.IOS_P12_PASSWORD }}
+      IOS_BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.IOS_BUILD_PROVISION_PROFILE_BASE64 }}
+      IOS_KEYCHAIN_PASSWORD: ${{ secrets.IOS_KEYCHAIN_PASSWORD }}
+      IOS_DEVELOPMENT_TEAM: ${{ secrets.IOS_DEVELOPMENT_TEAM }}
+      IOS_PROVISIONING_PROFILE_SPECIFIER: ${{ secrets.IOS_PROVISIONING_PROFILE_SPECIFIER }}
+      IOS_CODE_SIGN_IDENTITY: ${{ secrets.IOS_CODE_SIGN_IDENTITY }}
 
     steps:
       - name: Checkout game
@@ -444,7 +454,7 @@ jobs:
             .ci/vcpkg/buildtrees
             .ci/vcpkg/packages
             .ci/vcpkg/installed
-          key: vcpkg-ios-arm64-sim-${{ hashFiles('CMakeLists.txt', '.github/workflows/android-build.yml', 'cmake/vcpkg-triplets/arm64-ios-simulator.cmake') }}
+          key: vcpkg-ios-arm64-device-${{ hashFiles('CMakeLists.txt', '.github/workflows/android-build.yml', 'cmake/vcpkg-triplets/arm64-ios-device-release.cmake') }}
 
       - name: Bootstrap vcpkg
         run: ./.ci/vcpkg/bootstrap-vcpkg.sh -disableMetrics
@@ -456,38 +466,150 @@ jobs:
             sdl3-image \
             sdl3-ttf \
             nlohmann-json \
-            --triplet arm64-ios-simulator \
+            --triplet arm64-ios-device-release \
             --overlay-triplets "${GITHUB_WORKSPACE}/cmake/vcpkg-triplets"
 
-      - name: Configure iOS build
+      - name: Resolve iOS signing mode
+        id: ios-signing
+        run: |
+          set -euo pipefail
+
+          signing_enabled=false
+          if [[ -n "${IOS_BUILD_CERTIFICATE_BASE64:-}" && \
+                -n "${IOS_P12_PASSWORD:-}" && \
+                -n "${IOS_BUILD_PROVISION_PROFILE_BASE64:-}" && \
+                -n "${IOS_KEYCHAIN_PASSWORD:-}" && \
+                -n "${IOS_DEVELOPMENT_TEAM:-}" && \
+                -n "${IOS_PROVISIONING_PROFILE_SPECIFIER:-}" ]]; then
+            signing_enabled=true
+          fi
+
+          echo "signing_enabled=$signing_enabled" >> "$GITHUB_OUTPUT"
+          echo "[info] iOS signing enabled: $signing_enabled"
+
+      - name: Install Apple signing assets
+        if: steps.ios-signing.outputs.signing_enabled == 'true'
+        run: |
+          set -euo pipefail
+
+          CERTIFICATE_PATH="$RUNNER_TEMP/build_certificate.p12"
+          PROFILE_PATH="$RUNNER_TEMP/build_pp.mobileprovision"
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+
+          echo -n "$IOS_BUILD_CERTIFICATE_BASE64" | base64 --decode -o "$CERTIFICATE_PATH"
+          echo -n "$IOS_BUILD_PROVISION_PROFILE_BASE64" | base64 --decode -o "$PROFILE_PATH"
+
+          security create-keychain -p "$IOS_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$IOS_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$IOS_P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -k "$IOS_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp "$PROFILE_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/build_pp.mobileprovision
+
+      - name: Configure iOS device build
         run: |
           cmake -S . -B build-ios -G Xcode \
             -DCMAKE_SYSTEM_NAME=iOS \
-            -DCMAKE_OSX_SYSROOT=iphonesimulator \
+            -DCMAKE_OSX_SYSROOT=iphoneos \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DCMAKE_TOOLCHAIN_FILE="${GITHUB_WORKSPACE}/.ci/vcpkg/scripts/buildsystems/vcpkg.cmake" \
-            -DVCPKG_TARGET_TRIPLET=arm64-ios-simulator \
+            -DVCPKG_TARGET_TRIPLET=arm64-ios-device-release \
             -DVCPKG_OVERLAY_TRIPLETS="${GITHUB_WORKSPACE}/cmake/vcpkg-triplets" \
             -DPLATFORMER_REQUIRE_SDL3_MIXER=OFF \
             -DPLATFORMER_ENABLE_IPO=OFF \
-            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO \
-            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED=NO \
-            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY=""
+            -DPLATFORMER_IOS_BUNDLE_ID="${IOS_BUNDLE_ID}"
 
-      - name: Build iOS app bundle
-        run: cmake --build build-ios --config Release --target platformer --parallel
+      - name: Archive iOS device app
+        run: |
+          set -euo pipefail
+
+          archive_path="$RUNNER_TEMP/platformer-ios.xcarchive"
+          xcode_args=(
+            -project build-ios/platformer.xcodeproj
+            -scheme platformer
+            -configuration Release
+            -sdk iphoneos
+            -destination generic/platform=iOS
+            -archivePath "$archive_path"
+            COMPILER_INDEX_STORE_ENABLE=NO
+            archive
+          )
+
+          if [[ "${{ steps.ios-signing.outputs.signing_enabled }}" == "true" ]]; then
+            xcode_args+=(
+              DEVELOPMENT_TEAM="$IOS_DEVELOPMENT_TEAM"
+              CODE_SIGN_STYLE=Manual
+              PROVISIONING_PROFILE_SPECIFIER="$IOS_PROVISIONING_PROFILE_SPECIFIER"
+            )
+            if [[ -n "${IOS_CODE_SIGN_IDENTITY:-}" ]]; then
+              xcode_args+=(CODE_SIGN_IDENTITY="$IOS_CODE_SIGN_IDENTITY")
+            fi
+          else
+            xcode_args+=(
+              CODE_SIGNING_ALLOWED=NO
+              CODE_SIGNING_REQUIRED=NO
+              CODE_SIGN_IDENTITY=
+            )
+          fi
+
+          xcodebuild "${xcode_args[@]}"
+
+      - name: Export signed iOS IPA
+        if: steps.ios-signing.outputs.signing_enabled == 'true' && needs.prepare_release.outputs.release_enabled == 'true'
+        run: |
+          set -euo pipefail
+
+          archive_path="$RUNNER_TEMP/platformer-ios.xcarchive"
+          export_path="$RUNNER_TEMP/platformer-ios-export"
+          export_options="$RUNNER_TEMP/platformer-ios-exportOptions.plist"
+
+          cat > "$export_options" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>${IOS_EXPORT_METHOD}</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>teamID</key>
+            <string>${IOS_DEVELOPMENT_TEAM}</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>${IOS_BUNDLE_ID}</key>
+              <string>${IOS_PROVISIONING_PROFILE_SPECIFIER}</string>
+            </dict>
+          </dict>
+          </plist>
+          EOF
+
+          xcodebuild -exportArchive \
+            -archivePath "$archive_path" \
+            -exportPath "$export_path" \
+            -exportOptionsPlist "$export_options"
 
       - name: Package iOS release bundle
         if: needs.prepare_release.outputs.release_enabled == 'true'
         run: |
           set -euo pipefail
-          app_bundle="$(find build-ios -type d -name 'platformer.app' | head -n 1)"
-          if [[ -z "${app_bundle}" ]]; then
-            echo "[error] Could not locate platformer.app in build-ios"
+
+          archive_path="$RUNNER_TEMP/platformer-ios.xcarchive"
+          app_bundle="$archive_path/Products/Applications/platformer.app"
+          if [[ ! -d "${app_bundle}" ]]; then
+            echo "[error] Could not locate platformer.app in $archive_path"
             exit 1
           fi
+
           mkdir -p release
-          ditto -c -k --sequesterRsrc --keepParent "${app_bundle}" "release/platformer-ios-simulator-app.zip"
+          ditto -c -k --sequesterRsrc --keepParent "${app_bundle}" "release/platformer-ios-device-app.zip"
+          ditto -c -k --sequesterRsrc --keepParent "${archive_path}" "release/platformer-ios-device-xcarchive.zip"
+
+          if [[ -f "$RUNNER_TEMP/platformer-ios-export/platformer.ipa" ]]; then
+            cp "$RUNNER_TEMP/platformer-ios-export/platformer.ipa" "release/platformer-ios-device.ipa"
+          fi
 
       - name: Upload iOS release assets
         if: needs.prepare_release.outputs.release_enabled == 'true'
@@ -499,4 +621,10 @@ jobs:
           draft: true
           overwrite_files: true
           fail_on_unmatched_files: true
-          files: release/platformer-ios-simulator-app.zip
+          files: release/platformer-ios-device-*
+
+      - name: Clean up iOS signing assets
+        if: ${{ always() && steps.ios-signing.outputs.signing_enabled == 'true' }}
+        run: |
+          security delete-keychain "$RUNNER_TEMP/app-signing.keychain-db" || true
+          rm -f ~/Library/MobileDevice/Provisioning\ Profiles/build_pp.mobileprovision
