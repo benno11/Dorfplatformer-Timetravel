@@ -619,8 +619,11 @@ jobs:
             exit 1
           fi
 
+          rm -rf "${app_bundle}/assets"
+          ditto "${GITHUB_WORKSPACE}/assets" "${app_bundle}/assets"
+
           if [[ ! -d "${app_bundle}/assets" ]]; then
-            echo "[error] iOS app bundle is missing assets at ${app_bundle}/assets"
+            echo "[error] Failed to stage assets into ${app_bundle}/assets"
             find "${app_bundle}" -maxdepth 2 -print
             exit 1
           fi
