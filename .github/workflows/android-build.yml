@@ -2,7 +2,7 @@ name: Build Game
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, "agent/**"]
     tags:
       - "v*"
   pull_request:
@@ -104,7 +104,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential ninja-build autoconf autoconf-archive automake libtool pkg-config zip unzip
+          sudo apt-get install -y build-essential ninja-build autoconf autoconf-archive automake libtool libltdl-dev pkg-config zip unzip
 
       - name: Install Windows build tools
         if: runner.os == 'Windows'
@@ -414,3 +414,89 @@ jobs:
           overwrite_files: true
           fail_on_unmatched_files: true
           files: Android/app/build/outputs/apk/**/*.apk
+
+  ios:
+    name: iOS Simulator App
+    runs-on: macos-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    needs: prepare_release
+
+    steps:
+      - name: Checkout game
+        uses: actions/checkout@v4
+
+      - name: Select latest Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Checkout vcpkg
+        uses: actions/checkout@v4
+        with:
+          repository: microsoft/vcpkg
+          path: .ci/vcpkg
+
+      - name: Cache vcpkg packages
+        uses: actions/cache@v5
+        with:
+          path: |
+            .ci/vcpkg/downloads
+            .ci/vcpkg/buildtrees
+            .ci/vcpkg/packages
+            .ci/vcpkg/installed
+          key: vcpkg-ios-arm64-sim-${{ hashFiles('CMakeLists.txt', '.github/workflows/android-build.yml', 'cmake/vcpkg-triplets/arm64-ios-simulator.cmake') }}
+
+      - name: Bootstrap vcpkg
+        run: ./.ci/vcpkg/bootstrap-vcpkg.sh -disableMetrics
+
+      - name: Install iOS dependencies
+        run: |
+          ./.ci/vcpkg/vcpkg install \
+            sdl3 \
+            sdl3-image \
+            sdl3-ttf \
+            nlohmann-json \
+            --triplet arm64-ios-simulator \
+            --overlay-triplets "${GITHUB_WORKSPACE}/cmake/vcpkg-triplets"
+
+      - name: Configure iOS build
+        run: |
+          cmake -S . -B build-ios -G Xcode \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphonesimulator \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_TOOLCHAIN_FILE="${GITHUB_WORKSPACE}/.ci/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=arm64-ios-simulator \
+            -DVCPKG_OVERLAY_TRIPLETS="${GITHUB_WORKSPACE}/cmake/vcpkg-triplets" \
+            -DPLATFORMER_REQUIRE_SDL3_MIXER=OFF \
+            -DPLATFORMER_ENABLE_IPO=OFF \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED=NO \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY=""
+
+      - name: Build iOS app bundle
+        run: cmake --build build-ios --config Release --target platformer --parallel
+
+      - name: Package iOS release bundle
+        if: needs.prepare_release.outputs.release_enabled == 'true'
+        run: |
+          set -euo pipefail
+          app_bundle="$(find build-ios -type d -name 'platformer.app' | head -n 1)"
+          if [[ -z "${app_bundle}" ]]; then
+            echo "[error] Could not locate platformer.app in build-ios"
+            exit 1
+          fi
+          mkdir -p release
+          ditto -c -k --sequesterRsrc --keepParent "${app_bundle}" "release/platformer-ios-simulator-app.zip"
+
+      - name: Upload iOS release assets
+        if: needs.prepare_release.outputs.release_enabled == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ needs.prepare_release.outputs.release_tag }}
+          tag_name: ${{ needs.prepare_release.outputs.release_tag }}
+          target_commitish: ${{ github.sha }}
+          draft: true
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          files: release/platformer-ios-simulator-app.zip

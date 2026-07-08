@@ -71,6 +71,8 @@ set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -O2 -g -DN
 option(PLATFORMER_EMBED_LIBS "Prefer static dependency libraries in the main binary" ON)
 option(PLATFORMER_ENABLE_LOWERCASE_SDL_SHIM "Generate lowercase SDL include shim (<sdl3/...>)" OFF)
 option(PLATFORMER_REQUIRE_SDL3_MIXER "Fail configure if SDL3_mixer is not found" ON)
+set(PLATFORMER_IOS_BUNDLE_ID "com.benno111.dorfplatformertimetravel" CACHE STRING "Bundle identifier to use for iOS builds")
+set(PLATFORMER_IOS_DEPLOYMENT_TARGET "15.0" CACHE STRING "Minimum iOS version for iOS builds")
 
 option(PLATFORMER_ENABLE_UNITY_BUILD "Enable CMake unity build for faster compile times" ON)
 if(PLATFORMER_ENABLE_UNITY_BUILD)
@@ -149,6 +151,22 @@ add_executable(platformer
   src/World3PatternBackground.cpp
 )
 target_include_directories(platformer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+if(APPLE AND IOS)
+  set_target_properties(platformer PROPERTIES
+    MACOSX_BUNDLE ON
+    MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/cmake/iOSInfo.plist.in"
+    XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${PLATFORMER_IOS_BUNDLE_ID}"
+    XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET "${PLATFORMER_IOS_DEPLOYMENT_TARGET}"
+    XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"
+    XCODE_ATTRIBUTE_SUPPORTS_MACCATALYST "NO"
+  )
+  add_custom_command(TARGET platformer POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+      "${CMAKE_SOURCE_DIR}/assets"
+      "$<TARGET_BUNDLE_DIR:platformer>/assets"
+    VERBATIM
+  )
+endif()
 if(WIN32)
   set_target_properties(platformer PROPERTIES WIN32_EXECUTABLE ON)
 endif()
@@ -382,7 +400,11 @@ else()
   endif()
   message(WARNING "SDL3_mixer not found: building without mixer link target (runtime audio falls back accordingly)")
 endif()
-find_package(CURL QUIET)
+if(IOS)
+  message(STATUS "Skipping libcurl lookup for iOS builds")
+else()
+  find_package(CURL QUIET)
+endif()
 find_package(nlohmann_json QUIET)
 if(NOT nlohmann_json_FOUND)
   if(EXISTS "${CMAKE_SOURCE_DIR}/third_party/nlohmann/json.hpp")
@@ -576,27 +598,29 @@ else()
 endif()
 message(STATUS "Linked platformer: ${PLATFORMER_LINK_LIBS}")
 
-add_executable(sheet_config
-  src/SheetConfigTool.cpp
-)
-message(STATUS "Added target: sheet_config")
+if(NOT IOS)
+  add_executable(sheet_config
+    src/SheetConfigTool.cpp
+  )
+  message(STATUS "Added target: sheet_config")
 
-target_link_libraries(sheet_config
-  ${SDL3_LINK_TARGET}
-  ${SDL3_IMAGE_LINK_TARGET}
-)
-if(PLATFORMER_ENABLE_LOWERCASE_SDL_SHIM AND EXISTS "${SDL_LOWERCASE_DIR}/SDL.h")
-  target_include_directories(sheet_config PRIVATE "${SDL_LOWERCASE_INCLUDE_ROOT}")
+  target_link_libraries(sheet_config
+    ${SDL3_LINK_TARGET}
+    ${SDL3_IMAGE_LINK_TARGET}
+  )
+  if(PLATFORMER_ENABLE_LOWERCASE_SDL_SHIM AND EXISTS "${SDL_LOWERCASE_DIR}/SDL.h")
+    target_include_directories(sheet_config PRIVATE "${SDL_LOWERCASE_INCLUDE_ROOT}")
+  endif()
+  target_compile_definitions(sheet_config PRIVATE SDL_ENABLE_OLD_NAMES=1)
+  if(WIN32)
+    target_compile_definitions(sheet_config PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+  endif()
+  if(MSVC)
+    target_compile_options(sheet_config PRIVATE /EHsc /FS)
+  endif()
+  platformer_apply_windows_exe_hardening(sheet_config)
+  message(STATUS "Linked sheet_config: ${SDL3_LINK_TARGET}, ${SDL3_IMAGE_LINK_TARGET}")
 endif()
-target_compile_definitions(sheet_config PRIVATE SDL_ENABLE_OLD_NAMES=1)
-if(WIN32)
-  target_compile_definitions(sheet_config PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-endif()
-if(MSVC)
-  target_compile_options(sheet_config PRIVATE /EHsc /FS)
-endif()
-platformer_apply_windows_exe_hardening(sheet_config)
-message(STATUS "Linked sheet_config: ${SDL3_LINK_TARGET}, ${SDL3_IMAGE_LINK_TARGET}")
 
 if(WIN32 AND CURL_FOUND)
   add_executable(df-updater WIN32
