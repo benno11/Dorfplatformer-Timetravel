@@ -527,12 +527,14 @@ jobs:
           set -euo pipefail
 
           archive_path="$RUNNER_TEMP/platformer-ios.xcarchive"
+          derived_data_path="$RUNNER_TEMP/platformer-ios-derived"
           xcode_args=(
             -project build-ios/platformer.xcodeproj
             -scheme platformer
             -configuration Release
             -sdk iphoneos
             -destination generic/platform=iOS
+            -derivedDataPath "$derived_data_path"
             -archivePath "$archive_path"
             COMPILER_INDEX_STORE_ENABLE=NO
             archive
@@ -597,9 +599,22 @@ jobs:
           set -euo pipefail
 
           archive_path="$RUNNER_TEMP/platformer-ios.xcarchive"
+          derived_data_path="$RUNNER_TEMP/platformer-ios-derived"
           app_bundle="$archive_path/Products/Applications/platformer.app"
+
           if [[ ! -d "${app_bundle}" ]]; then
+            app_bundle="$derived_data_path/Build/Intermediates.noindex/ArchiveIntermediates/platformer/IntermediateBuildFilesPath/UninstalledProducts/iphoneos/platformer.app"
+          fi
+
+          if [[ ! -d "${app_bundle}" ]]; then
+            app_bundle="$(find "$derived_data_path" "$HOME/Library/Developer/Xcode/DerivedData" -type d -name 'platformer.app' | head -n 1)"
+          fi
+
+          if [[ -z "${app_bundle:-}" || ! -d "${app_bundle}" ]]; then
             echo "[error] Could not locate platformer.app in $archive_path"
+            if [[ -d "$archive_path" ]]; then
+              find "$archive_path" -maxdepth 4 -print
+            fi
             exit 1
           fi
 
