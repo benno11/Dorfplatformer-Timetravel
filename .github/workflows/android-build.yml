@@ -601,6 +601,7 @@ jobs:
           archive_path="$RUNNER_TEMP/platformer-ios.xcarchive"
           derived_data_path="$RUNNER_TEMP/platformer-ios-derived"
           app_bundle="$archive_path/Products/Applications/platformer.app"
+          export_ipa_path="$RUNNER_TEMP/platformer-ios-export/platformer.ipa"
 
           if [[ ! -d "${app_bundle}" ]]; then
             app_bundle="$derived_data_path/Build/Intermediates.noindex/ArchiveIntermediates/platformer/IntermediateBuildFilesPath/UninstalledProducts/iphoneos/platformer.app"
@@ -618,13 +619,29 @@ jobs:
             exit 1
           fi
 
+          if [[ ! -d "${app_bundle}/assets" ]]; then
+            echo "[error] iOS app bundle is missing assets at ${app_bundle}/assets"
+            find "${app_bundle}" -maxdepth 2 -print
+            exit 1
+          fi
+
           mkdir -p release
           ditto -c -k --sequesterRsrc --keepParent "${app_bundle}" "release/platformer-ios-device-app.zip"
           ditto -c -k --sequesterRsrc --keepParent "${archive_path}" "release/platformer-ios-device-xcarchive.zip"
 
-          if [[ -f "$RUNNER_TEMP/platformer-ios-export/platformer.ipa" ]]; then
-            cp "$RUNNER_TEMP/platformer-ios-export/platformer.ipa" "release/platformer-ios-device.ipa"
+          if [[ -f "${export_ipa_path}" ]]; then
+            cp "${export_ipa_path}" "release/platformer-ios-device-signed.ipa"
           fi
+
+          ipa_root="$RUNNER_TEMP/platformer-ios-ipa"
+          payload_dir="$ipa_root/Payload"
+          rm -rf "$ipa_root"
+          mkdir -p "$payload_dir"
+          ditto "${app_bundle}" "$payload_dir/platformer.app"
+          (
+            cd "$ipa_root"
+            ditto -c -k --sequesterRsrc --keepParent "Payload" "$GITHUB_WORKSPACE/release/platformer-ios-device-sidestore.ipa"
+          )
 
       - name: Upload iOS release assets
         if: needs.prepare_release.outputs.release_enabled == 'true'

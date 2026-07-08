@@ -10,6 +10,7 @@ Build locally:
 
 Windows releases now ship both x64 and x86 installers, and the embedded app manifest advertises compatibility from Windows Vista through Windows 11.
 The 32-bit Windows build also uses the static MSVC runtime to reduce dependency on installed VC++ redistributables.
+The iOS release workflow now always packages a SideStore-friendly `.ipa` with the bundled `assets/` directory included. SideStore installs `.ipa` app archives, not `.ipsw` firmware images.
 
 Manual CMake (separate folder):
 - Configure: `cmake -S . -B .build`
