@@ -29,6 +29,9 @@
 #include <windows.h>
 #include <shellapi.h>
 #endif
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
 #include <vector>
 #include <fstream>
 #if !defined(_WIN32)
@@ -145,7 +148,7 @@ int RunGameApp(int argc, char** argv) {
     }
     const std::string buildUuid = makeBuildUuid();
     auto reportStartupError = [](const char* title, const std::string& msg, SDL_Window* parent) {
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IOS)
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "%s: %s", title, msg.c_str());
 #else
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, title, msg.c_str(), parent);
@@ -265,6 +268,8 @@ int RunGameApp(int argc, char** argv) {
 #if defined(__ANDROID__)
         if (hasAudioDriver("aaudio")) preselectedAudio = "aaudio";
         else if (hasAudioDriver("openslES")) preselectedAudio = "openslES";
+#elif defined(__APPLE__) && TARGET_OS_IOS
+        if (hasAudioDriver("coreaudio")) preselectedAudio = "coreaudio";
 #elif defined(_WIN32)
         if (hasAudioDriver("wasapi")) preselectedAudio = "wasapi";
         else if (hasAudioDriver("directsound")) preselectedAudio = "directsound";
@@ -393,6 +398,8 @@ int RunGameApp(int argc, char** argv) {
         if (!driver) return false;
 #if defined(__ANDROID__)
         return std::strcmp(driver, "dummy") != 0;
+#elif defined(__APPLE__) && TARGET_OS_IOS
+        return std::strcmp(driver, "coreaudio") == 0;
 #elif defined(_WIN32)
         return std::strcmp(driver, "wasapi") == 0 ||
                std::strcmp(driver, "directsound") == 0 ||
@@ -412,6 +419,10 @@ int RunGameApp(int argc, char** argv) {
         if (!audioReady) audioReady = tryAudioInit("env default", nullptr);
         if (!audioReady && hasAudioDriver("aaudio")) audioReady = tryAudioInit("aaudio", "aaudio");
         if (!audioReady && hasAudioDriver("openslES")) audioReady = tryAudioInit("openslES", "openslES");
+        if (!audioReady && hasAudioDriver("dummy")) audioReady = tryAudioInit("dummy", "dummy");
+#elif defined(__APPLE__) && TARGET_OS_IOS
+        if (hasAudioDriver("coreaudio")) audioReady = tryAudioInit("coreaudio", "coreaudio");
+        if (!audioReady) audioReady = tryAudioInit("env default", nullptr);
         if (!audioReady && hasAudioDriver("dummy")) audioReady = tryAudioInit("dummy", "dummy");
 #elif defined(_WIN32)
         if (hasAudioDriver("wasapi")) audioReady = tryAudioInit("wasapi", "wasapi");
@@ -438,6 +449,8 @@ int RunGameApp(int argc, char** argv) {
 #if defined(__ANDROID__)
             if (hasAudioDriver("aaudio")) overridden = tryAudioInit("override aaudio", "aaudio");
             if (!overridden && hasAudioDriver("openslES")) overridden = tryAudioInit("override openslES", "openslES");
+#elif defined(__APPLE__) && TARGET_OS_IOS
+            if (hasAudioDriver("coreaudio")) overridden = tryAudioInit("override coreaudio", "coreaudio");
 #elif defined(_WIN32)
             if (hasAudioDriver("wasapi")) overridden = tryAudioInit("override wasapi", "wasapi");
             if (!overridden && hasAudioDriver("directsound")) overridden = tryAudioInit("override directsound", "directsound");

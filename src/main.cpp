@@ -1,4 +1,10 @@
 #include "GameApp.h"
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#if TARGET_OS_IOS || TARGET_OS_TV
+#include <SDL3/SDL_main.h>
+#endif
+#endif
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
