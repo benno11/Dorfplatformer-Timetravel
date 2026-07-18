@@ -131,6 +131,27 @@ function(platformer_apply_windows_exe_hardening target_name)
   endif()
 endfunction()
 
+
+set(PLATFORMER_BUNDLED_GAME_FILES
+  "${CMAKE_SOURCE_DIR}/LICENSE"
+  "${CMAKE_SOURCE_DIR}/README.md"
+  "${CMAKE_SOURCE_DIR}/object_type_map.json"
+  "${CMAKE_SOURCE_DIR}/level store.txt"
+)
+
+function(platformer_copy_if_exists_commands target_name destination_dir)
+  foreach(_game_file IN LISTS PLATFORMER_BUNDLED_GAME_FILES)
+    if(EXISTS "${_game_file}")
+      add_custom_command(TARGET ${target_name} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "${_game_file}"
+          "${destination_dir}"
+        VERBATIM
+      )
+    endif()
+  endforeach()
+endfunction()
+
 add_executable(platformer
   src/main.cpp
   src/GameApp.cpp
@@ -165,6 +186,11 @@ if(APPLE AND IOS)
       "${CMAKE_SOURCE_DIR}/assets"
       "$<TARGET_BUNDLE_DIR:platformer>/assets"
     VERBATIM
+  )
+  platformer_copy_if_exists_commands(platformer "$<TARGET_BUNDLE_DIR:platformer>")
+  add_custom_target(ios-package
+    DEPENDS platformer
+    COMMENT "Build the complete iOS app bundle with game assets and metadata"
   )
 endif()
 if(WIN32)
@@ -313,6 +339,14 @@ if(WIN32)
     )
   endif()
 endif()
+if(DEFINED VCPKG_TARGET_TRIPLET)
+  list(APPEND SDL3_MIXER_DIR_CANDIDATES
+    "${CMAKE_SOURCE_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/share/sdl3-mixer"
+    "${CMAKE_SOURCE_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/share/SDL3_mixer"
+    "${CMAKE_SOURCE_DIR}/vcpkg/installed/${VCPKG_TARGET_TRIPLET}/share/sdl3-mixer"
+    "${CMAKE_SOURCE_DIR}/vcpkg/installed/${VCPKG_TARGET_TRIPLET}/share/SDL3_mixer"
+  )
+endif()
 if(DEFINED SDL3_mixer_DIR)
   message(STATUS "SDL3_mixer_DIR preset: ${SDL3_mixer_DIR}")
 endif()
@@ -366,6 +400,12 @@ if(NOT SDL3_mixer_FOUND)
           set(VCPKG_TARGET_TRIPLET "x86-windows")
         else()
           set(VCPKG_TARGET_TRIPLET "x64-windows")
+        endif()
+      elseif(IOS)
+        if(CMAKE_OSX_SYSROOT MATCHES "iphonesimulator")
+          set(VCPKG_TARGET_TRIPLET "arm64-ios-simulator")
+        else()
+          set(VCPKG_TARGET_TRIPLET "arm64-ios")
         endif()
       elseif(APPLE)
         set(VCPKG_TARGET_TRIPLET "x64-osx")
@@ -544,6 +584,10 @@ if(SDL3_MIXER_LINK_TARGET)
 endif()
 
 target_link_libraries(platformer PRIVATE ${PLATFORMER_LINK_LIBS})
+if(APPLE AND IOS AND TARGET SDL3::SDL3main)
+  target_link_libraries(platformer PRIVATE SDL3::SDL3main)
+  message(STATUS "Linked iOS SDL main shim: SDL3::SDL3main")
+endif()
 
 if(SDL3_MIXER_LINK_TARGET)
   target_compile_definitions(platformer PRIVATE PLATFORMER_HAS_SDL3_MIXER=1)
