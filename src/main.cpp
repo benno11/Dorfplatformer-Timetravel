@@ -8,8 +8,30 @@
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
+#if defined(__linux__)
+#include <limits.h>
+#include <unistd.h>
+
+static void useExecutableDirectoryAsWorkingDirectory() {
+    char exePath[PATH_MAX];
+    const ssize_t len = readlink("/proc/self/exe", exePath, sizeof(exePath) - 1);
+    if (len <= 0) return;
+    exePath[len] = '\0';
+
+    char* lastSlash = nullptr;
+    for (char* p = exePath; *p; ++p) {
+        if (*p == '/') lastSlash = p;
+    }
+    if (!lastSlash || lastSlash == exePath) return;
+    *lastSlash = '\0';
+    (void)chdir(exePath);
+}
+#endif
 
 static int runMainImpl(int argc, char** argv) {
+#if defined(__linux__)
+    useExecutableDirectoryAsWorkingDirectory();
+#endif
     try {
         return RunGameApp(argc, argv);
     } catch (const std::exception& e) {
