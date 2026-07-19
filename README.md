@@ -7,6 +7,7 @@ Build locally:
 - Linux/macOS: `./build-local.sh`
 - Linux/macOS + run after build: `./build-local.sh --run`
 - iOS simulator (macOS + Xcode): `cmake -S . -B build-ios -G Xcode -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphonesimulator -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_TOOLCHAIN_FILE="$PWD/.ci/vcpkg/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=arm64-ios-simulator -DVCPKG_OVERLAY_TRIPLETS="$PWD/cmake/vcpkg-triplets" -DPLATFORMER_REQUIRE_SDL3_MIXER=OFF`
+- iOS app package (macOS + Xcode): `IOS_SDK=iphoneos ./build/ios.sh build` creates `Dorfplatformer Timetravel-Release.ipsw` and a matching installable `.ipa` in `.build/ios-iphoneos/`.
 
 Windows releases now ship both x64 and x86 installers, and the embedded app manifest advertises compatibility from Windows Vista through Windows 11.
 The 32-bit Windows build also uses the static MSVC runtime to reduce dependency on installed VC++ redistributables.

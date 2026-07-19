@@ -73,6 +73,8 @@ option(PLATFORMER_ENABLE_LOWERCASE_SDL_SHIM "Generate lowercase SDL include shim
 option(PLATFORMER_REQUIRE_SDL3_MIXER "Fail configure if SDL3_mixer is not found" ON)
 set(PLATFORMER_IOS_BUNDLE_ID "com.benno111.dorfplatformertimetravel" CACHE STRING "Bundle identifier to use for iOS builds")
 set(PLATFORMER_IOS_DEPLOYMENT_TARGET "15.0" CACHE STRING "Minimum iOS version for iOS builds")
+set(PLATFORMER_IOS_PRODUCT_NAME "Dorfplatformer Timetravel" CACHE STRING "Product name to use for iOS app bundles and install packages")
+set(PLATFORMER_IOS_ICON_FILE "${CMAKE_SOURCE_DIR}/Android/app/src/main/res/drawable/android_icon_192.png" CACHE FILEPATH "PNG icon to embed in iOS app bundles")
 
 option(PLATFORMER_ENABLE_UNITY_BUILD "Enable CMake unity build for faster compile times" ON)
 if(PLATFORMER_ENABLE_UNITY_BUILD)
@@ -173,8 +175,14 @@ add_executable(platformer
 )
 target_include_directories(platformer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 if(APPLE AND IOS)
+  set(PLATFORMER_IOS_PACKAGE_DIR "${CMAKE_BINARY_DIR}/ios-package/${CMAKE_CFG_INTDIR}")
+  set(PLATFORMER_IOS_PAYLOAD_DIR "${PLATFORMER_IOS_PACKAGE_DIR}/Payload")
+  set(PLATFORMER_IOS_IPSW_PATH "${CMAKE_BINARY_DIR}/Dorfplatformer Timetravel-${CMAKE_CFG_INTDIR}.ipsw")
+  set(PLATFORMER_IOS_IPA_PATH "${CMAKE_BINARY_DIR}/Dorfplatformer Timetravel-${CMAKE_CFG_INTDIR}.ipa")
   set_target_properties(platformer PROPERTIES
+    OUTPUT_NAME "${PLATFORMER_IOS_PRODUCT_NAME}"
     MACOSX_BUNDLE ON
+    MACOSX_BUNDLE_ICON_FILE "AppIcon.png"
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/cmake/iOSInfo.plist.in"
     XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${PLATFORMER_IOS_BUNDLE_ID}"
     XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET "${PLATFORMER_IOS_DEPLOYMENT_TARGET}"
@@ -188,9 +196,34 @@ if(APPLE AND IOS)
     VERBATIM
   )
   platformer_copy_if_exists_commands(platformer "$<TARGET_BUNDLE_DIR:platformer>")
-  add_custom_target(ios-package
+  if(EXISTS "${PLATFORMER_IOS_ICON_FILE}")
+    add_custom_command(TARGET platformer POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${PLATFORMER_IOS_ICON_FILE}"
+        "$<TARGET_BUNDLE_DIR:platformer>/AppIcon.png"
+      VERBATIM
+    )
+  else()
+    message(WARNING "iOS icon file not found: ${PLATFORMER_IOS_ICON_FILE}")
+  endif()
+  add_custom_command(
+    OUTPUT "${PLATFORMER_IOS_IPSW_PATH}" "${PLATFORMER_IOS_IPA_PATH}"
+    COMMAND ${CMAKE_COMMAND} -E rm -rf "${PLATFORMER_IOS_PACKAGE_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${PLATFORMER_IOS_PAYLOAD_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+      "$<TARGET_BUNDLE_DIR:platformer>"
+      "${PLATFORMER_IOS_PAYLOAD_DIR}/${PLATFORMER_IOS_PRODUCT_NAME}.app"
+    COMMAND ${CMAKE_COMMAND} -E tar cfv "${PLATFORMER_IOS_IPSW_PATH}" --format=zip Payload
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${PLATFORMER_IOS_IPSW_PATH}"
+      "${PLATFORMER_IOS_IPA_PATH}"
+    WORKING_DIRECTORY "${PLATFORMER_IOS_PACKAGE_DIR}"
     DEPENDS platformer
-    COMMENT "Build the complete iOS app bundle with game assets and metadata"
+    VERBATIM
+    COMMENT "Package iOS app as Dorfplatformer Timetravel install archives"
+  )
+  add_custom_target(ios-package
+    DEPENDS "${PLATFORMER_IOS_IPSW_PATH}" "${PLATFORMER_IOS_IPA_PATH}"
   )
 endif()
 if(WIN32)
