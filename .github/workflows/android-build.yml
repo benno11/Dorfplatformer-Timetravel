@@ -257,6 +257,7 @@ jobs:
             Copy-Item "README.md" -Destination $packageRoot -Force
             Copy-Item "LICENSE" -Destination $packageRoot -Force
             Copy-Item "build-ci/platformer" -Destination $packageRoot -Force
+            Copy-Item "build/Linux-Start.sh" -Destination $packageRoot -Force
             if (Test-Path "build-ci/sheet_config") {
               Copy-Item "build-ci/sheet_config" -Destination $packageRoot -Force
             }
@@ -481,9 +482,12 @@ jobs:
         if: needs.prepare_release.outputs.release_enabled == 'true'
         run: |
           set -euo pipefail
-          app_bundle="$(find build-ios -type d -name 'platformer.app' | head -n 1)"
+          app_bundle="$(find build-ios -type d -name 'Dorfplatformer Timetravel.app' | head -n 1)"
           if [[ -z "${app_bundle}" ]]; then
-            echo "[error] Could not locate platformer.app in build-ios"
+            app_bundle="$(find build-ios -type d -name '*.app' | head -n 1)"
+          fi
+          if [[ -z "${app_bundle}" ]]; then
+            echo "[error] Could not locate an iOS .app bundle in build-ios"
             exit 1
           fi
           mkdir -p release
