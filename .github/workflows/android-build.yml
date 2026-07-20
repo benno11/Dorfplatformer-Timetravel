@@ -257,6 +257,7 @@ jobs:
             Copy-Item "README.md" -Destination $packageRoot -Force
             Copy-Item "LICENSE" -Destination $packageRoot -Force
             Copy-Item "build-ci/platformer" -Destination $packageRoot -Force
+            Copy-Item "build/Linux-Start.sh" -Destination $packageRoot -Force
             if (Test-Path "build-ci/sheet_config") {
               Copy-Item "build-ci/sheet_config" -Destination $packageRoot -Force
             }
@@ -422,6 +423,16 @@ jobs:
     permissions:
       contents: write
     needs: prepare_release
+    env:
+      IOS_BUNDLE_ID: ${{ vars.IOS_BUNDLE_ID || 'com.benno111.dorfplatformertimetravel' }}
+      IOS_EXPORT_METHOD: ${{ vars.IOS_EXPORT_METHOD || 'development' }}
+      IOS_BUILD_CERTIFICATE_BASE64: ${{ secrets.IOS_BUILD_CERTIFICATE_BASE64 }}
+      IOS_P12_PASSWORD: ${{ secrets.IOS_P12_PASSWORD }}
+      IOS_BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.IOS_BUILD_PROVISION_PROFILE_BASE64 }}
+      IOS_KEYCHAIN_PASSWORD: ${{ secrets.IOS_KEYCHAIN_PASSWORD }}
+      IOS_DEVELOPMENT_TEAM: ${{ secrets.IOS_DEVELOPMENT_TEAM }}
+      IOS_PROVISIONING_PROFILE_SPECIFIER: ${{ secrets.IOS_PROVISIONING_PROFILE_SPECIFIER }}
+      IOS_CODE_SIGN_IDENTITY: ${{ secrets.IOS_CODE_SIGN_IDENTITY }}
     strategy:
       fail-fast: false
       matrix:
@@ -459,7 +470,7 @@ jobs:
             .ci/vcpkg/buildtrees
             .ci/vcpkg/packages
             .ci/vcpkg/installed
-          key: vcpkg-ios-${{ matrix.triplet }}-${{ hashFiles('CMakeLists.txt', '.github/workflows/android-build.yml', 'build/ios.sh', 'build/ios-package-smoke.sh', 'cmake/PackageIosApp.cmake', 'cmake/ValidateIosPackage.cmake', 'cmake/ValidateIosPackageManifest.cmake', 'cmake/NormalizeIosSdk.cmake', 'cmake/IosRequiredBundleEntries.cmake', 'cmake/IosBundledProjectFiles.cmake', 'cmake/LaunchScreen.storyboard', 'cmake/iOSInfo.plist.in', 'cmake/vcpkg-triplets/*.cmake', 'Android/app/src/main/res/drawable/android_icon_192.png') }}
+          key: vcpkg-ios-${{ matrix.triplet }}-${{ hashFiles('CMakeLists.txt', '.github/workflows/android-build.yml', 'build/ios.sh', 'build/ios-package-smoke.sh', 'cmake/PackageIosApp.cmake', 'cmake/ValidateIosPackage.cmake', 'cmake/ValidateIosPackageManifest.cmake', 'cmake/NormalizeIosSdk.cmake', 'cmake/IosRequiredBundleEntries.cmake', 'cmake/IosBundledProjectFiles.cmake', 'cmake/LaunchScreen.storyboard', 'cmake/iOSInfo.plist.in', 'cmake/vcpkg-triplets/arm64-ios-device-release.cmake', 'cmake/vcpkg-triplets/*.cmake', 'Android/app/src/main/res/drawable/android_icon_192.png') }}
 
       - name: Bootstrap vcpkg
         run: ./.ci/vcpkg/bootstrap-vcpkg.sh -disableMetrics
@@ -533,7 +544,7 @@ jobs:
               printf '%s' "${SECRET_IOS_PROVISIONING_PROFILE_BASE64}" | decode_base64_secret "${profile_tmp}"
               profile_uuid=""
               if security cms -D -i "${profile_tmp}" > "${profile_plist}" 2>/dev/null; then
-                profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print UUID' "${profile_plist}" 2>/dev/null || true)"
+                profile_uuid="$((/usr/libexec/PlistBuddy -c 'Print UUID' "${profile_plist}" 2>/dev/null) || true)"
               fi
               if [[ -n "${profile_uuid}" ]]; then
                 cp "${profile_tmp}" "${profile_dir}/${profile_uuid}.mobileprovision"
@@ -748,3 +759,9 @@ jobs:
             release/platformer-ios-${{ matrix.artifact_suffix }}.ipsw
             release/platformer-ios-${{ matrix.artifact_suffix }}-manifest.json
             release/platformer-ios-${{ matrix.artifact_suffix }}-sha256.txt
+
+      - name: Clean up iOS signing assets
+        if: ${{ always() && steps.ios-signing.outputs.signing_enabled == 'true' }}
+        run: |
+          security delete-keychain "$RUNNER_TEMP/app-signing.keychain-db" || true
+          rm -f ~/Library/MobileDevice/Provisioning\ Profiles/build_pp.mobileprovision

@@ -74,6 +74,8 @@ option(PLATFORMER_REQUIRE_SDL3_MIXER "Fail configure if SDL3_mixer is not found"
 option(PLATFORMER_REQUIRE_CURL "Fail configure if libcurl is not found" OFF)
 set(PLATFORMER_IOS_BUNDLE_ID "com.benno111.dorfplatformertimetravel" CACHE STRING "Bundle identifier to use for iOS builds")
 set(PLATFORMER_IOS_DEPLOYMENT_TARGET "15.0" CACHE STRING "Minimum iOS version for iOS builds")
+set(PLATFORMER_IOS_PRODUCT_NAME "Dorfplatformer Timetravel" CACHE STRING "Product name to use for iOS app bundles and install packages")
+set(PLATFORMER_IOS_ICON_FILE "${CMAKE_SOURCE_DIR}/Android/app/src/main/res/drawable/android_icon_192.png" CACHE FILEPATH "PNG icon to embed in iOS app bundles")
 
 option(PLATFORMER_ENABLE_UNITY_BUILD "Enable CMake unity build for faster compile times" ON)
 if(PLATFORMER_ENABLE_UNITY_BUILD)
@@ -174,9 +176,10 @@ add_executable(platformer
 )
 target_include_directories(platformer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 if(APPLE AND IOS)
-  set(PLATFORMER_IOS_PACKAGE_DIR "${CMAKE_SOURCE_DIR}/dist/ios" CACHE PATH "Directory for generated iOS package artifacts")
-  set(PLATFORMER_IOS_IPA "${PLATFORMER_IOS_PACKAGE_DIR}/platformer.ipa")
-  set(PLATFORMER_IOS_IPSW "${PLATFORMER_IOS_PACKAGE_DIR}/platformer.ipsw")
+  set(PLATFORMER_IOS_PACKAGE_DIR "${CMAKE_BINARY_DIR}/ios-package/${CMAKE_CFG_INTDIR}")
+  set(PLATFORMER_IOS_PAYLOAD_DIR "${PLATFORMER_IOS_PACKAGE_DIR}/Payload")
+  set(PLATFORMER_IOS_IPSW_PATH "${CMAKE_BINARY_DIR}/Dorfplatformer Timetravel-${CMAKE_CFG_INTDIR}.ipsw")
+  set(PLATFORMER_IOS_IPA_PATH "${CMAKE_BINARY_DIR}/Dorfplatformer Timetravel-${CMAKE_CFG_INTDIR}.ipa")
   set(PLATFORMER_IOS_LAUNCH_STORYBOARD "${CMAKE_SOURCE_DIR}/cmake/LaunchScreen.storyboard")
   set(PLATFORMER_IOS_ICON_SOURCE "${CMAKE_SOURCE_DIR}/Android/app/src/main/res/drawable/android_icon_192.png")
   set(PLATFORMER_IOS_ASSET_CATALOG "${CMAKE_CURRENT_BINARY_DIR}/ios/Assets.xcassets")
@@ -290,7 +293,9 @@ if(APPLE AND IOS)
     endif()
   endforeach()
   set_target_properties(platformer PROPERTIES
+    OUTPUT_NAME "${PLATFORMER_IOS_PRODUCT_NAME}"
     MACOSX_BUNDLE ON
+    MACOSX_BUNDLE_ICON_FILE "AppIcon.png"
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/cmake/iOSInfo.plist.in"
     XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${PLATFORMER_IOS_BUNDLE_ID}"
     XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET "${PLATFORMER_IOS_DEPLOYMENT_TARGET}"
@@ -298,6 +303,23 @@ if(APPLE AND IOS)
     XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"
     XCODE_ATTRIBUTE_SUPPORTS_MACCATALYST "NO"
   )
+  add_custom_command(TARGET platformer POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+      "${CMAKE_SOURCE_DIR}/assets"
+      "$<TARGET_BUNDLE_DIR:platformer>/assets"
+    VERBATIM
+  )
+  platformer_copy_if_exists_commands(platformer "$<TARGET_BUNDLE_DIR:platformer>")
+  if(EXISTS "${PLATFORMER_IOS_ICON_FILE}")
+    add_custom_command(TARGET platformer POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${PLATFORMER_IOS_ICON_FILE}"
+        "$<TARGET_BUNDLE_DIR:platformer>/AppIcon.png"
+      VERBATIM
+    )
+  else()
+    message(WARNING "iOS icon file not found: ${PLATFORMER_IOS_ICON_FILE}")
+  endif()
   add_custom_target(ios-package
     COMMAND ${CMAKE_COMMAND}
       -DAPP_BUNDLE="$<TARGET_BUNDLE_DIR:platformer>"
@@ -316,6 +338,7 @@ if(APPLE AND IOS)
     DEPENDS platformer
     COMMENT "Build the complete iOS app bundle plus .ipa and requested .ipsw artifacts"
     VERBATIM
+  )
   )
 endif()
 if(WIN32)

@@ -26,9 +26,11 @@ Build locally:
   - Unsigned builds are the default. For a signed device archive, set `IOS_CODE_SIGNING_ALLOWED=YES`, `IOS_CODE_SIGNING_REQUIRED=YES`, `IOS_BUNDLE_ID`, `IOS_DEVELOPMENT_TEAM`, `IOS_CODE_SIGN_STYLE`, `IOS_CODE_SIGN_IDENTITY`, and optionally `IOS_PROVISIONING_PROFILE_SPECIFIER`. Boolean iOS helper env vars accept `ON/OFF`, `YES/NO`, `true/false`, or `1/0`.
   - GitHub Actions uploads validated `platformer-ios-simulator` and `platformer-ios-device` artifacts on every macOS iOS build. Release downloads are renamed to `platformer-ios-device.ipsw`/`.ipa` and get matching release-name checksum files.
   - GitHub Actions enables signed `iphoneos` artifacts only when both `IOS_DEVELOPMENT_TEAM` and `IOS_CERTIFICATE_P12_BASE64` are configured as repository secrets; optional companion secrets are `IOS_BUNDLE_ID`, `IOS_CODE_SIGN_IDENTITY`, `IOS_CODE_SIGN_STYLE`, `IOS_PROVISIONING_PROFILE_SPECIFIER`, `IOS_CERTIFICATE_PASSWORD`, and `IOS_PROVISIONING_PROFILE_BASE64`.
+- iOS device (macOS + Xcode): `cmake -S . -B build-ios -G Xcode -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphoneos -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_TOOLCHAIN_FILE="$PWD/.ci/vcpkg/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=arm64-ios-device-release -DVCPKG_OVERLAY_TRIPLETS="$PWD/cmake/vcpkg-triplets" -DPLATFORMER_REQUIRE_SDL3_MIXER=OFF`
 
 Windows releases now ship both x64 and x86 installers, and the embedded app manifest advertises compatibility from Windows Vista through Windows 11.
 The 32-bit Windows build also uses the static MSVC runtime to reduce dependency on installed VC++ redistributables.
+The iOS release workflow now always packages a SideStore-friendly `.ipa` with the bundled `assets/` directory included. SideStore installs `.ipa` app archives, not `.ipsw` firmware images.
 
 Manual CMake (separate folder):
 - Configure: `cmake -S . -B .build`
