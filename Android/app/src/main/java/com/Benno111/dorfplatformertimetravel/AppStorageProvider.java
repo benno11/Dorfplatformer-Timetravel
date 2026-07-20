@@ -51,7 +51,7 @@ public class AppStorageProvider extends DocumentsProvider {
         row.add(DocumentsContract.Root.COLUMN_ROOT_ID, ROOT_ID);
         row.add(DocumentsContract.Root.COLUMN_TITLE, "Dorfplatformer Timetravel");
         row.add(DocumentsContract.Root.COLUMN_DOCUMENT_ID, DOC_ID_ROOT);
-        row.add(DocumentsContract.Root.COLUMN_ICON, R.drawable.android_icon_192);
+        row.add(DocumentsContract.Root.COLUMN_ICON, R.mipmap.ic_launcher);
         row.add(DocumentsContract.Root.COLUMN_AVAILABLE_BYTES, root.getUsableSpace());
         row.add(
                 DocumentsContract.Root.COLUMN_FLAGS,

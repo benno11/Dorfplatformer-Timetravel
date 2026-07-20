@@ -257,6 +257,7 @@ jobs:
             Copy-Item "README.md" -Destination $packageRoot -Force
             Copy-Item "LICENSE" -Destination $packageRoot -Force
             Copy-Item "build-ci/platformer" -Destination $packageRoot -Force
+            Copy-Item "build/Linux-Start.sh" -Destination $packageRoot -Force
             if (Test-Path "build-ci/sheet_config") {
               Copy-Item "build-ci/sheet_config" -Destination $packageRoot -Force
             }

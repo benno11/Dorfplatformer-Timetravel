@@ -73,6 +73,8 @@ option(PLATFORMER_ENABLE_LOWERCASE_SDL_SHIM "Generate lowercase SDL include shim
 option(PLATFORMER_REQUIRE_SDL3_MIXER "Fail configure if SDL3_mixer is not found" ON)
 set(PLATFORMER_IOS_BUNDLE_ID "com.benno111.dorfplatformertimetravel" CACHE STRING "Bundle identifier to use for iOS builds")
 set(PLATFORMER_IOS_DEPLOYMENT_TARGET "15.0" CACHE STRING "Minimum iOS version for iOS builds")
+set(PLATFORMER_IOS_PRODUCT_NAME "Dorfplatformer Timetravel" CACHE STRING "Product name to use for iOS app bundles and install packages")
+set(PLATFORMER_IOS_ICON_FILE "${CMAKE_SOURCE_DIR}/Android/app/src/main/res/drawable/android_icon_192.png" CACHE FILEPATH "PNG icon to embed in iOS app bundles")
 
 option(PLATFORMER_ENABLE_UNITY_BUILD "Enable CMake unity build for faster compile times" ON)
 if(PLATFORMER_ENABLE_UNITY_BUILD)
@@ -131,6 +133,27 @@ function(platformer_apply_windows_exe_hardening target_name)
   endif()
 endfunction()
 
+
+set(PLATFORMER_BUNDLED_GAME_FILES
+  "${CMAKE_SOURCE_DIR}/LICENSE"
+  "${CMAKE_SOURCE_DIR}/README.md"
+  "${CMAKE_SOURCE_DIR}/object_type_map.json"
+  "${CMAKE_SOURCE_DIR}/level store.txt"
+)
+
+function(platformer_copy_if_exists_commands target_name destination_dir)
+  foreach(_game_file IN LISTS PLATFORMER_BUNDLED_GAME_FILES)
+    if(EXISTS "${_game_file}")
+      add_custom_command(TARGET ${target_name} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "${_game_file}"
+          "${destination_dir}"
+        VERBATIM
+      )
+    endif()
+  endforeach()
+endfunction()
+
 add_executable(platformer
   src/main.cpp
   src/GameApp.cpp
@@ -152,8 +175,14 @@ add_executable(platformer
 )
 target_include_directories(platformer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 if(APPLE AND IOS)
+  set(PLATFORMER_IOS_PACKAGE_DIR "${CMAKE_BINARY_DIR}/ios-package/${CMAKE_CFG_INTDIR}")
+  set(PLATFORMER_IOS_PAYLOAD_DIR "${PLATFORMER_IOS_PACKAGE_DIR}/Payload")
+  set(PLATFORMER_IOS_IPSW_PATH "${CMAKE_BINARY_DIR}/Dorfplatformer Timetravel-${CMAKE_CFG_INTDIR}.ipsw")
+  set(PLATFORMER_IOS_IPA_PATH "${CMAKE_BINARY_DIR}/Dorfplatformer Timetravel-${CMAKE_CFG_INTDIR}.ipa")
   set_target_properties(platformer PROPERTIES
+    OUTPUT_NAME "${PLATFORMER_IOS_PRODUCT_NAME}"
     MACOSX_BUNDLE ON
+    MACOSX_BUNDLE_ICON_FILE "AppIcon.png"
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/cmake/iOSInfo.plist.in"
     XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${PLATFORMER_IOS_BUNDLE_ID}"
     XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET "${PLATFORMER_IOS_DEPLOYMENT_TARGET}"
@@ -165,6 +194,36 @@ if(APPLE AND IOS)
       "${CMAKE_SOURCE_DIR}/assets"
       "$<TARGET_BUNDLE_DIR:platformer>/assets"
     VERBATIM
+  )
+  platformer_copy_if_exists_commands(platformer "$<TARGET_BUNDLE_DIR:platformer>")
+  if(EXISTS "${PLATFORMER_IOS_ICON_FILE}")
+    add_custom_command(TARGET platformer POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${PLATFORMER_IOS_ICON_FILE}"
+        "$<TARGET_BUNDLE_DIR:platformer>/AppIcon.png"
+      VERBATIM
+    )
+  else()
+    message(WARNING "iOS icon file not found: ${PLATFORMER_IOS_ICON_FILE}")
+  endif()
+  add_custom_command(
+    OUTPUT "${PLATFORMER_IOS_IPSW_PATH}" "${PLATFORMER_IOS_IPA_PATH}"
+    COMMAND ${CMAKE_COMMAND} -E rm -rf "${PLATFORMER_IOS_PACKAGE_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${PLATFORMER_IOS_PAYLOAD_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+      "$<TARGET_BUNDLE_DIR:platformer>"
+      "${PLATFORMER_IOS_PAYLOAD_DIR}/${PLATFORMER_IOS_PRODUCT_NAME}.app"
+    COMMAND ${CMAKE_COMMAND} -E tar cfv "${PLATFORMER_IOS_IPSW_PATH}" --format=zip Payload
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${PLATFORMER_IOS_IPSW_PATH}"
+      "${PLATFORMER_IOS_IPA_PATH}"
+    WORKING_DIRECTORY "${PLATFORMER_IOS_PACKAGE_DIR}"
+    DEPENDS platformer
+    VERBATIM
+    COMMENT "Package iOS app as Dorfplatformer Timetravel install archives"
+  )
+  add_custom_target(ios-package
+    DEPENDS "${PLATFORMER_IOS_IPSW_PATH}" "${PLATFORMER_IOS_IPA_PATH}"
   )
 endif()
 if(WIN32)
@@ -313,6 +372,14 @@ if(WIN32)
     )
   endif()
 endif()
+if(DEFINED VCPKG_TARGET_TRIPLET)
+  list(APPEND SDL3_MIXER_DIR_CANDIDATES
+    "${CMAKE_SOURCE_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/share/sdl3-mixer"
+    "${CMAKE_SOURCE_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/share/SDL3_mixer"
+    "${CMAKE_SOURCE_DIR}/vcpkg/installed/${VCPKG_TARGET_TRIPLET}/share/sdl3-mixer"
+    "${CMAKE_SOURCE_DIR}/vcpkg/installed/${VCPKG_TARGET_TRIPLET}/share/SDL3_mixer"
+  )
+endif()
 if(DEFINED SDL3_mixer_DIR)
   message(STATUS "SDL3_mixer_DIR preset: ${SDL3_mixer_DIR}")
 endif()
@@ -366,6 +433,12 @@ if(NOT SDL3_mixer_FOUND)
           set(VCPKG_TARGET_TRIPLET "x86-windows")
         else()
           set(VCPKG_TARGET_TRIPLET "x64-windows")
+        endif()
+      elseif(IOS)
+        if(CMAKE_OSX_SYSROOT MATCHES "iphonesimulator")
+          set(VCPKG_TARGET_TRIPLET "arm64-ios-simulator")
+        else()
+          set(VCPKG_TARGET_TRIPLET "arm64-ios")
         endif()
       elseif(APPLE)
         set(VCPKG_TARGET_TRIPLET "x64-osx")
@@ -544,6 +617,10 @@ if(SDL3_MIXER_LINK_TARGET)
 endif()
 
 target_link_libraries(platformer PRIVATE ${PLATFORMER_LINK_LIBS})
+if(APPLE AND IOS AND TARGET SDL3::SDL3main)
+  target_link_libraries(platformer PRIVATE SDL3::SDL3main)
+  message(STATUS "Linked iOS SDL main shim: SDL3::SDL3main")
+endif()
 
 if(SDL3_MIXER_LINK_TARGET)
   target_compile_definitions(platformer PRIVATE PLATFORMER_HAS_SDL3_MIXER=1)
