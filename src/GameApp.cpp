@@ -29,9 +29,6 @@
 #include <windows.h>
 #include <shellapi.h>
 #endif
-#if defined(__APPLE__)
-#include <TargetConditionals.h>
-#endif
 #include <vector>
 #include <fstream>
 #if !defined(_WIN32)
@@ -54,6 +51,7 @@
 #include "CrashReporter.h"
 #include "AudioSystem.h"
 #include "InputSystem.h"
+#include "Platform.h"
 #include "UiScale.h"
 #include "World3PatternBackground.h"
 #include "BuildInfo.h"
@@ -111,10 +109,33 @@ static std::wstring quoteWindowsArg(const std::wstring& value) {
     return out;
 }
 #endif
+
+#if defined(HAVE_CURL) && HAVE_CURL && !defined(_WIN32)
+struct CurlRuntime {
+    CurlRuntime() {
+        const CURLcode rc = curl_global_init(CURL_GLOBAL_DEFAULT);
+        initialized = (rc == CURLE_OK);
+        if (!initialized) {
+            SDL_Log("NET: curl_global_init failed rc=%d", (int)rc);
+        }
+    }
+
+    ~CurlRuntime() {
+        if (initialized) {
+            curl_global_cleanup();
+        }
+    }
+
+    bool initialized = false;
+};
+#endif
 } // namespace
 
 int RunGameApp(int argc, char** argv) {
     CrashReporter::start();
+#if defined(HAVE_CURL) && HAVE_CURL && !defined(_WIN32)
+    [[maybe_unused]] CurlRuntime curlRuntime;
+#endif
     bool enableGameLog = false;
     bool allowDevTools = false;
     for (int i = 1; i < argc; ++i) {
@@ -148,7 +169,7 @@ int RunGameApp(int argc, char** argv) {
     }
     const std::string buildUuid = makeBuildUuid();
     auto reportStartupError = [](const char* title, const std::string& msg, SDL_Window* parent) {
-#if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IOS)
+#if PLATFORMER_MOBILE
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "%s: %s", title, msg.c_str());
 #else
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, title, msg.c_str(), parent);
@@ -268,7 +289,7 @@ int RunGameApp(int argc, char** argv) {
 #if defined(__ANDROID__)
         if (hasAudioDriver("aaudio")) preselectedAudio = "aaudio";
         else if (hasAudioDriver("openslES")) preselectedAudio = "openslES";
-#elif defined(__APPLE__) && TARGET_OS_IOS
+#elif PLATFORMER_IOS
         if (hasAudioDriver("coreaudio")) preselectedAudio = "coreaudio";
 #elif defined(_WIN32)
         if (hasAudioDriver("wasapi")) preselectedAudio = "wasapi";
@@ -398,7 +419,7 @@ int RunGameApp(int argc, char** argv) {
         if (!driver) return false;
 #if defined(__ANDROID__)
         return std::strcmp(driver, "dummy") != 0;
-#elif defined(__APPLE__) && TARGET_OS_IOS
+#elif PLATFORMER_IOS
         return std::strcmp(driver, "coreaudio") == 0;
 #elif defined(_WIN32)
         return std::strcmp(driver, "wasapi") == 0 ||
@@ -420,7 +441,7 @@ int RunGameApp(int argc, char** argv) {
         if (!audioReady && hasAudioDriver("aaudio")) audioReady = tryAudioInit("aaudio", "aaudio");
         if (!audioReady && hasAudioDriver("openslES")) audioReady = tryAudioInit("openslES", "openslES");
         if (!audioReady && hasAudioDriver("dummy")) audioReady = tryAudioInit("dummy", "dummy");
-#elif defined(__APPLE__) && TARGET_OS_IOS
+#elif PLATFORMER_IOS
         if (hasAudioDriver("coreaudio")) audioReady = tryAudioInit("coreaudio", "coreaudio");
         if (!audioReady) audioReady = tryAudioInit("env default", nullptr);
         if (!audioReady && hasAudioDriver("dummy")) audioReady = tryAudioInit("dummy", "dummy");
@@ -449,7 +470,7 @@ int RunGameApp(int argc, char** argv) {
 #if defined(__ANDROID__)
             if (hasAudioDriver("aaudio")) overridden = tryAudioInit("override aaudio", "aaudio");
             if (!overridden && hasAudioDriver("openslES")) overridden = tryAudioInit("override openslES", "openslES");
-#elif defined(__APPLE__) && TARGET_OS_IOS
+#elif PLATFORMER_IOS
             if (hasAudioDriver("coreaudio")) overridden = tryAudioInit("override coreaudio", "coreaudio");
 #elif defined(_WIN32)
             if (hasAudioDriver("wasapi")) overridden = tryAudioInit("override wasapi", "wasapi");
@@ -1526,12 +1547,7 @@ int RunGameApp(int argc, char** argv) {
         return 1;
     }
 
-    bool fullscreen =
-#if defined(__ANDROID__)
-        true;
-#else
-        false;
-#endif
+    bool fullscreen = PLATFORMER_MOBILE;
     bool vsyncEnabled = false;
     bool clampCamX = true;
     bool defaultShowFpsCounter = false;
@@ -1579,13 +1595,14 @@ int RunGameApp(int argc, char** argv) {
     auto saveClientSettings = [&]() {
         nlohmann::json j;
         j["build_uuid"] = buildUuid;
+        const bool savedFullscreen = PLATFORMER_MOBILE ? true : fullscreen;
         nlohmann::json settings;
         settings["ui"] = {
             {"show_optional_sidebar", showOptionalSidebar},
             {"edge_padding", uiEdgePadding}
         };
         settings["display"] = {
-            {"fullscreen", fullscreen},
+            {"fullscreen", savedFullscreen},
             {"vsync", vsyncEnabled},
             {"ui_scale_percent", uiScalePercent}
         };
@@ -1639,7 +1656,7 @@ int RunGameApp(int argc, char** argv) {
         j["settings"] = std::move(settings);
 
         // Legacy flat keys kept for backward compatibility.
-        j["fullscreen"] = fullscreen;
+        j["fullscreen"] = savedFullscreen;
         j["vsync"] = vsyncEnabled;
         j["show_optional_sidebar"] = showOptionalSidebar;
         j["clamp_cam_x"] = clampCamX;
@@ -1905,6 +1922,9 @@ int RunGameApp(int argc, char** argv) {
             }
         }
     }
+#if PLATFORMER_MOBILE
+    fullscreen = true;
+#endif
     SetLevelServerUrl(levelServerUrl);
     SetLevelServerAuthToken(levelServerAuthToken);
     SetLevelServerAccountUsername(levelServerAccountUsername);
@@ -3359,7 +3379,7 @@ int RunGameApp(int argc, char** argv) {
             defaultShowDetailedDebugger = false;
             showDetailedDebugger = false;
             if (debugWin) {
-#if !defined(__ANDROID__)
+#if !PLATFORMER_MOBILE
                 SDL_DestroyRenderer(debugRen);
                 SDL_DestroyWindow(debugWin);
 #endif
@@ -3368,7 +3388,7 @@ int RunGameApp(int argc, char** argv) {
             }
         }
         if (debugToolsEnabled && showDetailedDebugger && !debugWin) {
-#if defined(__ANDROID__)
+#if PLATFORMER_MOBILE
             debugWin = win;
             debugRen = ren;
 #else
@@ -3393,7 +3413,7 @@ int RunGameApp(int argc, char** argv) {
             }
 #endif
         } else if (debugWin) {
-#if !defined(__ANDROID__)
+#if !PLATFORMER_MOBILE
             if (showDetailedDebugger) SDL_ShowWindow(debugWin);
             else SDL_HideWindow(debugWin);
 #endif
@@ -3431,17 +3451,59 @@ int RunGameApp(int argc, char** argv) {
             clearBtn = SDL_Rect{192, anchorY + 68, 84, 30};
         };
         constexpr int kDebugButtonEditorAnchorY = 402;
+        auto debugButtonTextInputArea = [&](const SDL_Rect& fieldRect) {
+            SDL_Rect focusRect = fieldRect;
+            const int focusPad = 8;
+            focusRect.x -= focusPad;
+            focusRect.y -= focusPad;
+            focusRect.w += focusPad * 2;
+            focusRect.h += focusPad * 2;
+
+            if (showDetailedDebugger && debugWin && debugWin != win) {
+                return SDL_Rect{
+                    std::max(0, focusRect.x),
+                    std::max(0, focusRect.y),
+                    std::max(1, focusRect.w),
+                    std::max(1, focusRect.h)
+                };
+            }
+
+            int winW = 0;
+            int winH = 0;
+            getWindowSizeInPixelsCompat(win, winW, winH);
+            if (winW <= 0 || winH <= 0) {
+                return SDL_Rect{0, 0, 1, 1};
+            }
+            const SDL_Rect present = computePresentRect(winW, winH, kBaseScreenW, kBaseScreenH, 1.0f);
+            if (present.w <= 0 || present.h <= 0) {
+                return SDL_Rect{0, 0, std::max(1, winW), std::max(1, winH)};
+            }
+            const float sx = (float)present.w / (float)kBaseScreenW;
+            const float sy = (float)present.h / (float)kBaseScreenH;
+            int wx = present.x + (int)std::floor((float)focusRect.x * sx);
+            int wy = present.y + (int)std::floor((float)focusRect.y * sy);
+            int ww = std::max(1, (int)std::ceil((float)focusRect.w * sx));
+            int wh = std::max(1, (int)std::ceil((float)focusRect.h * sy));
+            wx = std::clamp(wx, 0, std::max(0, winW - 1));
+            wy = std::clamp(wy, 0, std::max(0, winH - 1));
+            ww = std::min(ww, std::max(1, winW - wx));
+            wh = std::min(wh, std::max(1, winH - wy));
+            return SDL_Rect{wx, wy, ww, wh};
+        };
         auto stopDebugButtonEditing = [&]() {
             debugButtonEditField = DebugButtonEditField::None;
             debugButtonEditBuffer.clear();
+            SDL_SetTextInputArea(win, nullptr, 0);
             SDL_StopTextInput(win);
         };
-        auto beginDebugButtonEditing = [&](DebugButtonEditField field) {
+        auto beginDebugButtonEditing = [&](DebugButtonEditField field, const SDL_Rect& fieldRect) {
             debugButtonEditField = field;
             debugButtonEditBuffer = (field == DebugButtonEditField::World)
                 ? std::to_string(detailedDebugButtonWorld)
                 : std::to_string(detailedDebugButtonArea);
             SDL_StartTextInput(win);
+            SDL_Rect textInputArea = debugButtonTextInputArea(fieldRect);
+            SDL_SetTextInputArea(win, &textInputArea, 0);
         };
         auto applyDebugButtonEditBuffer = [&]() {
             if (debugButtonEditBuffer.empty()) return;
@@ -3528,7 +3590,7 @@ int RunGameApp(int argc, char** argv) {
         bool returnToSelect = false;
         std::unordered_map<SDL_FingerID, SDL_FPoint> activeTouches;
         bool hasTouchScreenDevice = false;
-#if defined(__ANDROID__)
+#if PLATFORMER_MOBILE
         hasTouchScreenDevice = true;
 #endif
         struct ReplayInputSnapshot {
@@ -3976,7 +4038,7 @@ int RunGameApp(int argc, char** argv) {
             }
             showDetailedDebugger = !showDetailedDebugger;
             if (debugToolsEnabled && showDetailedDebugger && !debugWin) {
-#if defined(__ANDROID__)
+#if PLATFORMER_MOBILE
                 debugWin = win;
                 debugRen = ren;
 #else
@@ -4001,13 +4063,13 @@ int RunGameApp(int argc, char** argv) {
                 }
 #endif
             } else if (!showDetailedDebugger) {
-#if defined(__ANDROID__)
+#if PLATFORMER_MOBILE
                 debugWin = nullptr;
                 debugRen = nullptr;
 #endif
             }
             if (debugWin) {
-#if !defined(__ANDROID__)
+#if !PLATFORMER_MOBILE
                 if (showDetailedDebugger) SDL_ShowWindow(debugWin);
                 else SDL_HideWindow(debugWin);
 #endif
@@ -4056,8 +4118,8 @@ int RunGameApp(int argc, char** argv) {
                 else if (pointInPaddedRect(worldPlusBtn, 10)) { stopDebugButtonEditing(); detailedDebugButtonWorld = std::min(99, detailedDebugButtonWorld + 1); handled = true; }
                 else if (pointInPaddedRect(areaMinusBtn, 10)) { stopDebugButtonEditing(); detailedDebugButtonArea = std::max(1, detailedDebugButtonArea - 1); handled = true; }
                 else if (pointInPaddedRect(areaPlusBtn, 10)) { stopDebugButtonEditing(); detailedDebugButtonArea = std::min(9, detailedDebugButtonArea + 1); handled = true; }
-                else if (pointInPaddedRect(worldValueBox, 8)) { beginDebugButtonEditing(DebugButtonEditField::World); handled = true; }
-                else if (pointInPaddedRect(areaValueBox, 8)) { beginDebugButtonEditing(DebugButtonEditField::Area); handled = true; }
+                else if (pointInPaddedRect(worldValueBox, 8)) { beginDebugButtonEditing(DebugButtonEditField::World, worldValueBox); handled = true; }
+                else if (pointInPaddedRect(areaValueBox, 8)) { beginDebugButtonEditing(DebugButtonEditField::Area, areaValueBox); handled = true; }
                 else if (pointInPaddedRect(addBtn, 10)) {
                     stopDebugButtonEditing();
                     levelManager.setButtonAreaActiveForDebug(detailedDebugButtonWorld, detailedDebugButtonArea, true);
@@ -4630,7 +4692,7 @@ int RunGameApp(int argc, char** argv) {
                 (e.key.key == SDLK_AC_BACK || e.key.key == SDL_GetKeyFromScancode(keybinds.pause, SDL_KMOD_NONE, false));
             if (isKeyDownEvent && e.key.repeat == 0) {
                 if (e.key.key == SDLK_F11) {
-#if !defined(__ANDROID__)
+#if !PLATFORMER_MOBILE
                     const bool nextFullscreen = !fullscreen;
                     if (applyFullscreen(nextFullscreen)) fullscreen = nextFullscreen;
 #endif

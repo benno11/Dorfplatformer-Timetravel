@@ -24,6 +24,7 @@
 #include "GameSupport.h"
 #include "LevelLoader.h"
 #include "InputSystem.h"
+#include "Platform.h"
 #if defined(HAVE_CURL) && HAVE_CURL
 #include <curl/curl.h>
 #endif
@@ -44,7 +45,7 @@ struct OnlineLevelsMenuLabels {
     std::string uploadButton = "UPLOAD (U)";
     std::string emptyTitle = "No levels found in this tab.";
     std::string emptyLocalHint = "Use CREATE LOCAL LEVEL (EDITOR).";
-    std::string emptyCustomHintAndroid = "Add custom levels to assets/custom_levels/levels.json.";
+    std::string emptyCustomHintMobile = "Add custom levels to assets/custom_levels/levels.json or create one locally.";
     std::string emptyCustomHintDesktop = "Use custom_levels/ or assets/custom_levels/.";
     std::string localPanelTitle = "LOCAL LEVEL";
     std::string localPanelActions = "ENTER/P: PLAY  DEL/X: DELETE  E: EDIT  U: UPLOAD";
@@ -163,7 +164,8 @@ OnlineLevelsMenuLabels loadOnlineLevelsMenuLabels() {
         readString("upload_button", labels.uploadButton);
         readString("empty_title", labels.emptyTitle);
         readString("empty_local_hint", labels.emptyLocalHint);
-        readString("empty_custom_hint_android", labels.emptyCustomHintAndroid);
+        readString("empty_custom_hint_android", labels.emptyCustomHintMobile);
+        readString("empty_custom_hint_mobile", labels.emptyCustomHintMobile);
         readString("empty_custom_hint_desktop", labels.emptyCustomHintDesktop);
         readString("local_panel_title", labels.localPanelTitle);
         readString("local_panel_actions", labels.localPanelActions);
@@ -287,6 +289,15 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
     bool promptTextInputActive = false;
     auto setPromptTextInput = [&](bool active, int winW = 0, int winH = 0, const SDL_Rect* focusRect = nullptr) {
         if (active == promptTextInputActive) {
+            if (active && focusRect) {
+                SDL_Rect textInputArea{
+                    focusRect->x,
+                    focusRect->y,
+                    std::max(1, focusRect->w),
+                    std::max(1, focusRect->h)
+                };
+                SDL_SetTextInputArea(win, &textInputArea, 0);
+            }
 #if defined(__ANDROID__)
             if (active) {
                 if (winW <= 0 || winH <= 0) getWindowSizeInPixelsCompat(win, winW, winH);
@@ -304,6 +315,15 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
         promptTextInputActive = active;
         if (active) {
             SDL_StartTextInput(win);
+            if (focusRect) {
+                SDL_Rect textInputArea{
+                    focusRect->x,
+                    focusRect->y,
+                    std::max(1, focusRect->w),
+                    std::max(1, focusRect->h)
+                };
+                SDL_SetTextInputArea(win, &textInputArea, 0);
+            }
 #if defined(__ANDROID__)
             if (winW <= 0 || winH <= 0) getWindowSizeInPixelsCompat(win, winW, winH);
             if (focusRect) {
@@ -317,6 +337,7 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
             }
 #endif
         } else {
+            SDL_SetTextInputArea(win, nullptr, 0);
             SDL_StopTextInput(win);
 #if defined(__ANDROID__)
             HideAndroidSoftKeyboard();
@@ -369,6 +390,7 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
         SDL_Rect rowHPlus{rowH.x + rowH.w - 46, rowH.y + 5, 40, rowH.h - 10};
         SDL_Rect createBtn{panel.x + 80, panel.y + 242, 150, 42};
         SDL_Rect cancelBtn{panel.x + 290, panel.y + 242, 150, 42};
+        if (selectedRow == 0) setPromptTextInput(true, winW, winH, &rowName);
         auto handlePointerDown = [&](int px, int py) {
             SDL_Point pt{px, py};
             auto inPadded = [&](const SDL_Rect& r, int pad = 10) -> bool {
@@ -929,7 +951,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             }
             if (e.type == SDL_KEYDOWN && e.key.repeat == 0) {
                 if (e.key.key == SDLK_F11) {
-#if !defined(__ANDROID__)
+#if !PLATFORMER_MOBILE
                     const Uint32 flags = SDL_GetWindowFlags(win);
                     const bool isFullscreen = (flags & SDL_WINDOW_FULLSCREEN) != 0;
                     SDL_SetWindowFullscreen(win, !isFullscreen);
@@ -1615,7 +1637,7 @@ std::vector<LevelEntry> loadLevelListFromDir(const std::string& dirPath, bool pr
 }
 
 std::vector<LevelEntry> loadCampaignLevels() {
-#if defined(__ANDROID__)
+#if PLATFORMER_MOBILE
     return loadLevelListFromJson("assets/levels/levels.json", "assets/levels");
 #else
     return loadLevelListFromDir("assets/levels");
@@ -1675,12 +1697,15 @@ std::vector<LevelEntry> loadCustomLevels() {
         addUniqueByPath(out, loadLevelListFromJson(buildFirebaseUrl(base, "/custom_levels/levels"), base + "/custom_levels"));
         addUniqueByPath(out, loadLevelListFromJson(buildFirebaseUrl(base, "/custom_levels"), ""));
     }
-#if defined(__ANDROID__)
+#if PLATFORMER_MOBILE
     addUniqueByPath(out, loadLevelListFromJson("assets/custom_levels/levels.json", "assets/custom_levels"));
+    addUniqueByPath(out, loadLevelListFromDir(localLevelsFolderPath(), true));
     std::sort(out.begin(), out.end(), [](const LevelEntry& a, const LevelEntry& b) { return a.label < b.label; });
     return out;
 #else
     addUniqueByPath(out, loadLevelListFromDir("custom_levels"));
+#endif
+#if !PLATFORMER_MOBILE
     std::vector<LevelEntry> assetsOut = loadLevelListFromDir("assets/custom_levels");
     addUniqueByPath(out, assetsOut);
     std::sort(out.begin(), out.end(), [](const LevelEntry& a, const LevelEntry& b) { return a.label < b.label; });
@@ -2066,7 +2091,7 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
             }
             if (e.type == SDL_KEYDOWN && e.key.repeat == 0) {
                 if (e.key.key == SDLK_F11) {
-#if !defined(__ANDROID__)
+#if !PLATFORMER_MOBILE
                     const Uint32 flags = SDL_GetWindowFlags(win);
                     const bool isFullscreen = (flags & SDL_WINDOW_FULLSCREEN) != 0;
                     SDL_SetWindowFullscreen(win, !isFullscreen);
@@ -2312,8 +2337,8 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
                 DrawText(ren, listClip.x, listTop + 10 + rowH, textScale, menuLabels.emptyLocalHint);
             } else {
                 DrawText(ren, listClip.x, listTop + 10 + rowH, textScale,
-#if defined(__ANDROID__)
-                     menuLabels.emptyCustomHintAndroid);
+#if PLATFORMER_MOBILE
+                     menuLabels.emptyCustomHintMobile);
 #else
                      menuLabels.emptyCustomHintDesktop);
 #endif
@@ -2702,6 +2727,11 @@ std::string RunCustomLevelSelect(SDL_Window* win, SDL_Renderer* ren) {
 }
 
 bool HasCustomLevels() {
-    return !loadCustomLevels().empty();
+    if (!loadCustomLevels().empty()) return true;
+#if PLATFORMER_MOBILE
+    return !loadLevelListFromDir(localLevelsFolderPath(), true).empty();
+#else
+    return false;
+#endif
 }
 

@@ -27,6 +27,7 @@
 #include "GameSupport.h"
 #include "InputSystem.h"
 #include "LevelSelect.h"
+#include "Platform.h"
 #include "TextRenderer.h"
 #include "UiScale.h"
 
@@ -194,7 +195,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
 #endif
     };
     auto applyFullscreen = [&](bool enabled) -> bool {
-#if defined(__ANDROID__)
+#if PLATFORMER_MOBILE
         (void)enabled;
         return false;
 #else
@@ -352,7 +353,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         settingsTab = std::clamp(value, 0, kSettingsTabCount - 1);
         normalizeSettingsTab();
     };
-#if defined(__ANDROID__)
+#if PLATFORMER_MOBILE
     constexpr int IDX_VSYNC = 1;
     constexpr int IDX_CAM_CLAMP = 1;
     constexpr int IDX_UI_SCALE = 2;
@@ -576,10 +577,46 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     auto stopNetworkEditing = [&]() {
         if (networkEditField == NetworkEditField::None) return;
         networkEditField = NetworkEditField::None;
+        SDL_SetTextInputArea(ctx.win, nullptr, 0);
         SDL_StopTextInput(ctx.win);
 #if defined(__ANDROID__)
         hideVirtualKeyboard();
 #endif
+    };
+    auto gameRectToWindowTextInputArea = [&](const SDL_Rect* focusGameRect, SDL_Rect& outRect) -> bool {
+        int winW = 0;
+        int winH = 0;
+        getWindowSizeInPixelsCompat(ctx.win, winW, winH);
+        if (!focusGameRect || ctx.baseScreenW <= 0 || ctx.baseScreenH <= 0 || winW <= 0 || winH <= 0) {
+            outRect = SDL_Rect{0, 0, std::max(1, winW), std::max(1, winH)};
+            return winW > 0 && winH > 0;
+        }
+
+        SDL_Rect focusRect = *focusGameRect;
+        const int focusPad = 12;
+        focusRect.x -= focusPad;
+        focusRect.y -= focusPad;
+        focusRect.w += focusPad * 2;
+        focusRect.h += focusPad * 2;
+
+        SDL_Rect present = computePresentRect(winW, winH, ctx.baseScreenW, ctx.baseScreenH, 1.0f);
+        if (present.w <= 0 || present.h <= 0) {
+            outRect = SDL_Rect{0, 0, std::max(1, winW), std::max(1, winH)};
+            return true;
+        }
+
+        const float sx = (float)present.w / (float)ctx.baseScreenW;
+        const float sy = (float)present.h / (float)ctx.baseScreenH;
+        int wx = present.x + (int)std::floor((float)focusRect.x * sx);
+        int wy = present.y + (int)std::floor((float)focusRect.y * sy);
+        int ww = std::max(1, (int)std::ceil((float)focusRect.w * sx));
+        int wh = std::max(1, (int)std::ceil((float)focusRect.h * sy));
+        wx = std::clamp(wx, 0, std::max(0, winW - 1));
+        wy = std::clamp(wy, 0, std::max(0, winH - 1));
+        ww = std::min(ww, std::max(1, winW - wx));
+        wh = std::min(wh, std::max(1, winH - wy));
+        outRect = SDL_Rect{wx, wy, ww, wh};
+        return true;
     };
     auto beginNetworkEditing = [&](NetworkEditField field, const SDL_Rect* focusGameRect = nullptr) {
         networkEditField = field;
@@ -589,36 +626,16 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         }
         networkCursorPreset = false;
         SDL_StartTextInput(ctx.win);
+        SDL_Rect textInputArea{0, 0, 1, 1};
+        const bool hasTextInputArea = gameRectToWindowTextInputArea(focusGameRect, textInputArea);
+        if (hasTextInputArea) {
+            SDL_SetTextInputArea(ctx.win, &textInputArea, 0);
+        }
 #if defined(__ANDROID__)
-        int winW = 0;
-        int winH = 0;
-        getWindowSizeInPixelsCompat(ctx.win, winW, winH);
-        if (focusGameRect && ctx.baseScreenW > 0 && ctx.baseScreenH > 0 && winW > 0 && winH > 0) {
-            SDL_Rect focusRect = *focusGameRect;
-            const int focusPad = 12;
-            focusRect.x -= focusPad;
-            focusRect.y -= focusPad;
-            focusRect.w += focusPad * 2;
-            focusRect.h += focusPad * 2;
-
-            SDL_Rect present = computePresentRect(winW, winH, ctx.baseScreenW, ctx.baseScreenH, 1.0f);
-            if (present.w > 0 && present.h > 0) {
-                const float sx = (float)present.w / (float)ctx.baseScreenW;
-                const float sy = (float)present.h / (float)ctx.baseScreenH;
-                int wx = present.x + (int)std::floor((float)focusRect.x * sx);
-                int wy = present.y + (int)std::floor((float)focusRect.y * sy);
-                int ww = std::max(1, (int)std::ceil((float)focusRect.w * sx));
-                int wh = std::max(1, (int)std::ceil((float)focusRect.h * sy));
-                wx = std::clamp(wx, 0, std::max(0, winW - 1));
-                wy = std::clamp(wy, 0, std::max(0, winH - 1));
-                ww = std::min(ww, std::max(1, winW - wx));
-                wh = std::min(wh, std::max(1, winH - wy));
-                showVirtualKeyboard(wx, wy, ww, wh);
-            } else {
-                showVirtualKeyboard(0, 0, std::max(1, winW), std::max(1, winH));
-            }
+        if (hasTextInputArea) {
+            showVirtualKeyboard(textInputArea.x, textInputArea.y, textInputArea.w, textInputArea.h);
         } else {
-            showVirtualKeyboard(0, 0, std::max(1, winW), std::max(1, winH));
+            showVirtualKeyboard(0, 0, 1, 1);
         }
 #endif
     };
@@ -1499,7 +1516,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             }
             return;
         }
-#if defined(__ANDROID__)
+#if PLATFORMER_MOBILE
         const int rawGeneralSel = generalSettingsRawIndexFromVisible(settingsSel);
         if (rawGeneralSel == IDX_VSYNC) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
         else if (rawGeneralSel == IDX_CAM_CLAMP) clampCamX = !clampCamX;
@@ -1888,7 +1905,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 (e.type == SDL_KEYDOWN);
             if (isKeyDownEvent && e.key.repeat == 0) {
                 if (e.key.key == SDLK_F11) {
-#if !defined(__ANDROID__)
+#if !PLATFORMER_MOBILE
                     (void)applyFullscreen(!fullscreen);
 #endif
                     continue;
@@ -2434,7 +2451,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     }
                     SDL_Rect aboutBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_ABOUT));
                     SDL_Rect backBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_BACK));
-#if defined(__ANDROID__)
+#if PLATFORMER_MOBILE
                     SDL_Rect vsyncBtn = settingsRowBtn(IDX_VSYNC);
                     SDL_Rect camBtn = settingsRowBtn(IDX_CAM_CLAMP);
                     SDL_Rect uiScaleBtn = settingsRowBtn(IDX_UI_SCALE);
@@ -2712,7 +2729,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     }
                     SDL_Rect aboutBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_ABOUT));
                     SDL_Rect backBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_BACK));
-#if defined(__ANDROID__)
+#if PLATFORMER_MOBILE
                     SDL_Rect vsyncBtn = settingsRowBtn(IDX_VSYNC);
                     SDL_Rect camBtn = settingsRowBtn(IDX_CAM_CLAMP);
                     SDL_Rect uiScaleBtn = settingsRowBtn(IDX_UI_SCALE);
@@ -3692,7 +3709,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             } else {
                 SDL_Rect listClip = settingsListClipRect();
                 SDL_SetRenderClipRect(ctx.ren, &listClip);
-#if defined(__ANDROID__)
+#if PLATFORMER_MOBILE
                 std::vector<std::string> rows = {
                     std::string("VSYNC: ") + (vsyncEnabled ? "ON" : "OFF"),
                     std::string("CAM CLAMP: ") + (clampCamX ? "ON" : "OFF"),
@@ -3743,7 +3760,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 for (int i = 0; i < (int)rows.size(); ++i) {
                     if (generalSettingsRowHidden(i)) continue;
                     drawToggleHitbox(drawIdx, drawIdx == settingsSel);
-#if defined(__ANDROID__)
+#if PLATFORMER_MOBILE
                     if (i == 0) drawToggleCheckbox(drawIdx, vsyncEnabled);
                     if (i == 1) drawToggleCheckbox(drawIdx, clampCamX);
                     if (i == IDX_SHOW_FPS) drawToggleCheckbox(drawIdx, defaultShowFpsCounter);

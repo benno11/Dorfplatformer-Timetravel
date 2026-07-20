@@ -9,6 +9,7 @@
   "empty_title": "No levels found in this tab.",
   "empty_local_hint": "Use CREATE LOCAL LEVEL (EDITOR).",
   "empty_custom_hint_android": "Add custom levels to assets/custom_levels/levels.json.",
+  "empty_custom_hint_mobile": "Add custom levels to assets/custom_levels/levels.json or create one locally.",
   "empty_custom_hint_desktop": "Use custom_levels/ or assets/custom_levels/.",
   "local_panel_title": "LOCAL LEVEL",
   "local_panel_actions": "ENTER/P: PLAY  DEL/X: DELETE  E: EDIT  U: UPLOAD",

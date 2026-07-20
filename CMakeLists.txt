@@ -71,6 +71,7 @@ set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -O2 -g -DN
 option(PLATFORMER_EMBED_LIBS "Prefer static dependency libraries in the main binary" ON)
 option(PLATFORMER_ENABLE_LOWERCASE_SDL_SHIM "Generate lowercase SDL include shim (<sdl3/...>)" OFF)
 option(PLATFORMER_REQUIRE_SDL3_MIXER "Fail configure if SDL3_mixer is not found" ON)
+option(PLATFORMER_REQUIRE_CURL "Fail configure if libcurl is not found" OFF)
 set(PLATFORMER_IOS_BUNDLE_ID "com.benno111.dorfplatformertimetravel" CACHE STRING "Bundle identifier to use for iOS builds")
 set(PLATFORMER_IOS_DEPLOYMENT_TARGET "15.0" CACHE STRING "Minimum iOS version for iOS builds")
 
@@ -173,24 +174,148 @@ add_executable(platformer
 )
 target_include_directories(platformer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 if(APPLE AND IOS)
+  set(PLATFORMER_IOS_PACKAGE_DIR "${CMAKE_SOURCE_DIR}/dist/ios" CACHE PATH "Directory for generated iOS package artifacts")
+  set(PLATFORMER_IOS_IPA "${PLATFORMER_IOS_PACKAGE_DIR}/platformer.ipa")
+  set(PLATFORMER_IOS_IPSW "${PLATFORMER_IOS_PACKAGE_DIR}/platformer.ipsw")
+  set(PLATFORMER_IOS_LAUNCH_STORYBOARD "${CMAKE_SOURCE_DIR}/cmake/LaunchScreen.storyboard")
+  set(PLATFORMER_IOS_ICON_SOURCE "${CMAKE_SOURCE_DIR}/Android/app/src/main/res/drawable/android_icon_192.png")
+  set(PLATFORMER_IOS_ASSET_CATALOG "${CMAKE_CURRENT_BINARY_DIR}/ios/Assets.xcassets")
+  set(PLATFORMER_IOS_APPICON_SET "${PLATFORMER_IOS_ASSET_CATALOG}/AppIcon.appiconset")
+  set(PLATFORMER_IOS_LIPO_TOOL "" CACHE FILEPATH "Optional lipo executable override for iOS package validation")
+  set(PLATFORMER_IOS_VTOOL_TOOL "" CACHE FILEPATH "Optional vtool executable override for iOS package validation")
+  set(PLATFORMER_IOS_PLUTIL_TOOL "" CACHE FILEPATH "Optional plutil executable override for iOS package validation")
+  set(PLATFORMER_IOS_CODESIGN_TOOL "" CACHE FILEPATH "Optional codesign executable override for iOS package validation")
+  function(platformer_add_ios_bundle_resource source_file bundle_relative_path)
+    get_filename_component(_platformer_ios_bundle_resource_dir "${bundle_relative_path}" DIRECTORY)
+    if(_platformer_ios_bundle_resource_dir STREQUAL "")
+      set(_platformer_ios_bundle_resource_location "Resources")
+    else()
+      set(_platformer_ios_bundle_resource_location "Resources/${_platformer_ios_bundle_resource_dir}")
+    endif()
+    set_source_files_properties("${source_file}" PROPERTIES
+      MACOSX_PACKAGE_LOCATION "${_platformer_ios_bundle_resource_location}"
+    )
+    target_sources(platformer PRIVATE "${source_file}")
+  endfunction()
+  if(NOT EXISTS "${PLATFORMER_IOS_ICON_SOURCE}")
+    message(FATAL_ERROR "iOS app icon source is missing: ${PLATFORMER_IOS_ICON_SOURCE}")
+  endif()
+  find_program(PLATFORMER_IOS_SIPS_TOOL sips)
+  if(NOT PLATFORMER_IOS_SIPS_TOOL)
+    message(FATAL_ERROR "sips is required to generate iOS app icon assets")
+  endif()
+  file(MAKE_DIRECTORY "${PLATFORMER_IOS_APPICON_SET}")
+  set(_platformer_ios_appicon_specs
+    "Icon-20@1x.png=20"
+    "Icon-20@2x.png=40"
+    "Icon-20@3x.png=60"
+    "Icon-29@1x.png=29"
+    "Icon-29@2x.png=58"
+    "Icon-29@3x.png=87"
+    "Icon-40@1x.png=40"
+    "Icon-40@2x.png=80"
+    "Icon-40@3x.png=120"
+    "Icon-60@2x.png=120"
+    "Icon-60@3x.png=180"
+    "Icon-76@1x.png=76"
+    "Icon-76@2x.png=152"
+    "Icon-83.5@2x.png=167"
+    "Icon-1024.png=1024"
+  )
+  foreach(_platformer_ios_icon_spec IN LISTS _platformer_ios_appicon_specs)
+    string(REPLACE "=" ";" _platformer_ios_icon_parts "${_platformer_ios_icon_spec}")
+    list(LENGTH _platformer_ios_icon_parts _platformer_ios_icon_part_count)
+    if(NOT _platformer_ios_icon_part_count EQUAL 2)
+      message(FATAL_ERROR "Invalid iOS app icon spec: ${_platformer_ios_icon_spec}")
+    endif()
+    list(GET _platformer_ios_icon_parts 0 _platformer_ios_icon_name)
+    list(GET _platformer_ios_icon_parts 1 _platformer_ios_icon_size)
+    execute_process(
+      COMMAND "${PLATFORMER_IOS_SIPS_TOOL}" -z "${_platformer_ios_icon_size}" "${_platformer_ios_icon_size}" "${PLATFORMER_IOS_ICON_SOURCE}" --out "${PLATFORMER_IOS_APPICON_SET}/${_platformer_ios_icon_name}"
+      RESULT_VARIABLE _platformer_ios_sips_rc
+      OUTPUT_QUIET
+      ERROR_VARIABLE _platformer_ios_sips_err
+      ERROR_STRIP_TRAILING_WHITESPACE
+    )
+    if(NOT _platformer_ios_sips_rc EQUAL 0)
+      message(FATAL_ERROR "Could not generate iOS app icon ${_platformer_ios_icon_name}: ${_platformer_ios_sips_err}")
+    endif()
+  endforeach()
+  file(WRITE "${PLATFORMER_IOS_APPICON_SET}/Contents.json" [=[
+{
+  "images": [
+    { "filename": "Icon-20@2x.png", "idiom": "iphone", "scale": "2x", "size": "20x20" },
+    { "filename": "Icon-20@3x.png", "idiom": "iphone", "scale": "3x", "size": "20x20" },
+    { "filename": "Icon-29@2x.png", "idiom": "iphone", "scale": "2x", "size": "29x29" },
+    { "filename": "Icon-29@3x.png", "idiom": "iphone", "scale": "3x", "size": "29x29" },
+    { "filename": "Icon-40@2x.png", "idiom": "iphone", "scale": "2x", "size": "40x40" },
+    { "filename": "Icon-40@3x.png", "idiom": "iphone", "scale": "3x", "size": "40x40" },
+    { "filename": "Icon-60@2x.png", "idiom": "iphone", "scale": "2x", "size": "60x60" },
+    { "filename": "Icon-60@3x.png", "idiom": "iphone", "scale": "3x", "size": "60x60" },
+    { "filename": "Icon-20@1x.png", "idiom": "ipad", "scale": "1x", "size": "20x20" },
+    { "filename": "Icon-20@2x.png", "idiom": "ipad", "scale": "2x", "size": "20x20" },
+    { "filename": "Icon-29@1x.png", "idiom": "ipad", "scale": "1x", "size": "29x29" },
+    { "filename": "Icon-29@2x.png", "idiom": "ipad", "scale": "2x", "size": "29x29" },
+    { "filename": "Icon-40@1x.png", "idiom": "ipad", "scale": "1x", "size": "40x40" },
+    { "filename": "Icon-40@2x.png", "idiom": "ipad", "scale": "2x", "size": "40x40" },
+    { "filename": "Icon-76@1x.png", "idiom": "ipad", "scale": "1x", "size": "76x76" },
+    { "filename": "Icon-76@2x.png", "idiom": "ipad", "scale": "2x", "size": "76x76" },
+    { "filename": "Icon-83.5@2x.png", "idiom": "ipad", "scale": "2x", "size": "83.5x83.5" },
+    { "filename": "Icon-1024.png", "idiom": "ios-marketing", "scale": "1x", "size": "1024x1024" }
+  ],
+  "info": {
+    "author": "xcode",
+    "version": 1
+  }
+}
+]=])
+  set_source_files_properties("${PLATFORMER_IOS_LAUNCH_STORYBOARD}" PROPERTIES
+    MACOSX_PACKAGE_LOCATION Resources
+  )
+  target_sources(platformer PRIVATE
+    "${PLATFORMER_IOS_LAUNCH_STORYBOARD}"
+    "${PLATFORMER_IOS_ASSET_CATALOG}"
+  )
+  file(GLOB_RECURSE _platformer_ios_asset_files
+    LIST_DIRECTORIES false
+    RELATIVE "${CMAKE_SOURCE_DIR}"
+    "${CMAKE_SOURCE_DIR}/assets/*"
+  )
+  foreach(_platformer_ios_asset IN LISTS _platformer_ios_asset_files)
+    platformer_add_ios_bundle_resource("${CMAKE_SOURCE_DIR}/${_platformer_ios_asset}" "${_platformer_ios_asset}")
+  endforeach()
+  foreach(_platformer_ios_project_file IN LISTS PLATFORMER_IOS_BUNDLED_PROJECT_FILES)
+    if(EXISTS "${CMAKE_SOURCE_DIR}/${_platformer_ios_project_file}")
+      platformer_add_ios_bundle_resource("${CMAKE_SOURCE_DIR}/${_platformer_ios_project_file}" "${_platformer_ios_project_file}")
+    endif()
+  endforeach()
   set_target_properties(platformer PROPERTIES
     MACOSX_BUNDLE ON
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/cmake/iOSInfo.plist.in"
     XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${PLATFORMER_IOS_BUNDLE_ID}"
     XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET "${PLATFORMER_IOS_DEPLOYMENT_TARGET}"
+    XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "AppIcon"
     XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"
     XCODE_ATTRIBUTE_SUPPORTS_MACCATALYST "NO"
   )
-  add_custom_command(TARGET platformer POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-      "${CMAKE_SOURCE_DIR}/assets"
-      "$<TARGET_BUNDLE_DIR:platformer>/assets"
-    VERBATIM
-  )
-  platformer_copy_if_exists_commands(platformer "$<TARGET_BUNDLE_DIR:platformer>")
   add_custom_target(ios-package
+    COMMAND ${CMAKE_COMMAND}
+      -DAPP_BUNDLE="$<TARGET_BUNDLE_DIR:platformer>"
+      -DOUTPUT_DIR="${PLATFORMER_IOS_PACKAGE_DIR}"
+      -DAPP_NAME="platformer"
+      -DSOURCE_ASSETS_DIR="${CMAKE_SOURCE_DIR}/assets"
+      -DSOURCE_ROOT_DIR="${CMAKE_SOURCE_DIR}"
+      -DIOS_SDK="${CMAKE_OSX_SYSROOT}"
+      -DIOS_ARCHS="${CMAKE_OSX_ARCHITECTURES}"
+      -DIOS_REQUIRE_CODE_SIGNATURE="${CMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED}"
+      -DIOS_LIPO_TOOL="${PLATFORMER_IOS_LIPO_TOOL}"
+      -DIOS_VTOOL_TOOL="${PLATFORMER_IOS_VTOOL_TOOL}"
+      -DIOS_PLUTIL_TOOL="${PLATFORMER_IOS_PLUTIL_TOOL}"
+      -DIOS_CODESIGN_TOOL="${PLATFORMER_IOS_CODESIGN_TOOL}"
+      -P "${CMAKE_SOURCE_DIR}/cmake/PackageIosApp.cmake"
     DEPENDS platformer
-    COMMENT "Build the complete iOS app bundle with game assets and metadata"
+    COMMENT "Build the complete iOS app bundle plus .ipa and requested .ipsw artifacts"
+    VERBATIM
   )
 endif()
 if(WIN32)
@@ -402,7 +527,8 @@ if(NOT SDL3_mixer_FOUND)
           set(VCPKG_TARGET_TRIPLET "x64-windows")
         endif()
       elseif(IOS)
-        if(CMAKE_OSX_SYSROOT MATCHES "iphonesimulator")
+        string(TOLOWER "${CMAKE_OSX_SYSROOT}" _platformer_ios_sysroot_lower)
+        if(_platformer_ios_sysroot_lower MATCHES "iphonesimulator")
           set(VCPKG_TARGET_TRIPLET "arm64-ios-simulator")
         else()
           set(VCPKG_TARGET_TRIPLET "arm64-ios")
@@ -414,8 +540,12 @@ if(NOT SDL3_mixer_FOUND)
       endif()
     endif()
     message(STATUS "SDL3_mixer not found, attempting auto-install via local vcpkg (${VCPKG_TARGET_TRIPLET})")
+    set(_vcpkg_mixer_install_args install sdl3-mixer "--triplet=${VCPKG_TARGET_TRIPLET}")
+    if(EXISTS "${CMAKE_SOURCE_DIR}/cmake/vcpkg-triplets")
+      list(APPEND _vcpkg_mixer_install_args "--overlay-triplets=${CMAKE_SOURCE_DIR}/cmake/vcpkg-triplets")
+    endif()
     execute_process(
-      COMMAND "${_local_vcpkg_exe}" install sdl3-mixer "--triplet=${VCPKG_TARGET_TRIPLET}"
+      COMMAND ${CMAKE_COMMAND} -E env "PLATFORMER_IOS_DEPLOYMENT_TARGET=${PLATFORMER_IOS_DEPLOYMENT_TARGET}" "${_local_vcpkg_exe}" ${_vcpkg_mixer_install_args}
       WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/vcpkg"
       RESULT_VARIABLE _vcpkg_mixer_rc
       OUTPUT_VARIABLE _vcpkg_mixer_out
@@ -440,11 +570,7 @@ else()
   endif()
   message(WARNING "SDL3_mixer not found: building without mixer link target (runtime audio falls back accordingly)")
 endif()
-if(IOS)
-  message(STATUS "Skipping libcurl lookup for iOS builds")
-else()
-  find_package(CURL QUIET)
-endif()
+find_package(CURL QUIET)
 find_package(nlohmann_json QUIET)
 if(NOT nlohmann_json_FOUND)
   if(EXISTS "${CMAKE_SOURCE_DIR}/third_party/nlohmann/json.hpp")
@@ -638,6 +764,9 @@ if (CURL_FOUND)
   message(STATUS "Linked platformer: CURL::libcurl")
 else()
   target_compile_definitions(platformer PRIVATE HAVE_CURL=0)
+  if(PLATFORMER_REQUIRE_CURL)
+    message(FATAL_ERROR "PLATFORMER_REQUIRE_CURL is ON but libcurl was not found")
+  endif()
   message(WARNING "libcurl not found: remote Firebase level fetch disabled")
 endif()
 message(STATUS "Linked platformer: ${PLATFORMER_LINK_LIBS}")

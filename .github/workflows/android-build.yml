@@ -416,12 +416,24 @@ jobs:
           files: Android/app/build/outputs/apk/**/*.apk
 
   ios:
-    name: iOS Simulator App
+    name: iOS Package (${{ matrix.sdk }})
     runs-on: macos-latest
     timeout-minutes: 90
     permissions:
       contents: write
     needs: prepare_release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - sdk: iphonesimulator
+            triplet: arm64-ios-simulator
+            artifact_suffix: simulator
+            build_mode: build
+          - sdk: iphoneos
+            triplet: arm64-ios
+            artifact_suffix: device
+            build_mode: ipsw
 
     steps:
       - name: Checkout game
@@ -429,6 +441,9 @@ jobs:
 
       - name: Select latest Xcode
         run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Smoke iOS package validators
+        run: bash build/ios-package-smoke.sh
 
       - name: Checkout vcpkg
         uses: actions/checkout@v4
@@ -444,50 +459,279 @@ jobs:
             .ci/vcpkg/buildtrees
             .ci/vcpkg/packages
             .ci/vcpkg/installed
-          key: vcpkg-ios-arm64-sim-${{ hashFiles('CMakeLists.txt', '.github/workflows/android-build.yml', 'cmake/vcpkg-triplets/arm64-ios-simulator.cmake') }}
+          key: vcpkg-ios-${{ matrix.triplet }}-${{ hashFiles('CMakeLists.txt', '.github/workflows/android-build.yml', 'build/ios.sh', 'build/ios-package-smoke.sh', 'cmake/PackageIosApp.cmake', 'cmake/ValidateIosPackage.cmake', 'cmake/ValidateIosPackageManifest.cmake', 'cmake/NormalizeIosSdk.cmake', 'cmake/IosRequiredBundleEntries.cmake', 'cmake/IosBundledProjectFiles.cmake', 'cmake/LaunchScreen.storyboard', 'cmake/iOSInfo.plist.in', 'cmake/vcpkg-triplets/*.cmake', 'Android/app/src/main/res/drawable/android_icon_192.png') }}
 
       - name: Bootstrap vcpkg
         run: ./.ci/vcpkg/bootstrap-vcpkg.sh -disableMetrics
 
       - name: Install iOS dependencies
+        env:
+          PLATFORMER_IOS_DEPLOYMENT_TARGET: "15.0"
         run: |
           ./.ci/vcpkg/vcpkg install \
             sdl3 \
             sdl3-image \
             sdl3-ttf \
+            sdl3-mixer \
+            curl \
             nlohmann-json \
-            --triplet arm64-ios-simulator \
+            --triplet "${{ matrix.triplet }}" \
             --overlay-triplets "${GITHUB_WORKSPACE}/cmake/vcpkg-triplets"
 
-      - name: Configure iOS build
-        run: |
-          cmake -S . -B build-ios -G Xcode \
-            -DCMAKE_SYSTEM_NAME=iOS \
-            -DCMAKE_OSX_SYSROOT=iphonesimulator \
-            -DCMAKE_OSX_ARCHITECTURES=arm64 \
-            -DCMAKE_TOOLCHAIN_FILE="${GITHUB_WORKSPACE}/.ci/vcpkg/scripts/buildsystems/vcpkg.cmake" \
-            -DVCPKG_TARGET_TRIPLET=arm64-ios-simulator \
-            -DVCPKG_OVERLAY_TRIPLETS="${GITHUB_WORKSPACE}/cmake/vcpkg-triplets" \
-            -DPLATFORMER_REQUIRE_SDL3_MIXER=OFF \
-            -DPLATFORMER_ENABLE_IPO=OFF \
-            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO \
-            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED=NO \
-            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY=""
-
-      - name: Build iOS app bundle
-        run: cmake --build build-ios --config Release --target platformer --parallel
-
-      - name: Package iOS release bundle
-        if: needs.prepare_release.outputs.release_enabled == 'true'
+      - name: Prepare iOS signing
+        env:
+          IOS_MATRIX_SDK: ${{ matrix.sdk }}
+          SECRET_IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
+          SECRET_IOS_DEVELOPMENT_TEAM: ${{ secrets.IOS_DEVELOPMENT_TEAM }}
+          SECRET_IOS_CODE_SIGN_IDENTITY: ${{ secrets.IOS_CODE_SIGN_IDENTITY }}
+          SECRET_IOS_CODE_SIGN_STYLE: ${{ secrets.IOS_CODE_SIGN_STYLE }}
+          SECRET_IOS_PROVISIONING_PROFILE_SPECIFIER: ${{ secrets.IOS_PROVISIONING_PROFILE_SPECIFIER }}
+          SECRET_IOS_CERTIFICATE_P12_BASE64: ${{ secrets.IOS_CERTIFICATE_P12_BASE64 }}
+          SECRET_IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          SECRET_IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
         run: |
           set -euo pipefail
-          app_bundle="$(find build-ios -type d -name 'platformer.app' | head -n 1)"
-          if [[ -z "${app_bundle}" ]]; then
-            echo "[error] Could not locate platformer.app in build-ios"
-            exit 1
+          decode_base64_secret() {
+            local output="$1"
+            if base64 --help 2>&1 | grep -q -- '--decode'; then
+              base64 --decode > "${output}"
+            else
+              base64 -D > "${output}"
+            fi
+          }
+          if [[ -n "${SECRET_IOS_BUNDLE_ID:-}" ]]; then
+            echo "IOS_BUNDLE_ID=${SECRET_IOS_BUNDLE_ID}" >> "$GITHUB_ENV"
           fi
+          if [[ "${IOS_MATRIX_SDK}" == "iphoneos" && -n "${SECRET_IOS_DEVELOPMENT_TEAM:-}" && -n "${SECRET_IOS_CERTIFICATE_P12_BASE64:-}" ]]; then
+            if [[ -n "${SECRET_IOS_CERTIFICATE_P12_BASE64:-}" ]]; then
+              signing_dir="${RUNNER_TEMP}/ios-signing"
+              keychain_path="${signing_dir}/build.keychain-db"
+              keychain_password="$(uuidgen)"
+              mkdir -p "${signing_dir}"
+              printf '%s' "${SECRET_IOS_CERTIFICATE_P12_BASE64}" | decode_base64_secret "${signing_dir}/certificate.p12"
+              security create-keychain -p "${keychain_password}" "${keychain_path}"
+              security set-keychain-settings -lut 21600 "${keychain_path}"
+              security unlock-keychain -p "${keychain_password}" "${keychain_path}"
+              security import "${signing_dir}/certificate.p12" \
+                -P "${SECRET_IOS_CERTIFICATE_PASSWORD:-}" \
+                -A \
+                -t cert \
+                -f pkcs12 \
+                -k "${keychain_path}"
+              security list-keychains -d user -s "${keychain_path}" login.keychain-db
+              security default-keychain -d user -s "${keychain_path}"
+              security set-key-partition-list -S apple-tool:,apple: -s -k "${keychain_password}" "${keychain_path}"
+              echo "[info] Imported iOS signing certificate into a temporary keychain."
+            fi
+            if [[ -n "${SECRET_IOS_PROVISIONING_PROFILE_BASE64:-}" ]]; then
+              profile_dir="$HOME/Library/MobileDevice/Provisioning Profiles"
+              signing_dir="${RUNNER_TEMP}/ios-signing"
+              mkdir -p "${profile_dir}"
+              mkdir -p "${signing_dir}"
+              profile_tmp="${signing_dir}/platformer.mobileprovision"
+              profile_plist="${signing_dir}/platformer-profile.plist"
+              printf '%s' "${SECRET_IOS_PROVISIONING_PROFILE_BASE64}" | decode_base64_secret "${profile_tmp}"
+              profile_uuid=""
+              if security cms -D -i "${profile_tmp}" > "${profile_plist}" 2>/dev/null; then
+                profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print UUID' "${profile_plist}" 2>/dev/null || true)"
+              fi
+              if [[ -n "${profile_uuid}" ]]; then
+                cp "${profile_tmp}" "${profile_dir}/${profile_uuid}.mobileprovision"
+              else
+                cp "${profile_tmp}" "${profile_dir}/platformer.mobileprovision"
+              fi
+              echo "[info] Installed iOS provisioning profile for this job."
+            fi
+            echo "IOS_CODE_SIGNING_ALLOWED=YES" >> "$GITHUB_ENV"
+            echo "IOS_CODE_SIGNING_REQUIRED=YES" >> "$GITHUB_ENV"
+            echo "IOS_DEVELOPMENT_TEAM=${SECRET_IOS_DEVELOPMENT_TEAM}" >> "$GITHUB_ENV"
+            if [[ -n "${SECRET_IOS_CODE_SIGN_IDENTITY:-}" ]]; then
+              echo "IOS_CODE_SIGN_IDENTITY=${SECRET_IOS_CODE_SIGN_IDENTITY}" >> "$GITHUB_ENV"
+            fi
+            if [[ -n "${SECRET_IOS_CODE_SIGN_STYLE:-}" ]]; then
+              echo "IOS_CODE_SIGN_STYLE=${SECRET_IOS_CODE_SIGN_STYLE}" >> "$GITHUB_ENV"
+            else
+              echo "IOS_CODE_SIGN_STYLE=Automatic" >> "$GITHUB_ENV"
+            fi
+            if [[ -n "${SECRET_IOS_PROVISIONING_PROFILE_SPECIFIER:-}" ]]; then
+              echo "IOS_PROVISIONING_PROFILE_SPECIFIER=${SECRET_IOS_PROVISIONING_PROFILE_SPECIFIER}" >> "$GITHUB_ENV"
+            fi
+            echo "[info] iOS device signing enabled from GitHub secrets."
+          else
+            echo "IOS_CODE_SIGNING_ALLOWED=NO" >> "$GITHUB_ENV"
+            echo "IOS_CODE_SIGNING_REQUIRED=NO" >> "$GITHUB_ENV"
+            if [[ "${IOS_MATRIX_SDK}" == "iphoneos" && -n "${SECRET_IOS_DEVELOPMENT_TEAM:-}" && -z "${SECRET_IOS_CERTIFICATE_P12_BASE64:-}" ]]; then
+              echo "[info] iOS signing disabled because IOS_CERTIFICATE_P12_BASE64 is not configured."
+            else
+              echo "[info] iOS signing disabled for this matrix entry."
+            fi
+          fi
+
+      - name: Check iOS build environment
+        env:
+          IOS_SDK: ${{ matrix.sdk }}
+          VCPKG_TARGET_TRIPLET: ${{ matrix.triplet }}
+          VCPKG_ROOT: ${{ github.workspace }}/.ci/vcpkg
+          VCPKG_TOOLCHAIN_FILE: ${{ github.workspace }}/.ci/vcpkg/scripts/buildsystems/vcpkg.cmake
+          VCPKG_OVERLAY_TRIPLETS_DIR: ${{ github.workspace }}/cmake/vcpkg-triplets
+          VCPKG_INSTALL_DEPS: "OFF"
+          IOS_REQUIRE_SDL3_MIXER: "ON"
+          IOS_REQUIRE_CURL: "ON"
+          PLATFORMER_IOS_DEPLOYMENT_TARGET: "15.0"
+          IOS_PACKAGE_DIR: ${{ github.workspace }}/dist/ios-${{ matrix.artifact_suffix }}
+        run: ./build/ios.sh doctor
+
+      - name: Build iOS package artifacts
+        env:
+          IOS_SDK: ${{ matrix.sdk }}
+          VCPKG_TARGET_TRIPLET: ${{ matrix.triplet }}
+          VCPKG_ROOT: ${{ github.workspace }}/.ci/vcpkg
+          VCPKG_TOOLCHAIN_FILE: ${{ github.workspace }}/.ci/vcpkg/scripts/buildsystems/vcpkg.cmake
+          VCPKG_OVERLAY_TRIPLETS_DIR: ${{ github.workspace }}/cmake/vcpkg-triplets
+          VCPKG_INSTALL_DEPS: "OFF"
+          IOS_REQUIRE_SDL3_MIXER: "ON"
+          IOS_REQUIRE_CURL: "ON"
+          PLATFORMER_IOS_DEPLOYMENT_TARGET: "15.0"
+          IOS_PACKAGE_DIR: ${{ github.workspace }}/dist/ios-${{ matrix.artifact_suffix }}
+        run: ./build/ios.sh "${{ matrix.build_mode }}"
+
+      - name: Validate iOS package artifacts
+        env:
+          IOS_SDK: ${{ matrix.sdk }}
+          IOS_PACKAGE_DIR: ${{ github.workspace }}/dist/ios-${{ matrix.artifact_suffix }}
+          IOS_SOURCE_ASSETS_DIR: ${{ github.workspace }}/assets
+          IOS_SOURCE_ROOT_DIR: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          ./build/ios.sh verify
+
+      - name: Audit iOS artifact manifest
+        env:
+          IOS_SDK: ${{ matrix.sdk }}
+          IOS_ARTIFACT_SUFFIX: ${{ matrix.artifact_suffix }}
+          IOS_PACKAGE_DIR: ${{ github.workspace }}/dist/ios-${{ matrix.artifact_suffix }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          package_dir = Path(os.environ["IOS_PACKAGE_DIR"])
+          manifest_path = package_dir / "platformer-ios-package-manifest.json"
+          manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+          expected_sdk = os.environ["IOS_SDK"]
+          if manifest.get("sdk") != expected_sdk:
+              raise SystemExit(f"manifest sdk {manifest.get('sdk')!r} != {expected_sdk!r}")
+          expected_device_artifact = expected_sdk == "iphoneos"
+          if manifest.get("device_artifact") is not expected_device_artifact:
+              raise SystemExit(
+                  f"manifest device_artifact {manifest.get('device_artifact')!r} "
+                  f"!= {expected_device_artifact!r}"
+              )
+          if manifest.get("ipsw_format") != "app_archive_compatibility_copy":
+              raise SystemExit("manifest ipsw_format is not the requested compatibility artifact marker")
+          for key in ("bundle_identifier", "bundle_short_version", "bundle_version", "minimum_os_version"):
+              if not isinstance(manifest.get(key), str) or not manifest[key]:
+                  raise SystemExit(f"manifest {key} is missing or invalid: {manifest.get(key)!r}")
+          for key in ("validated_required_bundle_entries", "validated_source_assets", "validated_project_files"):
+              if not isinstance(manifest.get(key), int) or manifest[key] <= 0:
+                  raise SystemExit(f"manifest {key} is missing or invalid: {manifest.get(key)!r}")
+          required_entries_text = Path("cmake/IosRequiredBundleEntries.cmake").read_text(encoding="utf-8")
+          expected_required_entries = required_entries_text.count('"') // 2
+          if manifest["validated_required_bundle_entries"] != expected_required_entries:
+              raise SystemExit(
+                  "manifest required bundle entry count "
+                  f"{manifest['validated_required_bundle_entries']} != {expected_required_entries}"
+              )
+
+          def sha256(path: Path) -> str:
+              h = hashlib.sha256()
+              with path.open("rb") as f:
+                  for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                      h.update(chunk)
+              return h.hexdigest()
+
+          package_hashes = {}
+          for key in ("ipa", "ipsw"):
+              info = manifest[key]
+              package = package_dir / info["file"]
+              if not package.is_file() or package.stat().st_size <= 0:
+                  raise SystemExit(f"{key} package is missing or empty: {package}")
+              if package.stat().st_size != info["size_bytes"]:
+                  raise SystemExit(f"{key} size mismatch")
+              actual_sha = sha256(package)
+              if actual_sha != info["sha256"]:
+                  raise SystemExit(f"{key} sha256 mismatch")
+              package_hashes[key] = actual_sha
+          if package_hashes["ipa"] != package_hashes["ipsw"]:
+              raise SystemExit("ipa and ipsw hashes differ")
+          checksum_path = package_dir / manifest["checksum_file"]
+          checksum_text = checksum_path.read_text(encoding="utf-8")
+          for key in ("ipa", "ipsw"):
+              expected_line = f"{package_hashes[key]}  platformer.{key}"
+              if expected_line not in checksum_text:
+                  raise SystemExit(f"checksum file missing {key} hash")
+
+          print(
+              "iOS artifact audit:",
+              os.environ["IOS_ARTIFACT_SUFFIX"],
+              manifest["sdk"],
+              manifest["archs"],
+              f"device={manifest['device_artifact']}",
+              f"bundle={manifest['bundle_identifier']}",
+              f"version={manifest['bundle_short_version']}",
+              f"assets={manifest['validated_source_assets']}",
+              f"ipa_bytes={manifest['ipa']['size_bytes']}",
+          )
+          PY
+
+      - name: Upload iOS workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: platformer-ios-${{ matrix.artifact_suffix }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            dist/ios-${{ matrix.artifact_suffix }}/platformer.ipa
+            dist/ios-${{ matrix.artifact_suffix }}/platformer.ipsw
+            dist/ios-${{ matrix.artifact_suffix }}/platformer-ios-package-manifest.json
+            dist/ios-${{ matrix.artifact_suffix }}/platformer-ios-package-sha256.txt
+
+      - name: Stage iOS release assets
+        if: needs.prepare_release.outputs.release_enabled == 'true'
+        env:
+          IOS_ARTIFACT_SUFFIX: ${{ matrix.artifact_suffix }}
+        run: |
+          set -euo pipefail
           mkdir -p release
-          ditto -c -k --sequesterRsrc --keepParent "${app_bundle}" "release/platformer-ios-simulator-app.zip"
+          cp "dist/ios-${{ matrix.artifact_suffix }}/platformer.ipa" "release/platformer-ios-${{ matrix.artifact_suffix }}.ipa"
+          cp "dist/ios-${{ matrix.artifact_suffix }}/platformer.ipsw" "release/platformer-ios-${{ matrix.artifact_suffix }}.ipsw"
+          cp "dist/ios-${{ matrix.artifact_suffix }}/platformer-ios-package-manifest.json" "release/platformer-ios-${{ matrix.artifact_suffix }}-manifest.json"
+          test -s "release/platformer-ios-${{ matrix.artifact_suffix }}.ipa"
+          test -s "release/platformer-ios-${{ matrix.artifact_suffix }}.ipsw"
+          test -s "release/platformer-ios-${{ matrix.artifact_suffix }}-manifest.json"
+          python3 - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+
+          suffix = os.environ["IOS_ARTIFACT_SUFFIX"]
+          release_dir = Path("release")
+          checksum_path = release_dir / f"platformer-ios-{suffix}-sha256.txt"
+          lines = []
+          for extension in ("ipa", "ipsw"):
+              name = f"platformer-ios-{suffix}.{extension}"
+              path = release_dir / name
+              digest = hashlib.sha256(path.read_bytes()).hexdigest()
+              lines.append(f"{digest}  {name}\n")
+          checksum_path.write_text("".join(lines), encoding="utf-8")
+          PY
+          test -s "release/platformer-ios-${{ matrix.artifact_suffix }}-sha256.txt"
+          grep -q "platformer-ios-${{ matrix.artifact_suffix }}.ipa" "release/platformer-ios-${{ matrix.artifact_suffix }}-sha256.txt"
+          grep -q "platformer-ios-${{ matrix.artifact_suffix }}.ipsw" "release/platformer-ios-${{ matrix.artifact_suffix }}-sha256.txt"
 
       - name: Upload iOS release assets
         if: needs.prepare_release.outputs.release_enabled == 'true'
@@ -499,4 +743,8 @@ jobs:
           draft: true
           overwrite_files: true
           fail_on_unmatched_files: true
-          files: release/platformer-ios-simulator-app.zip
+          files: |
+            release/platformer-ios-${{ matrix.artifact_suffix }}.ipa
+            release/platformer-ios-${{ matrix.artifact_suffix }}.ipsw
+            release/platformer-ios-${{ matrix.artifact_suffix }}-manifest.json
+            release/platformer-ios-${{ matrix.artifact_suffix }}-sha256.txt

@@ -1,4 +1,5 @@
 #include "AssetPath.h"
+#include "Platform.h"
 
 #include <SDL3/SDL.h>
 
@@ -303,6 +304,20 @@ std::string GetAppSaveRootPath() {
         std::error_code ec;
         std::filesystem::create_directories(fallback, ec);
         return fallback.string();
+    }
+#endif
+#if PLATFORMER_IOS
+    if (const char* documents = SDL_GetUserFolder(SDL_FOLDER_DOCUMENTS); documents && *documents) {
+        std::filesystem::path documentsRoot(documents);
+        documentsRoot /= "DorfplatformerTimetravel";
+        std::error_code ec;
+        std::filesystem::create_directories(documentsRoot, ec);
+        if (!ec) {
+            return documentsRoot.string();
+        }
+        SDL_Log("SAVE PATH: could not create iOS documents save root '%s': %s",
+                documentsRoot.string().c_str(),
+                ec.message().c_str());
     }
 #endif
     std::string base = ".";

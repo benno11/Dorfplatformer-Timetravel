@@ -10,6 +10,30 @@
   <string>platformer</string>
   <key>CFBundleIdentifier</key>
   <string>${PLATFORMER_IOS_BUNDLE_ID}</string>
+  <key>CFBundleIcons</key>
+  <dict>
+    <key>CFBundlePrimaryIcon</key>
+    <dict>
+      <key>CFBundleIconFiles</key>
+      <array>
+        <string>AppIcon</string>
+      </array>
+      <key>CFBundleIconName</key>
+      <string>AppIcon</string>
+    </dict>
+  </dict>
+  <key>CFBundleIcons~ipad</key>
+  <dict>
+    <key>CFBundlePrimaryIcon</key>
+    <dict>
+      <key>CFBundleIconFiles</key>
+      <array>
+        <string>AppIcon</string>
+      </array>
+      <key>CFBundleIconName</key>
+      <string>AppIcon</string>
+    </dict>
+  </dict>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>
@@ -22,7 +46,22 @@
   <string>${PLATFORMER_APP_VERSION_ID}</string>
   <key>LSRequiresIPhoneOS</key>
   <true/>
+  <key>LSSupportsOpeningDocumentsInPlace</key>
+  <true/>
+  <key>MinimumOSVersion</key>
+  <string>${PLATFORMER_IOS_DEPLOYMENT_TARGET}</string>
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsArbitraryLoads</key>
+    <true/>
+  </dict>
+  <key>UILaunchStoryboardName</key>
+  <string>LaunchScreen</string>
+  <key>UIRequiresFullScreen</key>
+  <true/>
   <key>UIApplicationSupportsIndirectInputEvents</key>
+  <true/>
+  <key>UIFileSharingEnabled</key>
   <true/>
   <key>UIRequiredDeviceCapabilities</key>
   <array>
@@ -32,14 +71,11 @@
   <array>
     <string>UIInterfaceOrientationLandscapeLeft</string>
     <string>UIInterfaceOrientationLandscapeRight</string>
-    <string>UIInterfaceOrientationPortrait</string>
   </array>
   <key>UISupportedInterfaceOrientations~ipad</key>
   <array>
     <string>UIInterfaceOrientationLandscapeLeft</string>
     <string>UIInterfaceOrientationLandscapeRight</string>
-    <string>UIInterfaceOrientationPortrait</string>
-    <string>UIInterfaceOrientationPortraitUpsideDown</string>
   </array>
 </dict>
 </plist>

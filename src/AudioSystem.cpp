@@ -20,6 +20,7 @@
 #endif
 
 #include "AssetPath.h"
+#include "Platform.h"
 
 #if defined(__ANDROID__)
 #include "AndroidAudioBridge.h"
@@ -383,6 +384,8 @@ bool AudioSystem::initialize() {
         const char* retryDrivers[] = {
 #if defined(__ANDROID__)
             "aaudio", "openslES", "dummy"
+#elif PLATFORMER_IOS
+            "coreaudio", "dummy"
 #elif defined(_WIN32)
             "wasapi", "directsound", "xaudio2", "dummy"
 #else
