@@ -1,4 +1,5 @@
 #include "GameApp.h"
+#include "CustomBootLoader.h"
 #include "Platform.h"
 #if PLATFORMER_APPLE_SDL_MAIN
 #include <SDL3/SDL_main.h>
@@ -31,6 +32,10 @@ static int runMainImpl(int argc, char** argv) {
     useExecutableDirectoryAsWorkingDirectory();
 #endif
     try {
+        const CustomBoot::Result boot = CustomBoot::Run(argc, argv);
+        if (!boot.ok) {
+            return boot.exitCode;
+        }
         return RunGameApp(argc, argv);
     } catch (const std::exception& e) {
         std::fprintf(stderr, "FATAL: uncaught std::exception: %s\n", e.what());

@@ -6,6 +6,12 @@ Build locally:
 - 32-bit Windows build: `powershell -ExecutionPolicy Bypass -File .\build-local.ps1 -WindowsArch x86`
 - Linux/macOS: `./build-local.sh`
 - Linux/macOS + run after build: `./build-local.sh --run`
+
+Custom boot loader:
+- Startup now enters `CustomBoot::Run` before the SDL game runtime.
+- The loader reads `assets/boot_config.json`, checks battery state, applies boot partition/options, resolves the startup partition, and verifies the startup executable plus runtime/init assets before launching the game.
+- `--boot-select` or `--ctrl-b` selects the recovery partition. `--boot-partition=<id>` selects a configured partition directly. `--boot-option=safe`, `--boot-option=offline`, `--boot-option=diagnostic`, or `--boot-option=recovery` apply startup options.
+- `trusted_components` may contain FNV-1a 64-bit hex digests for `startup_executable`, `kernel`, or `init_script`; when a digest is absent, the loader performs an existence check and logs the missing trust pin.
 - iOS simulator (macOS + Xcode): `IOS_SDK=iphonesimulator ./build/ios.sh`
 - iOS device/package (macOS + Xcode): `./build/ios.sh ipsw` or `IOS_SDK=iphoneos ./build/ios.sh`
   - Output: `dist/ios/platformer.ipa`, `dist/ios/platformer.ipsw`, `dist/ios/platformer-ios-package-manifest.json`, and `dist/ios/platformer-ios-package-sha256.txt`. The `.ipa` is the normal iOS app archive; the `.ipsw` is emitted for requested tooling compatibility, and the manifest records `ipsw_format: app_archive_compatibility_copy`.

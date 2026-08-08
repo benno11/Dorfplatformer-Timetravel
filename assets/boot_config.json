@@ -1,0 +1,22 @@
+{
+  "input_timeout_ms": 1200,
+  "startup_executable": "<self>",
+  "kernel": "assets/textures.json",
+  "init_script": "assets/config.json",
+  "default_partition": "system",
+  "recovery_partition": "recovery",
+  "boot_options": ["normal"],
+  "partitions": [
+    {
+      "id": "system",
+      "path": ".",
+      "recovery": false
+    },
+    {
+      "id": "recovery",
+      "path": ".",
+      "recovery": true
+    }
+  ],
+  "trusted_components": {}
+}

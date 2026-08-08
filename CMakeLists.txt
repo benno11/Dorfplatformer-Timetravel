@@ -168,6 +168,7 @@ add_executable(platformer
   src/LevelManager.cpp
   src/GameSupport.cpp
   src/CrashReporter.cpp
+  src/CustomBootLoader.cpp
   src/FrontendMenu.cpp
   src/AudioSystem.cpp
   src/AndroidAudioBridge.cpp
@@ -338,7 +339,6 @@ if(APPLE AND IOS)
     DEPENDS platformer
     COMMENT "Build the complete iOS app bundle plus .ipa and requested .ipsw artifacts"
     VERBATIM
-  )
   )
 endif()
 if(WIN32)
