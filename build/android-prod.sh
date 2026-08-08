@@ -680,6 +680,7 @@ SRC=(
   src/LevelManager.cpp
   src/GameSupport.cpp
   src/CrashReporter.cpp
+  src/CustomBootLoader.cpp
   src/FrontendMenu.cpp
   src/AudioSystem.cpp
   src/AndroidAudioBridge.cpp
