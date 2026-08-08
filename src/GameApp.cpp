@@ -581,6 +581,8 @@ int RunGameApp(int argc, char** argv) {
     float startupProgress01 = 0.05f;
     bool startupLoadingVisible = true;
     auto renderStartupLoading = [&]() {
+        // disable unfinished loading screen rendering for now, because it is not fully implemented and can cause crashes on some platforms
+        /* -----------------------------
         if (!startupLoadingVisible || !win || !ren) return;
 
         int screenW = startupWindowW;
@@ -599,7 +601,6 @@ int RunGameApp(int argc, char** argv) {
         const float barH = 3.0f * scale;
         const float barX = cx - barW * 0.5f;
         const float barY = cy + 32.0f * scale;
-
         auto drawTriangle = [&](const SDL_FPoint& a, const SDL_FPoint& b, const SDL_FPoint& c,
                                 float red, float green, float blue) {
             const SDL_FColor color{red, green, blue, 1.0f};
@@ -636,6 +637,7 @@ int RunGameApp(int argc, char** argv) {
         SDL_FRect fill{barX, barY, barW * std::clamp(startupProgress01, 0.0f, 1.0f), barH};
         SDL_RenderFillRect(ren, &fill);
         SDL_RenderPresent(ren);
+        ------------------------------ */
     };
     auto setStartupProgress = [&](float progress01) {
         startupProgress01 = std::clamp(progress01, 0.0f, 1.0f);

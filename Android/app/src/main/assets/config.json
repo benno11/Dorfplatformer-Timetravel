@@ -1,6 +1,6 @@
 {
-    "version": "2.3.0 alpha 1",
-  "version_id": 24,
+    "version": "2.3.0",
+  "version_id": 25,
   "experimental_render_thread": false,
   "movement": {
     "accel_in_water": 700.0,
@@ -19,7 +19,7 @@
     "parallax_layer_scales": [0.8, 0.8, 0.8]
   },
   "level_api_url": "https://benno111.github.io/Dorfplatformer-API/",
-  "level_api_version_id": 22,
+  "level_api_version_id": 25,
   "level_server_url": "https://timetravel-server-default-rtdb.europe-west1.firebasedatabase.app/",
   "account_manager_url": "https://benno111.github.io/Dorfplatformer-API/",
   "firebase_api_key": "AIzaSyC-lBtzoK98rO6TH6nQV4ugiPsVMbAJ-44",
