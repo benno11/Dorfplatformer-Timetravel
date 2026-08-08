@@ -5,7 +5,7 @@
 # For more details, see
 #   http://developer.android.com/guide/developing/tools/proguard.html
 
-# Keep SDL bridge classes and method names used by JNI_OnLoad registration.
+# Keep SDL bridge classes and method names used by JNI_OnLoad registration. I NEED TO RE ADD  X86
 -keep class org.libsdl.app.** { *; }
 
 # Preserve all native method signatures so JNI lookups cannot break in release builds.
