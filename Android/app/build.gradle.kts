@@ -8,6 +8,7 @@ plugins {
 val signingPropertiesFile = rootProject.file("signing.properties")
 val signingProperties = Properties()
 val hasReleaseSigning = signingPropertiesFile.exists()
+val canonicalAssetsDir = rootProject.layout.projectDirectory.dir("../assets")
 
 if (hasReleaseSigning) {
     signingPropertiesFile.inputStream().use(signingProperties::load)
@@ -23,8 +24,8 @@ android {
         applicationId = "com.Benno111.dorfplatformertimetravel"
         minSdk = 24
         targetSdk = 36
-        versionCode = 25
-        versionName = "2.3.0"
+        versionCode = 26
+        versionName = "2.3.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         proguardFiles("proguard-rules.pro")
@@ -81,6 +82,7 @@ android {
     sourceSets {
         getByName("main") {
             java.setSrcDirs(listOf("src/main/java"))
+            assets.setSrcDirs(listOf(canonicalAssetsDir.asFile))
         }
     }
 }
