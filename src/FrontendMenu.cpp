@@ -1,3 +1,4 @@
+#include "BuildInfo.h"
 #include "FrontendMenu.h"
 
 #include <SDL3/SDL.h>
@@ -105,13 +106,11 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     std::string networkServerUrlLocal;
     std::string networkAuthTokenLocal;
     std::string networkUsernameLocal;
-    std::string accountManagerUrlLocal = "https://benno111.github.io/Dorfplatformer-API/";
-    std::string firebaseApiKeyLocal;
+    std::string accountManagerUrlLocal = "http://127.0.0.1:8080/";
     std::string& levelServerUrl = ctx.levelServerUrl ? *ctx.levelServerUrl : networkServerUrlLocal;
     std::string& levelServerAuthToken = ctx.levelServerAuthToken ? *ctx.levelServerAuthToken : networkAuthTokenLocal;
     std::string& levelServerAccountUsername = ctx.levelServerAccountUsername ? *ctx.levelServerAccountUsername : networkUsernameLocal;
     std::string& accountManagerUrl = ctx.accountManagerUrl ? *ctx.accountManagerUrl : accountManagerUrlLocal;
-    std::string& firebaseApiKey = ctx.firebaseApiKey ? *ctx.firebaseApiKey : firebaseApiKeyLocal;
     int activeSaveSlotIndexLocal = 0;
     int& activeSaveSlotIndex = ctx.activeSaveSlotIndex ? *ctx.activeSaveSlotIndex : activeSaveSlotIndexLocal;
     auto uiButtonScale = [&]() -> float {
@@ -242,6 +241,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     std::size_t networkLoginPasswordCursor = 0;
     bool networkCursorPreset = false;
     std::string networkLoginStatus;
+    static bool serverSwapNoticeShown = false;
     bool waitingForControlKey = false;
     int waitingControlIndex = -1;
     enum class NetworkEditField {
@@ -708,7 +708,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         if (password.empty()) return "<empty>";
         return std::string(password.size(), '*');
     };
-    auto loginWithFirebase = [&](std::string& errOut) -> bool {
+    auto loginWithGameServer = [&](std::string& errOut) -> bool {
         errOut.clear();
         const std::string email = networkLoginEmail;
         const std::string password = networkLoginPassword;
@@ -718,22 +718,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             SDL_Log("ACCOUNT: sign-in rejected (missing email/password)");
             return false;
         }
-        std::string effectiveApiKey = firebaseApiKey;
-        if (effectiveApiKey.empty()) {
-            const std::string cfgText = ReadTextFile("assets/config.json");
-            if (!cfgText.empty()) {
-                try {
-                    const nlohmann::json cfgJson = nlohmann::json::parse(cfgText);
-                    if (cfgJson.is_object() && cfgJson.contains("firebase_api_key") && cfgJson["firebase_api_key"].is_string()) {
-                        effectiveApiKey = cfgJson["firebase_api_key"].get<std::string>();
-                        firebaseApiKey = effectiveApiKey;
-                    }
-                } catch (...) {}
-            }
-        }
-        if (effectiveApiKey.empty()) {
-            errOut = "firebase_api_key missing in config.";
-            SDL_Log("ACCOUNT: sign-in rejected (missing firebase_api_key after config fallback)");
+        std::string serverBase = levelServerUrl;
+        while (!serverBase.empty() && serverBase.back() == '/') serverBase.pop_back();
+        if (serverBase.empty()) {
+            errOut = "Game server URL is missing.";
             return false;
         }
 #if defined(__ANDROID__)
@@ -745,10 +733,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     if (env->ExceptionCheck()) env->ExceptionClear();
                 } else {
                     jmethodID mid = env->GetStaticMethodID(
-                        cls, "firebaseSignIn",
+                        cls, "gameServerSignIn",
                         "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)Ljava/lang/String;");
                     if (mid) {
-                        jstring jApi = env->NewStringUTF(effectiveApiKey.c_str());
+                        jstring jApi = env->NewStringUTF(serverBase.c_str());
                         jstring jEmail = env->NewStringUTF(email.c_str());
                         jstring jPass = env->NewStringUTF(password.c_str());
                         if (env->ExceptionCheck()) {
@@ -813,7 +801,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             errOut = "curl init failed.";
             return false;
         }
-        const std::string url = "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=" + effectiveApiKey;
+        const std::string url = serverBase + "/api/auth/login";
         nlohmann::json req;
         req["email"] = email;
         req["password"] = password;
@@ -830,7 +818,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 8L);
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, 12L);
         curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
-        curl_easy_setopt(curl, CURLOPT_USERAGENT, "DF-New/1.0");
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, PLATFORMER_CLIENT_USER_AGENT);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,
             +[](char* ptr, size_t size, size_t nmemb, void* userdata) -> size_t {
                 std::string* out = static_cast<std::string*>(userdata);
@@ -1447,6 +1435,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             }
             if (hasUser && hasToken) {
                 if (settingsSelNetwork == 1) {
+                    RevokeLevelServerSession();
                     levelServerAccountUsername.clear();
                     levelServerAuthToken.clear();
                     syncNetworkSessionState();
@@ -1471,7 +1460,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 // Finalize IME composition before login so the latest touched text is committed.
                 stopNetworkEditing();
                 std::string err;
-                if (loginWithFirebase(err)) {
+                if (loginWithGameServer(err)) {
                     syncNetworkSessionState();
                     networkLoginPassword.clear();
                     networkLoginPasswordCursor = 0;
@@ -1976,7 +1965,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                                 // Finalize IME composition before login so the latest touched text is committed.
                                 stopNetworkEditing();
                                 std::string err;
-                                if (loginWithFirebase(err)) {
+                                if (loginWithGameServer(err)) {
                                     syncNetworkSessionState();
                                     networkLoginPassword.clear();
                                     networkLoginPasswordCursor = 0;
@@ -3542,6 +3531,16 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 }
                 SDL_SetRenderClipRect(ctx.ren, nullptr);
             } else if (settingsTab == IDX_SETTINGS_ACCOUNT) {
+                if (!serverSwapNoticeShown) {
+                    serverSwapNoticeShown = true;
+                    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "Game server changed",
+                        "We have moved to a new game server.\n\n"
+                        "Old server accounts do not transfer. Open Account Manager to create "
+                        "a new account, then sign in here.\n\n"
+                        "Your local saves and levels are unchanged. Shared levels from the "
+                        "old server become available after the server operator imports them.",
+                        ctx.win);
+                }
                 SDL_Rect listClip = settingsListClipRect();
                 SDL_SetRenderClipRect(ctx.ren, &listClip);
                 const bool hasUser = !levelServerAccountUsername.empty();

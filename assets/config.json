@@ -16,14 +16,17 @@
     "swim_rise": 900.0
   },
   "background": {
-    "parallax_layer_scales": [0.8, 0.8, 0.8]
+    "parallax_layer_scales": [
+      0.8,
+      0.8,
+      0.8
+    ]
   },
-  "level_api_url": "https://benno111.github.io/Dorfplatformer-API/",
-  "level_api_version_id": 26,
-  "level_server_url": "https://timetravel-server-default-rtdb.europe-west1.firebasedatabase.app/",
-  "account_manager_url": "https://benno111.github.io/Dorfplatformer-API/",
-  "windows_update_manifest_url": "https://benno111.github.io/Dorfplatformer-API/update-manifest.json",
-  "firebase_api_key": "AIzaSyC-lBtzoK98rO6TH6nQV4ugiPsVMbAJ-44",
+  "level_api_url": "http://127.0.0.1:8080",
+  "level_api_version_id": 1,
+  "level_server_url": "http://127.0.0.1:8080",
+  "account_manager_url": "http://127.0.0.1:8080/",
+  "windows_update_manifest_url": "http://127.0.0.1:8080/update-manifest.json",
   "level_server_account_username": "",
   "level_server_auth_token": ""
 }

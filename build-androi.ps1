@@ -478,6 +478,7 @@ function Build-NativeAndroidWindows {
     $hasCurl = (Test-Path (Join-Path $curlRoot "include\curl\curl.h")) -and (Test-Path (Join-Path $curlLibDir "libcurl.so"))
 
     $cppFlags = @(
+        "-I$(Join-Path $repoRoot 'build/android/generated')",
         "-I$jsonRoot",
         "-I$(Join-Path $sdlRoot 'include')",
         "-I$shimRoot",
@@ -817,6 +818,7 @@ function Invoke-NativeGameBuild {
     }
 }
 
+& (Join-Path $repoRoot "fix-android-config.ps1") -RepoRoot $repoRoot
 Ensure-Java
 Ensure-AndroidSdk
 Invoke-NativeGameBuild

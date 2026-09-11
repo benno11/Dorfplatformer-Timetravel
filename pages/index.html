@@ -23,7 +23,7 @@
     .panel h2 { margin: 0 0 10px; font-size: 18px; }
     .panel p { margin: 0 0 10px; color: var(--muted); font-size: 13px; }
     label { display: block; margin: 10px 0 4px; color: var(--muted); font-size: 12px; }
-    input {
+    input, select {
       width: 100%;
       box-sizing: border-box;
       border: 1px solid var(--border);
@@ -63,7 +63,7 @@
       margin-top: 8px;
     }
     @media (max-width: 640px) {
-      input {
+      input, select {
         min-height: 44px;
         padding: 11px 12px;
         font-size: 16px;
@@ -82,6 +82,12 @@
     <h1>Dorfplatformer Timetravel Account Manager</h1>
     <p style="color:var(--muted)">Create account, sign in, change password, and change username for level uploads.</p>
 
+    <section class="panel" aria-labelledby="serverSwapTitle" style="margin-bottom:14px">
+      <h2 id="serverSwapTitle">We've moved to a new game server</h2>
+      <p>Accounts from the old server do not transfer. Create a new account below, then use it to sign in inside the game.</p>
+      <p>Your local saves and levels are unchanged. Shared levels from the old server become available after the server operator imports them.</p>
+    </section>
+
     <div class="grid">
       <section class="panel" id="createPanel">
         <h2>Create Account</h2>
@@ -89,7 +95,7 @@
         <input id="createEmail" type="email" inputmode="email" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="you@example.com">
 
         <label for="createPassword">Password</label>
-        <input id="createPassword" type="password" autocomplete="new-password" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="min 6 chars">
+        <input id="createPassword" type="password" autocomplete="new-password" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="min 10 chars">
 
         <label for="createUsername">Username</label>
         <input id="createUsername" type="text" inputmode="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="player_one">
@@ -114,11 +120,13 @@
 
       <section class="panel" id="usernamePanel">
         <h2>Username</h2>
+        <label for="currentPassword">Current password</label>
+        <input id="currentPassword" type="password" autocomplete="current-password">
         <label for="newUsername">New Username</label>
         <input id="newUsername" type="text" inputmode="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="new_name">
 
         <label for="newPassword">New Password</label>
-        <input id="newPassword" type="password" autocomplete="new-password" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="min 6 chars">
+        <input id="newPassword" type="password" autocomplete="new-password" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="min 10 chars">
 
         <div class="row">
           <button id="changeUsernameBtn">Change Username</button>
@@ -128,8 +136,27 @@
       </section>
     </div>
 
-    <section class="panel" style="margin-top:14px; display:none">
-      <h2>Session + Game Fields</h2>
+    <section class="panel" id="moderationNotice" hidden>
+      <h2>Account notices</h2><p id="uploadRestriction"></p><p id="accountWarning"></p>
+    </section>
+    <section class="panel" id="moderatorPanel" style="margin-top:14px" hidden>
+      <h2>Level difficulty</h2>
+      <p>Moderator ratings run from 1 (easiest) to 9 (hardest). Changed level content needs a new rating.</p>
+      <button id="loadRatedLevelsBtn">Refresh levels</button>
+      <label for="ratingLevel">Level</label>
+      <select id="ratingLevel"></select>
+      <label for="difficultyRating">Difficulty (1-9)</label>
+      <select id="difficultyRating">
+        <option value="1">1 - Easiest</option><option value="2">2</option>
+        <option value="3">3</option><option value="4">4</option>
+        <option value="5">5</option><option value="6">6</option>
+        <option value="7">7</option><option value="8">8</option>
+        <option value="9">9 - Hardest</option>
+      </select>
+      <button id="setDifficultyBtn">Set difficulty</button>
+    </section>
+    <section class="panel" style="margin-top:14px">
+      <h2>Account status</h2>
       <div id="sessionSummary" class="mono">No session.</div>
       <div class="status" id="status"></div>
     </section>

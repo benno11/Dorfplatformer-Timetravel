@@ -15,6 +15,7 @@ if (hasReleaseSigning) {
 }
 
 android {
+    buildFeatures { buildConfig = true }
     namespace = "com.Benno111.dorfplatformertimetravel"
     compileSdk {
         version = release(36)
@@ -24,7 +25,7 @@ android {
         applicationId = "com.Benno111.dorfplatformertimetravel"
         minSdk = 24
         targetSdk = 36
-        versionCode = 26
+        versionCode = 27
         versionName = "2.3.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

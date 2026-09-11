@@ -1,3 +1,4 @@
+#include "BuildInfo.h"
 #include "AssetPath.h"
 #include "Platform.h"
 
@@ -169,7 +170,7 @@ std::string ReadTextFile(const std::string& path) {
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
         curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
-        curl_easy_setopt(curl, CURLOPT_USERAGENT, "DF-New/1.0");
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, PLATFORMER_CLIENT_USER_AGENT);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,
                          +[](char* ptr, size_t size, size_t nmemb, void* userdata) -> size_t {
                              std::string* out = static_cast<std::string*>(userdata);
@@ -355,3 +356,52 @@ std::string GetLevelServerAccountUsername() {
     return g_levelServerAccountUsername;
 }
 
+
+void RevokeLevelServerSession() {
+    std::string base = GetLevelServerUrl();
+    const std::string token = GetLevelServerAuthToken();
+    if (base.empty() || token.empty()) return;
+    while (!base.empty() && base.back() == '/') base.pop_back();
+#if defined(__ANDROID__)
+    JNIEnv* env = static_cast<JNIEnv*>(SDL_GetAndroidJNIEnv());
+    if (env) {
+        jclass cls = env->FindClass("com/Benno111/dorfplatformertimetravel/MainActivity");
+        if (cls) {
+            jmethodID mid = env->GetStaticMethodID(cls, "gameServerLogout",
+                "(Ljava/lang/String;Ljava/lang/String;I)Ljava/lang/String;");
+            if (mid) {
+                jstring jBase = env->NewStringUTF(base.c_str());
+                jstring jToken = env->NewStringUTF(token.c_str());
+                jobject result = env->CallStaticObjectMethod(cls, mid, jBase, jToken, (jint)5000);
+                if (env->ExceptionCheck()) env->ExceptionClear();
+                if (result) env->DeleteLocalRef(result);
+                if (jBase) env->DeleteLocalRef(jBase);
+                if (jToken) env->DeleteLocalRef(jToken);
+                env->DeleteLocalRef(cls);
+                return;
+            }
+            env->DeleteLocalRef(cls);
+        }
+        if (env->ExceptionCheck()) env->ExceptionClear();
+    }
+#endif
+#if defined(HAVE_CURL) && HAVE_CURL
+    CURL* curl = curl_easy_init();
+    if (!curl) return;
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, PLATFORMER_CLIENT_USER_AGENT);
+    const std::string url = base + "/api/auth/logout";
+    const std::string auth = "Authorization: Bearer " + token;
+    curl_slist* headers = curl_slist_append(nullptr, "Content-Type: application/json");
+    headers = curl_slist_append(headers, auth.c_str());
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, "{}");
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,
+        +[](char*, size_t size, size_t count, void*) -> size_t { return size * count; });
+    (void)curl_easy_perform(curl);
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+#endif
+}

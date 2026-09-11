@@ -47,3 +47,8 @@ Thumbs.db
 /.build/
 .build-*/
 
+
+/server/data/
+__pycache__/
+
+/server/releases/

@@ -1,0 +1,6 @@
+{$DOMAIN} {
+    request_body {
+        max_size 2MB
+    }
+    reverse_proxy game:8080
+}

@@ -1,0 +1,25 @@
+name: Custom server tests
+on:
+  push:
+    paths: ["server/**", "pages/**", ".github/workflows/server-tests.yml"]
+  pull_request:
+    paths: ["server/**", "pages/**", ".github/workflows/server-tests.yml"]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: python -m unittest discover -s server -p "test_*.py" -v
+      - run: node --check pages/account-manager.js
+      - run: node --check pages/level-api.js
+      - run: node --test server/test_account_manager.js
+      - run: node --check server/admin/admin.js
+      - run: node --test server/test_admin_dashboard.js

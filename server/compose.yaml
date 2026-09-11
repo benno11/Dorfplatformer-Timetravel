@@ -1,0 +1,46 @@
+services:
+  game:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    command: ["python", "server/game_server.py", "--no-dashboard"]
+    environment:
+      PUBLIC_URL: https://${DOMAIN:?Set DOMAIN to your game server hostname}
+    volumes:
+      - game-data:/data
+      - game-releases:/app/server/releases:ro
+  admin:
+    profiles: ["admin"]
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    command: ["python", "server/admin_dashboard.py"]
+    # Linux host networking makes the enforced 127.0.0.1 listener available
+    # on the host's loopback interface. No ports are published.
+    network_mode: host
+    environment:
+      DATABASE_PATH: /data/game.sqlite3
+      ADMIN_PORT: "8081"
+    volumes:
+      - game-data:/data
+  proxy:
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN to your game server hostname}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - game
+volumes:
+  game-data:
+  caddy-data:
+  caddy-config:
+  game-releases:

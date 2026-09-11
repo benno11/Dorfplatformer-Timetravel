@@ -41,12 +41,6 @@
     return (url || "").trim().replace(/\/+$/, "");
   }
 
-  function authQuery(token) {
-    var t = (token || "").trim();
-    if (!t) return "";
-    return "?auth=" + encodeURIComponent(t);
-  }
-
   var apiConfigPromise = null;
 
   function loadApiConfig() {
@@ -66,17 +60,11 @@
   async function resolveOwnerFromToken(token) {
     var t = (token || "").trim();
     if (!t) return "";
-    var cfg = await loadApiConfig();
-    var apiKey = (((cfg || {}).firebase || {}).api_key || "").trim();
-    if (!apiKey) {
-      log("Token owner lookup skipped (missing firebase.api_key in api.json).", "err");
-      return "";
-    }
-    var url = "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" + encodeURIComponent(apiKey);
+    var url = normalizeBaseUrl(baseUrlInput.value || location.origin) + "/api/auth/lookup";
     try {
       var res = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
         body: JSON.stringify({ idToken: t })
       });
       var text = await res.text();
@@ -214,7 +202,7 @@
       return;
     }
 
-    var url = base + "/levels/" + encodeURIComponent(levelId) + ".json" + authQuery(token);
+    var url = base + "/levels/" + encodeURIComponent(levelId) + ".json";
     var nowSeconds = Math.floor(Date.now() / 1000);
     var payload = {
       name: levelName,
@@ -223,14 +211,14 @@
       api_version_id: apiVersionId,
       data: data,
       uploaded_at: nowSeconds,
-      source: "df-new-gh-pages-uploader"
+      source: "dorf-custom-server-uploader"
     };
 
     log("Uploading level '" + levelId + "' to " + url);
     try {
       var res = await fetch(url, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
         body: JSON.stringify(payload)
       });
       var txt = await res.text();
@@ -261,9 +249,6 @@
       return;
     }
     var query = "shallow=true";
-    if ((token || "").trim()) {
-      query += "&auth=" + encodeURIComponent(token.trim());
-    }
     var url = base + "/levels.json?" + query;
     log("Fetching level IDs from " + url);
     try {

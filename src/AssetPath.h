@@ -12,3 +12,6 @@ void SetLevelServerAuthToken(const std::string& token);
 std::string GetLevelServerAuthToken();
 void SetLevelServerAccountUsername(const std::string& username);
 std::string GetLevelServerAccountUsername();
+
+// Best-effort remote revocation before clearing local credentials.
+void RevokeLevelServerSession();

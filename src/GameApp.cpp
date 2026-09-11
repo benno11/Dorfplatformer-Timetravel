@@ -1075,11 +1075,10 @@ int RunGameApp(int argc, char** argv) {
     std::string levelServerUrl;
     std::string levelServerAuthToken;
     std::string levelServerAccountUsername;
-    std::string accountManagerUrl = "https://benno111.github.io/Dorfplatformer-API/";
-    std::string firebaseApiKey;
+    std::string accountManagerUrl = "http://127.0.0.1:8080/";
     std::string windowsUpdateManifestUrl;
-    std::string appVersion = "dev";
-    std::string appVersionId = "0.0.0";
+    const std::string appVersion = PLATFORMER_CLIENT_VERSION;
+    const std::string appVersionId = PLATFORMER_CLIENT_VERSION_ID;
     MovementConfig movementCfg{};
     float bossGravity = 0.0f;
     std::array<float, 3> parallaxLayerScales{{0.80f, 0.80f, 0.80f}};
@@ -1099,15 +1098,6 @@ int RunGameApp(int argc, char** argv) {
                 }
                 return std::string();
             };
-            if (cfg.contains("version") && cfg["version"].is_string()) {
-                appVersion = cfg["version"].get<std::string>();
-            }
-            if (cfg.contains("version_id")) {
-                const std::string parsedVersionId = jsonValueToString(cfg["version_id"]);
-                if (!parsedVersionId.empty()) appVersionId = parsedVersionId;
-            } else {
-                appVersionId = appVersion;
-            }
             if (cfg.contains("level_server_url") && cfg["level_server_url"].is_string()) {
                 levelServerUrl = cfg["level_server_url"].get<std::string>();
             } else if (cfg.contains("level_api_url") && cfg["level_api_url"].is_string()) {
@@ -1125,9 +1115,6 @@ int RunGameApp(int argc, char** argv) {
             }
             if (cfg.contains("account_manager_url") && cfg["account_manager_url"].is_string()) {
                 accountManagerUrl = cfg["account_manager_url"].get<std::string>();
-            }
-            if (cfg.contains("firebase_api_key") && cfg["firebase_api_key"].is_string()) {
-                firebaseApiKey = cfg["firebase_api_key"].get<std::string>();
             }
             if (cfg.contains("windows_update_manifest_url") && cfg["windows_update_manifest_url"].is_string()) {
                 windowsUpdateManifestUrl = cfg["windows_update_manifest_url"].get<std::string>();
@@ -1647,8 +1634,7 @@ int RunGameApp(int argc, char** argv) {
         settings["network"] = {
             {"level_server_url", levelServerUrl},
             {"level_server_auth_token", levelServerAuthToken},
-            {"level_server_account_username", levelServerAccountUsername},
-            {"firebase_api_key", firebaseApiKey}
+            {"level_server_account_username", levelServerAccountUsername}
         };
         {
             nlohmann::json extra = nlohmann::json::array();
@@ -1687,7 +1673,6 @@ int RunGameApp(int argc, char** argv) {
         j["level_server_url"] = levelServerUrl;
         j["level_server_auth_token"] = levelServerAuthToken;
         j["level_server_account_username"] = levelServerAccountUsername;
-        j["firebase_api_key"] = firebaseApiKey;
         j["fast_travel_delay"] = fastTravelChangeDelay;
         j["active_save_slot_index"] = activeSaveSlotIndex;
         j["music_volume"] = musicVolume;
@@ -1821,8 +1806,6 @@ int RunGameApp(int argc, char** argv) {
                     if (levelServerAuthToken.empty()) applyNonEmptyNetworkString(n, "level_api_auth_token", levelServerAuthToken);
                     applyNonEmptyNetworkString(n, "level_server_account_username", levelServerAccountUsername);
                     if (levelServerAccountUsername.empty()) applyNonEmptyNetworkString(n, "level_api_account_username", levelServerAccountUsername);
-                    applyNonEmptyNetworkString(n, "firebase_api_key", firebaseApiKey);
-                    if (firebaseApiKey.empty()) applyNonEmptyNetworkString(n, "level_api_key", firebaseApiKey);
                 }
                 if (s.contains("extra_settings") && s["extra_settings"].is_array()) {
                     const auto& a = s["extra_settings"];
@@ -1888,8 +1871,6 @@ int RunGameApp(int argc, char** argv) {
             if (levelServerAuthToken.empty()) applyNonEmptyLegacyNetworkString(j, "level_api_auth_token", levelServerAuthToken);
             applyNonEmptyLegacyNetworkString(j, "level_server_account_username", levelServerAccountUsername);
             if (levelServerAccountUsername.empty()) applyNonEmptyLegacyNetworkString(j, "level_api_account_username", levelServerAccountUsername);
-            applyNonEmptyLegacyNetworkString(j, "firebase_api_key", firebaseApiKey);
-            if (firebaseApiKey.empty()) applyNonEmptyLegacyNetworkString(j, "level_api_key", firebaseApiKey);
             if (j.contains("fast_travel_delay") && j["fast_travel_delay"].is_number()) {
                 // Deprecated: delay removed in favor of immediate smooth transitions.
                 fastTravelChangeDelay = 0.0f;
@@ -1927,6 +1908,19 @@ int RunGameApp(int argc, char** argv) {
 #if PLATFORMER_MOBILE
     fullscreen = true;
 #endif
+    if (levelServerUrl.find("firebasedatabase.app") != std::string::npos ||
+        levelServerUrl.find("firebaseio.com") != std::string::npos ||
+        levelServerUrl.find("benno111.github.io/Dorfplatformer-API") != std::string::npos) {
+        try {
+            const auto cfg = nlohmann::json::parse(ReadTextFile("assets/config.json"));
+            levelServerUrl = cfg.value("level_server_url", std::string());
+        } catch (...) { levelServerUrl.clear(); }
+        levelServerAuthToken.clear();
+        levelServerAccountUsername.clear();
+        saveClientSettings();
+    }
+    // The account manager is hosted by the selected game server.
+    accountManagerUrl = levelServerUrl;
     SetLevelServerUrl(levelServerUrl);
     SetLevelServerAuthToken(levelServerAuthToken);
     SetLevelServerAccountUsername(levelServerAccountUsername);
@@ -2246,7 +2240,6 @@ int RunGameApp(int argc, char** argv) {
     frontendCtx.levelServerAuthToken = &levelServerAuthToken;
     frontendCtx.levelServerAccountUsername = &levelServerAccountUsername;
     frontendCtx.accountManagerUrl = &accountManagerUrl;
-    frontendCtx.firebaseApiKey = &firebaseApiKey;
     frontendCtx.activeSaveSlotIndex = &activeSaveSlotIndex;
     frontendCtx.extraSettings = extraSettings.data();
     frontendCtx.extraSettingsCount = (int)extraSettings.size();

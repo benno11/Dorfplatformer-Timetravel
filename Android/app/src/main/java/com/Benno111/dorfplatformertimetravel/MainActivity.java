@@ -59,7 +59,7 @@ public class MainActivity extends SDLActivity {
             conn.setConnectTimeout(Math.max(1000, timeoutMs));
             conn.setReadTimeout(Math.max(1000, timeoutMs));
             conn.setInstanceFollowRedirects(true);
-            conn.setRequestProperty("User-Agent", "DF-New/1.0-android");
+            conn.setRequestProperty("User-Agent", "DF-New/" + BuildConfig.VERSION_NAME + " (build/" + BuildConfig.VERSION_CODE + ")");
             int code = conn.getResponseCode();
             if (code < 200 || code >= 300) {
                 Log.i(TAG, "NET: Java GET fail code=" + code + " url=" + url);
@@ -111,13 +111,13 @@ public class MainActivity extends SDLActivity {
         return out.toString();
     }
 
-    public static String firebaseSignIn(String apiKey, String email, String password, int timeoutMs) {
+    public static String gameServerSignIn(String serverBase, String email, String password, int timeoutMs) {
         HttpURLConnection conn = null;
         try {
-            if (apiKey == null || apiKey.isEmpty()) return "";
+            if (serverBase == null || serverBase.isEmpty()) return "";
             String safeEmail = email == null ? "" : email;
             String safePassword = password == null ? "" : password;
-            final String url = "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=" + apiKey;
+            final String url = serverBase.replaceAll("/+$", "") + "/api/auth/login";
             final String body = "{\"email\":\"" + jsonEscape(safeEmail) + "\",\"password\":\"" +
                     jsonEscape(safePassword) + "\",\"returnSecureToken\":true}";
 
@@ -126,10 +126,11 @@ public class MainActivity extends SDLActivity {
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(Math.max(1000, timeoutMs));
             conn.setReadTimeout(Math.max(1000, timeoutMs));
+            conn.setInstanceFollowRedirects(false);
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setRequestProperty("Accept", "application/json");
-            conn.setRequestProperty("User-Agent", "DF-New/1.0-android");
+            conn.setRequestProperty("User-Agent", "DF-New/" + BuildConfig.VERSION_NAME + " (build/" + BuildConfig.VERSION_CODE + ")");
             java.io.OutputStream os = conn.getOutputStream();
             os.write(body.getBytes(StandardCharsets.UTF_8));
             os.flush();
@@ -162,21 +163,30 @@ public class MainActivity extends SDLActivity {
         }
     }
 
-    public static String firebaseLookupAccount(String apiKey, String idToken, int timeoutMs) {
+    public static String gameServerLookupAccount(String serverBase, String idToken, int timeoutMs) {
+        return gameServerAccountRequest(serverBase, idToken, timeoutMs, "lookup");
+    }
+
+    public static String gameServerLogout(String serverBase, String idToken, int timeoutMs) {
+        return gameServerAccountRequest(serverBase, idToken, timeoutMs, "logout");
+    }
+
+    private static String gameServerAccountRequest(String serverBase, String idToken, int timeoutMs, String action) {
         HttpURLConnection conn = null;
         try {
-            if (apiKey == null || apiKey.isEmpty() || idToken == null || idToken.isEmpty()) return "";
-            final String url = "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" + apiKey;
+            if (serverBase == null || serverBase.isEmpty() || idToken == null || idToken.isEmpty()) return "";
+            final String url = serverBase.replaceAll("/+$", "") + "/api/auth/" + action;
             final String body = "{\"idToken\":\"" + jsonEscape(idToken) + "\"}";
             URL u = new URL(url);
             conn = (HttpURLConnection) u.openConnection();
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(Math.max(1000, timeoutMs));
             conn.setReadTimeout(Math.max(1000, timeoutMs));
+            conn.setInstanceFollowRedirects(false);
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setRequestProperty("Accept", "application/json");
-            conn.setRequestProperty("User-Agent", "DF-New/1.0-android");
+            conn.setRequestProperty("User-Agent", "DF-New/" + BuildConfig.VERSION_NAME + " (build/" + BuildConfig.VERSION_CODE + ")");
             java.io.OutputStream os = conn.getOutputStream();
             os.write(body.getBytes(StandardCharsets.UTF_8));
             os.flush();
@@ -205,19 +215,21 @@ public class MainActivity extends SDLActivity {
         }
     }
 
-    public static int firebaseUploadLevel(String url, String jsonBody, int timeoutMs) {
+    public static int gameServerUploadLevel(String url, String jsonBody, String token, int timeoutMs) {
         HttpURLConnection conn = null;
         try {
             if (url == null || url.isEmpty() || jsonBody == null) return -1;
             URL u = new URL(url);
             conn = (HttpURLConnection) u.openConnection();
             conn.setRequestMethod("PUT");
+            conn.setRequestProperty("Authorization", "Bearer " + token);
             conn.setConnectTimeout(Math.max(1000, timeoutMs));
             conn.setReadTimeout(Math.max(1000, timeoutMs));
+            conn.setInstanceFollowRedirects(false);
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setRequestProperty("Accept", "application/json");
-            conn.setRequestProperty("User-Agent", "DF-New/1.0-android");
+            conn.setRequestProperty("User-Agent", "DF-New/" + BuildConfig.VERSION_NAME + " (build/" + BuildConfig.VERSION_CODE + ")");
             java.io.OutputStream os = conn.getOutputStream();
             os.write(jsonBody.getBytes(StandardCharsets.UTF_8));
             os.flush();

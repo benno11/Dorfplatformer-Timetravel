@@ -1,3 +1,4 @@
+#include "BuildInfo.h"
 #include "LevelSelect.h"
 #include "AssetPath.h"
 
@@ -33,6 +34,7 @@ namespace {
 struct LevelEntry {
     std::string label;
     std::string path;
+    int difficulty = 0; // Unrated until set by a server moderator.
 };
 
 struct OnlineLevelsMenuLabels {
@@ -1660,8 +1662,7 @@ std::vector<LevelEntry> loadCustomLevels() {
 
     std::vector<LevelEntry> out;
     const std::string levelServerUrl = GetLevelServerUrl();
-    const std::string levelServerAuthToken = GetLevelServerAuthToken();
-    auto buildFirebaseUrl = [&](const std::string& base, const std::string& path, const std::string& extraQuery = "") -> std::string {
+    auto buildGameServerUrl = [&](const std::string& base, const std::string& path, const std::string& extraQuery = "") -> std::string {
         std::string u = base;
         while (!u.empty() && u.back() == '/') u.pop_back();
         std::string p = path;
@@ -1669,19 +1670,16 @@ std::vector<LevelEntry> loadCustomLevels() {
         u += p;
         if (u.size() < 5 || u.substr(u.size() - 5) != ".json") u += ".json";
         std::string query = extraQuery;
-        if (!levelServerAuthToken.empty()) {
-            if (!query.empty()) query += "&";
-            query += "auth=" + levelServerAuthToken;
-        }
+
         if (!query.empty()) u += "?" + query;
         return u;
     };
     if (!levelServerUrl.empty()) {
         std::string base = levelServerUrl;
         while (!base.empty() && base.back() == '/') base.pop_back();
-        std::string levelsRootText = ReadTextFile(buildFirebaseUrl(base, "/levels", "shallow=true"));
+        std::string levelsRootText = ReadTextFile(buildGameServerUrl(base, "/levels", "metadata=true"));
         if (levelsRootText.empty()) {
-            levelsRootText = ReadTextFile(buildFirebaseUrl(base, "/levels"));
+            levelsRootText = ReadTextFile(buildGameServerUrl(base, "/levels"));
         }
         if (!levelsRootText.empty()) {
             nlohmann::json levelsRoot;
@@ -1689,13 +1687,17 @@ std::vector<LevelEntry> loadCustomLevels() {
             if (levelsRoot.is_object()) {
                 for (auto it = levelsRoot.begin(); it != levelsRoot.end(); ++it) {
                     const std::string id = it.key();
-                    const std::string path = buildFirebaseUrl(base, "/levels/" + id + "/data");
-                    addUniqueByPath(out, {LevelEntry{id, path}});
+                    const std::string path = buildGameServerUrl(base, "/levels/" + id + "/data");
+                    int difficulty = 0;
+                    const auto& metadata = it.value();
+                    if (metadata.is_object() && metadata.contains("difficulty") && metadata["difficulty"].is_number_integer()) {
+                        const auto& rating = metadata["difficulty"];
+                        if (rating >= 1 && rating <= 9) difficulty = rating.get<int>();
+                    }
+                    addUniqueByPath(out, {LevelEntry{id, path, difficulty}});
                 }
             }
         }
-        addUniqueByPath(out, loadLevelListFromJson(buildFirebaseUrl(base, "/custom_levels/levels"), base + "/custom_levels"));
-        addUniqueByPath(out, loadLevelListFromJson(buildFirebaseUrl(base, "/custom_levels"), ""));
     }
 #if PLATFORMER_MOBILE
     addUniqueByPath(out, loadLevelListFromJson("assets/custom_levels/levels.json", "assets/custom_levels"));
@@ -2349,7 +2351,13 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
                 if (y + rowH < 0 || y > winH) continue;
                 SDL_Rect r{listClip.x, y, listClip.w, rowH - 4};
                 drawChromeButton(ren, r, i == selectedIndex);
-                DrawText(ren, r.x + 12, r.y + std::max(6, (r.h - 10 * textScale) / 2), textScale, levels[i].label);
+                std::string displayLabel = levels[i].label;
+                if (isHttpUrl(levels[i].path)) {
+                    const std::string rating = levels[i].difficulty > 0
+                        ? "DIFF " + std::to_string(levels[i].difficulty) + "/9" : "UNRATED";
+                    displayLabel = "[" + rating + "] " + displayLabel;
+                }
+                DrawText(ren, r.x + 12, r.y + std::max(6, (r.h - 10 * textScale) / 2), textScale, displayLabel);
             }
 
             if (maxScroll > 0) {
@@ -2405,47 +2413,34 @@ std::string RunLevelSelect(SDL_Window* win, SDL_Renderer* ren) {
     return RunLevelSelectImpl(win, ren, true, true);
 }
 
-std::string buildFirebaseLevelUploadUrl(const std::string& base,
-                                        const std::string& authToken,
+std::string buildGameLevelUploadUrl(const std::string& base,
                                         const std::string& levelId) {
     std::string u = base;
     while (!u.empty() && u.back() == '/') u.pop_back();
     u += "/levels/" + sanitizeFilePart(levelId) + ".json";
-    if (!authToken.empty()) {
-        u += "?auth=" + authToken;
-    }
+
     return u;
 }
 
 bool resolveAccountUsernameFromToken(const std::string& authToken, std::string& accountUsernameOut) {
     accountUsernameOut.clear();
     if (authToken.empty()) return false;
-    std::string apiKey;
-    const std::string cfgText = ReadTextFile("assets/config.json");
-    if (!cfgText.empty()) {
-        try {
-            const nlohmann::json cfgJson = nlohmann::json::parse(cfgText);
-            if (cfgJson.is_object()) {
-                if (cfgJson.contains("firebase_api_key") && cfgJson["firebase_api_key"].is_string()) {
-                    apiKey = cfgJson["firebase_api_key"].get<std::string>();
-                } else if (cfgJson.contains("level_api_key") && cfgJson["level_api_key"].is_string()) {
-                    apiKey = cfgJson["level_api_key"].get<std::string>();
-                }
-            }
-        } catch (...) {}
-    }
-    if (apiKey.empty()) return false;
+    std::string serverBase = GetLevelServerUrl();
+    while (!serverBase.empty() && serverBase.back() == '/') serverBase.pop_back();
+    if (serverBase.empty()) return false;
 
 #if defined(HAVE_CURL) && HAVE_CURL
 
     CURL* curl = curl_easy_init();
     if (curl) {
-        const std::string url = "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" + apiKey;
+        const std::string url = serverBase + "/api/auth/lookup";
         nlohmann::json req;
         req["idToken"] = authToken;
         const std::string body = req.dump();
         struct curl_slist* headers = nullptr;
         headers = curl_slist_append(headers, "Content-Type: application/json");
+        const std::string authorization = "Authorization: Bearer " + authToken;
+        headers = curl_slist_append(headers, authorization.c_str());
         std::string respBody;
         curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
@@ -2455,7 +2450,7 @@ bool resolveAccountUsernameFromToken(const std::string& authToken, std::string& 
         curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
         curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
-        curl_easy_setopt(curl, CURLOPT_USERAGENT, "DF-New/1.0");
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, PLATFORMER_CLIENT_USER_AGENT);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,
             +[](char* ptr, size_t size, size_t nmemb, void* userdata) -> size_t {
                 std::string* out = static_cast<std::string*>(userdata);
@@ -2500,10 +2495,10 @@ bool resolveAccountUsernameFromToken(const std::string& authToken, std::string& 
             jclass cls = env->FindClass("com/Benno111/dorfplatformertimetravel/MainActivity");
             if (cls) {
                 jmethodID mid = env->GetStaticMethodID(
-                    cls, "firebaseLookupAccount",
+                    cls, "gameServerLookupAccount",
                     "(Ljava/lang/String;Ljava/lang/String;I)Ljava/lang/String;");
                 if (mid) {
-                    jstring jApi = env->NewStringUTF(apiKey.c_str());
+                    jstring jApi = env->NewStringUTF(serverBase.c_str());
                     jstring jToken = env->NewStringUTF(authToken.c_str());
                     jobject jRespObj = env->CallStaticObjectMethod(cls, mid, jApi, jToken, (jint)10000);
                     if (env->ExceptionCheck()) env->ExceptionClear();
@@ -2629,7 +2624,7 @@ bool uploadLocalLevelToServer(const LevelEntry& level, std::string& statusText) 
     const std::string levelName = sanitizeFilePart(level.label);
     const std::string levelId = accountUsername + "-" + levelName;
     const std::string levelApiVersionId = readLevelApiVersionIdFromConfig();
-    const std::string uploadUrl = buildFirebaseLevelUploadUrl(levelServerUrl, authToken, levelId);
+    const std::string uploadUrl = buildGameLevelUploadUrl(levelServerUrl, levelId);
     nlohmann::json payload;
     payload["name"] = level.label;
     payload["level_id"] = levelId;
@@ -2653,8 +2648,8 @@ bool uploadLocalLevelToServer(const LevelEntry& level, std::string& statusText) 
             return false;
         }
         jmethodID mid = env->GetStaticMethodID(
-            cls, "firebaseUploadLevel",
-            "(Ljava/lang/String;Ljava/lang/String;I)I");
+            cls, "gameServerUploadLevel",
+            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)I");
         if (!mid) {
             if (env->ExceptionCheck()) env->ExceptionClear();
             env->DeleteLocalRef(cls);
@@ -2662,7 +2657,9 @@ bool uploadLocalLevelToServer(const LevelEntry& level, std::string& statusText) 
         }
         jstring jUrl = env->NewStringUTF(uploadUrl.c_str());
         jstring jBody = env->NewStringUTF(body.c_str());
-        jint code = env->CallStaticIntMethod(cls, mid, jUrl, jBody, (jint)15000);
+        jstring jToken = env->NewStringUTF(authToken.c_str());
+        jint code = env->CallStaticIntMethod(cls, mid, jUrl, jBody, jToken, (jint)15000);
+        if (jToken) env->DeleteLocalRef(jToken);
         if (env->ExceptionCheck()) env->ExceptionClear();
         if (jUrl) env->DeleteLocalRef(jUrl);
         if (jBody) env->DeleteLocalRef(jBody);
@@ -2686,6 +2683,8 @@ bool uploadLocalLevelToServer(const LevelEntry& level, std::string& statusText) 
     }
     struct curl_slist* headers = nullptr;
     headers = curl_slist_append(headers, "Content-Type: application/json");
+    const std::string authorization = "Authorization: Bearer " + authToken;
+    headers = curl_slist_append(headers, authorization.c_str());
     curl_easy_setopt(curl, CURLOPT_URL, uploadUrl.c_str());
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
     curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
@@ -2694,7 +2693,7 @@ bool uploadLocalLevelToServer(const LevelEntry& level, std::string& statusText) 
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "DF-New/1.0");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, PLATFORMER_CLIENT_USER_AGENT);
     const CURLcode rc = curl_easy_perform(curl);
     long code = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);

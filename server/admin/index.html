@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dorfplatformer · Server dashboard</title>
+  <link rel="stylesheet" href="/admin.css">
+  <script src="/admin.js" defer></script>
+</head>
+<body>
+  <header><div><p class="eyebrow">DORFPLATFORMER / SERVER ADMIN</p><h1>Community dashboard</h1></div><button id="lock" hidden>Lock dashboard</button></header>
+  <main>
+    <section id="login" class="card login">
+      <h2>Local operator access</h2>
+      <p>Enter the admin key from the file shown in the server console. Access stays in this tab until you lock or reload it.</p>
+      <form id="unlockForm"><label for="adminKey">Admin key</label><input id="adminKey" type="password" autocomplete="off" required><button class="primary" type="submit">Open dashboard</button></form>
+    </section>
+    <p id="status" role="status" aria-live="polite">Connect to manage your community.</p>
+    <div id="dashboard" hidden>
+      <div id="stats" class="stats"></div>
+      <form id="searchForm" class="toolbar"><label for="search">Search players and levels</label><input id="search" type="search" placeholder="Username, email, level name or ID"><button type="submit">Search / refresh</button></form>
+      <div class="columns">
+        <section class="card">
+          <div class="section-title"><h2>Players</h2><span id="playersCount" class="muted"></span></div>
+          <div class="table-scroll"><table><thead><tr><th>Player</th><th>Role / uploads</th><th>Levels</th><th>Action</th></tr></thead><tbody id="players"></tbody></table></div>
+          <div class="pager"><button id="prevPlayers">Previous</button><button id="nextPlayers">Next</button></div>
+        </section>
+        <section class="card">
+          <h2 id="playerTitle">Select a player</h2>
+          <div id="playerControls" hidden>
+            <p id="playerDetails" class="muted"></p><p id="playerRestriction"></p><p id="playerWarning"></p>
+            <label for="playerReason">Reason (recorded in history)</label><textarea id="playerReason" maxlength="500" rows="3" placeholder="Explain the moderation decision"></textarea>
+            <div class="actions"><button id="toggleModerator">Grant moderator</button><button id="warnPlayer">Issue warning</button></div>
+            <label for="suspension">Upload suspension</label>
+            <select id="suspension"><option value="24">1 day</option><option value="168">7 days</option><option value="720">30 days</option><option value="permanent">Permanent</option><option value="0">Lift suspension</option></select>
+            <button id="applySuspension" class="danger">Apply upload restriction</button>
+            <p class="muted">Suspended players can still sign in, play and download. Their new uploads and level content updates are blocked.</p>
+          </div>
+        </section>
+      </div>
+      <div class="columns">
+        <section class="card">
+          <div class="section-title"><h2>Shared levels</h2><span id="levelsCount" class="muted"></span></div>
+          <div class="table-scroll"><table><thead><tr><th>Level</th><th>Author</th><th>Difficulty</th><th>Action</th></tr></thead><tbody id="levels"></tbody></table></div>
+          <div class="pager"><button id="prevLevels">Previous</button><button id="nextLevels">Next</button></div>
+        </section>
+        <section class="card">
+          <h2 id="levelTitle">Select a level</h2>
+          <div id="levelControls" hidden>
+            <p id="levelDetails" class="muted"></p>
+            <label for="levelData">Level content</label><textarea id="levelData" readonly rows="7" spellcheck="false"></textarea>
+            <button id="downloadLevel">Download level for review</button>
+            <h3>Moderator rating</h3>
+            <p class="muted">Ratings require a moderator account. You can assign the role in the Players panel.</p>
+            <form id="moderatorForm"><label for="moderatorEmail">Moderator email</label><input id="moderatorEmail" type="email" autocomplete="username" required><label for="moderatorPassword">Password</label><input id="moderatorPassword" type="password" autocomplete="current-password" required><button type="submit">Sign in for ratings</button></form>
+            <p id="moderatorStatus">Not signed in as a moderator.</p>
+            <label for="difficulty">Difficulty (1 easiest, 9 hardest)</label><select id="difficulty"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option></select><button id="rateLevel">Save difficulty</button>
+            <h3>Remove level</h3><label for="deleteReason">Deletion reason</label><textarea id="deleteReason" rows="2" maxlength="500"></textarea><button id="deleteLevel" class="danger">Delete shared level</button>
+          </div>
+        </section>
+      </div>
+      <section class="card">
+        <h2>Client version blacklist</h2>
+        <p class="muted">Block a compiled build ID (for example 27), or legacy for older official clients without build information. Updates and this dashboard remain available.</p>
+        <label for="versionId">Build ID or legacy</label><input id="versionId" maxlength="10" placeholder="27">
+        <label for="versionReason">Reason (shown to blocked clients)</label><textarea id="versionReason" maxlength="500" rows="2"></textarea>
+        <div class="actions"><button id="blockVersion" class="danger">Block version</button><button id="unblockVersion">Unblock version</button></div>
+        <div class="table-scroll"><table><thead><tr><th>Blocked build</th><th>Reason</th><th>Since</th></tr></thead><tbody id="blockedVersions"></tbody></table></div>
+      </section>
+      <section class="card"><h2>Recent moderation history</h2><p class="muted">Last 50 actions. Operator actions and moderator ratings are recorded.</p><div class="table-scroll"><table><thead><tr><th>Time</th><th>Action</th><th>Target</th><th>Reason</th><th>Actor</th></tr></thead><tbody id="events"></tbody></table></div></section>
+    </div>
+  </main>
+</body>
+</html>

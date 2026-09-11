@@ -3,8 +3,10 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "test-server": "node test-server.js",
-    "build:account-manager": "node build/minify-account-manager.js"
+    "test-server": "python server/game_server.py",
+    "build:account-manager": "node build/minify-account-manager.js",
+    "server": "python server/game_server.py",
+    "test:server": "python -m unittest discover -s server -p \"test_*.py\" -v"
   },
   "devDependencies": {
     "clean-css": "^5.3.3",
