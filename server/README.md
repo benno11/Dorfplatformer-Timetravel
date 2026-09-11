@@ -8,7 +8,7 @@ Run from the repository root with Python 3.11 or newer:
 
     python server/game_server.py
 
-Open http://127.0.0.1:8080 to create an account, then sign in inside the game.
+Open http://critique-unsmooth.tun.ply.gg:49642 to create an account, then sign in inside the game.
 The game defaults to this address. On a physical Android device, localhost is
 the phone: use your computer's LAN address and run with --host 0.0.0.0, or use
 adb reverse tcp:8080 tcp:8080 for USB development. The Android emulator can use

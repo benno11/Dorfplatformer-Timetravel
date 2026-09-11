@@ -1075,7 +1075,7 @@ int RunGameApp(int argc, char** argv) {
     std::string levelServerUrl;
     std::string levelServerAuthToken;
     std::string levelServerAccountUsername;
-    std::string accountManagerUrl = "http://127.0.0.1:8080/";
+    std::string accountManagerUrl = "http://critique-unsmooth.tun.ply.gg:49642/";
     std::string windowsUpdateManifestUrl;
     const std::string appVersion = PLATFORMER_CLIENT_VERSION;
     const std::string appVersionId = PLATFORMER_CLIENT_VERSION_ID;

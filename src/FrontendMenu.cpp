@@ -106,7 +106,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     std::string networkServerUrlLocal;
     std::string networkAuthTokenLocal;
     std::string networkUsernameLocal;
-    std::string accountManagerUrlLocal = "http://127.0.0.1:8080/";
+    std::string accountManagerUrlLocal = "http://critique-unsmooth.tun.ply.gg:49642/";
     std::string& levelServerUrl = ctx.levelServerUrl ? *ctx.levelServerUrl : networkServerUrlLocal;
     std::string& levelServerAuthToken = ctx.levelServerAuthToken ? *ctx.levelServerAuthToken : networkAuthTokenLocal;
     std::string& levelServerAccountUsername = ctx.levelServerAccountUsername ? *ctx.levelServerAccountUsername : networkUsernameLocal;
