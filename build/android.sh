@@ -257,7 +257,10 @@ if [ -z "$JSON_INCLUDE_ROOT" ]; then
   exit 1
 fi
 
+python3 "$PWD/build/generate-build-info.py"
+
 CPPFLAGS=(
+  -I"$PWD/.build/generated"
   -I"$JSON_INCLUDE_ROOT"
   -I"$SDL3_ANDROID_ROOT/include"
   -I"$SDL3_IMAGE_ROOT/include"

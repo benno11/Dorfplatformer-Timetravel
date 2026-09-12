@@ -288,7 +288,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         {"AUTO RETRY CONNECTION", "LIMIT BACKGROUND FETCH", "SYNC CLOUD PROGRESS", "USE CDN MIRROR", "LOW BANDWIDTH MODE", "UPLOAD CRASH LOGS", "PING DIAGNOSTICS", "NET DEBUG OVERLAY", "FORCE IPV4", "TLS STRICT MODE", "CACHE REMOTE LEVELS"},
         {"SEND ANONYMOUS METRICS", "PERSONALIZED CONTENT", "SESSION TELEMETRY", "ERROR REPORT DETAILS", "LOCAL HISTORY LOG", "CROSS-DEVICE IDS", "ALLOW SOCIAL FEATURES", "FRIEND PRESENCE", "SHOW ONLINE STATUS", "DELETE TEMP DATA ON EXIT", "PRIVACY LOCKDOWN"}
     };
-    auto isExtraTab = [&](int tab) -> bool { return tab >= kExtraTabStart && tab < IDX_UPDATER_TAB; };
+    auto isExtraTab = [&](int tab) -> bool {
+        // Account has its own rows and actions, not generic option/back handling.
+        return tab >= kExtraTabStart && tab < IDX_UPDATER_TAB && tab != IDX_SETTINGS_ACCOUNT;
+    };
     auto extraTabIndex = [&](int tab) -> int { return std::clamp(tab - kExtraTabStart, 0, kExtraTabCount - 1); };
     auto extraTabUsedOptionCount = [&](int tab) -> int {
         // Keep only wired options visible.
@@ -1881,7 +1884,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 (e.type == SDL_TEXTINPUT);
             if (isTextInputEvent &&
                 inSettings &&
-                settingsTab == 9 &&
+                settingsTab == IDX_SETTINGS_ACCOUNT &&
                 networkEditField != NetworkEditField::None) {
                 appendNetworkInput(e.text.text ? e.text.text : "");
                 if (ctx.saveClientSettings) ctx.saveClientSettings();
@@ -2247,14 +2250,18 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         continue;
                     }
                     const std::vector<int> tabs = sidebarTabList();
+                    bool tabClickHandled = false;
                     for (int vi = 0; vi < (int)tabs.size(); ++vi) {
                         const int ti = tabs[vi];
                         SDL_Rect tr = settingsTabBtn(vi);
                         if (SDL_PointInRect(&pt, &tr)) {
                             openSettingsTab(ti);
-                            continue;
+                            tabClickHandled = true;
+                            break;
                         }
                     }
+                    // A tab click must not also activate a row on the new page.
+                    if (tabClickHandled) continue;
                     if (settingsTab == IDX_SETTINGS_ABOUT && aboutMaxScroll() > 0) {
                         SDL_Rect scrollbarTrack = settingsScrollbarTrackRect();
                         SDL_Rect scrollbarThumb = aboutScrollbarThumbRect();
@@ -2335,7 +2342,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         }
                         continue;
                     }
-                    if (settingsTab == 9) {
+                    if (settingsTab == IDX_SETTINGS_ACCOUNT) {
                         auto pointInPaddedRect = [&](const SDL_Rect& r, int pad = 10) -> bool {
                             SDL_Rect rr{r.x - pad, r.y - pad, r.w + pad * 2, r.h + pad * 2};
                             return SDL_PointInRect(&pt, &rr);
@@ -2563,14 +2570,18 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         continue;
                     }
                     const std::vector<int> tabs = sidebarTabList();
+                    bool tabClickHandled = false;
                     for (int vi = 0; vi < (int)tabs.size(); ++vi) {
                         const int ti = tabs[vi];
                         SDL_Rect tr = settingsTabBtn(vi);
                         if (SDL_PointInRect(&pt, &tr)) {
                             openSettingsTab(ti);
-                            continue;
+                            tabClickHandled = true;
+                            break;
                         }
                     }
+                    // A tab click must not also activate a row on the new page.
+                    if (tabClickHandled) continue;
                     if (settingsTab == IDX_SETTINGS_ABOUT && aboutMaxScroll() > 0) {
                         SDL_Rect scrollbarTrack = settingsScrollbarTrackRect();
                         SDL_Rect scrollbarThumb = aboutScrollbarThumbRect();
@@ -2622,7 +2633,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         }
                         continue;
                     }
-                    if (settingsTab == 9) {
+                    if (settingsTab == IDX_SETTINGS_ACCOUNT) {
                         auto pointInPaddedRect = [&](const SDL_Rect& r, int pad = 10) -> bool {
                             SDL_Rect rr{r.x - pad, r.y - pad, r.w + pad * 2, r.h + pad * 2};
                             return SDL_PointInRect(&pt, &rr);
