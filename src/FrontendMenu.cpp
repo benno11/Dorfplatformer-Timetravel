@@ -241,7 +241,6 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     std::size_t networkLoginPasswordCursor = 0;
     bool networkCursorPreset = false;
     std::string networkLoginStatus;
-    static bool serverSwapNoticeShown = false;
     bool waitingForControlKey = false;
     int waitingControlIndex = -1;
     enum class NetworkEditField {
@@ -1704,13 +1703,43 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         cleanupMenuAssets();
         return true;
     };
+    auto chooseCampaignSave = [&]() -> bool {
+        if (!ctx.selectedLevelPath) return false;
+        std::string labels[kSaveSlotCount];
+        SDL_MessageBoxButtonData buttons[kSaveSlotCount + 1]{};
+        for (int slot = 0; slot < kSaveSlotCount; ++slot) {
+            labels[slot] = "Slot " + std::to_string(slot + 1) +
+                (saveSlotExists(slot) ? " - Continue" : " - New game");
+            buttons[slot].flags = slot == activeSaveSlotIndex
+                ? SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT : 0;
+            buttons[slot].buttonID = slot;
+            buttons[slot].text = labels[slot].c_str();
+        }
+        buttons[kSaveSlotCount].flags = SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT;
+        buttons[kSaveSlotCount].buttonID = -1;
+        buttons[kSaveSlotCount].text = "Cancel";
+        SDL_MessageBoxData popup{};
+        popup.flags = SDL_MESSAGEBOX_INFORMATION;
+        popup.window = ctx.win;
+        popup.title = "Choose a save file";
+        popup.message = "Continue a saved game or start in an empty slot.";
+        popup.numbuttons = kSaveSlotCount + 1;
+        popup.buttons = buttons;
+        int chosenSlot = -1;
+        if (!SDL_ShowMessageBox(&popup, &chosenSlot)) {
+            SDL_Log("Could not show save selection: %s", SDL_GetError());
+            return false;
+        }
+        if (chosenSlot < 0 || chosenSlot >= kSaveSlotCount) return false;
+        activeSaveSlotIndex = chosenSlot;
+        *ctx.selectedLevelPath = saveSlotExists(chosenSlot) ? kSavedGameSelectionToken : "";
+        if (ctx.saveClientSettings) ctx.saveClientSettings();
+        cleanupMenuAssets();
+        return true;
+    };
     auto mainMenuSelectionAction = [&](int sel) -> bool {
         if (!levelSelectEnabled) {
-            if (sel == 0) return false;
-            if (sel == 1) {
-                cleanupMenuAssets();
-                return true;
-            }
+            if (sel == 1) return chooseCampaignSave();
             return false;
         }
         if (sel == 0) return false;
@@ -3542,16 +3571,6 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 }
                 SDL_SetRenderClipRect(ctx.ren, nullptr);
             } else if (settingsTab == IDX_SETTINGS_ACCOUNT) {
-                if (!serverSwapNoticeShown) {
-                    serverSwapNoticeShown = true;
-                    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "Game server changed",
-                        "We have moved to a new game server.\n\n"
-                        "Old server accounts do not transfer. Open Account Manager to create "
-                        "a new account, then sign in here.\n\n"
-                        "Your local saves and levels are unchanged. Shared levels from the "
-                        "old server become available after the server operator imports them.",
-                        ctx.win);
-                }
                 SDL_Rect listClip = settingsListClipRect();
                 SDL_SetRenderClipRect(ctx.ren, &listClip);
                 const bool hasUser = !levelServerAccountUsername.empty();

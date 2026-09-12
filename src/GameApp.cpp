@@ -1581,6 +1581,7 @@ int RunGameApp(int argc, char** argv) {
         const int slot = std::clamp(slotIndex, 0, kSaveSlotCount - 1);
         return saveGameRootPath / ("save_slot_" + std::to_string(slot + 1) + ".json");
     };
+    bool serverSwapNoticeShown = false;
     auto saveClientSettings = [&]() {
         nlohmann::json j;
         j["build_uuid"] = buildUuid;
@@ -1632,6 +1633,7 @@ int RunGameApp(int argc, char** argv) {
             {"telemetry_webhook_url", telemetryWebhookUrl}
         };
         settings["network"] = {
+            {"server_migration_notice_shown", serverSwapNoticeShown},
             {"level_server_url", levelServerUrl},
             {"level_server_auth_token", levelServerAuthToken},
             {"level_server_account_username", levelServerAccountUsername}
@@ -1800,6 +1802,9 @@ int RunGameApp(int argc, char** argv) {
                 };
                 if (s.contains("network") && s["network"].is_object()) {
                     const auto& n = s["network"];
+                    if (n.contains("server_migration_notice_shown") && n["server_migration_notice_shown"].is_boolean()) {
+                        serverSwapNoticeShown = n["server_migration_notice_shown"].get<bool>();
+                    }
                     applyNonEmptyNetworkString(n, "level_server_url", levelServerUrl);
                     if (levelServerUrl.empty()) applyNonEmptyNetworkString(n, "level_api_url", levelServerUrl);
                     applyNonEmptyNetworkString(n, "level_server_auth_token", levelServerAuthToken);
@@ -2585,6 +2590,20 @@ int RunGameApp(int argc, char** argv) {
     applyDynamicResolutionFromWindow(true);
     // Enforce persisted startup audio state immediately.
     applyMenuMusicToggle();
+    // Show the migration notice at first startup, then persist its dismissal.
+    if (!serverSwapNoticeShown) {
+        if (SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "Game server changed",
+                "We have moved to a new game server.\n\n"
+                "Old server accounts do not transfer. Open Account Manager from "
+                "Settings > Account to create a new account, then sign in there.\n\n"
+                "Your local saves and levels are unchanged. Shared levels from the "
+                "old server become available after the server operator imports them.", win)) {
+            serverSwapNoticeShown = true;
+            saveClientSettings();
+        } else {
+            SDL_Log("Could not show server migration notice: %s", SDL_GetError());
+        }
+    }
     std::function<bool()> saveGameToDisk;
     while (running) {
         recoverAudioIfNeeded(false);

@@ -36,6 +36,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Set build ID from workflow run number
+        shell: bash
+        run: python3 build/set-build-id.py "$GITHUB_RUN_NUMBER"
+
 
       - name: Resolve release mode
         id: release
@@ -99,6 +103,10 @@ jobs:
     steps:
       - name: Checkout game
         uses: actions/checkout@v4
+
+      - name: Set build ID from workflow run number
+        shell: bash
+        run: python3 build/set-build-id.py "$GITHUB_RUN_NUMBER"
 
       - name: Install Linux build tools
         if: runner.os == 'Linux'
@@ -288,6 +296,10 @@ jobs:
       - name: Checkout game
         uses: actions/checkout@v4
 
+      - name: Set build ID from workflow run number
+        shell: bash
+        run: python3 build/set-build-id.py "$GITHUB_RUN_NUMBER"
+
       - name: Set up JDK
         uses: actions/setup-java@v5
         with:
@@ -449,6 +461,10 @@ jobs:
     steps:
       - name: Checkout game
         uses: actions/checkout@v4
+
+      - name: Set build ID from workflow run number
+        shell: bash
+        run: python3 build/set-build-id.py "$GITHUB_RUN_NUMBER"
 
       - name: Select latest Xcode
         run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
