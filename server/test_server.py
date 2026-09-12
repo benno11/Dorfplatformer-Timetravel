@@ -7,6 +7,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from game_server import GameServer, Store, MAX_BODY
@@ -157,6 +158,18 @@ class ServerTests(unittest.TestCase):
         self.assertIn(b"currentPassword", self.request("GET", "/")[1])
         self.assertIn(b"/api/auth/", self.request("GET", "/account-manager.js")[1])
         self.assertNotIn("firebase", json.dumps(self.request("GET", "/api.json")[1]).lower())
+
+    def test_account_manager_without_repository_pages(self):
+        # A deployment containing only server/ must serve all browser assets.
+        with patch("game_server.ROOT", Path(self.temp.name)):
+            for route, expected in (("/", b"currentPassword"),
+                                    ("/account-manager.html", b"currentPassword"),
+                                    ("/account-manager.js", b"/api/auth/"),
+                                    ("/theme.css", b"--")):
+                with self.subTest(route=route):
+                    status, body = self.request("GET", route)
+                    self.assertEqual(status, 200)
+                    self.assertIn(expected, body)
 
     def test_throttling(self):
         for _ in range(20):

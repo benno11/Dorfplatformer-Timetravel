@@ -422,7 +422,12 @@ class Handler(BaseHTTPRequestHandler):
                       "/theme.css": ("theme.css", "text/css; charset=utf-8")}
             if self.command == "GET" and path in static:
                 file, mime = static[path]
-                self.send(200, (ROOT / "pages" / file).read_bytes(), mime)
+                # Full checkouts use the editable pages; server-only deployments
+                # include a bundled copy beside this module.
+                asset = ROOT / "pages" / file
+                if not asset.is_file():
+                    asset = Path(__file__).resolve().parent / "web" / file
+                self.send(200, asset.read_bytes(), mime)
                 return
             raise ApiError(404, "Not found.")
         except ApiError as error:

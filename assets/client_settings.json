@@ -39,7 +39,7 @@
       "debug_mode_enabled": false
     },
     "network": {
-      "level_server_url": "http://127.0.0.1:8080",
+      "level_server_url": "http://critique-unsmooth.tun.ply.gg:49642/",
       "level_server_auth_token": "",
       "level_server_account_username": ""
     },

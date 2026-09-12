@@ -231,3 +231,15 @@ Open the local dashboard at `http://127.0.0.1:8081` and use **Client version bla
 Desktop builds embed `version` and `version_id` from `assets/config.json` into `BuildInfo.h` at CMake configuration time. Android's build fixer generates the same native constants and synchronizes Gradle's compiled `BuildConfig` values. Increase `version_id` for every release and rebuild; editing the installed config cannot change the displayed or reported client version. Clients send `DF-New/2.3.1 (build/27)` as their User-Agent.
 
 Use `legacy` to block older official clients that send the old `DF-New/1.0` or `DF-New/1.0-android` identity. Browsers and unidentified/custom clients remain compatible; this tool is version compatibility control, not an anti-cheat or authentication boundary, since modified clients can spoof their identity. Account management in the browser, the private dashboard, health checks, and update manifests/downloads remain available for recovery.
+
+
+### Account manager page
+
+The public server serves the account manager at `/` and `/account-manager.html`.
+It supports creating accounts, signing in, changing usernames and passwords,
+and signing out using this server's account API.
+
+When deploying only the `server` directory, include its `web` subdirectory
+(`index.html`, `account-manager.js`, and `theme.css`) and restart the server.
+Full repository checkouts use `pages` first; `server/web` is the bundled fallback.
+After editing those three files in `pages`, copy them to `server/web` as well.

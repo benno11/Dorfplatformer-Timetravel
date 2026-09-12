@@ -25,8 +25,8 @@
   "level_api_url": "http://critique-unsmooth.tun.ply.gg:49642/",
   "level_api_version_id": 1,
   "level_server_url": "http://critique-unsmooth.tun.ply.gg:49642/",
-  "account_manager_url": "http://critique-unsmooth.tun.ply.gg:49642//",
-  "windows_update_manifest_url": "http://critique-unsmooth.tun.ply.gg:49642//update-manifest.json",
+  "account_manager_url": "http://critique-unsmooth.tun.ply.gg:49642/",
+  "windows_update_manifest_url": "http://critique-unsmooth.tun.ply.gg:49642/update-manifest.json",
   "level_server_account_username": "",
   "level_server_auth_token": ""
 }
