@@ -1131,7 +1131,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         pt.y = gy;
         return true;
     };
-    constexpr int kSaveSlotCount = 3;
+    static constexpr int kSaveSlotCount = 3;
     auto saveSlotPath = [&](int slotIndex) -> std::filesystem::path {
         const int slot = std::clamp(slotIndex, 0, kSaveSlotCount - 1);
         return std::filesystem::path(GetAppSaveRootPath()) / "saves" / ("save_slot_" + std::to_string(slot + 1) + ".json");
