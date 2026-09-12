@@ -7,7 +7,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
-#if defined(__linux__)
+#if defined(__linux__) && !defined(__ANDROID__)
 #include <limits.h>
 #include <unistd.h>
 
@@ -28,14 +28,18 @@ static void useExecutableDirectoryAsWorkingDirectory() {
 #endif
 
 static int runMainImpl(int argc, char** argv) {
-#if defined(__linux__)
+#if defined(__linux__) && !defined(__ANDROID__)
     useExecutableDirectoryAsWorkingDirectory();
 #endif
     try {
+#if !defined(__ANDROID__)
         const CustomBoot::Result boot = CustomBoot::Run(argc, argv);
         if (!boot.ok) {
             return boot.exitCode;
         }
+#endif
+        // Android launches a shared library and reads assets through SDL's APK
+        // asset loader. Desktop executable/partition checks cannot run there.
         return RunGameApp(argc, argv);
     } catch (const std::exception& e) {
         std::fprintf(stderr, "FATAL: uncaught std::exception: %s\n", e.what());
