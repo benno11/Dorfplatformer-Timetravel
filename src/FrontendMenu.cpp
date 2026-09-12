@@ -1738,8 +1738,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         return true;
     };
     auto mainMenuSelectionAction = [&](int sel) -> bool {
-        if (!levelSelectEnabled) {
-            if (sel == 1) return chooseCampaignSave();
+        if (sel == 1) return chooseCampaignSave();
+	if (!levelSelectEnabled) {
             return false;
         }
         if (sel == 0) return false;
