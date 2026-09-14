@@ -585,6 +585,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
     std::string statusText;
     Uint64 statusUntil = 0;
     SDL_FingerID activeEditorFinger = 0;
+    bool editorFingerActive = false;
     bool fingerPainting = false;
     bool fingerPaletteScroll = false;
     bool fingerPaletteMoved = false;
@@ -592,9 +593,19 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
     float fingerPaletteScrollAccum = 0.0f;
     bool touchPanMode = false;
     bool touchEraseMode = false;
+    auto toggleTouchPanMode = [&]() {
+        touchPanMode = !touchPanMode;
+        if (touchPanMode) touchEraseMode = false;
+    };
+    auto toggleTouchEraseMode = [&]() {
+        touchEraseMode = !touchEraseMode;
+        if (touchEraseMode) touchPanMode = false;
+    };
     bool fingerGridPanning = false;
-    int fingerGridLastX = 0;
-    int fingerGridLastY = 0;
+    float fingerGridLastX = 0.0f;
+    float fingerGridLastY = 0.0f;
+    float fingerGridViewX = 0.0f;
+    float fingerGridViewY = 0.0f;
     int viewX = 0;
     int viewY = 0;
     bool middlePanning = false;
@@ -830,8 +841,9 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 viewY = std::clamp(viewY, 0, maxViewY);
                 continue;
             }
-            if (e.type == SDL_FINGERDOWN && activeEditorFinger == 0) {
+            if (e.type == SDL_FINGERDOWN && !editorFingerActive) {
                 activeEditorFinger = e.tfinger.fingerID;
+                editorFingerActive = true;
                 const int tx = (int)std::lround(e.tfinger.x * winW);
                 const int ty = (int)std::lround(e.tfinger.y * winH);
                 SDL_Point pt{tx, ty};
@@ -884,12 +896,12 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                     continue;
                 }
                 if (SDL_PointInRect(&pt, &panModeBtn)) {
-                    touchPanMode = !touchPanMode;
+                    toggleTouchPanMode();
                     fingerPainting = false;
                     continue;
                 }
                 if (SDL_PointInRect(&pt, &eraseModeBtn)) {
-                    touchEraseMode = !touchEraseMode;
+                    toggleTouchEraseMode();
                     fingerPainting = false;
                     continue;
                 }
@@ -919,8 +931,10 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 if (SDL_PointInRect(&pt, &gridViewport)) {
                     if (touchPanMode) {
                         fingerGridPanning = true;
-                        fingerGridLastX = tx;
-                        fingerGridLastY = ty;
+                        fingerGridLastX = e.tfinger.x * winW;
+                        fingerGridLastY = e.tfinger.y * winH;
+                        fingerGridViewX = (float)viewX;
+                        fingerGridViewY = (float)viewY;
                         fingerPainting = false;
                         continue;
                     }
@@ -933,15 +947,21 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 }
                 continue;
             }
-            if (e.type == SDL_FINGERMOTION && e.tfinger.fingerID == activeEditorFinger) {
+            if (e.type == SDL_FINGERMOTION && editorFingerActive && e.tfinger.fingerID == activeEditorFinger) {
                 const int tx = (int)std::lround(e.tfinger.x * winW);
                 const int ty = (int)std::lround(e.tfinger.y * winH);
                 SDL_Point pt{tx, ty};
                 if (fingerGridPanning) {
-                    viewX = std::clamp(viewX - (tx - fingerGridLastX), 0, maxViewX);
-                    viewY = std::clamp(viewY - (ty - fingerGridLastY), 0, maxViewY);
-                    fingerGridLastX = tx;
-                    fingerGridLastY = ty;
+                    const float touchX = e.tfinger.x * winW;
+                    const float touchY = e.tfinger.y * winH;
+                    fingerGridViewX -= touchX - fingerGridLastX;
+                    fingerGridViewY -= touchY - fingerGridLastY;
+                    fingerGridViewX = std::clamp(fingerGridViewX, 0.0f, (float)maxViewX);
+                    fingerGridViewY = std::clamp(fingerGridViewY, 0.0f, (float)maxViewY);
+                    viewX = (int)std::lround(fingerGridViewX);
+                    viewY = (int)std::lround(fingerGridViewY);
+                    fingerGridLastX = touchX;
+                    fingerGridLastY = touchY;
                     continue;
                 }
                 if (fingerPaletteScroll) {
@@ -967,8 +987,9 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 }
                 continue;
             }
-            if (e.type == SDL_FINGERUP && e.tfinger.fingerID == activeEditorFinger) {
-                if (fingerPaletteScroll) {
+            if ((e.type == SDL_FINGERUP || e.type == SDL_EVENT_FINGER_CANCELED) &&
+                editorFingerActive && e.tfinger.fingerID == activeEditorFinger) {
+                if (e.type == SDL_FINGERUP && fingerPaletteScroll) {
                     const int tx = (int)std::lround(e.tfinger.x * winW);
                     const int ty = (int)std::lround(e.tfinger.y * winH);
                     SDL_Point pt{tx, ty};
@@ -994,9 +1015,18 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 fingerPaletteScrollAccum = 0.0f;
                 fingerGridPanning = false;
                 activeEditorFinger = 0;
+                editorFingerActive = false;
                 fingerPainting = false;
                 continue;
             }
+            // Some platforms still emit compatibility mouse events for a touch
+            // even when SDL_HINT_TOUCH_MOUSE_EVENTS is disabled.  Do not let the
+            // synthesized click toggle PAN or ERASE a second time.
+            const bool touchGeneratedMouseEvent =
+                ((e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEBUTTONUP) &&
+                 e.button.which == SDL_TOUCH_MOUSEID) ||
+                (e.type == SDL_MOUSEMOTION && e.motion.which == SDL_TOUCH_MOUSEID);
+            if (touchGeneratedMouseEvent) continue;
             if (e.type == SDL_KEYDOWN && e.key.repeat == 0) {
                 if (e.key.key == SDLK_F11) {
 #if !PLATFORMER_MOBILE
@@ -1213,11 +1243,11 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                     continue;
                 }
                 if (SDL_PointInRect(&pt, &panModeBtn)) {
-                    touchPanMode = !touchPanMode;
+                    toggleTouchPanMode();
                     continue;
                 }
                 if (SDL_PointInRect(&pt, &eraseModeBtn)) {
-                    touchEraseMode = !touchEraseMode;
+                    toggleTouchEraseMode();
                     continue;
                 }
                 if (SDL_PointInRect(&pt, &saveBtn)) {
