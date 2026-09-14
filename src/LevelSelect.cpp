@@ -590,6 +590,11 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
     bool fingerPaletteMoved = false;
     int fingerPaletteLastY = 0;
     float fingerPaletteScrollAccum = 0.0f;
+    bool touchPanMode = false;
+    bool touchEraseMode = false;
+    bool fingerGridPanning = false;
+    int fingerGridLastX = 0;
+    int fingerGridLastY = 0;
     int viewX = 0;
     int viewY = 0;
     bool middlePanning = false;
@@ -751,8 +756,10 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
     while (running) {
         int winW = 0, winH = 0;
         getWindowSizeInPixelsCompat(win, winW, winH);
-        const int margin = 12;
-        const int sideW = 240;
+        const int margin = std::clamp(std::min(winW, winH) / 80, 6, 12);
+        // Keep the canvas useful on phone-sized windows while allowing larger,
+        // finger-friendly controls when more room is available.
+        const int sideW = std::clamp(winW / 3, 188, 280);
         const int gridX = margin;
         const int gridY = margin;
         const int panelX = std::max(gridX + 16, winW - margin - sideW);
@@ -767,23 +774,35 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         viewX = std::clamp(viewX, 0, maxViewX);
         viewY = std::clamp(viewY, 0, maxViewY);
         SDL_Rect gridViewport{gridX, gridY, gridViewW, gridViewH};
-        SDL_Rect tileModeBtn{panelX, margin, 76, 30};
-        SDL_Rect objectModeBtn{panelX + 84, margin, 76, 30};
-        const int paletteStartY = margin + 40;
-        SDL_Rect saveBtn{panelX, winH - 140, 160, 36};
-        SDL_Rect cancelBtn{panelX, winH - 96, 160, 36};
-        const int paletteRowH = 44;
+        const int controlGap = 8;
+        const int controlW = (sideW - controlGap) / 2;
+        const int controlH = 44;
+        SDL_Rect tileModeBtn{panelX, margin, controlW, controlH};
+        SDL_Rect objectModeBtn{panelX + controlW + controlGap, margin, controlW, controlH};
+        SDL_Rect panModeBtn{panelX, margin + controlH + controlGap, controlW, controlH};
+        SDL_Rect eraseModeBtn{panelX + controlW + controlGap, margin + controlH + controlGap, controlW, controlH};
+        const int paletteStartY = margin + (controlH + controlGap) * 2 + 4;
+        const int actionY = winH - margin - 48;
+        SDL_Rect saveBtn{panelX, actionY, controlW, 48};
+        SDL_Rect cancelBtn{panelX + controlW + controlGap, actionY, controlW, 48};
+        const int paletteRowH = 48;
         const int paletteBottomY = saveBtn.y - 8;
         const int paletteViewRows = std::max(1, (paletteBottomY - paletteStartY) / paletteRowH);
         const int paletteCountNow = objectMode ? (int)objectPalette.size() : (int)palette.size();
         int& activePaletteScroll = objectMode ? objectPaletteScroll : tilePaletteScroll;
         const int maxPaletteScroll = std::max(0, paletteCountNow - paletteViewRows);
         activePaletteScroll = std::clamp(activePaletteScroll, 0, maxPaletteScroll);
-        SDL_Rect paletteViewport{panelX, paletteStartY, 160, paletteViewRows * paletteRowH};
-        SDL_Rect pausePanel{winW / 2 - 180, winH / 2 - 120, 360, 240};
-        SDL_Rect pauseResumeBtn{pausePanel.x + 24, pausePanel.y + 150, 96, 40};
-        SDL_Rect pauseSaveBtn{pausePanel.x + 132, pausePanel.y + 150, 96, 40};
-        SDL_Rect pauseExitBtn{pausePanel.x + 240, pausePanel.y + 150, 96, 40};
+        SDL_Rect paletteViewport{panelX, paletteStartY, sideW, paletteViewRows * paletteRowH};
+        const int pauseW = std::min(360, winW - margin * 2);
+        const int pauseH = std::min(240, winH - margin * 2);
+        SDL_Rect pausePanel{(winW - pauseW) / 2, (winH - pauseH) / 2, pauseW, pauseH};
+        const int pauseGap = 8;
+        const int pauseInset = 16;
+        const int pauseButtonW = (pauseW - pauseInset * 2 - pauseGap * 2) / 3;
+        const int pauseButtonY = pausePanel.y + pausePanel.h - 64;
+        SDL_Rect pauseResumeBtn{pausePanel.x + pauseInset, pauseButtonY, pauseButtonW, 48};
+        SDL_Rect pauseSaveBtn{pauseResumeBtn.x + pauseButtonW + pauseGap, pauseButtonY, pauseButtonW, 48};
+        SDL_Rect pauseExitBtn{pauseSaveBtn.x + pauseButtonW + pauseGap, pauseButtonY, pauseButtonW, 48};
 
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
@@ -854,11 +873,23 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 }
                 if (SDL_PointInRect(&pt, &tileModeBtn)) {
                     objectMode = false;
+                    touchPanMode = false;
                     fingerPainting = false;
                     continue;
                 }
                 if (SDL_PointInRect(&pt, &objectModeBtn)) {
                     objectMode = true;
+                    touchPanMode = false;
+                    fingerPainting = false;
+                    continue;
+                }
+                if (SDL_PointInRect(&pt, &panModeBtn)) {
+                    touchPanMode = !touchPanMode;
+                    fingerPainting = false;
+                    continue;
+                }
+                if (SDL_PointInRect(&pt, &eraseModeBtn)) {
+                    touchEraseMode = !touchEraseMode;
                     fingerPainting = false;
                     continue;
                 }
@@ -877,7 +908,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 for (int row = 0; row < paletteViewRows; ++row) {
                     const int i = paletteScroll + row;
                     if (i >= paletteCount) break;
-                    SDL_Rect r{panelX, paletteStartY + row * paletteRowH, 160, 36};
+                    SDL_Rect r{panelX, paletteStartY + row * paletteRowH, sideW - 12, 42};
                     if (SDL_PointInRect(&pt, &r)) {
                         if (objectMode) selectedObjectPalette = i;
                         else selectedPalette = i;
@@ -886,9 +917,16 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                     }
                 }
                 if (SDL_PointInRect(&pt, &gridViewport)) {
+                    if (touchPanMode) {
+                        fingerGridPanning = true;
+                        fingerGridLastX = tx;
+                        fingerGridLastY = ty;
+                        fingerPainting = false;
+                        continue;
+                    }
                     const int cx = ((tx - gridX) + viewX) / cell;
                     const int cy = ((ty - gridY) + viewY) / cell;
-                    applyAt(cx, cy, false);
+                    applyAt(cx, cy, touchEraseMode);
                     fingerPainting = true;
                 } else {
                     fingerPainting = false;
@@ -899,6 +937,13 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 const int tx = (int)std::lround(e.tfinger.x * winW);
                 const int ty = (int)std::lround(e.tfinger.y * winH);
                 SDL_Point pt{tx, ty};
+                if (fingerGridPanning) {
+                    viewX = std::clamp(viewX - (tx - fingerGridLastX), 0, maxViewX);
+                    viewY = std::clamp(viewY - (ty - fingerGridLastY), 0, maxViewY);
+                    fingerGridLastX = tx;
+                    fingerGridLastY = ty;
+                    continue;
+                }
                 if (fingerPaletteScroll) {
                     const int dy = fingerPaletteLastY - ty;
                     fingerPaletteLastY = ty;
@@ -918,7 +963,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 if (SDL_PointInRect(&pt, &gridViewport)) {
                     const int cx = ((tx - gridX) + viewX) / cell;
                     const int cy = ((ty - gridY) + viewY) / cell;
-                    applyAt(cx, cy, false);
+                    applyAt(cx, cy, touchEraseMode);
                 }
                 continue;
             }
@@ -935,7 +980,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                         for (int row = 0; row < paletteViewRows; ++row) {
                             const int i = paletteScroll + row;
                             if (i >= paletteCount) break;
-                            SDL_Rect r{panelX, paletteStartY + row * paletteRowH, 160, 36};
+                            SDL_Rect r{panelX, paletteStartY + row * paletteRowH, sideW - 12, 42};
                             if (SDL_PointInRect(&pt, &r)) {
                                 if (objectMode) selectedObjectPalette = i;
                                 else selectedPalette = i;
@@ -947,6 +992,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 fingerPaletteScroll = false;
                 fingerPaletteMoved = false;
                 fingerPaletteScrollAccum = 0.0f;
+                fingerGridPanning = false;
                 activeEditorFinger = 0;
                 fingerPainting = false;
                 continue;
@@ -1098,6 +1144,15 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             }
             if (e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEMOTION) {
                 if (paused) continue;
+                if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT && touchPanMode) {
+                    SDL_Point pt{(int)e.button.x, (int)e.button.y};
+                    if (SDL_PointInRect(&pt, &gridViewport)) {
+                        middlePanning = true;
+                        lastPanMouseX = e.button.x;
+                        lastPanMouseY = e.button.y;
+                        continue;
+                    }
+                }
                 if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_MIDDLE) {
                     SDL_Point pt{(int)e.button.x, (int)e.button.y};
                     if (SDL_PointInRect(&pt, &gridViewport)) {
@@ -1122,8 +1177,14 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 int mx = (e.type == SDL_MOUSEMOTION) ? e.motion.x : e.button.x;
                 int my = (e.type == SDL_MOUSEMOTION) ? e.motion.y : e.button.y;
                 bool erase = false;
-                if (e.type == SDL_MOUSEBUTTONDOWN) erase = (e.button.button == SDL_BUTTON_RIGHT);
-                if (e.type == SDL_MOUSEMOTION) erase = (e.motion.state & SDL_BUTTON_RMASK) != 0;
+                if (e.type == SDL_MOUSEBUTTONDOWN) {
+                    erase = (e.button.button == SDL_BUTTON_RIGHT) ||
+                            (e.button.button == SDL_BUTTON_LEFT && touchEraseMode);
+                }
+                if (e.type == SDL_MOUSEMOTION) {
+                    erase = ((e.motion.state & SDL_BUTTON_RMASK) != 0) ||
+                            (((e.motion.state & SDL_BUTTON_LMASK) != 0) && touchEraseMode);
+                }
                 SDL_Point pt{mx, my};
                 if (SDL_PointInRect(&pt, &gridViewport)) {
                     int cx = ((mx - gridX) + viewX) / cell;
@@ -1131,7 +1192,8 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                     applyAt(cx, cy, erase);
                 }
             }
-            if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_MIDDLE) {
+            if (e.type == SDL_MOUSEBUTTONUP &&
+                (e.button.button == SDL_BUTTON_MIDDLE || e.button.button == SDL_BUTTON_LEFT)) {
                 middlePanning = false;
                 continue;
             }
@@ -1142,10 +1204,20 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 SDL_Point pt{mx, my};
                 if (SDL_PointInRect(&pt, &tileModeBtn)) {
                     objectMode = false;
+                    touchPanMode = false;
                     continue;
                 }
                 if (SDL_PointInRect(&pt, &objectModeBtn)) {
                     objectMode = true;
+                    touchPanMode = false;
+                    continue;
+                }
+                if (SDL_PointInRect(&pt, &panModeBtn)) {
+                    touchPanMode = !touchPanMode;
+                    continue;
+                }
+                if (SDL_PointInRect(&pt, &eraseModeBtn)) {
+                    touchEraseMode = !touchEraseMode;
                     continue;
                 }
                 if (SDL_PointInRect(&pt, &saveBtn)) {
@@ -1168,7 +1240,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 for (int row = 0; row < paletteViewRows; ++row) {
                     const int i = paletteScroll + row;
                     if (i >= paletteCount) break;
-                    SDL_Rect r{panelX, paletteStartY + row * paletteRowH, 160, 36};
+                    SDL_Rect r{panelX, paletteStartY + row * paletteRowH, sideW - 12, 42};
                     if (mx >= r.x && my >= r.y && mx < r.x + r.w && my < r.y + r.h) {
                         if (objectMode) selectedObjectPalette = i;
                         else selectedPalette = i;
@@ -1266,35 +1338,47 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         SDL_Rect border{gridX - 1, gridY - 1, gridViewW + 2, gridViewH + 2};
         SDL_RenderDrawRect(ren, &border);
 
-        DrawText(ren, panelX, winH - 96, 2, "S/ENTER: SAVE+PLAY");
-        DrawText(ren, panelX, winH - 72, 2, "C: CLEAR");
-        DrawText(ren, panelX, winH - 48, 2, "ESC: PAUSE  O: MODE");
-        DrawText(ren, panelX, winH - 24, 2, objectMode ? "OBJ MODE: tap obj to remove / RMB erase" : "TILE MODE: LMB paint / RMB erase");
-        DrawText(ren, panelX, winH - 192, 2, "WHEEL/MMB/ARROWS: SCROLL");
+        const int helpScale = sideW < 220 ? 1 : 2;
+        DrawText(ren, panelX, actionY - 42, helpScale,
+                 touchPanMode ? "DRAG CANVAS TO PAN" : (touchEraseMode ? "DRAG TO ERASE" : "TAP OR DRAG TO PAINT"));
+        DrawText(ren, panelX, actionY - 22, helpScale, "ESC/BACK: MENU");
         if (!statusText.empty() && SDL_GetTicks() < statusUntil) {
-            DrawText(ren, panelX, winH - 168, 2, statusText);
+            DrawText(ren, panelX, actionY - 62, helpScale, statusText);
         }
         SDL_SetRenderDrawColor(ren, 55, 95, 70, 255);
         SDL_RenderFillRect(ren, &saveBtn);
         SDL_SetRenderDrawColor(ren, 190, 230, 200, 255);
         SDL_RenderDrawRect(ren, &saveBtn);
-        DrawText(ren, saveBtn.x + 36, saveBtn.y + 9, 2, "SAVE");
+        DrawText(ren, saveBtn.x + std::max(8, (saveBtn.w - MeasureTextWidth(2, "SAVE")) / 2), saveBtn.y + 14, 2, "SAVE");
         SDL_SetRenderDrawColor(ren, 75, 55, 55, 255);
         SDL_RenderFillRect(ren, &cancelBtn);
         SDL_SetRenderDrawColor(ren, 220, 190, 190, 255);
         SDL_RenderDrawRect(ren, &cancelBtn);
-        DrawText(ren, cancelBtn.x + 28, cancelBtn.y + 9, 2, "CANCEL");
+        DrawText(ren, cancelBtn.x + std::max(6, (cancelBtn.w - MeasureTextWidth(2, "EXIT")) / 2), cancelBtn.y + 14, 2, "EXIT");
 
         SDL_SetRenderDrawColor(ren, objectMode ? 50 : 90, objectMode ? 70 : 110, objectMode ? 90 : 170, 255);
         SDL_RenderFillRect(ren, &tileModeBtn);
         SDL_SetRenderDrawColor(ren, 220, 220, 230, 255);
         SDL_RenderDrawRect(ren, &tileModeBtn);
-        DrawText(ren, tileModeBtn.x + 12, tileModeBtn.y + 8, 2, "TILES");
+        const char* tileModeLabel = controlW < 105 ? "TILE" : "TILES";
+        DrawText(ren, tileModeBtn.x + std::max(4, (tileModeBtn.w - MeasureTextWidth(2, tileModeLabel)) / 2), tileModeBtn.y + 13, 2, tileModeLabel);
         SDL_SetRenderDrawColor(ren, objectMode ? 90 : 50, objectMode ? 110 : 70, objectMode ? 170 : 90, 255);
         SDL_RenderFillRect(ren, &objectModeBtn);
         SDL_SetRenderDrawColor(ren, 220, 220, 230, 255);
         SDL_RenderDrawRect(ren, &objectModeBtn);
-        DrawText(ren, objectModeBtn.x + 18, objectModeBtn.y + 8, 2, "OBJ");
+        const char* objectModeLabel = controlW < 120 ? "OBJ" : "OBJECTS";
+        DrawText(ren, objectModeBtn.x + std::max(4, (objectModeBtn.w - MeasureTextWidth(2, objectModeLabel)) / 2), objectModeBtn.y + 13, 2, objectModeLabel);
+
+        SDL_SetRenderDrawColor(ren, touchPanMode ? 90 : 50, touchPanMode ? 120 : 70, touchPanMode ? 170 : 90, 255);
+        SDL_RenderFillRect(ren, &panModeBtn);
+        SDL_SetRenderDrawColor(ren, 220, 220, 230, 255);
+        SDL_RenderDrawRect(ren, &panModeBtn);
+        DrawText(ren, panModeBtn.x + std::max(4, (panModeBtn.w - MeasureTextWidth(2, "PAN")) / 2), panModeBtn.y + 13, 2, "PAN");
+        SDL_SetRenderDrawColor(ren, touchEraseMode ? 150 : 50, touchEraseMode ? 75 : 70, touchEraseMode ? 75 : 90, 255);
+        SDL_RenderFillRect(ren, &eraseModeBtn);
+        SDL_SetRenderDrawColor(ren, 220, 220, 230, 255);
+        SDL_RenderDrawRect(ren, &eraseModeBtn);
+        DrawText(ren, eraseModeBtn.x + std::max(4, (eraseModeBtn.w - MeasureTextWidth(2, "ERASE")) / 2), eraseModeBtn.y + 13, 2, "ERASE");
 
         const int paletteCount = objectMode ? (int)objectPalette.size() : (int)palette.size();
         int& paletteScroll = objectMode ? objectPaletteScroll : tilePaletteScroll;
@@ -1304,7 +1388,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             const int i = paletteScroll + row;
             if (i >= paletteCount) break;
             const bool selected = objectMode ? (i == selectedObjectPalette) : (i == selectedPalette);
-            SDL_Rect r{panelX, paletteStartY + row * paletteRowH, 160, 36};
+            SDL_Rect r{panelX, paletteStartY + row * paletteRowH, sideW - 12, 42};
             SDL_SetRenderDrawColor(ren, selected ? 70 : 45, selected ? 100 : 65, selected ? 160 : 95, 255);
             SDL_RenderFillRect(ren, &r);
             SDL_SetRenderDrawColor(ren, 220, 220, 230, 255);
@@ -1337,7 +1421,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             }
         }
         if (paletteCount > paletteViewRows) {
-            SDL_Rect track{panelX + 164, paletteStartY, 8, paletteViewRows * paletteRowH - 8};
+            SDL_Rect track{panelX + sideW - 8, paletteStartY, 8, paletteViewRows * paletteRowH - 8};
             SDL_SetRenderDrawColor(ren, 40, 46, 62, 255);
             SDL_RenderFillRect(ren, &track);
             const int thumbH = std::max(16, (track.h * paletteViewRows) / std::max(1, paletteCount));
@@ -1357,9 +1441,9 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             SDL_RenderFillRect(ren, &pausePanel);
             SDL_SetRenderDrawColor(ren, 180, 200, 230, 255);
             SDL_RenderDrawRect(ren, &pausePanel);
-            DrawText(ren, pausePanel.x + 120, pausePanel.y + 24, 3, "PAUSED");
-            DrawText(ren, pausePanel.x + 26, pausePanel.y + 70, 2, "ESC: RESUME");
-            DrawText(ren, pausePanel.x + 26, pausePanel.y + 94, 2, "ARROWS + ENTER: MENU");
+            const int pauseTextScale = pauseW < 340 ? 1 : 2;
+            DrawText(ren, pausePanel.x + std::max(8, (pausePanel.w - MeasureTextWidth(3, "PAUSED")) / 2), pausePanel.y + 20, 3, "PAUSED");
+            DrawText(ren, pausePanel.x + 20, pausePanel.y + 68, pauseTextScale, "TAP RESUME, SAVE, OR EXIT");
 
             SDL_Rect pauseBtns[3] = {pauseResumeBtn, pauseSaveBtn, pauseExitBtn};
             const char* labels[3] = {"RESUME", "SAVE", "EXIT"};
@@ -1368,7 +1452,9 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 SDL_RenderFillRect(ren, &pauseBtns[i]);
                 SDL_SetRenderDrawColor(ren, 220, 220, 235, 255);
                 SDL_RenderDrawRect(ren, &pauseBtns[i]);
-                DrawText(ren, pauseBtns[i].x + 12, pauseBtns[i].y + 10, 2, labels[i]);
+                const int labelScale = pauseButtonW < 80 ? 1 : 2;
+                DrawText(ren, pauseBtns[i].x + std::max(3, (pauseBtns[i].w - MeasureTextWidth(labelScale, labels[i])) / 2),
+                         pauseBtns[i].y + (labelScale == 1 ? 17 : 14), labelScale, labels[i]);
             }
         }
         SDL_RenderPresent(ren);
@@ -2733,4 +2819,3 @@ bool HasCustomLevels() {
     return false;
 #endif
 }
-
