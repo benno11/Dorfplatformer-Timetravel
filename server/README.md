@@ -78,7 +78,7 @@ server/releases (or --releases / RELEASES_PATH). The server exposes the manifest
 at /update-manifest.json and installers at /releases/<filename>. The default
 game config uses this manifest URL. Until a manifest is published, update checks
 report that it is unavailable. An example manifest:
-    {"version":"2.3.1","version_id":27,
+    {"version":"2.3.2","version_id":28,
      "installer_url":"https://game.example.com/releases/game-setup.exe",
      "notes":"Release notes"}
 For Docker, populate the game-releases volume with these operator-published
@@ -226,9 +226,9 @@ Do not start this alongside another dashboard on the same port.
 
 ### Client version blacklist
 
-Open the local dashboard at `http://127.0.0.1:8081` and use **Client version blacklist**. Enter the numeric compiled build ID (currently `27`, version `2.3.1`) and a reason, then choose Block version or Unblock version. Changes persist in SQLite and appear in moderation history. Blocking applies immediately to account and level requests, including existing sessions, with HTTP 426 and the reason. Local/offline play is unaffected.
+Open the local dashboard at `http://127.0.0.1:8081` and use **Client version blacklist**. Enter the numeric compiled build ID (currently `28`, version `2.3.2`) and a reason, then choose Block version or Unblock version. Changes persist in SQLite and appear in moderation history. Blocking applies immediately to account and level requests, including existing sessions, with HTTP 426 and the reason. Local/offline play is unaffected.
 
-Desktop builds embed `version` and `version_id` from `assets/config.json` into `BuildInfo.h` at CMake configuration time. Android's build fixer generates the same native constants and synchronizes Gradle's compiled `BuildConfig` values. Increase `version_id` for every release and rebuild; editing the installed config cannot change the displayed or reported client version. Clients send `DF-New/2.3.1 (build/27)` as their User-Agent.
+Desktop builds embed `version` and `version_id` from `assets/config.json` into `BuildInfo.h` at CMake configuration time. Android's build fixer generates the same native constants and synchronizes Gradle's compiled `BuildConfig` values. Increase `version_id` for every release and rebuild; editing the installed config cannot change the displayed or reported client version. Clients send `DF-New/2.3.2 (build/28)` as their User-Agent.
 
 Use `legacy` to block older official clients that send the old `DF-New/1.0` or `DF-New/1.0-android` identity. Browsers and unidentified/custom clients remain compatible; this tool is version compatibility control, not an anti-cheat or authentication boundary, since modified clients can spoof their identity. Account management in the browser, the private dashboard, health checks, and update manifests/downloads remain available for recovery.
 
