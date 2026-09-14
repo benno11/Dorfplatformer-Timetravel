@@ -818,6 +818,19 @@ if(NOT IOS)
   message(STATUS "Linked sheet_config: ${SDL3_LINK_TARGET}, ${SDL3_IMAGE_LINK_TARGET}")
 endif()
 
+include(CTest)
+if(BUILD_TESTING AND NOT ANDROID AND NOT IOS)
+  add_executable(player_controller_test
+    tests/PlayerControllerTest.cpp
+    src/PlayerController.cpp
+    src/TileMap.cpp
+  )
+  target_include_directories(player_controller_test PRIVATE src)
+  target_link_libraries(player_controller_test PRIVATE ${SDL3_LINK_TARGET})
+  target_compile_definitions(player_controller_test PRIVATE SDL_ENABLE_OLD_NAMES=1)
+  add_test(NAME player_controller_collision COMMAND player_controller_test)
+endif()
+
 if(WIN32 AND CURL_FOUND)
   add_executable(df-updater WIN32
     src/WindowsUpdater.cpp

@@ -280,36 +280,54 @@ PlayerUpdateResult UpdatePlayerMovement(
         player.drownTimer = 0.0f;
     }
 
-    float newX = player.x + player.vx * dt;
-    if (!RectHitsSolid(map, newX, player.y, player.w, player.h)) {
-        player.x = newX;
-    } else {
-        int dir = (player.vx > 0) ? 1 : -1;
+    // Sweep long frame movements in tile-sized substeps. Checking only the final
+    // position lets a fast fall (or a frame-time spike) jump completely across a
+    // one-tile floor without ever overlapping it.
+    const float maxCollisionStep = std::max(1.0f, map.tileSize * 0.5f);
+    const float totalX = player.vx * dt;
+    const int xSteps = std::max(1, (int)std::ceil(std::fabs(totalX) / maxCollisionStep));
+    const float xStep = totalX / xSteps;
+    for (int step = 0; step < xSteps; ++step) {
+        const float newX = player.x + xStep;
+        if (!RectHitsSolid(map, newX, player.y, player.w, player.h)) {
+            player.x = newX;
+            continue;
+        }
+
+        const int dir = (xStep > 0.0f) ? 1 : -1;
         while (!RectHitsSolid(map, player.x + dir, player.y, player.w, player.h)) {
             player.x += dir;
         }
         player.vx = 0.0f;
+        break;
     }
 
-    float newY = player.y + player.vy * dt;
-    if (!RectHitsSolid(map, player.x, newY, player.w, player.h)) {
-        if (player.vy > 0 && rectHitsSemiSolidDown(map, player.y, newY, player.x, player.w, player.h)) {
-            int t = map.tileSize;
-            int bottomTile = (int)std::floor((newY + player.h - 1) / t);
-            player.y = bottomTile * t - player.h + 1;
-            player.onGround = true;
-            player.vy = 0.0f;
-        } else {
+    const float totalY = player.vy * dt;
+    const int ySteps = std::max(1, (int)std::ceil(std::fabs(totalY) / maxCollisionStep));
+    const float yStep = totalY / ySteps;
+    for (int step = 0; step < ySteps; ++step) {
+        const float oldY = player.y;
+        const float newY = oldY + yStep;
+        if (!RectHitsSolid(map, player.x, newY, player.w, player.h)) {
+            if (yStep > 0.0f && rectHitsSemiSolidDown(map, oldY, newY, player.x, player.w, player.h)) {
+                const int bottomTile = (int)std::floor((newY + player.h - 1) / map.tileSize);
+                player.y = bottomTile * map.tileSize - player.h + 1;
+                player.onGround = true;
+                player.vy = 0.0f;
+                break;
+            }
             player.y = newY;
             player.onGround = false;
+            continue;
         }
-    } else {
-        int dir = (player.vy > 0) ? 1 : -1;
+
+        const int dir = (yStep > 0.0f) ? 1 : -1;
         while (!RectHitsSolid(map, player.x, player.y + dir, player.w, player.h)) {
             player.y += dir;
         }
         if (dir > 0) player.onGround = true;
         player.vy = 0.0f;
+        break;
     }
 
     const float resetY = (float)((map.h + 7) * map.tileSize);
@@ -324,4 +342,3 @@ PlayerUpdateResult UpdatePlayerMovement(
 
     return PlayerUpdateResult::Normal;
 }
-
