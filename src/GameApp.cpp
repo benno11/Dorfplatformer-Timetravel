@@ -7077,6 +7077,14 @@ int RunGameApp(int argc, char** argv) {
             default: debugAnimName = "IDLE"; break;
         }
 
+        auto debugRectIsVisible = [&](const SDL_FRect& rect) -> bool {
+            return rect.x + rect.w > 0.0f && rect.y + rect.h > 0.0f &&
+                   rect.x < (float)worldViewW && rect.y < (float)worldViewH;
+        };
+        auto drawVisibleDebugRect = [&](const SDL_FRect& rect) {
+            if (debugRectIsVisible(rect)) SDL_RenderDrawRectF(ren, &rect);
+        };
+
         if (showHitboxes || showPlayerHitbox) {
             if (showHitboxes) {
                 // Tile hitboxes
@@ -7178,23 +7186,21 @@ int RunGameApp(int argc, char** argv) {
             // Player hitbox
             if (showPlayerHitbox) {
                 SDL_SetRenderDrawColor(ren, 255, 200, 80, 255);
-                float playerHitboxScreenY = player.y - camY;
-                if (playerHitboxScreenY < 0.0f) playerHitboxScreenY = 0.0f;
-                SDL_FRect pr{ player.x - camX, playerHitboxScreenY, (float)player.w, (float)player.h };
-                SDL_RenderDrawRectF(ren, &pr);
+                SDL_FRect pr{ player.x - camX, player.y - camY, (float)player.w, (float)player.h };
+                drawVisibleDebugRect(pr);
                 if (renderWrapY) {
                     const float wrapH = (float)(map.h * map.tileSize);
                     SDL_FRect prTop{ pr.x, pr.y - wrapH, pr.w, pr.h };
                     SDL_FRect prBottom{ pr.x, pr.y + wrapH, pr.w, pr.h };
-                    SDL_RenderDrawRectF(ren, &prTop);
-                    SDL_RenderDrawRectF(ren, &prBottom);
+                    drawVisibleDebugRect(prTop);
+                    drawVisibleDebugRect(prBottom);
                 }
                 if (renderWrapX) {
                     const float wrapW = (float)(map.w * map.tileSize);
                     SDL_FRect prLeft{ pr.x - wrapW, pr.y, pr.w, pr.h };
                     SDL_FRect prRight{ pr.x + wrapW, pr.y, pr.w, pr.h };
-                    SDL_RenderDrawRectF(ren, &prLeft);
-                    SDL_RenderDrawRectF(ren, &prRight);
+                    drawVisibleDebugRect(prLeft);
+                    drawVisibleDebugRect(prRight);
                 }
             }
         }
@@ -7379,33 +7385,38 @@ int RunGameApp(int argc, char** argv) {
                     32.0f,
                     32.0f
                 };
-                SDL_RenderDrawRectF(ren, &ehb);
+                drawVisibleDebugRect(ehb);
                 if (renderWrapY) {
                     const float wrapH = (float)(map.h * map.tileSize);
                     SDL_FRect top{ehb.x, ehb.y - wrapH, ehb.w, ehb.h};
                     SDL_FRect bottom{ehb.x, ehb.y + wrapH, ehb.w, ehb.h};
-                    SDL_RenderDrawRectF(ren, &top);
-                    SDL_RenderDrawRectF(ren, &bottom);
+                    drawVisibleDebugRect(top);
+                    drawVisibleDebugRect(bottom);
                 }
                 if (renderWrapX) {
                     const float wrapW = (float)(map.w * map.tileSize);
                     SDL_FRect left{ehb.x - wrapW, ehb.y, ehb.w, ehb.h};
                     SDL_FRect right{ehb.x + wrapW, ehb.y, ehb.w, ehb.h};
-                    SDL_RenderDrawRectF(ren, &left);
-                    SDL_RenderDrawRectF(ren, &right);
+                    drawVisibleDebugRect(left);
+                    drawVisibleDebugRect(right);
                 }
 
                 const int idScale = 1;
-                DrawText(ren, (int)std::lround(ehb.x), (int)std::lround(ehb.y) - 10, idScale, obj.id);
+                auto drawVisibleObjectId = [&](const SDL_FRect& rect) {
+                    if (debugRectIsVisible(rect)) {
+                        DrawText(ren, (int)std::lround(rect.x), (int)std::lround(rect.y) - 10, idScale, obj.id);
+                    }
+                };
+                drawVisibleObjectId(ehb);
                 if (renderWrapY) {
                     const float wrapH = (float)(map.h * map.tileSize);
-                    DrawText(ren, (int)std::lround(ehb.x), (int)std::lround(ehb.y - wrapH) - 10, idScale, obj.id);
-                    DrawText(ren, (int)std::lround(ehb.x), (int)std::lround(ehb.y + wrapH) - 10, idScale, obj.id);
+                    drawVisibleObjectId(SDL_FRect{ehb.x, ehb.y - wrapH, ehb.w, ehb.h});
+                    drawVisibleObjectId(SDL_FRect{ehb.x, ehb.y + wrapH, ehb.w, ehb.h});
                 }
                 if (renderWrapX) {
                     const float wrapW = (float)(map.w * map.tileSize);
-                    DrawText(ren, (int)std::lround(ehb.x - wrapW), (int)std::lround(ehb.y) - 10, idScale, obj.id);
-                    DrawText(ren, (int)std::lround(ehb.x + wrapW), (int)std::lround(ehb.y) - 10, idScale, obj.id);
+                    drawVisibleObjectId(SDL_FRect{ehb.x - wrapW, ehb.y, ehb.w, ehb.h});
+                    drawVisibleObjectId(SDL_FRect{ehb.x + wrapW, ehb.y, ehb.w, ehb.h});
                 }
             }
         }
@@ -8684,4 +8695,3 @@ int RunGameApp(int argc, char** argv) {
     SDL_Quit();
     return 0;
 }
-
