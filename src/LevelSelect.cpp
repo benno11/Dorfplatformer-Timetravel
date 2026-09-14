@@ -350,7 +350,11 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
         selectedRow = std::clamp(row, 0, 4);
         setPromptTextInput(selectedRow == 0, winW, winH, nameFocusRect);
     };
-    setPromptTextInput(true);
+    // Keep the name row selected for keyboard/controller navigation, but do not
+    // immediately enter text-editing mode.  On touch platforms starting text
+    // input also opens the on-screen keyboard, which otherwise covered this
+    // dialog as soon as it appeared.  Tapping the name row (or navigating back
+    // to it later) explicitly starts text input.
     auto clampSize = [](int v) { return std::clamp(v, 5, 400); };
     auto trimSpaces = [](std::string s) {
         while (!s.empty() && std::isspace((unsigned char)s.front())) s.erase(s.begin());
@@ -392,7 +396,7 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
         SDL_Rect rowHPlus{rowH.x + rowH.w - 46, rowH.y + 5, 40, rowH.h - 10};
         SDL_Rect createBtn{panel.x + 80, panel.y + 242, 150, 42};
         SDL_Rect cancelBtn{panel.x + 290, panel.y + 242, 150, 42};
-        if (selectedRow == 0) setPromptTextInput(true, winW, winH, &rowName);
+        if (promptTextInputActive) setPromptTextInput(true, winW, winH, &rowName);
         auto handlePointerDown = [&](int px, int py) {
             SDL_Point pt{px, py};
             auto inPadded = [&](const SDL_Rect& r, int pad = 10) -> bool {
