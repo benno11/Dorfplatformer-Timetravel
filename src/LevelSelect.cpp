@@ -149,7 +149,7 @@ std::string localLevelsFolderPath();
 
 OnlineLevelsMenuLabels loadOnlineLevelsMenuLabels() {
     OnlineLevelsMenuLabels labels;
-    const std::string text = ReadTextFile("assets/menus/online_levels_menu.json");
+    const std::string text = ReadTextFile("assets/menusold/online_levels_menu.json");
     if (text.empty()) return labels;
     try {
         const nlohmann::json j = nlohmann::json::parse(text);

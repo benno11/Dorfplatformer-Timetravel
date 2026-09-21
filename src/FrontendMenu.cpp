@@ -29,6 +29,7 @@
 #include "InputSystem.h"
 #include "LevelSelect.h"
 #include "Platform.h"
+#include "SlimMenuSystem.h"
 #include "TextRenderer.h"
 #include "UiScale.h"
 
@@ -135,7 +136,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         "DEBUG HUD", "HIDE UNKNOWN OBJECT TYPES", "BACK"
     };
     {
-        const std::string menuJsonText = ReadTextFile("assets/menus/settings_menu.json");
+        const std::string menuJsonText = ReadTextFile("assets/menusold/settings_menu.json");
         if (!menuJsonText.empty()) {
             try {
                 nlohmann::json j = nlohmann::json::parse(menuJsonText);
@@ -1685,7 +1686,40 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             menuBgTex = nullptr;
         }
     };
+    auto runScriptMenu = [&](const std::string& menuName) -> bool {
+        SlimMenuContext slim{};
+        slim.win = ctx.win;
+        slim.ren = ctx.ren;
+        slim.gameTarget = (ctx.gameTargetRef && *ctx.gameTargetRef) ? *ctx.gameTargetRef : ctx.gameTarget;
+        slim.baseScreenW = ctx.baseScreenW;
+        slim.baseScreenH = ctx.baseScreenH;
+        slim.running = ctx.running;
+        slim.menuMusicEnabled = ctx.menuMusicEnabled;
+        slim.muteAllAudio = ctx.muteAllAudio;
+        slim.levelSelectEnabled = ctx.levelSelectEnabled;
+        slim.musicVolume = ctx.musicVolume;
+        slim.sfxVolume = ctx.sfxVolume;
+        slim.levelServerUrl = ctx.levelServerUrl;
+        slim.levelServerAuthToken = ctx.levelServerAuthToken;
+        slim.levelServerAccountUsername = ctx.levelServerAccountUsername;
+        slim.selectedLevelPath = ctx.selectedLevelPath;
+        slim.applyAudioVolumes = ctx.applyAudioVolumes;
+        slim.applyMenuMusicToggle = ctx.applyMenuMusicToggle;
+        slim.saveClientSettings = ctx.saveClientSettings;
+        const SlimMenuExit result = RunSlimMenu(slim, menuName);
+        if (result == SlimMenuExit::Quit) {
+            cleanupMenuAssets();
+            return false;
+        }
+        if (result == SlimMenuExit::StartGame) {
+            cleanupMenuAssets();
+            return true;
+        }
+        blockMenuInput();
+        return false;
+    };
     auto tryStartCustomLevel = [&]() -> bool {
+        SDL_Log("DEPRECATED MENU: direct custom level select is deprecated; use assets/menus/mainedit.menu.");
         if (!ctx.selectedLevelPath) return false;
         if (!levelSelectEnabled) return false;
         std::string path = RunCustomLevelSelect(ctx.win, ctx.ren);
@@ -1695,6 +1729,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         return true;
     };
     auto tryStartLevelSelect = [&]() -> bool {
+        SDL_Log("DEPRECATED MENU: direct level select is deprecated; use assets/menus/mainplay.menu.");
         if (!ctx.selectedLevelPath) return false;
         if (!levelSelectEnabled) return false;
         std::string path = RunLevelSelect(ctx.win, ctx.ren);
@@ -1704,6 +1739,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         return true;
     };
     auto chooseCampaignSave = [&]() -> bool {
+        SDL_Log("DEPRECATED MENU: native save picker is deprecated; use assets/menus/mainplay.menu.");
         if (!ctx.selectedLevelPath) return false;
         std::string labels[kSaveSlotCount];
         SDL_MessageBoxButtonData buttons[kSaveSlotCount + 1]{};
@@ -1738,11 +1774,12 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         return true;
     };
     auto mainMenuSelectionAction = [&](int sel) -> bool {
-        if (sel == 1) return chooseCampaignSave();
-	if (!levelSelectEnabled) {
+        if (sel == 0) return runScriptMenu("mainsetting");
+        if (sel == 1) return runScriptMenu("mainplay");
+        if (sel == 2) return runScriptMenu("mainedit");
+        if (!levelSelectEnabled) {
             return false;
         }
-        if (sel == 0) return false;
         if (sel == 1) {
             return tryStartLevelSelect();
         }
@@ -1850,10 +1887,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     if (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_RIGHT ||
                         e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_DOWN) menuSel = (menuSel + 1) % mainMenuCount;
                     if (isAcceptBtn) {
-                        if (menuSel == 0) {
-                            openSettingsTab(0);
-                            setInSettings(true);
-                        } else if (mainMenuSelectionAction(menuSel)) {
+                        if (mainMenuSelectionAction(menuSel)) {
                             return FrontendAction::StartGame;
                         }
                     }
@@ -1959,10 +1993,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     if (navUp) menuSel = (menuSel + mainMenuCount - 1) % mainMenuCount;
                     if (navDown) menuSel = (menuSel + 1) % mainMenuCount;
                     if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) {
-                        if (menuSel == 0) {
-                            openSettingsTab(0);
-                            setInSettings(true);
-                        } else if (mainMenuSelectionAction(menuSel)) {
+                        if (mainMenuSelectionAction(menuSel)) {
                             return FrontendAction::StartGame;
                         }
                     }
@@ -2264,8 +2295,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_Rect settingsBtn = mainMenuBtnRect(0);
                     if (SDL_PointInRect(&pt, &settingsBtn)) {
                         menuSel = 0;
-                        openSettingsTab(0);
-                        setInSettings(true);
+                        if (mainMenuSelectionAction(menuSel)) return FrontendAction::StartGame;
                         continue;
                     }
                     SDL_Rect playBtn = mainMenuBtnRect(1);
@@ -2586,8 +2616,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_Rect editorBtn = mainMenuBtnRect(2);
                     if (SDL_PointInRect(&pt, &settingsBtn)) {
                         menuSel = 0;
-                        openSettingsTab(0);
-                        setInSettings(true);
+                        if (mainMenuSelectionAction(menuSel)) return FrontendAction::StartGame;
                         continue;
                     }
                     if (SDL_PointInRect(&pt, &playBtn)) { menuSel = 1; if (mainMenuSelectionAction(menuSel)) return FrontendAction::StartGame; continue; }

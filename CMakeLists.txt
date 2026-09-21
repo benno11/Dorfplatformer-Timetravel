@@ -170,6 +170,7 @@ add_executable(platformer
   src/CrashReporter.cpp
   src/CustomBootLoader.cpp
   src/FrontendMenu.cpp
+  src/SlimMenuSystem.cpp
   src/AudioSystem.cpp
   src/AndroidAudioBridge.cpp
   src/ParallaxRenderer.cpp

@@ -1,0 +1,12 @@
+# DF Slim Menu: settings hub
+title "Settings"
+text "Account: ${username}"
+button "Toggle Menu Music" toggle menu_music_enabled
+button "Toggle Mute" toggle mute_all_audio
+button "Music Volume +" inc music_volume
+button "Music Volume -" dec music_volume
+button "SFX Volume +" inc sfx_volume
+button "SFX Volume -" dec sfx_volume
+button "Fetch Server Status" get server_status=/api/status
+text "Server: ${server_status}"
+button "Back" back
