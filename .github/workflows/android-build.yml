@@ -183,7 +183,7 @@ jobs:
             $env:CMAKE_PREFIX_PATH = if ($env:CMAKE_PREFIX_PATH) { "$localMixerPrefix;$env:CMAKE_PREFIX_PATH" } else { $localMixerPrefix }
           }
           cmake -S . -B build-ci -G Ninja `
-            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo `
             -DCMAKE_TOOLCHAIN_FILE="$vcpkgRoot/scripts/buildsystems/vcpkg.cmake" `
             -DVCPKG_TARGET_TRIPLET="${{ matrix.triplet }}" `
             -DPLATFORMER_REQUIRE_SDL3_MIXER=ON
