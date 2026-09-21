@@ -542,6 +542,7 @@ jobs:
             --overlay-triplets "${GITHUB_WORKSPACE}/cmake/vcpkg-triplets"
 
       - name: Prepare iOS signing
+        id: ios-signing
         env:
           IOS_MATRIX_SDK: ${{ matrix.sdk }}
           SECRET_IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
@@ -554,6 +555,7 @@ jobs:
           SECRET_IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
         run: |
           set -euo pipefail
+          signing_enabled=false
           decode_base64_secret() {
             local output="$1"
             if base64 --help 2>&1 | grep -q -- '--decode'; then
@@ -566,6 +568,7 @@ jobs:
             echo "IOS_BUNDLE_ID=${SECRET_IOS_BUNDLE_ID}" >> "$GITHUB_ENV"
           fi
           if [[ "${IOS_MATRIX_SDK}" == "iphoneos" && -n "${SECRET_IOS_DEVELOPMENT_TEAM:-}" && -n "${SECRET_IOS_CERTIFICATE_P12_BASE64:-}" ]]; then
+            signing_enabled=true
             if [[ -n "${SECRET_IOS_CERTIFICATE_P12_BASE64:-}" ]]; then
               signing_dir="${RUNNER_TEMP}/ios-signing"
               keychain_path="${signing_dir}/build.keychain-db"
@@ -629,6 +632,8 @@ jobs:
               echo "[info] iOS signing disabled for this matrix entry."
             fi
           fi
+
+          echo "signing_enabled=${signing_enabled}" >> "$GITHUB_OUTPUT"
 
       - name: Check iOS build environment
         env:
@@ -815,5 +820,10 @@ jobs:
       - name: Clean up iOS signing assets
         if: ${{ always() && steps.ios-signing.outputs.signing_enabled == 'true' }}
         run: |
-          security delete-keychain "$RUNNER_TEMP/app-signing.keychain-db" || true
-          rm -f ~/Library/MobileDevice/Provisioning\ Profiles/build_pp.mobileprovision
+          set -euo pipefail
+          if [[ -f "$RUNNER_TEMP/ios-signing/build.keychain-db" ]]; then
+            security delete-keychain "$RUNNER_TEMP/ios-signing/build.keychain-db" || true
+          fi
+          rm -f "$HOME/Library/MobileDevice/Provisioning Profiles"/platformer.mobileprovision
+          rm -f "$HOME/Library/MobileDevice/Provisioning Profiles"/*.mobileprovision
+          rm -rf "$RUNNER_TEMP/ios-signing"
