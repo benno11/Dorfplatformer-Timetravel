@@ -183,7 +183,7 @@ jobs:
             $env:CMAKE_PREFIX_PATH = if ($env:CMAKE_PREFIX_PATH) { "$localMixerPrefix;$env:CMAKE_PREFIX_PATH" } else { $localMixerPrefix }
           }
           cmake -S . -B build-ci -G Ninja `
-            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo `
             -DCMAKE_TOOLCHAIN_FILE="$vcpkgRoot/scripts/buildsystems/vcpkg.cmake" `
             -DVCPKG_TARGET_TRIPLET="${{ matrix.triplet }}" `
             -DPLATFORMER_REQUIRE_SDL3_MIXER=ON
@@ -327,6 +327,23 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
         with:
           validate-wrappers: false
+
+      - name: Configure CMake build
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          ABIS: arm64-v8a,armeabi-v7a,x86_64,x86
+          ANDROID_ALLOW_NO_CURL: "1"
+          FORCE_REBUILD_SDL: "1"
+          SDL_REF: release-3.4.x
+          SDL_IMAGE_REF: release-3.4.x
+          SDL_TTF_REF: release-3.4.x
+          SDL_MIXER_REF: release-3.2.x
+          SDL_REQUIRED_VERSION: 3.4.0
+          STRIP_ANDROID_SO: "0"
+          TERM: xterm
+        shell: bash
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
 
       - name: Build native Android game library
         env:

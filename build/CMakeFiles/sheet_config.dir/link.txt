@@ -1,1 +1,0 @@
-/usr/bin/c++ -DSDL_ENABLE_OLD_NAMES=1 -O3 -DNDEBUG -O2 -DNDEBUG -Wl,--dependency-file=CMakeFiles/sheet_config.dir/link.d CMakeFiles/sheet_config.dir/src/SheetConfigTool.cpp.o -o sheet_config  -Wl,-rpath,/usr/local/lib /usr/lib/x86_64-linux-gnu/libSDL3_image.so.0.2.4 /usr/local/lib/libSDL3.so.0.4.1
