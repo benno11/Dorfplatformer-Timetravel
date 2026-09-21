@@ -106,7 +106,7 @@ jobs:
 
       - name: Set build ID from workflow run number
         shell: bash
-        run: python3 build/set-build-id.py "$GITHUB_RUN_NUMBER"
+        run: python3 /set-build-id.py "$GITHUB_RUN_NUMBER"
 
       - name: Install Linux build tools
         if: runner.os == 'Linux'
