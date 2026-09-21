@@ -2,4 +2,5 @@
 title "Editor"
 text "Open local/custom levels."
 button "Custom Levels" custom
+button "Level Browser" menu editlevels
 button "Back" back

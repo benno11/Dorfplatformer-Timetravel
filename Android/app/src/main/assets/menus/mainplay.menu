@@ -1,7 +1,7 @@
 # DF Slim Menu: play hub
 title "Play"
 text "Choose how to start."
-button "Continue Save" saved
+button "Save Selector" menu saves
 button "Campaign Levels" campaign
 button "All Levels" levels
 button "Back" back

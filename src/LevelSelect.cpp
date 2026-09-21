@@ -5,8 +5,10 @@
 #include <SDL3_image/SDL_image.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <chrono>
+#include <cstdlib>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
@@ -31,12 +33,6 @@
 #endif
 
 namespace {
-struct LevelEntry {
-    std::string label;
-    std::string path;
-    int difficulty = 0; // Unrated until set by a server moderator.
-};
-
 struct OnlineLevelsMenuLabels {
     std::string tabCampaign = "CAMPAIGN";
     std::string tabUser = "USER";
@@ -193,8 +189,40 @@ std::string writeLocalLevelFile(const std::vector<unsigned short>& rowMajorGrid,
     if (w <= 0 || h <= 0) return {};
     if ((int)rowMajorGrid.size() != w * h) return {};
     // DFLVL3 stores exact engine row-major tile IDs, avoiding legacy axis/offset transforms.
+    bool wrapX = false;
+    bool wrapY = false;
+    for (const auto& obj : objects) {
+        if (obj.id == "62") wrapX = true;
+        if (obj.id == "63") wrapY = true;
+    }
+    int levelId = 0;
+    if (!targetPath.empty()) {
+        const std::string stem = std::filesystem::path(targetPath).stem().string();
+        int start = -1;
+        int len = 0;
+        for (int i = 0; i < (int)stem.size();) {
+            if (!std::isdigit((unsigned char)stem[i])) {
+                ++i;
+                continue;
+            }
+            const int s = i;
+            while (i < (int)stem.size() && std::isdigit((unsigned char)stem[i])) ++i;
+            start = s;
+            len = i - s;
+        }
+        if (start >= 0) {
+            levelId = std::atoi(stem.substr((size_t)start, (size_t)len).c_str());
+        }
+    }
     std::string data;
     data.reserve((size_t)w * (size_t)h * 4 + 64);
+    data += "META level_id=";
+    data += std::to_string(std::max(0, levelId));
+    data += " theme_override=0 wrap_x=";
+    data += wrapX ? "1" : "0";
+    data += " wrap_y=";
+    data += wrapY ? "1" : "0";
+    data += " ENDMETA\n";
     data += "DFLVL3 ";
     data += std::to_string(w);
     data += " ";
@@ -264,6 +292,7 @@ std::string writeLocalLevelFile(const std::vector<unsigned short>& rowMajorGrid,
         std::filesystem::rename(tmpPath, outPath, ec);
         if (ec) return {};
     }
+    ClearLocalLevelVerification(outPath.string());
     return outPath.string();
 }
 
@@ -2529,6 +2558,10 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
     return chosenPath;
 }
 
+std::string OpenLocalLevelEditorForMenu(SDL_Window* win, SDL_Renderer* ren, const std::string& initialPath) {
+    return RunLocalLevelEditor(win, ren, initialPath);
+}
+
 std::string RunLevelSelect(SDL_Window* win, SDL_Renderer* ren) {
     return RunLevelSelectImpl(win, ren, true, true);
 }
@@ -2700,6 +2733,53 @@ std::string readLevelApiVersionIdFromConfig() {
     return {};
 }
 
+std::filesystem::path localLevelVerificationPath(const std::string& levelPath) {
+    return std::filesystem::path(levelPath + ".verify.json");
+}
+
+bool IsLocalLevelVerified(const std::string& levelPath) {
+    if (levelPath.empty() || isHttpUrl(levelPath)) return false;
+    const std::string text = ReadTextFile(localLevelVerificationPath(levelPath).string());
+    if (text.empty()) return false;
+    try {
+        const nlohmann::json j = nlohmann::json::parse(text);
+        return j.is_object() && j.value("verified", false);
+    } catch (...) {
+        return false;
+    }
+}
+
+void SetLocalLevelVerified(const std::string& levelPath, bool verified) {
+    if (levelPath.empty() || isHttpUrl(levelPath)) return;
+    const std::filesystem::path metaPath = localLevelVerificationPath(levelPath);
+    std::error_code ec;
+    std::filesystem::create_directories(metaPath.parent_path(), ec);
+    nlohmann::json j;
+    j["verified"] = verified;
+    j["verified_at"] = verified ? (long long)std::time(nullptr) : 0LL;
+    j["level_path"] = levelPath;
+    const std::filesystem::path tmpPath = metaPath.string() + ".tmp";
+    {
+        std::ofstream out(tmpPath, std::ios::binary | std::ios::trunc);
+        if (!out.is_open()) return;
+        out << j.dump(2);
+        out.flush();
+        if (!out.good()) return;
+    }
+    std::filesystem::rename(tmpPath, metaPath, ec);
+    if (ec) {
+        std::filesystem::remove(metaPath, ec);
+        ec.clear();
+        std::filesystem::rename(tmpPath, metaPath, ec);
+    }
+}
+
+void ClearLocalLevelVerification(const std::string& levelPath) {
+    if (levelPath.empty() || isHttpUrl(levelPath)) return;
+    std::error_code ec;
+    std::filesystem::remove(localLevelVerificationPath(levelPath), ec);
+}
+
 bool uploadLocalLevelToServer(const LevelEntry& level, std::string& statusText) {
     if (level.path.empty() || level.path == "__local_editor__") {
         statusText = "No local level selected.";
@@ -2707,6 +2787,10 @@ bool uploadLocalLevelToServer(const LevelEntry& level, std::string& statusText) 
     }
     if (isHttpUrl(level.path)) {
         statusText = "Only local levels can be uploaded.";
+        return false;
+    }
+    if (!IsLocalLevelVerified(level.path)) {
+        statusText = "Beat this level before uploading.";
         return false;
     }
     const std::string levelServerUrl = GetLevelServerUrl();

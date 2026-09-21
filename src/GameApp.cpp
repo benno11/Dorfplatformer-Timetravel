@@ -2058,10 +2058,11 @@ int RunGameApp(int argc, char** argv) {
         SDL_Log("audio.recover: restart ok");
     };
     bool running = true;
+    int currentLevelThemeOverride = 0;
     // Loads only the active world's background sheet and unloads all others.
     // Must be called whenever the active world changes (level selection or level transition).
     auto syncWorldBackground = [&]() {
-        const int w = levelManager.worldId();
+        const int w = currentLevelThemeOverride > 0 ? currentLevelThemeOverride : levelManager.worldId();
         bgWorldIdForLoad = w;
         if (w != 1) { destroyTextureRef(bgTexWorld1); bgFrameByNameWorld1 = {}; bgFrameListWorld1 = {}; }
         if (w != 2) { destroyTextureRef(bgTexWorld2); bgFrameByNameWorld2 = {}; bgFrameListWorld2 = {}; }
@@ -2796,13 +2797,27 @@ int RunGameApp(int argc, char** argv) {
 
             return false;
         };
+        auto loadedLevelId = [&]() -> int {
+            return meta.levelId > 0 ? meta.levelId : parseLevelIdFromLevelPath(levelManager.levelPath());
+        };
+        auto levelWrapXEnabled = [&]() -> bool {
+            if (meta.wrapX) return true;
+            return std::find(objectIds.begin(), objectIds.end(), 62) != objectIds.end();
+        };
+        auto levelWrapYEnabled = [&]() -> bool {
+            if (meta.wrapY) return true;
+            return std::find(objectIds.begin(), objectIds.end(), 63) != objectIds.end();
+        };
+        auto activeThemeWorldId = [&]() -> int {
+            return currentLevelThemeOverride > 0 ? currentLevelThemeOverride : levelManager.worldId();
+        };
         auto resetBossStateForLoadedLevel = [&]() {
             bossState = BossRuntimeState{};
             secretFireballs.clear();
             secretExplosions.clear();
             const int world = levelManager.worldId();
             const int bossProfileWorld = (world == 2 || world == 6) ? 1 : std::max(1, world);
-            const int levelId = parseLevelIdFromLevelPath(levelManager.levelPath());
+            const int levelId = loadedLevelId();
             bossState.active = false;
             bossState.world = bossProfileWorld;
             bossState.sourceWorld = std::max(1, world);
@@ -3015,7 +3030,7 @@ int RunGameApp(int argc, char** argv) {
             }
         };
         float timeTravelTriggerCooldown = 0.0f;
-        int currentLevelId = parseLevelIdFromLevelPath(levelManager.levelPath());
+        int currentLevelId = loadedLevelId();
         enum PlayerAnim {
             ANIM_IDLE,
             ANIM_WALK,
@@ -3076,6 +3091,7 @@ int RunGameApp(int argc, char** argv) {
         auto reloadLevel = [&](bool showIntroCard = true) {
             levelManager.reloadLevel(map, objects, meta, player);
             refreshObjectIdCache();
+            currentLevelThemeOverride = meta.themeOverride;
             syncWorldBackground();
             levelTimerSeconds = 0.0f;
             levelCompleteActive = false;
@@ -3131,7 +3147,7 @@ int RunGameApp(int argc, char** argv) {
             currentFancyLevelName = buildFancyLevelName();
             currentAreaIdText = buildAreaIdText();
             levelReloadTitleTimer = 2.0f;
-            currentLevelId = parseLevelIdFromLevelPath(levelManager.levelPath());
+            currentLevelId = loadedLevelId();
             const std::string activeLevelPath = levelManager.levelPath();
             const std::string normalizedActiveLevelPath = normalizeLevelPath(activeLevelPath);
             if (checkpointActive && checkpointLevelPath == normalizedActiveLevelPath) {
@@ -3159,6 +3175,17 @@ int RunGameApp(int argc, char** argv) {
         auto startLevelCompleteSequence = [&]() {
             if (levelCompleteActive) return;
             levelCompleteActive = true;
+            {
+                std::string completedPath = levelManager.levelPath();
+                std::replace(completedPath.begin(), completedPath.end(), '\\', '/');
+                const bool localEditableLevel =
+                    completedPath.find("://") == std::string::npos &&
+                    completedPath.rfind("assets/levels/", 0) != 0 &&
+                    completedPath.find("/assets/levels/") == std::string::npos;
+                if (localEditableLevel) {
+                    SetLocalLevelVerified(levelManager.levelPath(), true);
+                }
+            }
             levelCompleteCounting = false;
             levelCompleteNextPath = allowNextLevelProgression ? levelManager.nextLevelPath() : "";
             levelCompleteAreaId = levelManager.levelPartId();
@@ -3350,7 +3377,7 @@ int RunGameApp(int argc, char** argv) {
                 (void)ejectBossFromSolid(bossState.x, bossState.y, bossW, bossH);
             }
             refreshEndSignState();
-            currentLevelId = parseLevelIdFromLevelPath(levelManager.levelPath());
+            currentLevelId = loadedLevelId();
             levelReloadTitleTimer = 0.0f;
             playSceneIntroCard();
         } else {
@@ -4309,20 +4336,8 @@ int RunGameApp(int argc, char** argv) {
             lastTicksNs = nowNs;
             lastTicks = SDL_GetTicks();
             SetTextScaleMultiplier(UiScale::multiplier(uiScalePercent));
-            auto isVerticalWrapEnabledAtX = [&](float x) -> bool {
-                if (((currentLevelId == 29 && x > 1250.0f) ||
-                     (currentLevelId == 30 && x > 1250.0f) ||
-                     currentLevelId == 39 ||
-                     currentLevelId == 40 ||
-                     currentLevelId == 53 ||
-                     currentLevelId == 54)) {
-                    return true;
-                }
-                if ((currentLevelId == 21 || currentLevelId == 22 || currentLevelId == 23 || currentLevelId == 24) &&
-                    x > 3211.0f && x < 4559.0f) {
-                    return true;
-                }
-                return false;
+            auto isVerticalWrapEnabledAtX = [&](float) -> bool {
+                return levelWrapYEnabled();
             };
             if (levelCompleteActive) {
                 paused = false;
@@ -4354,7 +4369,7 @@ int RunGameApp(int argc, char** argv) {
                 updateFpsAccumFrames = 0;
             }
             bool temp1TouchedThisFrame = false;
-            const bool gameplayWrapX = (currentLevelId == 39 || currentLevelId == 40);
+            const bool gameplayWrapX = levelWrapXEnabled();
             const bool gameplayWrapY = isVerticalWrapEnabledAtX(player.x);
             verticalWrapActive = gameplayWrapY;
             activeBumperIndices.clear();
@@ -6788,18 +6803,8 @@ int RunGameApp(int argc, char** argv) {
         const bool renderWrapX = gameplayWrapX;
         const bool renderWrapY = verticalWrapActive;
         const int renderLevelId = currentLevelId;
-        const bool cameraWrapX = (renderLevelId == 39 || renderLevelId == 40);
-        bool cameraWrapY = false;
-        if (((renderLevelId == 29 &&
-            player.x > 1250.0f) || (renderLevelId == 30 &&
-            player.x > 1250.0f) || renderLevelId == 39 ||
-             renderLevelId == 40 || renderLevelId == 53 || renderLevelId == 54)) {
-            cameraWrapY = true;
-        }
-        if ((renderLevelId == 21 || renderLevelId == 22 || renderLevelId == 23 || renderLevelId == 24) &&
-            player.x > 3211.0f && player.x < 4559.0f) {
-            cameraWrapY = true;
-        }
+        const bool cameraWrapX = renderWrapX;
+        const bool cameraWrapY = renderWrapY;
 
         const int worldViewW = kGameplayViewW;
         const int worldViewH = kGameplayViewH;
@@ -6934,7 +6939,7 @@ int RunGameApp(int argc, char** argv) {
 
         SDL_SetRenderTarget(ren, worldTarget);
         SDL_SetRenderScale(ren, kGameplayZoom, kGameplayZoom);
-        const int currentWorldId = levelManager.worldId();
+        const int currentWorldId = activeThemeWorldId();
         if (currentWorldId == 4) {
             SDL_SetRenderDrawColor(ren, 192, 104, 114, 255); // #c06872
         } else if (currentWorldId == 3) {

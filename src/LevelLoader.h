@@ -10,6 +10,10 @@ struct ObjectInstance {
 
 struct LevelMeta {
     std::string name;
+    int levelId = 0;
+    int themeOverride = 0;
+    bool wrapX = false;
+    bool wrapY = false;
     std::vector<int> entitySpawnPos;
     std::vector<int> entitySpawnType;
 };

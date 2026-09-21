@@ -18,6 +18,7 @@ struct SlimMenuContext {
     bool* levelSelectEnabled = nullptr;
     int* musicVolume = nullptr;
     int* sfxVolume = nullptr;
+    int* activeSaveSlotIndex = nullptr;
     std::string* levelServerUrl = nullptr;
     std::string* levelServerAuthToken = nullptr;
     std::string* levelServerAccountUsername = nullptr;

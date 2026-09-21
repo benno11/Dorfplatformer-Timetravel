@@ -1,0 +1,8 @@
+# DF Slim Menu: delete saves
+title "Delete Saves"
+text "Deleting a save cannot be undone."
+text "${last_save_action}"
+button "Delete Slot 1: ${save_slot_1_status}" delete_save 1
+button "Delete Slot 2: ${save_slot_2_status}" delete_save 2
+button "Delete Slot 3: ${save_slot_3_status}" delete_save 3
+button "Back" menu savesettings

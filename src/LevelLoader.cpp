@@ -5,9 +5,11 @@
 #include <string>
 #include <vector>
 #include <cctype>
+#include <cstdlib>
 #include <algorithm>
 #include <sstream>
 #include <filesystem>
+#include <charconv>
 #include <nlohmann/json.hpp>
 
 static constexpr int TILE_SIZE = 32;
@@ -212,6 +214,67 @@ static bool shouldNormalizeHorizontalOffset(const std::string& path) {
     return norm.find("/assets/levels/") != std::string::npos;
 }
 
+static int parseLevelIdFromPath(const std::string& path) {
+    const std::string stem = std::filesystem::path(path).stem().string();
+    int lastStart = -1;
+    int lastLen = 0;
+    for (int i = 0; i < (int)stem.size();) {
+        if (!std::isdigit((unsigned char)stem[i])) {
+            ++i;
+            continue;
+        }
+        const int start = i;
+        while (i < (int)stem.size() && std::isdigit((unsigned char)stem[i])) ++i;
+        lastStart = start;
+        lastLen = i - start;
+    }
+    if (lastStart < 0) return 0;
+    int value = 0;
+    const char* begin = stem.c_str() + lastStart;
+    const char* end = begin + lastLen;
+    auto [ptr, ec] = std::from_chars(begin, end, value);
+    return (ec == std::errc() && ptr == end) ? value : 0;
+}
+
+static bool parseBoolSetting(const std::string& value) {
+    std::string v;
+    v.reserve(value.size());
+    for (char ch : value) v.push_back((char)std::tolower((unsigned char)ch));
+    return v == "1" || v == "true" || v == "yes" || v == "on";
+}
+
+static void parseLevelMetaHeader(std::string& data, LevelMeta& meta) {
+    meta = LevelMeta{};
+    std::istringstream in(data);
+    std::string magic;
+    if (!(in >> magic) || magic != "META") return;
+
+    std::streampos afterMeta = in.tellg();
+    std::string token;
+    while (in >> token) {
+        if (token == "ENDMETA") {
+            const std::streampos payloadPos = in.tellg();
+            if (payloadPos != std::streampos(-1)) {
+                data = data.substr((size_t)payloadPos);
+                while (!data.empty() && std::isspace((unsigned char)data.front())) data.erase(data.begin());
+            }
+            return;
+        }
+        const size_t eq = token.find('=');
+        if (eq == std::string::npos) continue;
+        const std::string key = token.substr(0, eq);
+        const std::string value = token.substr(eq + 1);
+        if (key == "level_id") meta.levelId = std::max(0, std::atoi(value.c_str()));
+        else if (key == "theme_override") meta.themeOverride = std::max(0, std::atoi(value.c_str()));
+        else if (key == "wrap_x") meta.wrapX = parseBoolSetting(value);
+        else if (key == "wrap_y") meta.wrapY = parseBoolSetting(value);
+    }
+
+    if (afterMeta != std::streampos(-1)) {
+        data = data.substr((size_t)afterMeta);
+    }
+}
+
 /* -----------------------------
    Legacy "chunk" parser
    Reads one token at a time:
@@ -408,6 +471,8 @@ bool loadLevelBNNLVL(const std::string& path,
 {
     std::string s = readWholeFile(path);
     if (s.empty()) return false;
+    parseLevelMetaHeader(s, meta);
+    if (meta.levelId <= 0) meta.levelId = parseLevelIdFromPath(path);
 
     auto trim = [](const std::string& in) -> std::string {
         size_t a = 0;
@@ -460,9 +525,13 @@ bool loadLevelBNNLVL(const std::string& path,
                 }
             }
         }
-        meta.name = magic;
+        if (meta.name.empty()) meta.name = magic;
         meta.entitySpawnPos.clear();
         meta.entitySpawnType.clear();
+        for (const auto& obj : objects) {
+            if (obj.id == "62") meta.wrapX = true;
+            if (obj.id == "63") meta.wrapY = true;
+        }
         return true;
     }
 
@@ -533,7 +602,7 @@ bool loadLevelBNNLVL(const std::string& path,
     if (!nextLegacyToken(s, cur, t) || !t.hasValue) {
         // If missing, still OK: no objects
         objects.clear();
-        meta.name = "Legacy " + std::to_string(ver);
+        if (meta.name.empty()) meta.name = "Legacy " + std::to_string(ver);
         meta.entitySpawnPos.clear();
         meta.entitySpawnType.clear();
         return true;
@@ -582,7 +651,12 @@ bool loadLevelBNNLVL(const std::string& path,
         objects.push_back(o);
     }
 
-    meta.name = "Legacy " + std::to_string(ver);
+    for (const auto& obj : objects) {
+        if (obj.id == "62") meta.wrapX = true;
+        if (obj.id == "63") meta.wrapY = true;
+    }
+
+    if (meta.name.empty()) meta.name = "Legacy " + std::to_string(ver);
     SDL_Log("Legacy load OK: %s tiles=%d objects=%d", path.c_str(), total, (int)objects.size());
     return true;
 }

@@ -1,0 +1,9 @@
+# DF Slim Menu: save settings
+title "Save Settings"
+text "Active slot: ${active_save_slot}"
+text "${last_save_action}"
+button "Set Active Slot 1: ${save_slot_1_status}" select_save 1
+button "Set Active Slot 2: ${save_slot_2_status}" select_save 2
+button "Set Active Slot 3: ${save_slot_3_status}" select_save 3
+button "Delete Saves" menu savedelete
+button "Back" menu saves

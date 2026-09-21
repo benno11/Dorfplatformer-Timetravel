@@ -1699,6 +1699,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         slim.levelSelectEnabled = ctx.levelSelectEnabled;
         slim.musicVolume = ctx.musicVolume;
         slim.sfxVolume = ctx.sfxVolume;
+        slim.activeSaveSlotIndex = ctx.activeSaveSlotIndex;
         slim.levelServerUrl = ctx.levelServerUrl;
         slim.levelServerAuthToken = ctx.levelServerAuthToken;
         slim.levelServerAccountUsername = ctx.levelServerAccountUsername;
