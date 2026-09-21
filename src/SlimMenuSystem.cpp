@@ -22,6 +22,11 @@
 #include "AssetPath.h"
 #include "GameSupport.h"
 #include "LevelSelect.h"
+
+#if defined(DrawText)
+#undef DrawText
+#endif
+
 #include "TextRenderer.h"
 
 #if defined(HAVE_CURL) && HAVE_CURL
