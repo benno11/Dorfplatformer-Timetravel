@@ -108,6 +108,18 @@ jobs:
         shell: bash
         run: python3 comp/set-build-id.py "$GITHUB_RUN_NUMBER"
 
+      - name: Restore build scripts to build/
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          for file in comp/*; do
+            if [[ -f "$file" ]]; then
+              cp -f "$file" build/
+            fi
+          done
+          chmod +x build/*.sh 2>/dev/null || true
+
       - name: Install Linux build tools
         if: runner.os == 'Linux'
         run: |
@@ -300,6 +312,18 @@ jobs:
         shell: bash
         run: python3 comp/set-build-id.py "$GITHUB_RUN_NUMBER"
 
+      - name: Restore build scripts to build/
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          for file in comp/*; do
+            if [[ -f "$file" ]]; then
+              cp -f "$file" build/
+            fi
+          done
+          chmod +x build/*.sh 2>/dev/null || true
+
       - name: Set up JDK
         uses: actions/setup-java@v5
         with:
@@ -465,6 +489,18 @@ jobs:
       - name: Set build ID from workflow run number
         shell: bash
         run: python3 comp/set-build-id.py "$GITHUB_RUN_NUMBER"
+
+      - name: Restore build scripts to build/
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          for file in comp/*; do
+            if [[ -f "$file" ]]; then
+              cp -f "$file" build/
+            fi
+          done
+          chmod +x build/*.sh 2>/dev/null || true
 
       - name: Select latest Xcode
         run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
