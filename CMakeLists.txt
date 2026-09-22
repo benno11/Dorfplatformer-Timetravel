@@ -173,7 +173,7 @@ function(platformer_copy_if_exists_commands target_name destination_dir)
   endforeach()
 endfunction()
 
-add_executable(platformer
+set(PLATFORMER_GAME_SOURCES
   src/main.cpp
   src/GameApp.cpp
   src/AndroidEntrypoints.cpp
@@ -194,6 +194,11 @@ add_executable(platformer
   src/ParallaxRenderer.cpp
   src/World3PatternBackground.cpp
 )
+if(ANDROID)
+  add_library(platformer SHARED ${PLATFORMER_GAME_SOURCES})
+else()
+  add_executable(platformer ${PLATFORMER_GAME_SOURCES})
+endif()
 target_include_directories(platformer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 if(APPLE AND IOS)
   set(PLATFORMER_IOS_PACKAGE_DIR "${CMAKE_BINARY_DIR}/ios-package/${CMAKE_CFG_INTDIR}")
@@ -971,7 +976,7 @@ else()
 endif()
 message(STATUS "Linked platformer: ${PLATFORMER_LINK_LIBS}")
 
-if(NOT IOS)
+if(NOT IOS AND NOT ANDROID)
   add_executable(sheet_config
     src/SheetConfigTool.cpp
   )
