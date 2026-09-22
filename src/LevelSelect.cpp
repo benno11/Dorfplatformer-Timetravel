@@ -2830,6 +2830,8 @@ std::string OpenLocalLevelEditorForMenu(SDL_Window* win, SDL_Renderer* ren, cons
     return RunLocalLevelEditor(win, ren, initialPath);
 }
 
+namespace {
+
 std::string RunLocalLevelRenamePrompt(SDL_Window* win, SDL_Renderer* ren, const std::string& initialName) {
     std::string name = initialName;
     bool accepted = false;
@@ -3022,6 +3024,8 @@ GrowLevelPromptResult RunGrowLevelPrompt(SDL_Window* win, SDL_Renderer* ren, int
         SDL_Delay(16);
     }
     return out;
+}
+
 }
 
 std::string RunLevelSelect(SDL_Window* win, SDL_Renderer* ren) {
