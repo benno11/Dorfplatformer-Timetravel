@@ -297,17 +297,19 @@ void layoutPicker(HWND hwnd) {
     const int pad = 14;
     const int buttonW = 112;
     const int buttonH = 30;
-    const int buttonY = std::max(pad, rc.bottom - pad - buttonH);
+    const int clientW = (int)rc.right;
+    const int clientH = (int)rc.bottom;
+    const int buttonY = std::max(pad, clientH - pad - buttonH);
     HWND header = GetDlgItem(hwnd, kControlHeader);
     HWND list = GetDlgItem(hwnd, kControlVersionList);
     HWND launch = GetDlgItem(hwnd, kControlLaunch);
     HWND setDefault = GetDlgItem(hwnd, kControlSetDefault);
     HWND cancel = GetDlgItem(hwnd, kControlCancel);
-    MoveWindow(header, pad, pad, std::max(1, rc.right - pad * 2), 34, TRUE);
-    MoveWindow(list, pad, pad + 38, std::max(1, rc.right - pad * 2), std::max(1, buttonY - pad * 2 - 38), TRUE);
-    MoveWindow(launch, rc.right - pad - buttonW * 3 - 16, buttonY, buttonW, buttonH, TRUE);
-    MoveWindow(setDefault, rc.right - pad - buttonW * 2 - 8, buttonY, buttonW, buttonH, TRUE);
-    MoveWindow(cancel, rc.right - pad - buttonW, buttonY, buttonW, buttonH, TRUE);
+    MoveWindow(header, pad, pad, std::max(1, clientW - pad * 2), 34, TRUE);
+    MoveWindow(list, pad, pad + 38, std::max(1, clientW - pad * 2), std::max(1, buttonY - pad * 2 - 38), TRUE);
+    MoveWindow(launch, clientW - pad - buttonW * 3 - 16, buttonY, buttonW, buttonH, TRUE);
+    MoveWindow(setDefault, clientW - pad - buttonW * 2 - 8, buttonY, buttonW, buttonH, TRUE);
+    MoveWindow(cancel, clientW - pad - buttonW, buttonY, buttonW, buttonH, TRUE);
 }
 
 void updatePickerButtons(HWND hwnd) {

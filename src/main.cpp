@@ -57,6 +57,7 @@ int main(int argc, char** argv) {
 #if defined(_WIN32)
 #include <windows.h>
 #include <shellapi.h>
+#include <shobjidl.h>
 #include <tlhelp32.h>
 
 static HANDLE gSingleInstanceMutex = nullptr;
