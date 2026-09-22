@@ -5,6 +5,7 @@ button "Account" menu settingsaccount
 button "General" menu settingsgeneral
 button "Display" menu settingsdisplay
 button "Audio" menu settingsaudio
+if debugger_attached skip 1
 button "Debug" menu settingsdebug
 button "Controls" menu settingscontrols
 button "Extra Options" menu settingsextras

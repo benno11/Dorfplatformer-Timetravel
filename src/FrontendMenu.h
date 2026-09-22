@@ -61,6 +61,7 @@ struct FrontendMenuContext {
     int extraSettingsCount = 0;
     std::string* selectedLevelPath = nullptr;
     bool* devToolsEnabled = nullptr;
+    bool* debuggerAttached = nullptr;
 
     std::function<void()> applyAudioVolumes;
     std::function<void()> applyMenuMusicToggle;

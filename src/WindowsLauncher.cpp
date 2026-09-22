@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -223,14 +224,17 @@ std::vector<std::wstring> forwardedGameArgs(int argc, wchar_t** argv) {
     return args;
 }
 
-void launchTrayHelperIfNeeded(const std::filesystem::path& rootDir) {
+void launchTrayHelperIfNeeded(const std::filesystem::path& rootDir, const std::string& preferredVersionId = std::string()) {
     HANDLE existingMutex = OpenMutexW(SYNCHRONIZE, FALSE, L"Local\\DFNewTrayAppMutex");
     if (existingMutex) {
         CloseHandle(existingMutex);
         return;
     }
 
-    std::string versionId = readCurrentVersionId(rootDir);
+    std::string versionId = preferredVersionId;
+    if (versionId.empty()) {
+        versionId = readCurrentVersionId(rootDir);
+    }
     if (versionId.empty()) {
         versionId = findHighestInstalledVersionId(rootDir);
     }
@@ -334,7 +338,7 @@ LRESULT CALLBACK pickerWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
             WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
             0, 0, 0, 0,
             hwnd, reinterpret_cast<HMENU>((INT_PTR)kControlLaunch), GetModuleHandleW(nullptr), nullptr);
-        CreateWindowW(L"BUTTON", L"Set Default",
+        CreateWindowW(L"BUTTON", L"Set + Launch",
             WS_CHILD | WS_VISIBLE,
             0, 0, 0, 0,
             hwnd, reinterpret_cast<HMENU>((INT_PTR)kControlSetDefault), GetModuleHandleW(nullptr), nullptr);
@@ -364,7 +368,7 @@ LRESULT CALLBACK pickerWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
         layoutPicker(hwnd);
         return 0;
     case WM_COMMAND: {
-        const int id = LOWORD(wParam);
+        int id = LOWORD(wParam);
         const int code = HIWORD(wParam);
         if (id == kControlVersionList && code == LBN_SELCHANGE) {
             updatePickerButtons(hwnd);
@@ -415,7 +419,7 @@ std::string pickInstalledVersionId(const std::filesystem::path& rootDir,
     wc.hInstance = GetModuleHandleW(nullptr);
     wc.lpszClassName = L"DFNewLauncherVersionPicker";
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    wc.hIcon = LoadIconW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(1));
+    wc.hIcon = LoadIconW(GetModuleHandleW(nullptr), L"IDI_APP_ICON");
     wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
     RegisterClassW(&wc);
 
@@ -560,8 +564,6 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         versionId = pickedVersionId;
     }
 
-    launchTrayHelperIfNeeded(rootDir);
-
     const InstalledVersion* selectedVersion = findInstalledVersion(installedVersions, versionId);
     if (!selectedVersion) {
         if (argv) LocalFree(argv);
@@ -577,6 +579,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         showError(msg);
         return 1;
     }
+
+    launchTrayHelperIfNeeded(rootDir, versionId);
 
     std::wstring cmdLine = quoteWindowsArg(gameExe.wstring());
     for (const std::wstring& arg : gameArgs) {

@@ -56,9 +56,11 @@ int main(int argc, char** argv) {
 
 #if defined(_WIN32)
 #include <windows.h>
+#include <shellapi.h>
 #include <tlhelp32.h>
 
 static HANDLE gSingleInstanceMutex = nullptr;
+static constexpr const wchar_t* kLauncherAppUserModelId = L"Benno111.DorfplatformerTimetravel.Launcher";
 
 static DWORD getParentProcessId() {
     const DWORD currentPid = GetCurrentProcessId();
@@ -114,6 +116,7 @@ static void attachToParentConsoleIfAvailable() {
 }
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
+    SetCurrentProcessExplicitAppUserModelID(kLauncherAppUserModelId);
     attachToParentConsoleIfAvailable();
     gSingleInstanceMutex = CreateMutexW(nullptr, TRUE, L"Local\\DFNewGameSingleInstance");
     if (!gSingleInstanceMutex || GetLastError() == ERROR_ALREADY_EXISTS) {

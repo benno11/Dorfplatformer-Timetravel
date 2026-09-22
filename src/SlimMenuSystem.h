@@ -51,6 +51,7 @@ struct SlimMenuContext {
     std::string* levelServerAuthToken = nullptr;
     std::string* levelServerAccountUsername = nullptr;
     std::string* selectedLevelPath = nullptr;
+    bool* debuggerAttached = nullptr;
 
     std::function<void()> applyAudioVolumes;
     std::function<void()> applyMenuMusicToggle;

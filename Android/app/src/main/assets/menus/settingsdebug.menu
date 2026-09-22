@@ -1,5 +1,6 @@
 # DF Slim Menu: debug settings
 title "Debug Settings"
+if debugger_attached false skip 6
 button "FPS Counter: ${show_fps_counter}" toggle show_fps_counter
 button "Detailed Debugger: ${show_detailed_debugger}" toggle show_detailed_debugger
 button "Show Hitboxes: ${show_hitboxes}" toggle show_hitboxes

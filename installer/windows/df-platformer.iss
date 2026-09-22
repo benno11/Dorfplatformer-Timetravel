@@ -77,10 +77,10 @@ Type: files; Name: "{app}\README.md"
 Type: files; Name: "{app}\LICENSE"
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
-Name: "{group}\Dorfplatformer Tray"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--tray"; WorkingDir: "{app}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
-Name: "{userstartup}\Dorfplatformer Tray"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--tray"; WorkingDir: "{app}"; Tasks: startuptray
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; AppUserModelID: "Benno111.DorfplatformerTimetravel.Launcher"
+Name: "{group}\Dorfplatformer Tray"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--tray"; WorkingDir: "{app}"; AppUserModelID: "Benno111.DorfplatformerTimetravel.Launcher"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon; AppUserModelID: "Benno111.DorfplatformerTimetravel.Launcher"
+Name: "{userstartup}\Dorfplatformer Tray"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--tray"; WorkingDir: "{app}"; Tasks: startuptray; AppUserModelID: "Benno111.DorfplatformerTimetravel.Launcher"
 
 [Run]
 Filename: "{tmp}\{#MyVcRedistFile}"; Parameters: "/install /quiet /norestart"; Flags: waituntilterminated

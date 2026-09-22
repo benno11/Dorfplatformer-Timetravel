@@ -1747,6 +1747,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         slim.levelServerAuthToken = ctx.levelServerAuthToken;
         slim.levelServerAccountUsername = ctx.levelServerAccountUsername;
         slim.selectedLevelPath = ctx.selectedLevelPath;
+        slim.debuggerAttached = ctx.debuggerAttached;
         slim.applyAudioVolumes = ctx.applyAudioVolumes;
         slim.applyMenuMusicToggle = ctx.applyMenuMusicToggle;
         slim.applyFullscreen = [&](bool enabled) { return applyFullscreen(enabled); };

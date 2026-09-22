@@ -251,6 +251,7 @@ std::string contextVarValue(const std::string& name, const SlimRuntime& runtime,
     if (it != runtime.vars.end()) return it->second;
     if (var == "username" && ctx.levelServerAccountUsername) return *ctx.levelServerAccountUsername;
     if (var == "api" && ctx.levelServerUrl) return *ctx.levelServerUrl;
+    if (var == "debugger_attached" && ctx.debuggerAttached) return *ctx.debuggerAttached ? "true" : "false";
     if (var == "account_manager_url" && ctx.accountManagerUrl) return *ctx.accountManagerUrl;
     if (var == "account_status") {
         const bool hasUser = ctx.levelServerAccountUsername && !ctx.levelServerAccountUsername->empty();
@@ -289,6 +290,7 @@ bool varIsTruthy(const std::string& name, const SlimRuntime& runtime, const Slim
 std::string expandVars(std::string text, const SlimRuntime& runtime, const SlimMenuContext& ctx) {
     text = replaceAll(text, "${username}", contextVarValue("username", runtime, ctx));
     text = replaceAll(text, "${api}", contextVarValue("api", runtime, ctx));
+    text = replaceAll(text, "${debugger_attached}", contextVarValue("debugger_attached", runtime, ctx));
     text = replaceAll(text, "${account_status}", contextVarValue("account_status", runtime, ctx));
     text = replaceAll(text, "${account_manager_url}", contextVarValue("account_manager_url", runtime, ctx));
     text = replaceAll(text, "${menu_music_enabled}", contextVarValue("menu_music_enabled", runtime, ctx));

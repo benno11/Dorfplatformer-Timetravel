@@ -108,6 +108,19 @@ static std::wstring quoteWindowsArg(const std::wstring& value) {
     out.push_back(L'"');
     return out;
 }
+
+static bool isDebuggerAttachedToGameProcess() {
+    if (IsDebuggerPresent()) return true;
+    BOOL debuggerPresent = FALSE;
+    if (CheckRemoteDebuggerPresent(GetCurrentProcess(), &debuggerPresent) && debuggerPresent) {
+        return true;
+    }
+    return false;
+}
+#else
+static bool isDebuggerAttachedToGameProcess() {
+    return false;
+}
 #endif
 
 #if defined(HAVE_CURL) && HAVE_CURL && !defined(_WIN32)
@@ -1948,7 +1961,37 @@ int RunGameApp(int argc, char** argv) {
     if (!levelServerAccountUsername.empty()) {
         SDL_Log("Level server account username: %s", levelServerAccountUsername.c_str());
     }
-    if (!(allowDevTools && debugModeEnabled)) {
+    bool debuggerAttachedDebugOverride = false;
+    bool effectiveDevToolsEnabled = allowDevTools;
+    auto refreshDebuggerDebugOverride = [&]() {
+        debuggerAttachedDebugOverride = isDebuggerAttachedToGameProcess();
+        effectiveDevToolsEnabled = debuggerAttachedDebugOverride;
+    };
+    auto effectiveDebugModeEnabled = [&]() -> bool {
+        return debuggerAttachedDebugOverride;
+    };
+    auto effectiveDebugToolsEnabled = [&]() -> bool {
+        refreshDebuggerDebugOverride();
+        return effectiveDevToolsEnabled && effectiveDebugModeEnabled();
+    };
+    refreshDebuggerDebugOverride();
+    if (debuggerAttachedDebugOverride) {
+        const char* debuggerNotice =
+            "A debugger is attached, so deeper in-game debug tools are enabled for this run.\n\n"
+            "Useful controls include F5 for the detailed debugger, F4 to change debugger tabs, "
+            "F8/F12 for hitbox and debug overlays, and F2/F1 for replay recording/playback.\n\n"
+            "Save data warning: saves made while the debugger is attached record debug mode metadata. "
+            "Use a separate save slot or back up your saves before testing destructive states, crashes, "
+            "or level transitions. Let saves finish, then exit the game cleanly before detaching the debugger "
+            "or terminating the process.";
+        if (!SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION,
+                "Debugger attached",
+                debuggerNotice,
+                win)) {
+            SDL_Log("Could not show debugger startup notice: %s", SDL_GetError());
+        }
+    }
+    if (!effectiveDebugToolsEnabled()) {
         defaultShowFpsCounter = false;
         defaultShowDetailedDebugger = false;
         defaultShowHitboxes = false;
@@ -2260,7 +2303,8 @@ int RunGameApp(int argc, char** argv) {
     frontendCtx.activeSaveSlotIndex = &activeSaveSlotIndex;
     frontendCtx.extraSettings = extraSettings.data();
     frontendCtx.extraSettingsCount = (int)extraSettings.size();
-    frontendCtx.devToolsEnabled = &allowDevTools;
+    frontendCtx.devToolsEnabled = &effectiveDevToolsEnabled;
+    frontendCtx.debuggerAttached = &debuggerAttachedDebugOverride;
     frontendCtx.showOptionalSidebar = &showOptionalSidebar;
     std::string frontendSelectedLevelPath;
     frontendCtx.selectedLevelPath = &frontendSelectedLevelPath;
@@ -2628,6 +2672,7 @@ int RunGameApp(int argc, char** argv) {
             reopenUserLevelMenu = false;
         } else {
             frontendSelectedLevelPath.clear();
+            refreshDebuggerDebugOverride();
             FrontendAction action = runFrontendMenu(frontendCtx);
             saveClientSettings();
             if (!running || action == FrontendAction::Quit) break;
@@ -2636,8 +2681,8 @@ int RunGameApp(int argc, char** argv) {
             if (!selectedLevelPath.empty()) {
                 selectedFromFrontendMenu = true;
             } else {
-                selectedLevelPath = debugModeEnabled ? RunCampaignLevelSelect(win, ren)
-                                                     : std::string("assets/levels/level_001.txt");
+                selectedLevelPath = effectiveDebugModeEnabled() ? RunCampaignLevelSelect(win, ren)
+                                                               : std::string("assets/levels/level_001.txt");
             }
         }
         if (selectedLevelPath.empty()) {
@@ -3426,8 +3471,10 @@ int RunGameApp(int argc, char** argv) {
         bool showDemoPath = false;
         bool hideUnknownObjectTypes = defaultHideUnknownObjectTypes;
         bool showFpsCounter = defaultShowFpsCounter;
-        const bool debugToolsEnabled = allowDevTools && debugModeEnabled;
-        if (!debugToolsEnabled) {
+        auto debugToolsEnabled = [&]() -> bool {
+            return effectiveDebugToolsEnabled();
+        };
+        if (!debugToolsEnabled()) {
             defaultShowDetailedDebugger = false;
             showDetailedDebugger = false;
             if (debugWin) {
@@ -3439,7 +3486,7 @@ int RunGameApp(int argc, char** argv) {
                 debugWin = nullptr;
             }
         }
-        if (debugToolsEnabled && showDetailedDebugger && !debugWin) {
+        if (debugToolsEnabled() && showDetailedDebugger && !debugWin) {
 #if PLATFORMER_MOBILE
             debugWin = win;
             debugRen = ren;
@@ -3880,6 +3927,13 @@ int RunGameApp(int argc, char** argv) {
                 nlohmann::json root;
                 root["version"] = 1;
                 root["level_path"] = levelManager.levelPath();
+                refreshDebuggerDebugOverride();
+                root["debug_mode_enabled"] = effectiveDebugModeEnabled();
+                root["debug"] = {
+                    {"mode_enabled", effectiveDebugModeEnabled()},
+                    {"settings_debug_mode_enabled", debugModeEnabled},
+                    {"debugger_attached", debuggerAttachedDebugOverride}
+                };
                 root["allow_next_level_progression"] = allowNextLevelProgression;
                 root["level_timer_seconds"] = levelTimerSeconds;
                 root["lives_count"] = livesCount;
@@ -4084,12 +4138,12 @@ int RunGameApp(int argc, char** argv) {
             return false;
         };
         auto toggleDetailedDebugger = [&]() {
-            if (!debugToolsEnabled) {
+            if (!debugToolsEnabled()) {
                 showDetailedDebugger = false;
                 return;
             }
             showDetailedDebugger = !showDetailedDebugger;
-            if (debugToolsEnabled && showDetailedDebugger && !debugWin) {
+            if (debugToolsEnabled() && showDetailedDebugger && !debugWin) {
 #if PLATFORMER_MOBILE
                 debugWin = win;
                 debugRen = ren;
@@ -4336,7 +4390,7 @@ int RunGameApp(int argc, char** argv) {
         };
 
         while (levelRunning) {
-            if (!debugToolsEnabled && debugWin && debugWin != win) {
+            if (!debugToolsEnabled() && debugWin && debugWin != win) {
                 showDetailedDebugger = false;
                 SDL_HideWindow(debugWin);
             }
@@ -4692,7 +4746,7 @@ int RunGameApp(int argc, char** argv) {
                     const int my = (int)std::lround(e.tfinger.y * dbgH);
                     consumedByDebugger = handleDetailedDebuggerTap(mx, my);
                 }
-                if (debugToolsEnabled && !consumedByDebugger && e.tfinger.windowID == mainWindowId) {
+                if (debugToolsEnabled() && !consumedByDebugger && e.tfinger.windowID == mainWindowId) {
                     // Touch hotspot (top-right) to toggle detailed debugger on mobile.
                     if (e.tfinger.x >= 0.92f && e.tfinger.y <= 0.10f) {
                         toggleDetailedDebugger();
@@ -4737,32 +4791,32 @@ int RunGameApp(int argc, char** argv) {
                     if (applyFullscreen(nextFullscreen)) fullscreen = nextFullscreen;
 #endif
                 }
-                if (debugToolsEnabled && e.key.key == SDLK_F12) {
+                if (debugToolsEnabled() && e.key.key == SDLK_F12) {
                     showHitboxes = !showHitboxes;
                 }
-                if (debugToolsEnabled && e.key.key == SDLK_F8) {
+                if (debugToolsEnabled() && e.key.key == SDLK_F8) {
                     const bool next = !(showHitboxes && showPlayerHitbox && showDebugView);
                     showHitboxes = next;
                     showPlayerHitbox = next;
                     showDebugView = next;
                 }
-                if (debugToolsEnabled && e.key.key == SDLK_F7) {
+                if (debugToolsEnabled() && e.key.key == SDLK_F7) {
                     showDebugView = !showDebugView;
                 }
-                if (debugToolsEnabled && e.key.key == SDLK_p) {
+                if (debugToolsEnabled() && e.key.key == SDLK_p) {
                     showDemoPath = !showDemoPath;
                 }
-                if (debugToolsEnabled && e.key.key == SDLK_F6) {
+                if (debugToolsEnabled() && e.key.key == SDLK_F6) {
                     showFpsCounter = !showFpsCounter;
                 }
-                if (debugToolsEnabled && e.key.key == SDLK_F10) {
+                if (debugToolsEnabled() && e.key.key == SDLK_F10) {
                     clampCamX = !clampCamX;
                 }
-                if (debugToolsEnabled && e.key.key == SDLK_F5) {
+                if (debugToolsEnabled() && e.key.key == SDLK_F5) {
                     stopDebugButtonEditing();
                     toggleDetailedDebugger();
                 }
-                if (debugToolsEnabled && e.key.key == SDLK_F4) {
+                if (debugToolsEnabled() && e.key.key == SDLK_F4) {
                     detailedDebugSubmenu = (detailedDebugSubmenu + 1) % kDetailedDebugTabCount;
                     if (detailedDebugSubmenu != 0) stopDebugButtonEditing();
                 }
@@ -4805,13 +4859,13 @@ int RunGameApp(int argc, char** argv) {
                     if (e.key.key == SDLK_UP || e.key.key == SDLK_LEFT) detailedDebugTextureIndex--;
                     if (e.key.key == SDLK_DOWN || e.key.key == SDLK_RIGHT) detailedDebugTextureIndex++;
                 }
-                if (debugToolsEnabled && e.key.key == SDLK_F9) {
+                if (debugToolsEnabled() && e.key.key == SDLK_F9) {
                     if (allowNextLevelProgression) {
                         std::string nextPath = levelManager.nextLevelPath();
                         (void)transitionToLevelPath(nextPath);
                     }
                 }
-                if (debugToolsEnabled && e.key.key == SDLK_F3) {
+                if (debugToolsEnabled() && e.key.key == SDLK_F3) {
                     demoState.enabled = !demoState.enabled;
                     demoState.jumpCooldown = 0.0f;
                     demoState.jumpHoldTimer = 0.0f;
@@ -4823,7 +4877,7 @@ int RunGameApp(int argc, char** argv) {
                     demoState.startTileSet = false;
                     SDL_Log("demo autoplay: %s", demoState.enabled ? "enabled" : "disabled");
                 }
-                if (debugToolsEnabled && e.key.key == SDLK_F2) {
+                if (debugToolsEnabled() && e.key.key == SDLK_F2) {
                     if (replayRecorder.enabled) {
                         stopReplayRecording("user_toggle_off");
                         SDL_Log("replay recording: disabled");
@@ -4832,7 +4886,7 @@ int RunGameApp(int argc, char** argv) {
                         SDL_Log("replay recording: enabled (%s)", replayRecorder.path.c_str());
                     }
                 }
-                if (debugToolsEnabled && e.key.key == SDLK_F1) {
+                if (debugToolsEnabled() && e.key.key == SDLK_F1) {
                     if (replayPlayback.active) {
                         stopReplayPlayback();
                         SDL_Log("replay playback: disabled");
@@ -5900,7 +5954,7 @@ int RunGameApp(int argc, char** argv) {
                         player, map, dt, movementCfg,
                         touchMove, touchDown, touchJump,
                         gamepadMove, gamepadDown, gamepadJump, gamepadFreeMove,
-                        debugModeEnabled,
+                        effectiveDebugModeEnabled(),
                         keybinds,
                         inputMove, inputDown
                     );
