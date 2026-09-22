@@ -422,6 +422,54 @@ if (NOT SDL3_FOUND)
   find_package(SDL3 REQUIRED CONFIG)
 endif()
 
+function(platformer_replace_android_absolute_libm target_name)
+  if(NOT ANDROID OR NOT TARGET "${target_name}")
+    return()
+  endif()
+
+  foreach(_prop IN ITEMS INTERFACE_LINK_LIBRARIES IMPORTED_LINK_INTERFACE_LIBRARIES IMPORTED_LINK_DEPENDENT_LIBRARIES)
+    get_target_property(_libs "${target_name}" "${_prop}")
+    if(NOT _libs OR _libs MATCHES "-NOTFOUND$")
+      continue()
+    endif()
+
+    set(_fixed_libs "")
+    set(_changed FALSE)
+    foreach(_lib IN LISTS _libs)
+      if(_lib MATCHES "^(/|[A-Za-z]:[/\\\\]).*[/\\\\]libm\\.so$")
+        list(APPEND _fixed_libs "m")
+        set(_changed TRUE)
+      else()
+        list(APPEND _fixed_libs "${_lib}")
+      endif()
+    endforeach()
+
+    if(_changed)
+      set_target_properties("${target_name}" PROPERTIES "${_prop}" "${_fixed_libs}")
+      message(STATUS "Sanitized Android libm link path on ${target_name}:${_prop}")
+    endif()
+  endforeach()
+endfunction()
+
+function(platformer_sanitize_android_sdl_imports)
+  if(NOT ANDROID)
+    return()
+  endif()
+
+  foreach(_target IN ITEMS
+      SDL3::SDL3
+      SDL3::SDL3-static
+      SDL3_image::SDL3_image
+      SDL3_image::SDL3_image-static
+      SDL3_image::external_libtiff
+      SDL3_ttf::SDL3_ttf
+      SDL3_ttf::SDL3_ttf-static
+      SDL3_mixer::SDL3_mixer
+      SDL3_mixer::SDL3_mixer-static)
+    platformer_replace_android_absolute_libm("${_target}")
+  endforeach()
+endfunction()
+
 set(SDL3_IMAGE_DIR_CANDIDATES
   "${CMAKE_SOURCE_DIR}/deps/linux-sdl3-image-src/build"
   "/usr/local/lib/cmake/SDL3_image"
@@ -670,6 +718,7 @@ if(nlohmann_json_FOUND)
 else()
   message(STATUS "Found nlohmann_json: vendored")
 endif()
+platformer_sanitize_android_sdl_imports()
 
 function(select_sdl_target OUT NAMESPACE BASE)
   set(static_candidates

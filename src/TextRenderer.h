@@ -13,6 +13,9 @@ void ClearTextRendererCache(SDL_Renderer* ren = nullptr);
 void CollectTextRendererGarbage(Uint64 maxIdleMs = 15000, size_t targetEntriesPerRenderer = 256);
 void SetTextScaleMultiplier(float multiplier);
 float GetTextScaleMultiplier();
+void BeginNativeTextOverlay(SDL_Renderer* ren, int logicalW, int logicalH, const SDL_Rect& outputRect);
+void FlushNativeTextOverlay(SDL_Renderer* ren);
+void CancelNativeTextOverlay(SDL_Renderer* ren);
 
 void DrawText(SDL_Renderer* ren, int x, int y, int scale, const std::string& text);
 void DrawTextColored(SDL_Renderer* ren, int x, int y, int scale, const std::string& text, const SDL_Color& color);

@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <deque>
+#include <vector>
 #include <unordered_map>
 
 namespace {
@@ -26,7 +27,24 @@ struct RendererTextCache {
     std::unordered_map<std::string, TextCacheEntry> entries;
     std::deque<std::string> order;
 };
+struct QueuedTextDraw {
+    std::string text;
+    SDL_Color color{};
+    int x = 0;
+    int y = 0;
+    int scale = 1;
+    float renderScaleX = 1.0f;
+    float renderScaleY = 1.0f;
+};
+struct NativeTextOverlay {
+    bool active = false;
+    int logicalW = 0;
+    int logicalH = 0;
+    SDL_Rect outputRect{0, 0, 0, 0};
+    std::vector<QueuedTextDraw> queue;
+};
 std::unordered_map<SDL_Renderer*, RendererTextCache> gTextCacheByRenderer;
+std::unordered_map<SDL_Renderer*, NativeTextOverlay> gNativeTextOverlays;
 constexpr size_t kMaxTextCacheEntries = 1024;
 
 static std::string makeTextCacheKey(int scale, const std::string& text, const SDL_Color& color) {
@@ -53,116 +71,8 @@ int effectiveTextScale(int scale) {
     const float m = std::clamp(gTextScaleMultiplier, 0.5f, 2.0f);
     return std::max(1, (int)std::lround((float)std::max(1, scale) * m));
 }
-}
 
-bool InitTextRenderer(const std::string& fontPath) {
-    gFontPath = fontPath;
-    gTtfInited = TTF_Init();
-    if (!gTtfInited) {
-        SDL_Log("TTF_Init failed: %s", SDL_GetError());
-    }
-    return gTtfInited;
-}
-
-void ShutdownTextRenderer() {
-    for (auto& kv : gFontCache) {
-        if (kv.second) TTF_CloseFont(kv.second);
-    }
-    gFontCache.clear();
-    gDebugLabelWidthCache.clear();
-    for (auto& byRenderer : gTextCacheByRenderer) {
-        for (auto& kv : byRenderer.second.entries) {
-            if (kv.second.tex) SDL_DestroyTexture(kv.second.tex);
-        }
-    }
-    gTextCacheByRenderer.clear();
-    if (gTtfInited) TTF_Quit();
-    gTtfInited = false;
-}
-
-void ClearTextRendererCache(SDL_Renderer* ren) {
-    auto clearRendererCache = [](RendererTextCache& cache) {
-        for (auto& kv : cache.entries) {
-            if (kv.second.tex) SDL_DestroyTexture(kv.second.tex);
-        }
-        cache.entries.clear();
-        cache.order.clear();
-    };
-
-    if (ren) {
-        auto it = gTextCacheByRenderer.find(ren);
-        if (it == gTextCacheByRenderer.end()) return;
-        clearRendererCache(it->second);
-        if (it->second.entries.empty() && it->second.order.empty()) {
-            gTextCacheByRenderer.erase(it);
-        }
-        return;
-    }
-
-    for (auto& byRenderer : gTextCacheByRenderer) {
-        clearRendererCache(byRenderer.second);
-    }
-    gTextCacheByRenderer.clear();
-}
-
-void CollectTextRendererGarbage(Uint64 maxIdleMs, size_t targetEntriesPerRenderer) {
-    const Uint64 now = SDL_GetTicks();
-    for (auto rendererIt = gTextCacheByRenderer.begin(); rendererIt != gTextCacheByRenderer.end();) {
-        auto& cache = rendererIt->second;
-
-        for (auto entryIt = cache.entries.begin(); entryIt != cache.entries.end();) {
-            const bool stale = (now >= entryIt->second.lastUsedTicks) &&
-                               ((now - entryIt->second.lastUsedTicks) > maxIdleMs);
-            if (!stale) {
-                ++entryIt;
-                continue;
-            }
-            if (entryIt->second.tex) SDL_DestroyTexture(entryIt->second.tex);
-            entryIt = cache.entries.erase(entryIt);
-        }
-
-        while (cache.order.size() > targetEntriesPerRenderer) {
-            const std::string oldKey = cache.order.front();
-            cache.order.pop_front();
-            auto itOld = cache.entries.find(oldKey);
-            if (itOld == cache.entries.end()) continue;
-            if (itOld->second.tex) SDL_DestroyTexture(itOld->second.tex);
-            cache.entries.erase(itOld);
-        }
-
-        for (auto orderIt = cache.order.begin(); orderIt != cache.order.end();) {
-            if (cache.entries.find(*orderIt) == cache.entries.end()) {
-                orderIt = cache.order.erase(orderIt);
-            } else {
-                ++orderIt;
-            }
-        }
-
-        if (cache.entries.empty()) {
-            rendererIt = gTextCacheByRenderer.erase(rendererIt);
-        } else {
-            ++rendererIt;
-        }
-    }
-
-    if (gDebugLabelWidthCache.size() > 2048) {
-        gDebugLabelWidthCache.clear();
-    }
-}
-
-void SetTextScaleMultiplier(float multiplier) {
-    gTextScaleMultiplier = multiplier;
-}
-
-float GetTextScaleMultiplier() {
-    return gTextScaleMultiplier;
-}
-
-void DrawText(SDL_Renderer* ren, int x, int y, int scale, const std::string& text) {
-    DrawTextColored(ren, x, y, scale, text, SDL_Color{255, 255, 255, 255});
-}
-
-void DrawTextColored(SDL_Renderer* ren, int x, int y, int scale, const std::string& text, const SDL_Color& color) {
+void DrawTextColoredImmediate(SDL_Renderer* ren, float x, float y, float scaleX, float scaleY, int scale, const std::string& text, const SDL_Color& color) {
     if (text.empty()) return;
     const int scaled = effectiveTextScale(scale);
     TTF_Font* font = getFont(scaled);
@@ -238,12 +148,179 @@ void DrawTextColored(SDL_Renderer* ren, int x, int y, int scale, const std::stri
     itCached->second.lastUsedTicks = SDL_GetTicks();
 
     SDL_FRect dst{
-        (float)x,
-        (float)y,
-        (float)std::lround((float)itCached->second.w / (float)kFontRenderScale),
-        (float)std::lround((float)itCached->second.h / (float)kFontRenderScale)
+        x,
+        y,
+        std::max(1.0f, ((float)itCached->second.w / (float)kFontRenderScale) * scaleX),
+        std::max(1.0f, ((float)itCached->second.h / (float)kFontRenderScale) * scaleY)
     };
     SDL_RenderTexture(ren, itCached->second.tex, nullptr, &dst);
+}
+}
+
+bool InitTextRenderer(const std::string& fontPath) {
+    gFontPath = fontPath;
+    gTtfInited = TTF_Init();
+    if (!gTtfInited) {
+        SDL_Log("TTF_Init failed: %s", SDL_GetError());
+    }
+    return gTtfInited;
+}
+
+void ShutdownTextRenderer() {
+    for (auto& kv : gFontCache) {
+        if (kv.second) TTF_CloseFont(kv.second);
+    }
+    gFontCache.clear();
+    gDebugLabelWidthCache.clear();
+    for (auto& byRenderer : gTextCacheByRenderer) {
+        for (auto& kv : byRenderer.second.entries) {
+            if (kv.second.tex) SDL_DestroyTexture(kv.second.tex);
+        }
+    }
+    gTextCacheByRenderer.clear();
+    gNativeTextOverlays.clear();
+    if (gTtfInited) TTF_Quit();
+    gTtfInited = false;
+}
+
+void ClearTextRendererCache(SDL_Renderer* ren) {
+    auto clearRendererCache = [](RendererTextCache& cache) {
+        for (auto& kv : cache.entries) {
+            if (kv.second.tex) SDL_DestroyTexture(kv.second.tex);
+        }
+        cache.entries.clear();
+        cache.order.clear();
+    };
+
+    if (ren) {
+        auto it = gTextCacheByRenderer.find(ren);
+        if (it == gTextCacheByRenderer.end()) return;
+        clearRendererCache(it->second);
+        if (it->second.entries.empty() && it->second.order.empty()) {
+            gTextCacheByRenderer.erase(it);
+        }
+        return;
+    }
+
+    for (auto& byRenderer : gTextCacheByRenderer) {
+        clearRendererCache(byRenderer.second);
+    }
+    gTextCacheByRenderer.clear();
+    gNativeTextOverlays.clear();
+}
+
+void CollectTextRendererGarbage(Uint64 maxIdleMs, size_t targetEntriesPerRenderer) {
+    const Uint64 now = SDL_GetTicks();
+    for (auto rendererIt = gTextCacheByRenderer.begin(); rendererIt != gTextCacheByRenderer.end();) {
+        auto& cache = rendererIt->second;
+
+        for (auto entryIt = cache.entries.begin(); entryIt != cache.entries.end();) {
+            const bool stale = (now >= entryIt->second.lastUsedTicks) &&
+                               ((now - entryIt->second.lastUsedTicks) > maxIdleMs);
+            if (!stale) {
+                ++entryIt;
+                continue;
+            }
+            if (entryIt->second.tex) SDL_DestroyTexture(entryIt->second.tex);
+            entryIt = cache.entries.erase(entryIt);
+        }
+
+        while (cache.order.size() > targetEntriesPerRenderer) {
+            const std::string oldKey = cache.order.front();
+            cache.order.pop_front();
+            auto itOld = cache.entries.find(oldKey);
+            if (itOld == cache.entries.end()) continue;
+            if (itOld->second.tex) SDL_DestroyTexture(itOld->second.tex);
+            cache.entries.erase(itOld);
+        }
+
+        for (auto orderIt = cache.order.begin(); orderIt != cache.order.end();) {
+            if (cache.entries.find(*orderIt) == cache.entries.end()) {
+                orderIt = cache.order.erase(orderIt);
+            } else {
+                ++orderIt;
+            }
+        }
+
+        if (cache.entries.empty()) {
+            rendererIt = gTextCacheByRenderer.erase(rendererIt);
+        } else {
+            ++rendererIt;
+        }
+    }
+
+    if (gDebugLabelWidthCache.size() > 2048) {
+        gDebugLabelWidthCache.clear();
+    }
+}
+
+void SetTextScaleMultiplier(float multiplier) {
+    gTextScaleMultiplier = multiplier;
+}
+
+float GetTextScaleMultiplier() {
+    return gTextScaleMultiplier;
+}
+
+void BeginNativeTextOverlay(SDL_Renderer* ren, int logicalW, int logicalH, const SDL_Rect& outputRect) {
+    if (!ren) return;
+    auto& overlay = gNativeTextOverlays[ren];
+    overlay.active = logicalW > 0 && logicalH > 0 && outputRect.w > 0 && outputRect.h > 0;
+    overlay.logicalW = logicalW;
+    overlay.logicalH = logicalH;
+    overlay.outputRect = outputRect;
+    overlay.queue.clear();
+}
+
+void FlushNativeTextOverlay(SDL_Renderer* ren) {
+    auto it = gNativeTextOverlays.find(ren);
+    if (it == gNativeTextOverlays.end()) return;
+    NativeTextOverlay& overlay = it->second;
+    if (!overlay.active) {
+        overlay.queue.clear();
+        return;
+    }
+
+    const float sx = (float)overlay.outputRect.w / (float)overlay.logicalW;
+    const float sy = (float)overlay.outputRect.h / (float)overlay.logicalH;
+    for (const QueuedTextDraw& draw : overlay.queue) {
+        DrawTextColoredImmediate(
+            ren,
+            (float)overlay.outputRect.x + (float)draw.x * draw.renderScaleX * sx,
+            (float)overlay.outputRect.y + (float)draw.y * draw.renderScaleY * sy,
+            draw.renderScaleX * sx,
+            draw.renderScaleY * sy,
+            draw.scale,
+            draw.text,
+            draw.color);
+    }
+    overlay.queue.clear();
+    overlay.active = false;
+}
+
+void CancelNativeTextOverlay(SDL_Renderer* ren) {
+    auto it = gNativeTextOverlays.find(ren);
+    if (it == gNativeTextOverlays.end()) return;
+    it->second.queue.clear();
+    it->second.active = false;
+}
+
+void DrawText(SDL_Renderer* ren, int x, int y, int scale, const std::string& text) {
+    DrawTextColored(ren, x, y, scale, text, SDL_Color{255, 255, 255, 255});
+}
+
+void DrawTextColored(SDL_Renderer* ren, int x, int y, int scale, const std::string& text, const SDL_Color& color) {
+    if (text.empty()) return;
+    auto overlayIt = gNativeTextOverlays.find(ren);
+    if (overlayIt != gNativeTextOverlays.end() && overlayIt->second.active && SDL_GetRenderTarget(ren) != nullptr) {
+        float sx = 1.0f;
+        float sy = 1.0f;
+        SDL_GetRenderScale(ren, &sx, &sy);
+        overlayIt->second.queue.push_back(QueuedTextDraw{text, color, x, y, scale, sx, sy});
+        return;
+    }
+
+    DrawTextColoredImmediate(ren, (float)x, (float)y, 1.0f, 1.0f, scale, text, color);
 }
 
 int MeasureTextWidth(int scale, const std::string& text) {

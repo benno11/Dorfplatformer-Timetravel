@@ -6937,6 +6937,10 @@ int RunGameApp(int argc, char** argv) {
         previousCameraX = camX;
         previousCameraY = camY;
 
+        int nativeTextWinW = 0;
+        int nativeTextWinH = 0;
+        getWindowSizeInPixelsCompat(win, nativeTextWinW, nativeTextWinH);
+        SDL_Rect nativeTextPresentDst = computePresentRect(nativeTextWinW, nativeTextWinH, kBaseScreenW, kBaseScreenH, 1.0f);
         SDL_SetRenderTarget(ren, worldTarget);
         SDL_SetRenderScale(ren, kGameplayZoom, kGameplayZoom);
         const int currentWorldId = activeThemeWorldId();
@@ -7802,6 +7806,7 @@ int RunGameApp(int argc, char** argv) {
 
         SDL_SetRenderScale(ren, 1.0f, 1.0f);
         SDL_SetRenderTarget(ren, gameTarget);
+        BeginNativeTextOverlay(ren, kBaseScreenW, kBaseScreenH, nativeTextPresentDst);
         SDL_Rect worldDst{0, 0, screenW, screenH};
         SDL_RenderTexture(ren, worldTarget, nullptr, &worldDst);
 
@@ -8272,12 +8277,10 @@ int RunGameApp(int argc, char** argv) {
         }
 
         SDL_SetRenderTarget(ren, nullptr);
-        int winW = 0, winH = 0;
-        getWindowSizeInPixelsCompat(win, winW, winH);
-        SDL_Rect presentDst = computePresentRect(winW, winH, kBaseScreenW, kBaseScreenH, 1.0f);
         SDL_SetRenderDrawColor(ren, 118, 225, 255, 255); // #76e1ff
         SDL_RenderClear(ren);
-        SDL_RenderCopy(ren, gameTarget, nullptr, &presentDst);
+        SDL_RenderCopy(ren, gameTarget, nullptr, &nativeTextPresentDst);
+        FlushNativeTextOverlay(ren);
         SDL_RenderPresent(ren);
         {
             const Uint32 presentedAt = SDL_GetTicks();
