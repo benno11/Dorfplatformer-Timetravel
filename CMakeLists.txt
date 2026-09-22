@@ -497,6 +497,25 @@ function(platformer_remove_android_stale_import_includes target_name)
   endforeach()
 endfunction()
 
+function(platformer_repair_android_sdl_image_imports)
+  if(NOT ANDROID)
+    return()
+  endif()
+
+  if(TARGET SDL3_image::external_libpng AND TARGET SDL3_image::external_zlib)
+    get_target_property(_png_libs SDL3_image::external_libpng INTERFACE_LINK_LIBRARIES)
+    if(NOT _png_libs OR _png_libs MATCHES "-NOTFOUND$")
+      set(_png_libs "")
+    endif()
+
+    if(NOT "SDL3_image::external_zlib" IN_LIST _png_libs)
+      list(APPEND _png_libs "$<LINK_ONLY:SDL3_image::external_zlib>")
+      set_target_properties(SDL3_image::external_libpng PROPERTIES INTERFACE_LINK_LIBRARIES "${_png_libs}")
+      message(STATUS "Repaired Android SDL_image libpng zlib dependency")
+    endif()
+  endif()
+endfunction()
+
 function(platformer_sanitize_android_sdl_imports)
   if(NOT ANDROID)
     return()
@@ -520,6 +539,8 @@ function(platformer_sanitize_android_sdl_imports)
     platformer_replace_android_absolute_libm("${_target}")
     platformer_remove_android_stale_import_includes("${_target}")
   endforeach()
+
+  platformer_repair_android_sdl_image_imports()
 endfunction()
 
 set(SDL3_IMAGE_DIR_CANDIDATES
