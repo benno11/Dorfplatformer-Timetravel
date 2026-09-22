@@ -2857,10 +2857,12 @@ int RunGameApp(int argc, char** argv) {
             return meta.levelId > 0 ? meta.levelId : parseLevelIdFromLevelPath(levelManager.levelPath());
         };
         auto levelWrapXEnabled = [&]() -> bool {
+            if (std::find(objectIds.begin(), objectIds.end(), 69) != objectIds.end()) return false;
             if (meta.wrapX) return true;
             return std::find(objectIds.begin(), objectIds.end(), 62) != objectIds.end();
         };
         auto levelWrapYEnabled = [&]() -> bool {
+            if (std::find(objectIds.begin(), objectIds.end(), 70) != objectIds.end()) return false;
             if (meta.wrapY) return true;
             return std::find(objectIds.begin(), objectIds.end(), 63) != objectIds.end();
         };
@@ -7286,6 +7288,7 @@ int RunGameApp(int argc, char** argv) {
             const bool isFastTravelChanger = (objId >= 57 && objId <= 61);
             const bool isBumper = (objId == 46);
             const bool isEndSign = (objId == 67);
+            const bool isWrapControl = (objId == 62 || objId == 63 || objId == 69 || objId == 70);
             float entityBaseX = obj.x - 16.0f;
             float entityBaseY = obj.y - 16.0f;
             if (renderWrapX) {
@@ -7345,7 +7348,7 @@ int RunGameApp(int argc, char** argv) {
             }
             if (!of && isEndSign) of = defaultEndSignFrame;
             if (!of) of = defaultEntityFrame;
-            if (!isFastTravelChanger && !isBumper && !isEndSign && hideUnknownObjectTypes &&
+            if (!isFastTravelChanger && !isBumper && !isEndSign && !isWrapControl && hideUnknownObjectTypes &&
                 currentLevelId != 9 && currentLevelId != 10 && !objectTypeKnown) {
                 continue;
             }

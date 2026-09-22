@@ -66,6 +66,8 @@ std::unordered_map<int, std::string> defaultEditorObjectTypes() {
         {61, "fast_travel_exit"},
         {62, "level_wrap_x"},
         {63, "level_wrap_y"},
+        {69, "disable_wrap_x"},
+        {70, "disable_wrap_y"},
         {64, "key"},
         {65, "door"},
         {67, "end_sign"},
@@ -714,6 +716,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
     float fingerGridViewY = 0.0f;
     int viewX = 0;
     int viewY = 0;
+    int editorZoomPercent = 100;
     bool middlePanning = false;
     int lastPanMouseX = 0;
     int lastPanMouseY = 0;
@@ -883,14 +886,26 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         const int panelX = std::max(gridX + 16, winW - margin - sideW);
         const int gridViewW = std::max(120, panelX - gridX - margin);
         const int gridViewH = std::max(120, winH - margin * 2);
-        int cell = std::min(gridViewW / std::max(1, gridW), gridViewH / std::max(1, gridH));
-        cell = std::max(12, cell);
+        const int baseCell = std::max(12, std::min(gridViewW / std::max(1, gridW), gridViewH / std::max(1, gridH)));
+        int cell = std::max(8, (baseCell * editorZoomPercent) / 100);
         const int gridPxW = gridW * cell;
         const int gridPxH = gridH * cell;
         const int maxViewX = std::max(0, gridPxW - gridViewW);
         const int maxViewY = std::max(0, gridPxH - gridViewH);
         viewX = std::clamp(viewX, 0, maxViewX);
         viewY = std::clamp(viewY, 0, maxViewY);
+        auto setEditorZoom = [&](int nextZoomPercent, int anchorX, int anchorY) {
+            nextZoomPercent = std::clamp(nextZoomPercent, 50, 300);
+            if (nextZoomPercent == editorZoomPercent) return;
+            const float worldX = ((float)(anchorX - gridX) + (float)viewX) / (float)std::max(1, cell);
+            const float worldY = ((float)(anchorY - gridY) + (float)viewY) / (float)std::max(1, cell);
+            editorZoomPercent = nextZoomPercent;
+            const int nextCell = std::max(8, (baseCell * editorZoomPercent) / 100);
+            const int nextMaxViewX = std::max(0, gridW * nextCell - gridViewW);
+            const int nextMaxViewY = std::max(0, gridH * nextCell - gridViewH);
+            viewX = std::clamp((int)std::lround(worldX * (float)nextCell - (float)(anchorX - gridX)), 0, nextMaxViewX);
+            viewY = std::clamp((int)std::lround(worldY * (float)nextCell - (float)(anchorY - gridY)), 0, nextMaxViewY);
+        };
         SDL_Rect gridViewport{gridX, gridY, gridViewW, gridViewH};
         const int controlGap = 8;
         const int controlW = (sideW - controlGap) / 2;
@@ -899,7 +914,9 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         SDL_Rect objectModeBtn{panelX + controlW + controlGap, margin, controlW, controlH};
         SDL_Rect panModeBtn{panelX, margin + controlH + controlGap, controlW, controlH};
         SDL_Rect eraseModeBtn{panelX + controlW + controlGap, margin + controlH + controlGap, controlW, controlH};
-        const int paletteStartY = margin + (controlH + controlGap) * 2 + 4;
+        SDL_Rect zoomOutBtn{panelX, margin + (controlH + controlGap) * 2, controlW, controlH};
+        SDL_Rect zoomInBtn{panelX + controlW + controlGap, margin + (controlH + controlGap) * 2, controlW, controlH};
+        const int paletteStartY = margin + (controlH + controlGap) * 3 + 4;
         const int actionY = winH - margin - 48;
         SDL_Rect saveBtn{panelX, actionY, controlW, 48};
         SDL_Rect cancelBtn{panelX + controlW + controlGap, actionY, controlW, 48};
@@ -934,6 +951,12 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 if (SDL_PointInRect(&pt, &paletteViewport)) {
                     const int wheelY = (int)std::lround(e.wheel.y);
                     activePaletteScroll = std::clamp(activePaletteScroll - wheelY, 0, maxPaletteScroll);
+                    continue;
+                }
+                const bool ctrlHeld = (SDL_GetModState() & SDL_KMOD_CTRL) != 0;
+                if (ctrlHeld && SDL_PointInRect(&pt, &gridViewport)) {
+                    const int wheelY = (int)std::lround(e.wheel.y);
+                    if (wheelY != 0) setEditorZoom(editorZoomPercent + wheelY * 25, pt.x, pt.y);
                     continue;
                 }
                 const bool shiftHeld = (SDL_GetModState() & SDL_KMOD_SHIFT) != 0;
@@ -1009,6 +1032,16 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 }
                 if (SDL_PointInRect(&pt, &eraseModeBtn)) {
                     toggleTouchEraseMode();
+                    fingerPainting = false;
+                    continue;
+                }
+                if (SDL_PointInRect(&pt, &zoomOutBtn)) {
+                    setEditorZoom(editorZoomPercent - 25, gridX + gridViewW / 2, gridY + gridViewH / 2);
+                    fingerPainting = false;
+                    continue;
+                }
+                if (SDL_PointInRect(&pt, &zoomInBtn)) {
+                    setEditorZoom(editorZoomPercent + 25, gridX + gridViewW / 2, gridY + gridViewH / 2);
                     fingerPainting = false;
                     continue;
                 }
@@ -1178,6 +1211,12 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 }
                 if (e.key.key == SDLK_o || e.key.key == SDLK_O) {
                     objectMode = !objectMode;
+                }
+                if (e.key.key == SDLK_MINUS || e.key.key == SDLK_KP_MINUS) {
+                    setEditorZoom(editorZoomPercent - 25, gridX + gridViewW / 2, gridY + gridViewH / 2);
+                }
+                if (e.key.key == SDLK_EQUALS || e.key.key == SDLK_PLUS || e.key.key == SDLK_KP_PLUS) {
+                    setEditorZoom(editorZoomPercent + 25, gridX + gridViewW / 2, gridY + gridViewH / 2);
                 }
                 if (e.key.key == SDLK_c || e.key.key == SDLK_C) {
                     std::fill(grid.begin(), grid.end(), (unsigned short)2);
@@ -1357,6 +1396,14 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                     toggleTouchEraseMode();
                     continue;
                 }
+                if (SDL_PointInRect(&pt, &zoomOutBtn)) {
+                    setEditorZoom(editorZoomPercent - 25, gridX + gridViewW / 2, gridY + gridViewH / 2);
+                    continue;
+                }
+                if (SDL_PointInRect(&pt, &zoomInBtn)) {
+                    setEditorZoom(editorZoomPercent + 25, gridX + gridViewW / 2, gridY + gridViewH / 2);
+                    continue;
+                }
                 if (SDL_PointInRect(&pt, &saveBtn)) {
                     savedPath = writeLocalLevelFile(grid, gridW, gridH, saveTargetPath, placedObjects);
                     if (!savedPath.empty()) {
@@ -1418,6 +1465,8 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             if (id == 61) { r = 210; g = 150; b = 255; return; } // fast travel exit
             if (id == 62) { r = 100; g = 170; b = 255; return; } // level wrap x
             if (id == 63) { r = 100; g = 205; b = 255; return; } // level wrap y
+            if (id == 69) { r = 255; g = 135; b = 80; return; } // disable wrap x
+            if (id == 70) { r = 255; g = 95; b = 145; return; } // disable wrap y
             if (id == 64) { r = 255; g = 230; b = 90; return; } // key
             if (id == 65) { r = 150; g = 110; b = 255; return; } // door
             if (id == 67) { r = 120; g = 180; b = 255; return; }
@@ -1444,6 +1493,10 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             if (id == 59) return "LT";
             if (id == 60) return "RT";
             if (id == 61) return "EX";
+            if (id == 62) return "WX";
+            if (id == 63) return "WY";
+            if (id == 69) return "NX";
+            if (id == 70) return "NY";
             return "";
         };
         for (const auto& obj : placedObjects) {
@@ -1524,6 +1577,19 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         SDL_SetRenderDrawColor(ren, 220, 220, 230, 255);
         SDL_RenderDrawRect(ren, &eraseModeBtn);
         DrawText(ren, eraseModeBtn.x + std::max(4, (eraseModeBtn.w - MeasureTextWidth(2, "ERASE")) / 2), eraseModeBtn.y + 13, 2, "ERASE");
+
+        SDL_SetRenderDrawColor(ren, 55, 65, 90, 255);
+        SDL_RenderFillRect(ren, &zoomOutBtn);
+        SDL_SetRenderDrawColor(ren, 220, 220, 230, 255);
+        SDL_RenderDrawRect(ren, &zoomOutBtn);
+        DrawText(ren, zoomOutBtn.x + std::max(4, (zoomOutBtn.w - MeasureTextWidth(2, "-")) / 2), zoomOutBtn.y + 13, 2, "-");
+        SDL_SetRenderDrawColor(ren, 55, 65, 90, 255);
+        SDL_RenderFillRect(ren, &zoomInBtn);
+        SDL_SetRenderDrawColor(ren, 220, 220, 230, 255);
+        SDL_RenderDrawRect(ren, &zoomInBtn);
+        DrawText(ren, zoomInBtn.x + std::max(4, (zoomInBtn.w - MeasureTextWidth(2, "+")) / 2), zoomInBtn.y + 13, 2, "+");
+        const std::string zoomLabel = std::to_string(editorZoomPercent) + "%";
+        DrawText(ren, panelX + std::max(4, (sideW - MeasureTextWidth(1, zoomLabel)) / 2), zoomOutBtn.y + zoomOutBtn.h - 13, 1, zoomLabel);
 
         const int paletteCount = objectMode ? (int)objectPalette.size() : (int)palette.size();
         int& paletteScroll = objectMode ? objectPaletteScroll : tilePaletteScroll;
