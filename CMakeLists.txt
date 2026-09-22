@@ -395,6 +395,15 @@ set(SDL3_DIR_CANDIDATES
   "/usr/lib/x86_64-linux-gnu/cmake/SDL3"
   "/lib/x86_64-linux-gnu/cmake/SDL3"
 )
+if(ANDROID)
+  if(DEFINED ANDROID_ABI)
+    list(PREPEND SDL3_DIR_CANDIDATES
+      "${CMAKE_SOURCE_DIR}/deps/android-install/${ANDROID_ABI}/SDL/lib/cmake/SDL3"
+      "${CMAKE_SOURCE_DIR}/deps/android-install/${ANDROID_ABI}/SDL"
+    )
+    list(PREPEND CMAKE_PREFIX_PATH "${CMAKE_SOURCE_DIR}/deps/android-install/${ANDROID_ABI}/SDL")
+  endif()
+endif()
 find_package(SDL3 ${PROJECT_SDL_MIN_VERSION} QUIET CONFIG)
 if(NOT SDL3_FOUND)
   foreach(_dir IN LISTS SDL3_DIR_CANDIDATES)
@@ -418,6 +427,15 @@ set(SDL3_IMAGE_DIR_CANDIDATES
   "/usr/local/lib/cmake/SDL3_image"
   "/usr/lib/x86_64-linux-gnu/cmake/SDL3_image"
 )
+if(ANDROID)
+  if(DEFINED ANDROID_ABI)
+    list(PREPEND SDL3_IMAGE_DIR_CANDIDATES
+      "${CMAKE_SOURCE_DIR}/deps/android-install/${ANDROID_ABI}/SDL_image/lib/cmake/SDL3_image"
+      "${CMAKE_SOURCE_DIR}/deps/android-install/${ANDROID_ABI}/SDL_image"
+    )
+    list(PREPEND CMAKE_PREFIX_PATH "${CMAKE_SOURCE_DIR}/deps/android-install/${ANDROID_ABI}/SDL_image")
+  endif()
+endif()
 find_package(SDL3_image QUIET CONFIG)
 if(NOT SDL3_image_FOUND)
   foreach(_dir IN LISTS SDL3_IMAGE_DIR_CANDIDATES)
@@ -438,6 +456,15 @@ set(SDL3_TTF_DIR_CANDIDATES
   "/usr/local/lib/cmake/SDL3_ttf"
   "/usr/lib/x86_64-linux-gnu/cmake/SDL3_ttf"
 )
+if(ANDROID)
+  if(DEFINED ANDROID_ABI)
+    list(PREPEND SDL3_TTF_DIR_CANDIDATES
+      "${CMAKE_SOURCE_DIR}/deps/android-install/${ANDROID_ABI}/SDL_ttf/lib/cmake/SDL3_ttf"
+      "${CMAKE_SOURCE_DIR}/deps/android-install/${ANDROID_ABI}/SDL_ttf"
+    )
+    list(PREPEND CMAKE_PREFIX_PATH "${CMAKE_SOURCE_DIR}/deps/android-install/${ANDROID_ABI}/SDL_ttf")
+  endif()
+endif()
 find_package(SDL3_ttf QUIET CONFIG)
 if(NOT SDL3_ttf_FOUND)
   foreach(_dir IN LISTS SDL3_TTF_DIR_CANDIDATES)
@@ -458,6 +485,15 @@ set(SDL3_MIXER_DIR_CANDIDATES
   "/usr/local/lib/cmake/SDL3_mixer"
   "/usr/lib/x86_64-linux-gnu/cmake/SDL3_mixer"
 )
+if(ANDROID)
+  if(DEFINED ANDROID_ABI)
+    list(PREPEND SDL3_MIXER_DIR_CANDIDATES
+      "${CMAKE_SOURCE_DIR}/deps/android-install/${ANDROID_ABI}/SDL_mixer/lib/cmake/SDL3_mixer"
+      "${CMAKE_SOURCE_DIR}/deps/android-install/${ANDROID_ABI}/SDL_mixer"
+    )
+    list(PREPEND CMAKE_PREFIX_PATH "${CMAKE_SOURCE_DIR}/deps/android-install/${ANDROID_ABI}/SDL_mixer")
+  endif()
+endif()
 if(WIN32)
   # Search for pre-bundled SDL3_mixer packages under deps/windows-sdl3-mixer/*/cmake.
   file(GLOB _windows_mixer_cmake_dirs "${CMAKE_SOURCE_DIR}/deps/windows-sdl3-mixer/*/cmake")

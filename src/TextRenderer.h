@@ -3,6 +3,10 @@
 #include <string>
 #include <SDL3/SDL.h>
 
+#if defined(DrawText)
+#undef DrawText
+#endif
+
 bool InitTextRenderer(const std::string& fontPath);
 void ShutdownTextRenderer();
 void ClearTextRendererCache(SDL_Renderer* ren = nullptr);
