@@ -427,8 +427,14 @@ function(platformer_replace_android_absolute_libm target_name)
     return()
   endif()
 
+  set(_target_name "${target_name}")
+  get_target_property(_aliased_target "${target_name}" ALIASED_TARGET)
+  if(_aliased_target)
+    set(_target_name "${_aliased_target}")
+  endif()
+
   foreach(_prop IN ITEMS INTERFACE_LINK_LIBRARIES IMPORTED_LINK_INTERFACE_LIBRARIES IMPORTED_LINK_DEPENDENT_LIBRARIES)
-    get_target_property(_libs "${target_name}" "${_prop}")
+    get_target_property(_libs "${_target_name}" "${_prop}")
     if(NOT _libs OR _libs MATCHES "-NOTFOUND$")
       continue()
     endif()
@@ -445,8 +451,48 @@ function(platformer_replace_android_absolute_libm target_name)
     endforeach()
 
     if(_changed)
-      set_target_properties("${target_name}" PROPERTIES "${_prop}" "${_fixed_libs}")
-      message(STATUS "Sanitized Android libm link path on ${target_name}:${_prop}")
+      set_target_properties("${_target_name}" PROPERTIES "${_prop}" "${_fixed_libs}")
+      message(STATUS "Sanitized Android libm link path on ${_target_name}:${_prop}")
+    endif()
+  endforeach()
+endfunction()
+
+function(platformer_remove_android_stale_import_includes target_name)
+  if(NOT ANDROID OR NOT TARGET "${target_name}")
+    return()
+  endif()
+
+  set(_target_name "${target_name}")
+  get_target_property(_aliased_target "${target_name}" ALIASED_TARGET)
+  if(_aliased_target)
+    set(_target_name "${_aliased_target}")
+  endif()
+
+  foreach(_prop IN ITEMS INTERFACE_INCLUDE_DIRECTORIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES)
+    get_target_property(_dirs "${_target_name}" "${_prop}")
+    if(NOT _dirs OR _dirs MATCHES "-NOTFOUND$")
+      continue()
+    endif()
+
+    set(_fixed_dirs "")
+    set(_changed FALSE)
+    foreach(_dir IN LISTS _dirs)
+      if(_dir MATCHES "^\\$<")
+        list(APPEND _fixed_dirs "${_dir}")
+      elseif(IS_ABSOLUTE "${_dir}")
+        if(EXISTS "${_dir}")
+          list(APPEND _fixed_dirs "${_dir}")
+        else()
+          set(_changed TRUE)
+        endif()
+      else()
+        set(_changed TRUE)
+      endif()
+    endforeach()
+
+    if(_changed)
+      set_target_properties("${_target_name}" PROPERTIES "${_prop}" "${_fixed_dirs}")
+      message(STATUS "Sanitized Android stale include path on ${_target_name}:${_prop}")
     endif()
   endforeach()
 endfunction()
@@ -461,12 +507,18 @@ function(platformer_sanitize_android_sdl_imports)
       SDL3::SDL3-static
       SDL3_image::SDL3_image
       SDL3_image::SDL3_image-static
+      SDL3_image::external_zlib
+      SDL3_image::dav1d
+      SDL3_image::aom
+      SDL3_image::external_libavif
+      SDL3_image::external_libpng
       SDL3_image::external_libtiff
       SDL3_ttf::SDL3_ttf
       SDL3_ttf::SDL3_ttf-static
       SDL3_mixer::SDL3_mixer
       SDL3_mixer::SDL3_mixer-static)
     platformer_replace_android_absolute_libm("${_target}")
+    platformer_remove_android_stale_import_includes("${_target}")
   endforeach()
 endfunction()
 
