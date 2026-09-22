@@ -47,17 +47,27 @@ std::unordered_map<SDL_Renderer*, RendererTextCache> gTextCacheByRenderer;
 std::unordered_map<SDL_Renderer*, NativeTextOverlay> gNativeTextOverlays;
 constexpr size_t kMaxTextCacheEntries = 1024;
 
-static std::string makeTextCacheKey(int scale, const std::string& text, const SDL_Color& color) {
+static std::string makeTextCacheKey(int scale, int rasterScaleKey, const std::string& text, const SDL_Color& color) {
     return std::to_string(scale) + "|" +
+           std::to_string(rasterScaleKey) + "|" +
            std::to_string((int)color.r) + "," +
            std::to_string((int)color.g) + "," +
            std::to_string((int)color.b) + "," +
            std::to_string((int)color.a) + "|" + text;
 }
 
-TTF_Font* getFont(int scale) {
+float normalizedRasterScale(float rasterScale) {
+    if (!std::isfinite(rasterScale)) return 1.0f;
+    return std::clamp(rasterScale, 1.0f, 8.0f);
+}
+
+int rasterScaleKey(float rasterScale) {
+    return std::max(1000, (int)std::lround(normalizedRasterScale(rasterScale) * 1000.0f));
+}
+
+TTF_Font* getFont(int scale, float rasterScale = 1.0f) {
     if (!gTtfInited || gFontPath.empty()) return nullptr;
-    int pt = std::max(12, scale * 8 * kFontRenderScale);
+    int pt = std::max(12, (int)std::lround((float)(scale * 8 * kFontRenderScale) * normalizedRasterScale(rasterScale)));
     auto it = gFontCache.find(pt);
     if (it != gFontCache.end()) return it->second;
     TTF_Font* font = TTF_OpenFont(gFontPath.c_str(), pt);
@@ -72,19 +82,21 @@ int effectiveTextScale(int scale) {
     return std::max(1, (int)std::lround((float)std::max(1, scale) * m));
 }
 
-void DrawTextColoredImmediate(SDL_Renderer* ren, float x, float y, float scaleX, float scaleY, int scale, const std::string& text, const SDL_Color& color) {
+void DrawTextColoredImmediate(SDL_Renderer* ren, float x, float y, float scaleX, float scaleY, int scale, const std::string& text, const SDL_Color& color, float rasterScale = 1.0f) {
     if (text.empty()) return;
     const int scaled = effectiveTextScale(scale);
-    TTF_Font* font = getFont(scaled);
+    const float normalizedRaster = normalizedRasterScale(rasterScale);
+    TTF_Font* font = getFont(scaled, normalizedRaster);
     if (!font) return;
 
     const SDL_Color fillColor = color;
     const SDL_Color outlineColor{0, 0, 0, 255};
     const int finalOutlinePx = std::max(1, scaled / 3);
-    const int outlinePx = finalOutlinePx * kFontRenderScale;
+    const int outlinePx = std::max(1, (int)std::lround((float)(finalOutlinePx * kFontRenderScale) * normalizedRaster));
     auto& rendererCache = gTextCacheByRenderer[ren];
 
-    const std::string key = makeTextCacheKey(scaled, text, fillColor);
+    const int rasterKey = rasterScaleKey(normalizedRaster);
+    const std::string key = makeTextCacheKey(scaled, rasterKey, text, fillColor);
     auto itCached = rendererCache.entries.find(key);
     if (itCached == rendererCache.entries.end()) {
         SDL_Surface* fillSurf = TTF_RenderText_Blended(font, text.c_str(), text.size(), fillColor);
@@ -147,11 +159,12 @@ void DrawTextColoredImmediate(SDL_Renderer* ren, float x, float y, float scaleX,
     }
     itCached->second.lastUsedTicks = SDL_GetTicks();
 
+    const float textureDivisor = (float)kFontRenderScale * normalizedRaster;
     SDL_FRect dst{
         x,
         y,
-        std::max(1.0f, ((float)itCached->second.w / (float)kFontRenderScale) * scaleX),
-        std::max(1.0f, ((float)itCached->second.h / (float)kFontRenderScale) * scaleY)
+        std::max(1.0f, ((float)itCached->second.w / textureDivisor) * scaleX),
+        std::max(1.0f, ((float)itCached->second.h / textureDivisor) * scaleY)
     };
     SDL_RenderTexture(ren, itCached->second.tex, nullptr, &dst);
 }
@@ -284,15 +297,19 @@ void FlushNativeTextOverlay(SDL_Renderer* ren) {
     const float sx = (float)overlay.outputRect.w / (float)overlay.logicalW;
     const float sy = (float)overlay.outputRect.h / (float)overlay.logicalH;
     for (const QueuedTextDraw& draw : overlay.queue) {
+        const float drawScaleX = draw.renderScaleX * sx;
+        const float drawScaleY = draw.renderScaleY * sy;
+        const float nativeRasterScale = std::max(std::abs(drawScaleX), std::abs(drawScaleY));
         DrawTextColoredImmediate(
             ren,
-            (float)overlay.outputRect.x + (float)draw.x * draw.renderScaleX * sx,
-            (float)overlay.outputRect.y + (float)draw.y * draw.renderScaleY * sy,
-            draw.renderScaleX * sx,
-            draw.renderScaleY * sy,
+            (float)overlay.outputRect.x + (float)draw.x * drawScaleX,
+            (float)overlay.outputRect.y + (float)draw.y * drawScaleY,
+            drawScaleX,
+            drawScaleY,
             draw.scale,
             draw.text,
-            draw.color);
+            draw.color,
+            nativeRasterScale);
     }
     overlay.queue.clear();
     overlay.active = false;
