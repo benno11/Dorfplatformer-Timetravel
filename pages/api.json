@@ -13,6 +13,12 @@
   "level_write_contract": {
     "put_level_object": "/levels/<id>.json",
     "delete_level": "/levels/<id>.json",
+    "vote_level": "/levels/<id>/vote",
     "required_fields": ["name", "data"]
+  },
+  "level_metadata_fields": {
+    "downloads": "Incremented by GET /levels/<id>/data.json",
+    "likes": "Signed-in user votes",
+    "dislikes": "Signed-in user votes"
   }
 }

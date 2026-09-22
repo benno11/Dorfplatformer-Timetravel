@@ -55,6 +55,78 @@ struct OnlineLevelsMenuLabels {
     std::string buttonBack = "BACK";
 };
 
+std::unordered_map<int, std::string> defaultEditorObjectTypes() {
+    return {
+        {31, "spring"},
+        {46, "bumper"},
+        {57, "fast_travel_up"},
+        {58, "fast_travel_down"},
+        {59, "fast_travel_left"},
+        {60, "fast_travel_right"},
+        {61, "fast_travel_exit"},
+        {62, "level_wrap_x"},
+        {63, "level_wrap_y"},
+        {64, "key"},
+        {65, "door"},
+        {67, "end_sign"},
+        {95, "pickup"},
+        {97, "goal"},
+    };
+}
+
+std::string editorObjectLabelFromType(const std::string& type, int id) {
+    std::string label = type.empty() ? "object" : type;
+    for (char& ch : label) {
+        if (ch == '_' || ch == '-') ch = ' ';
+        else ch = (char)std::toupper((unsigned char)ch);
+    }
+    return label + " (" + std::to_string(id) + ")";
+}
+
+std::vector<int> loadEditorObjectPalette(std::unordered_map<int, std::string>& objectTypeById) {
+    objectTypeById = defaultEditorObjectTypes();
+    std::vector<int> palette{31, 46, 57, 58, 59, 60, 61, 67};
+
+    const std::string text = ReadTextFile("object_type_map.json");
+    if (!text.empty()) {
+        try {
+            const nlohmann::json mapJson = nlohmann::json::parse(text);
+            if (mapJson.is_object()) {
+                std::vector<int> mappedIds;
+                for (auto it = mapJson.begin(); it != mapJson.end(); ++it) {
+                    int id = 0;
+                    try {
+                        id = std::stoi(it.key());
+                    } catch (...) {
+                        continue;
+                    }
+                    if (id <= 0 || !it.value().is_string()) continue;
+                    if (objectTypeById.find(id) == objectTypeById.end()) {
+                        objectTypeById[id] = it.value().get<std::string>();
+                    }
+                    if (std::find(palette.begin(), palette.end(), id) == palette.end()) {
+                        mappedIds.push_back(id);
+                    }
+                }
+                std::sort(mappedIds.begin(), mappedIds.end());
+                for (int id : mappedIds) {
+                    if (std::find(palette.begin(), palette.end(), id) == palette.end()) {
+                        palette.push_back(id);
+                    }
+                }
+            }
+        } catch (...) {}
+    }
+
+    for (const auto& [id, type] : objectTypeById) {
+        (void)type;
+        if (std::find(palette.begin(), palette.end(), id) == palette.end()) {
+            palette.push_back(id);
+        }
+    }
+    return palette;
+}
+
 #if defined(__ANDROID__)
 void ShowAndroidSoftKeyboard(int x, int y, int w, int h) {
     JNIEnv* env = static_cast<JNIEnv*>(SDL_GetAndroidJNIEnv());
@@ -603,7 +675,8 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         83, 84, 85, 86, 87, 88,
         28
     };
-    const std::vector<int> objectPalette{31, 46, 57, 58, 59, 60, 61, 67};
+    std::unordered_map<int, std::string> objectTypeById;
+    const std::vector<int> objectPalette = loadEditorObjectPalette(objectTypeById);
     int selectedPalette = 1;
     int selectedObjectPalette = 0;
     int tilePaletteScroll = 0;
@@ -787,6 +860,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         // Tap again on the same cell to place a new one.
         if (removedExisting) return;
         ObjectInstance obj;
+        if (selectedObjectPalette < 0 || selectedObjectPalette >= (int)objectPalette.size()) return;
         obj.id = std::to_string(objectPalette[selectedObjectPalette]);
         obj.x = (float)(cx * kEditorTileSize + kEditorTileSize / 2);
         obj.y = (float)(cy * kEditorTileSize + kEditorTileSize / 2);
@@ -1342,10 +1416,16 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             if (id == 59) { r = 255; g = 210; b = 120; return; } // fast travel left
             if (id == 60) { r = 255; g = 170; b = 120; return; } // fast travel right
             if (id == 61) { r = 210; g = 150; b = 255; return; } // fast travel exit
+            if (id == 62) { r = 100; g = 170; b = 255; return; } // level wrap x
+            if (id == 63) { r = 100; g = 205; b = 255; return; } // level wrap y
+            if (id == 64) { r = 255; g = 230; b = 90; return; } // key
+            if (id == 65) { r = 150; g = 110; b = 255; return; } // door
             if (id == 67) { r = 120; g = 180; b = 255; return; }
+            if (id == 95) { r = 120; g = 255; b = 185; return; } // pickup
+            if (id == 97) { r = 255; g = 245; b = 150; return; } // goal
             r = 220; g = 220; b = 240;
         };
-        auto objectLabel = [](int id) -> std::string {
+        auto objectLabel = [&](int id) -> std::string {
             if (id == 31) return "SPRING (31)";
             if (id == 46) return "BUMPER (46)";
             if (id == 57) return "FAST UP (57)";
@@ -1354,6 +1434,8 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             if (id == 60) return "FAST RIGHT (60)";
             if (id == 61) return "FAST EXIT (61)";
             if (id == 67) return "END SIGN (67)";
+            auto it = objectTypeById.find(id);
+            if (it != objectTypeById.end()) return editorObjectLabelFromType(it->second, id);
             return std::string("Obj ") + std::to_string(id);
         };
         auto objectTag = [](int id) -> const char* {
@@ -1843,7 +1925,21 @@ std::vector<LevelEntry> loadCustomLevels() {
                         const auto& rating = metadata["difficulty"];
                         if (rating >= 1 && rating <= 9) difficulty = rating.get<int>();
                     }
-                    addUniqueByPath(out, {LevelEntry{id, path, difficulty}});
+                    int downloads = 0;
+                    int likes = 0;
+                    int dislikes = 0;
+                    if (metadata.is_object()) {
+                        if (metadata.contains("downloads") && metadata["downloads"].is_number_integer()) {
+                            downloads = std::max(0, metadata["downloads"].get<int>());
+                        }
+                        if (metadata.contains("likes") && metadata["likes"].is_number_integer()) {
+                            likes = std::max(0, metadata["likes"].get<int>());
+                        }
+                        if (metadata.contains("dislikes") && metadata["dislikes"].is_number_integer()) {
+                            dislikes = std::max(0, metadata["dislikes"].get<int>());
+                        }
+                    }
+                    addUniqueByPath(out, {LevelEntry{id, path, difficulty, downloads, likes, dislikes}});
                 }
             }
         }
@@ -2504,7 +2600,10 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
                 if (isHttpUrl(levels[i].path)) {
                     const std::string rating = levels[i].difficulty > 0
                         ? "DIFF " + std::to_string(levels[i].difficulty) + "/9" : "UNRATED";
-                    displayLabel = "[" + rating + "] " + displayLabel;
+                    const std::string stats = "DL " + std::to_string(levels[i].downloads) +
+                        " +" + std::to_string(levels[i].likes) +
+                        " -" + std::to_string(levels[i].dislikes);
+                    displayLabel = "[" + rating + " " + stats + "] " + displayLabel;
                 }
                 DrawText(ren, r.x + 12, r.y + std::max(6, (r.h - 10 * textScale) / 2), textScale, displayLabel);
             }

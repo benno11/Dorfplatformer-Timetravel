@@ -1,6 +1,6 @@
-# DF Slim Menu: editor hub
-title "Editor"
-text "Open local/custom levels."
-button "Custom Levels" custom
-button "Level Browser" menu editlevels
+# DF Slim Menu: editor level browser
+title "Level Browser"
+text "Browse local and online levels."
+button "Local Levels" menu locallevels
+button "Online Levels" menu onlinelevels
 button "Back" back

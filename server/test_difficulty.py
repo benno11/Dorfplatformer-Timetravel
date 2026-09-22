@@ -47,6 +47,8 @@ class DifficultyTests(unittest.TestCase):
         token = self.prepare()
         status, _ = self.request("PUT", "/levels/new.json", {**self.payload, "difficulty": 9}, self.owner["idToken"])
         self.assertEqual(status, 403)
+        for field in ("downloads", "likes", "dislikes"):
+            self.assertEqual(self.request("PUT", "/levels/new.json", {**self.payload, field: 99}, self.owner["idToken"])[0], 403)
         self.assertEqual(self.request("GET", "/levels/new.json")[0], 404)
         self.request("PUT", "/levels/test/difficulty", {"difficulty": 7}, token)
         self.assertEqual(self.request("PUT", "/levels/test.json", {**self.payload, "difficulty": 1}, self.owner["idToken"])[0], 403)
@@ -58,6 +60,9 @@ class DifficultyTests(unittest.TestCase):
         self.request("PUT", "/levels/test/difficulty", {"difficulty": 4}, token)
         _, metadata = self.request("GET", "/levels.json?metadata=true")
         self.assertEqual(metadata["test"]["difficulty"], 4)
+        self.assertEqual(metadata["test"]["downloads"], 0)
+        self.assertEqual(metadata["test"]["likes"], 0)
+        self.assertEqual(metadata["test"]["dislikes"], 0)
         self.assertNotIn("data", metadata["test"])
         self.assertEqual(self.request("GET", "/levels.json?shallow=true")[1], {"test": True})
         # A metadata-only edit does not invalidate the reviewed content.
@@ -127,6 +132,9 @@ class MigrationTests(unittest.TestCase):
             store = Store(path)
             level = store.levels("GET", "old", False, False, {}, "")
             self.assertIsNone(level["difficulty"])
+            self.assertEqual(level["downloads"], 0)
+            self.assertEqual(level["likes"], 0)
+            self.assertEqual(level["dislikes"], 0)
             self.assertEqual(level["data"], "unchanged")
             self.assertEqual(level["owner"], "player")
             store.set_moderator("player", True)

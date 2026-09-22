@@ -22,6 +22,7 @@
 #include "AssetPath.h"
 #include "GameSupport.h"
 #include "LevelSelect.h"
+#include "UiScale.h"
 
 #if defined(DrawText)
 #undef DrawText
@@ -40,6 +41,7 @@ namespace {
 
 constexpr const char* kSavedGameSelectionToken = "__DF_SAVEGAME_CONTINUE__";
 constexpr const char* kSlimMenuUserAgent = "DF-New slim-menu";
+constexpr Uint64 kMenuFadeMs = 120;
 
 struct MenuItem {
     enum class Type { Text, Button };
@@ -57,6 +59,7 @@ struct SlimMenu {
 
 struct SlimRuntime {
     std::unordered_map<std::string, std::string> vars;
+    std::string waitingBind;
 };
 
 struct ParsedLine {
@@ -69,6 +72,9 @@ struct SlimLevelEntry {
     std::string label;
     std::string path;
     int difficulty = 0;
+    int downloads = 0;
+    int likes = 0;
+    int dislikes = 0;
 };
 
 std::string trim(const std::string& in) {
@@ -158,17 +164,109 @@ std::string saveSlotStatus(int slotIndex, const SlimMenuContext& ctx) {
     return saveSlotExists(slot) ? "READY" : "EMPTY";
 }
 
+bool* boolSettingPtr(const std::string& var, SlimMenuContext& ctx) {
+    if (var == "fullscreen") return ctx.fullscreen;
+    if (var == "vsync_enabled") return ctx.vsyncEnabled;
+    if (var == "camera_clamp_x") return ctx.clampCamX;
+    if (var == "show_fps_counter") return ctx.defaultShowFpsCounter;
+    if (var == "show_detailed_debugger") return ctx.defaultShowDetailedDebugger;
+    if (var == "show_hitboxes") return ctx.defaultShowHitboxes;
+    if (var == "show_player_hitbox") return ctx.defaultShowPlayerHitbox;
+    if (var == "show_debug_view") return ctx.defaultShowDebugView;
+    if (var == "hide_unknown_object_types") return ctx.defaultHideUnknownObjectTypes;
+    if (var == "power_management_enabled") return ctx.powerManagementEnabled;
+    if (var == "low_power_mode_enabled") return ctx.lowPowerModeEnabled;
+    if (var == "show_experimental_features") return ctx.showExperimentalFeatures;
+    if (var == "menu_music_enabled") return ctx.menuMusicEnabled;
+    if (var == "mute_all_audio") return ctx.muteAllAudio;
+    if (var == "level_select_enabled") return ctx.levelSelectEnabled;
+    if (var == "native_text_resolution_enabled") return ctx.nativeTextResolutionEnabled;
+    if (var == "send_anonymous_metrics" && ctx.extraSettings && ctx.extraSettingsCount > 44) return &ctx.extraSettings[44];
+    return nullptr;
+}
+
+SDL_Scancode* keyBindingPtr(const std::string& var, SlimMenuContext& ctx) {
+    if (var == "move_left") return ctx.keyMoveLeft;
+    if (var == "move_right") return ctx.keyMoveRight;
+    if (var == "move_down") return ctx.keyMoveDown;
+    if (var == "jump") return ctx.keyJump;
+    if (var == "pause") return ctx.keyPause;
+    return nullptr;
+}
+
+std::string keyBindingValue(const std::string& name, const SlimMenuContext& ctx) {
+    SlimMenuContext mutableCtx = ctx;
+    SDL_Scancode* value = keyBindingPtr(name, mutableCtx);
+    if (!value) return {};
+    const char* keyName = SDL_GetScancodeName(*value);
+    return (keyName && *keyName) ? std::string(keyName) : std::string("Unbound");
+}
+
+std::string boolSettingValue(const std::string& name, const SlimMenuContext& ctx) {
+    SlimMenuContext mutableCtx = ctx;
+    bool* value = boolSettingPtr(name, mutableCtx);
+    if (!value) return {};
+    return *value ? "ON" : "OFF";
+}
+
+std::string fallbackText(const std::string& value, const std::string& fallback = "unknown") {
+    return value.empty() ? fallback : value;
+}
+
+std::string aboutVarValue(const std::string& var, const SlimMenuContext& ctx) {
+    if (var == "about_version") return fallbackText(ctx.versionString, "dev");
+    if (var == "about_version_id") return fallbackText(ctx.versionIdString, "dev");
+    if (var == "about_build_uuid") return fallbackText(ctx.buildUuid);
+    if (var == "about_build_time") return fallbackText(ctx.buildTimestamp);
+    if (var == "about_build_timezone") return fallbackText(ctx.buildTimezone);
+    if (var == "about_base_size") return std::to_string(ctx.baseScreenW) + "x" + std::to_string(ctx.baseScreenH);
+    if (var == "about_window_size") {
+        int winW = 0;
+        int winH = 0;
+        getWindowSizeInPixelsCompat(ctx.win, winW, winH);
+        return std::to_string(winW) + "x" + std::to_string(winH);
+    }
+    if (var == "about_sdl_version") {
+        const int sdlVer = SDL_GetVersion();
+        return std::to_string(SDL_VERSIONNUM_MAJOR(sdlVer)) + "." +
+               std::to_string(SDL_VERSIONNUM_MINOR(sdlVer)) + "." +
+               std::to_string(SDL_VERSIONNUM_MICRO(sdlVer));
+    }
+    if (var == "about_sdl_revision") return fallbackText(SDL_GetRevision() ? SDL_GetRevision() : "");
+    if (var == "about_platform") return fallbackText(SDL_GetPlatform() ? SDL_GetPlatform() : "");
+    if (var == "about_renderer") return fallbackText(SDL_GetRendererName(ctx.ren) ? SDL_GetRendererName(ctx.ren) : "");
+    if (var == "about_video_driver") return fallbackText(SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "");
+    if (var == "about_audio_driver") return fallbackText(SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver() : "");
+    if (var == "about_cpu_cores") return std::to_string(SDL_GetNumLogicalCPUCores());
+    if (var == "about_system_ram") return std::to_string(SDL_GetSystemRAM()) + " MiB";
+    if (var == "about_ui_scale" && ctx.uiScalePercent) return std::to_string(*ctx.uiScalePercent) + "%";
+    if (var == "about_ui_edge_padding" && ctx.uiEdgePadding) return std::to_string(*ctx.uiEdgePadding) + " PX";
+    if (var == "about_updater_status") return ctx.getUpdaterStatusText ? ctx.getUpdaterStatusText() : "not configured";
+    return {};
+}
+
 std::string contextVarValue(const std::string& name, const SlimRuntime& runtime, const SlimMenuContext& ctx) {
     const std::string var = normalizeVarName(name);
     auto it = runtime.vars.find(var);
     if (it != runtime.vars.end()) return it->second;
     if (var == "username" && ctx.levelServerAccountUsername) return *ctx.levelServerAccountUsername;
     if (var == "api" && ctx.levelServerUrl) return *ctx.levelServerUrl;
-    if (var == "menu_music_enabled" && ctx.menuMusicEnabled) return *ctx.menuMusicEnabled ? "true" : "false";
-    if (var == "mute_all_audio" && ctx.muteAllAudio) return *ctx.muteAllAudio ? "true" : "false";
-    if (var == "level_select_enabled" && ctx.levelSelectEnabled) return *ctx.levelSelectEnabled ? "true" : "false";
+    if (var == "account_manager_url" && ctx.accountManagerUrl) return *ctx.accountManagerUrl;
+    if (var == "account_status") {
+        const bool hasUser = ctx.levelServerAccountUsername && !ctx.levelServerAccountUsername->empty();
+        const bool hasToken = ctx.levelServerAuthToken && !ctx.levelServerAuthToken->empty();
+        if (hasUser && hasToken) return "SIGNED IN: " + *ctx.levelServerAccountUsername;
+        if (hasUser) return "INVALID LOGIN";
+        return "SIGNED OUT";
+    }
+    const std::string boolValue = boolSettingValue(var, ctx);
+    if (!boolValue.empty()) return boolValue;
+    const std::string keyValue = keyBindingValue(var, ctx);
+    if (!keyValue.empty()) return keyValue;
     if (var == "music_volume" && ctx.musicVolume) return std::to_string(*ctx.musicVolume);
     if (var == "sfx_volume" && ctx.sfxVolume) return std::to_string(*ctx.sfxVolume);
+    if (var == "ui_scale_percent" && ctx.uiScalePercent) return std::to_string(*ctx.uiScalePercent);
+    if (var == "ui_edge_padding" && ctx.uiEdgePadding) return std::to_string(*ctx.uiEdgePadding);
     if (var == "active_save_slot" && ctx.activeSaveSlotIndex) return std::to_string(*ctx.activeSaveSlotIndex + 1);
     if (var == "save_slot_1_status") return saveSlotStatus(0, ctx);
     if (var == "save_slot_2_status") return saveSlotStatus(1, ctx);
@@ -176,6 +274,8 @@ std::string contextVarValue(const std::string& name, const SlimRuntime& runtime,
     if (var == "save_slot_1_exists") return saveSlotExists(0) ? "true" : "false";
     if (var == "save_slot_2_exists") return saveSlotExists(1) ? "true" : "false";
     if (var == "save_slot_3_exists") return saveSlotExists(2) ? "true" : "false";
+    const std::string aboutValue = aboutVarValue(var, ctx);
+    if (!aboutValue.empty()) return aboutValue;
     return {};
 }
 
@@ -189,11 +289,34 @@ bool varIsTruthy(const std::string& name, const SlimRuntime& runtime, const Slim
 std::string expandVars(std::string text, const SlimRuntime& runtime, const SlimMenuContext& ctx) {
     text = replaceAll(text, "${username}", contextVarValue("username", runtime, ctx));
     text = replaceAll(text, "${api}", contextVarValue("api", runtime, ctx));
+    text = replaceAll(text, "${account_status}", contextVarValue("account_status", runtime, ctx));
+    text = replaceAll(text, "${account_manager_url}", contextVarValue("account_manager_url", runtime, ctx));
     text = replaceAll(text, "${menu_music_enabled}", contextVarValue("menu_music_enabled", runtime, ctx));
     text = replaceAll(text, "${mute_all_audio}", contextVarValue("mute_all_audio", runtime, ctx));
     text = replaceAll(text, "${level_select_enabled}", contextVarValue("level_select_enabled", runtime, ctx));
+    text = replaceAll(text, "${fullscreen}", contextVarValue("fullscreen", runtime, ctx));
+    text = replaceAll(text, "${vsync_enabled}", contextVarValue("vsync_enabled", runtime, ctx));
+    text = replaceAll(text, "${camera_clamp_x}", contextVarValue("camera_clamp_x", runtime, ctx));
+    text = replaceAll(text, "${native_text_resolution_enabled}", contextVarValue("native_text_resolution_enabled", runtime, ctx));
+    text = replaceAll(text, "${show_fps_counter}", contextVarValue("show_fps_counter", runtime, ctx));
+    text = replaceAll(text, "${show_detailed_debugger}", contextVarValue("show_detailed_debugger", runtime, ctx));
+    text = replaceAll(text, "${show_hitboxes}", contextVarValue("show_hitboxes", runtime, ctx));
+    text = replaceAll(text, "${show_player_hitbox}", contextVarValue("show_player_hitbox", runtime, ctx));
+    text = replaceAll(text, "${show_debug_view}", contextVarValue("show_debug_view", runtime, ctx));
+    text = replaceAll(text, "${hide_unknown_object_types}", contextVarValue("hide_unknown_object_types", runtime, ctx));
+    text = replaceAll(text, "${power_management_enabled}", contextVarValue("power_management_enabled", runtime, ctx));
+    text = replaceAll(text, "${low_power_mode_enabled}", contextVarValue("low_power_mode_enabled", runtime, ctx));
+    text = replaceAll(text, "${show_experimental_features}", contextVarValue("show_experimental_features", runtime, ctx));
+    text = replaceAll(text, "${send_anonymous_metrics}", contextVarValue("send_anonymous_metrics", runtime, ctx));
+    text = replaceAll(text, "${move_left}", contextVarValue("move_left", runtime, ctx));
+    text = replaceAll(text, "${move_right}", contextVarValue("move_right", runtime, ctx));
+    text = replaceAll(text, "${move_down}", contextVarValue("move_down", runtime, ctx));
+    text = replaceAll(text, "${jump}", contextVarValue("jump", runtime, ctx));
+    text = replaceAll(text, "${pause}", contextVarValue("pause", runtime, ctx));
     text = replaceAll(text, "${music_volume}", contextVarValue("music_volume", runtime, ctx));
     text = replaceAll(text, "${sfx_volume}", contextVarValue("sfx_volume", runtime, ctx));
+    text = replaceAll(text, "${ui_scale_percent}", contextVarValue("ui_scale_percent", runtime, ctx));
+    text = replaceAll(text, "${ui_edge_padding}", contextVarValue("ui_edge_padding", runtime, ctx));
     text = replaceAll(text, "${active_save_slot}", contextVarValue("active_save_slot", runtime, ctx));
     text = replaceAll(text, "${save_slot_1_status}", contextVarValue("save_slot_1_status", runtime, ctx));
     text = replaceAll(text, "${save_slot_2_status}", contextVarValue("save_slot_2_status", runtime, ctx));
@@ -201,6 +324,24 @@ std::string expandVars(std::string text, const SlimRuntime& runtime, const SlimM
     text = replaceAll(text, "${save_slot_1_exists}", contextVarValue("save_slot_1_exists", runtime, ctx));
     text = replaceAll(text, "${save_slot_2_exists}", contextVarValue("save_slot_2_exists", runtime, ctx));
     text = replaceAll(text, "${save_slot_3_exists}", contextVarValue("save_slot_3_exists", runtime, ctx));
+    text = replaceAll(text, "${about_version}", contextVarValue("about_version", runtime, ctx));
+    text = replaceAll(text, "${about_version_id}", contextVarValue("about_version_id", runtime, ctx));
+    text = replaceAll(text, "${about_build_uuid}", contextVarValue("about_build_uuid", runtime, ctx));
+    text = replaceAll(text, "${about_build_time}", contextVarValue("about_build_time", runtime, ctx));
+    text = replaceAll(text, "${about_build_timezone}", contextVarValue("about_build_timezone", runtime, ctx));
+    text = replaceAll(text, "${about_sdl_version}", contextVarValue("about_sdl_version", runtime, ctx));
+    text = replaceAll(text, "${about_sdl_revision}", contextVarValue("about_sdl_revision", runtime, ctx));
+    text = replaceAll(text, "${about_platform}", contextVarValue("about_platform", runtime, ctx));
+    text = replaceAll(text, "${about_renderer}", contextVarValue("about_renderer", runtime, ctx));
+    text = replaceAll(text, "${about_window_size}", contextVarValue("about_window_size", runtime, ctx));
+    text = replaceAll(text, "${about_base_size}", contextVarValue("about_base_size", runtime, ctx));
+    text = replaceAll(text, "${about_ui_scale}", contextVarValue("about_ui_scale", runtime, ctx));
+    text = replaceAll(text, "${about_ui_edge_padding}", contextVarValue("about_ui_edge_padding", runtime, ctx));
+    text = replaceAll(text, "${about_video_driver}", contextVarValue("about_video_driver", runtime, ctx));
+    text = replaceAll(text, "${about_audio_driver}", contextVarValue("about_audio_driver", runtime, ctx));
+    text = replaceAll(text, "${about_cpu_cores}", contextVarValue("about_cpu_cores", runtime, ctx));
+    text = replaceAll(text, "${about_system_ram}", contextVarValue("about_system_ram", runtime, ctx));
+    text = replaceAll(text, "${about_updater_status}", contextVarValue("about_updater_status", runtime, ctx));
     for (const auto& [key, value] : runtime.vars) {
         text = replaceAll(text, "${" + key + "}", value);
     }
@@ -541,8 +682,22 @@ std::vector<SlimLevelEntry> loadOnlineSlimLevels(const SlimMenuContext& ctx) {
             it.value()["difficulty"].is_number_integer()) {
             difficulty = std::clamp(it.value()["difficulty"].get<int>(), 0, 9);
         }
+        int downloads = 0;
+        int likes = 0;
+        int dislikes = 0;
+        if (it.value().is_object()) {
+            if (it.value().contains("downloads") && it.value()["downloads"].is_number_integer()) {
+                downloads = std::max(0, it.value()["downloads"].get<int>());
+            }
+            if (it.value().contains("likes") && it.value()["likes"].is_number_integer()) {
+                likes = std::max(0, it.value()["likes"].get<int>());
+            }
+            if (it.value().contains("dislikes") && it.value()["dislikes"].is_number_integer()) {
+                dislikes = std::max(0, it.value()["dislikes"].get<int>());
+            }
+        }
         const std::string id = it.key();
-        addUniqueLevel(out, SlimLevelEntry{id, joinUrlPath(base, "/levels/" + id + "/data.json"), difficulty});
+        addUniqueLevel(out, SlimLevelEntry{id, joinUrlPath(base, "/levels/" + id + "/data.json"), difficulty, downloads, likes, dislikes});
     }
     std::sort(out.begin(), out.end(), [](const SlimLevelEntry& a, const SlimLevelEntry& b) { return a.label < b.label; });
     return out;
@@ -566,6 +721,12 @@ bool levelMatchesFilter(const SlimLevelEntry& level, const std::string& filter) 
 
 std::string difficultySuffix(int difficulty) {
     return difficulty >= 1 && difficulty <= 9 ? (" [D" + std::to_string(difficulty) + "]") : std::string();
+}
+
+std::string levelStatsSuffix(const SlimLevelEntry& level) {
+    return " [DL " + std::to_string(level.downloads) +
+           " +" + std::to_string(level.likes) +
+           " -" + std::to_string(level.dislikes) + "]";
 }
 
 std::vector<SlimLevelEntry> filteredGeneratedLevels(const std::string& prefix, SlimRuntime& runtime, const SlimMenuContext& ctx) {
@@ -716,6 +877,202 @@ bool putOnlineLevelDifficulty(const SlimLevelEntry& level, int difficulty, const
 #endif
 }
 
+bool putOnlineLevelVote(const SlimLevelEntry& level, const std::string& vote, const SlimMenuContext& ctx, std::string& status) {
+    status.clear();
+    const std::string token = ctx.levelServerAuthToken ? *ctx.levelServerAuthToken : std::string();
+    std::string base = ctx.levelServerUrl ? *ctx.levelServerUrl : std::string();
+    while (!base.empty() && base.back() == '/') base.pop_back();
+    if (base.empty()) {
+        status = "Level server URL is not configured.";
+        return false;
+    }
+    if (token.empty()) {
+        status = "Sign in to vote.";
+        return false;
+    }
+    const std::string url = base + "/levels/" + urlEncodePathSegment(level.label) + "/vote";
+    nlohmann::json payload;
+    payload["vote"] = vote;
+    const std::string body = payload.dump();
+
+#if defined(__ANDROID__)
+    {
+        JNIEnv* env = static_cast<JNIEnv*>(SDL_GetAndroidJNIEnv());
+        if (env) {
+            jclass cls = env->FindClass("com/Benno111/dorfplatformertimetravel/MainActivity");
+            if (cls) {
+                jmethodID mid = env->GetStaticMethodID(
+                    cls, "gameServerUploadLevel",
+                    "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)I");
+                if (mid) {
+                    jstring jUrl = env->NewStringUTF(url.c_str());
+                    jstring jBody = env->NewStringUTF(body.c_str());
+                    jstring jToken = env->NewStringUTF(token.c_str());
+                    jint code = env->CallStaticIntMethod(cls, mid, jUrl, jBody, jToken, (jint)15000);
+                    if (jToken) env->DeleteLocalRef(jToken);
+                    if (env->ExceptionCheck()) env->ExceptionClear();
+                    if (jUrl) env->DeleteLocalRef(jUrl);
+                    if (jBody) env->DeleteLocalRef(jBody);
+                    env->DeleteLocalRef(cls);
+                    if (code >= 200 && code < 300) {
+                        status = vote == "clear" ? "Vote cleared." : "Vote saved.";
+                        return true;
+                    }
+                    status = "Vote failed (" + std::to_string((int)code) + ").";
+                    return false;
+                }
+                if (env->ExceptionCheck()) env->ExceptionClear();
+                env->DeleteLocalRef(cls);
+            } else if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+            }
+        }
+    }
+#endif
+
+#if defined(HAVE_CURL) && HAVE_CURL
+    CURL* curl = curl_easy_init();
+    if (!curl) {
+        status = "Vote failed (curl init).";
+        return false;
+    }
+    struct curl_slist* headers = nullptr;
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    const std::string authorization = "Authorization: Bearer " + token;
+    headers = curl_slist_append(headers, authorization.c_str());
+    std::string respBody;
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)body.size());
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, kSlimMenuUserAgent);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,
+        +[](char* ptr, size_t size, size_t nmemb, void* userdata) -> size_t {
+            std::string* out = static_cast<std::string*>(userdata);
+            out->append(ptr, size * nmemb);
+            return size * nmemb;
+        });
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &respBody);
+    const CURLcode rc = curl_easy_perform(curl);
+    long code = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+    if (rc == CURLE_OK && code >= 200 && code < 300) {
+        status = vote == "clear" ? "Vote cleared." : "Vote saved.";
+        return true;
+    }
+    status = "Vote failed (" + std::to_string(code) + ").";
+    return false;
+#else
+    status = "Vote failed (network PUT unavailable).";
+    return false;
+#endif
+}
+
+bool putServerUpdateTrigger(const SlimMenuContext& ctx, std::string& status) {
+    status.clear();
+    const std::string token = ctx.levelServerAuthToken ? *ctx.levelServerAuthToken : std::string();
+    std::string base = ctx.levelServerUrl ? *ctx.levelServerUrl : std::string();
+    while (!base.empty() && base.back() == '/') base.pop_back();
+    if (base.empty()) {
+        status = "Level server URL is not configured.";
+        return false;
+    }
+    if (token.empty()) {
+        status = "Sign in as a moderator first.";
+        return false;
+    }
+    const std::string url = base + "/api/server/update";
+    const std::string body = "{}";
+
+#if defined(__ANDROID__)
+    {
+        JNIEnv* env = static_cast<JNIEnv*>(SDL_GetAndroidJNIEnv());
+        if (env) {
+            jclass cls = env->FindClass("com/Benno111/dorfplatformertimetravel/MainActivity");
+            if (cls) {
+                jmethodID mid = env->GetStaticMethodID(
+                    cls, "gameServerUploadLevel",
+                    "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)I");
+                if (mid) {
+                    jstring jUrl = env->NewStringUTF(url.c_str());
+                    jstring jBody = env->NewStringUTF(body.c_str());
+                    jstring jToken = env->NewStringUTF(token.c_str());
+                    jint code = env->CallStaticIntMethod(cls, mid, jUrl, jBody, jToken, (jint)15000);
+                    if (jToken) env->DeleteLocalRef(jToken);
+                    if (env->ExceptionCheck()) env->ExceptionClear();
+                    if (jUrl) env->DeleteLocalRef(jUrl);
+                    if (jBody) env->DeleteLocalRef(jBody);
+                    env->DeleteLocalRef(cls);
+                    if (code >= 200 && code < 300) {
+                        status = "Server update triggered.";
+                        return true;
+                    }
+                    if (code == 503) status = "Server update is not configured.";
+                    else if (code == 403) status = "Moderator account required.";
+                    else status = "Server update failed (" + std::to_string((int)code) + ").";
+                    return false;
+                }
+                if (env->ExceptionCheck()) env->ExceptionClear();
+                env->DeleteLocalRef(cls);
+            } else if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+            }
+        }
+    }
+#endif
+
+#if defined(HAVE_CURL) && HAVE_CURL
+    CURL* curl = curl_easy_init();
+    if (!curl) {
+        status = "Server update failed (curl init).";
+        return false;
+    }
+    struct curl_slist* headers = nullptr;
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    const std::string authorization = "Authorization: Bearer " + token;
+    headers = curl_slist_append(headers, authorization.c_str());
+    std::string respBody;
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)body.size());
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, kSlimMenuUserAgent);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,
+        +[](char* ptr, size_t size, size_t nmemb, void* userdata) -> size_t {
+            std::string* out = static_cast<std::string*>(userdata);
+            out->append(ptr, size * nmemb);
+            return size * nmemb;
+        });
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &respBody);
+    const CURLcode rc = curl_easy_perform(curl);
+    long code = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+    if (rc == CURLE_OK && code >= 200 && code < 300) {
+        status = "Server update triggered.";
+        return true;
+    }
+    if (code == 503) status = "Server update is not configured.";
+    else if (code == 403) status = "Moderator account required.";
+    else status = "Server update failed (" + std::to_string(code) + ").";
+    return false;
+#else
+    status = "Server update failed (network PUT unavailable).";
+    return false;
+#endif
+}
+
 SlimMenu buildGeneratedLevelMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuContext& ctx) {
     if (name == "leveldetail") {
         const std::string source = runtime.vars.count("detail_source") ? runtime.vars["detail_source"] : "local";
@@ -733,6 +1090,9 @@ SlimMenu buildGeneratedLevelMenu(const std::string& name, SlimRuntime& runtime, 
         runtime.vars["detail_label"] = level.label;
         runtime.vars["detail_path"] = level.path;
         runtime.vars["detail_difficulty"] = level.difficulty > 0 ? std::to_string(level.difficulty) : "unrated";
+        runtime.vars["detail_downloads"] = std::to_string(level.downloads);
+        runtime.vars["detail_likes"] = std::to_string(level.likes);
+        runtime.vars["detail_dislikes"] = std::to_string(level.dislikes);
         if (source != "online") {
             runtime.vars["detail_verified"] = IsLocalLevelVerified(level.path) ? "true" : "false";
         }
@@ -740,9 +1100,16 @@ SlimMenu buildGeneratedLevelMenu(const std::string& name, SlimRuntime& runtime, 
         menu.items.push_back(MenuItem{MenuItem::Type::Text, "Difficulty: " + runtime.vars["detail_difficulty"], {}, {}});
         if (source == "online") {
             menu.items.push_back(MenuItem{MenuItem::Type::Text, "Source: online", {}, {}});
+            menu.items.push_back(MenuItem{MenuItem::Type::Text,
+                "Downloads: " + runtime.vars["detail_downloads"] +
+                "  Likes: +" + runtime.vars["detail_likes"] +
+                " / -" + runtime.vars["detail_dislikes"], {}, {}});
             menu.items.push_back(MenuItem{MenuItem::Type::Text, "${level_detail_status}", {}, {}});
             menu.items.push_back(MenuItem{MenuItem::Type::Button, "Play", "start", level.path});
             menu.items.push_back(MenuItem{MenuItem::Type::Button, "Update Download", "update_online_level", std::to_string(index)});
+            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Like", "vote_online_level", std::to_string(index) + ":like"});
+            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Dislike", "vote_online_level", std::to_string(index) + ":dislike"});
+            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Clear Vote", "vote_online_level", std::to_string(index) + ":clear"});
             if (currentAccountIsMod(runtime, ctx)) {
                 const int nextDifficulty = level.difficulty >= 9 ? 0 : level.difficulty + 1;
                 const std::string label = nextDifficulty > 0
@@ -787,6 +1154,10 @@ SlimMenu buildGeneratedLevelMenu(const std::string& name, SlimRuntime& runtime, 
     menu.title = online ? "Online Levels" : "Local Levels";
     menu.items.push_back(MenuItem{MenuItem::Type::Text,
         "Filter: " + levelFilterLabel(filter) + "  Page " + std::to_string(page + 1) + "/" + std::to_string(pageCount), {}, {}});
+    if (!online) {
+        menu.items.push_back(MenuItem{MenuItem::Type::Text, "${level_detail_status}", {}, {}});
+        menu.items.push_back(MenuItem{MenuItem::Type::Button, "Create", "create_level", {}});
+    }
     if (filtered.empty()) {
         menu.items.push_back(MenuItem{MenuItem::Type::Text, "No levels match this filter.", {}, {}});
     }
@@ -796,7 +1167,8 @@ SlimMenu buildGeneratedLevelMenu(const std::string& name, SlimRuntime& runtime, 
     for (int i = start; i < end; ++i) {
         const auto& level = filtered[i];
         menu.items.push_back(MenuItem{MenuItem::Type::Button,
-            level.label + difficultySuffix(level.difficulty), "level_detail", prefix + ":" + std::to_string(i)});
+            level.label + difficultySuffix(level.difficulty) + (online ? levelStatsSuffix(level) : std::string()),
+            "level_detail", prefix + ":" + std::to_string(i)});
     }
     menu.items.push_back(MenuItem{MenuItem::Type::Button, "Previous Page", "level_page", prefix + ":prev"});
     menu.items.push_back(MenuItem{MenuItem::Type::Button, "Next Page", "level_page", prefix + ":next"});
@@ -805,16 +1177,29 @@ SlimMenu buildGeneratedLevelMenu(const std::string& name, SlimRuntime& runtime, 
     menu.items.push_back(MenuItem{MenuItem::Type::Button, "Filter: Medium", "level_filter", prefix + ":medium"});
     menu.items.push_back(MenuItem{MenuItem::Type::Button, "Filter: Hard", "level_filter", prefix + ":hard"});
     menu.items.push_back(MenuItem{MenuItem::Type::Button, "Filter: Unrated", "level_filter", prefix + ":unrated"});
-    menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back", "menu", "mainplay"});
+    menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back", "menu", "mainedit"});
     return menu;
 }
 
-SDL_Rect buttonRectFor(const SlimMenuContext& ctx, int buttonIndex, int buttonCount) {
+int textRowCountFor(const SlimMenu& menu, const SlimRuntime& runtime) {
+    int rows = runtime.waitingBind.empty() ? 0 : 1;
+    for (const auto& item : menu.items) {
+        if (item.type == MenuItem::Type::Text) ++rows;
+    }
+    return rows;
+}
+
+SDL_Rect buttonRectFor(const SlimMenuContext& ctx, int buttonIndex, int buttonCount, int textRows = 0) {
     const int w = std::clamp(ctx.baseScreenW * 2 / 5, 220, 520);
     const int h = buttonCount > 14 ? 22 : (buttonCount > 10 ? 30 : 54);
     const int gap = buttonCount > 14 ? 3 : (buttonCount > 10 ? 6 : 14);
     const int totalH = buttonCount * h + std::max(0, buttonCount - 1) * gap;
-    const int startY = buttonCount > 10 ? std::max(86, ctx.baseScreenH / 2 - totalH / 2) : std::max(132, ctx.baseScreenH / 2 - totalH / 2);
+    const int defaultStartY = buttonCount > 10 ? std::max(86, ctx.baseScreenH / 2 - totalH / 2) : std::max(132, ctx.baseScreenH / 2 - totalH / 2);
+    const int textDrivenStartY = textRows > 0 ? 106 + textRows * 28 + 10 : 0;
+    int startY = defaultStartY;
+    if (textDrivenStartY > defaultStartY && textDrivenStartY + totalH <= ctx.baseScreenH - 16) {
+        startY = textDrivenStartY;
+    }
     return SDL_Rect{ctx.baseScreenW / 2 - w / 2, startY + buttonIndex * (h + gap), w, h};
 }
 
@@ -835,8 +1220,14 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
 
     int buttonCount = 0;
     for (const auto& item : menu.items) if (item.type == MenuItem::Type::Button) ++buttonCount;
+    const int textRows = textRowCountFor(menu, runtime);
     int buttonIndex = 0;
     int textY = 106;
+    if (!runtime.waitingBind.empty()) {
+        const std::string bindLabel = "Press a key for " + runtime.waitingBind;
+        DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(2, bindLabel) / 2, textY, 2, bindLabel);
+        textY += 28;
+    }
     for (const auto& item : menu.items) {
         const std::string label = expandVars(item.label, runtime, ctx);
         if (item.type == MenuItem::Type::Text) {
@@ -844,7 +1235,7 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
             textY += 28;
             continue;
         }
-        SDL_Rect r = buttonRectFor(ctx, buttonIndex, buttonCount);
+        SDL_Rect r = buttonRectFor(ctx, buttonIndex, buttonCount, textRows);
         const bool isSelected = buttonIndex == selected;
         SDL_SetRenderDrawColor(ctx.ren, isSelected ? 96 : 54, isSelected ? 116 : 74, isSelected ? 134 : 92, 255);
         SDL_RenderFillRect(ctx.ren, &r);
@@ -852,6 +1243,37 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
         SDL_RenderRect(ctx.ren, &r);
         DrawText(ctx.ren, r.x + (r.w - MeasureTextWidth(2, label)) / 2, r.y + (r.h - 20) / 2, 2, label);
         ++buttonIndex;
+    }
+}
+
+void renderMenuFadeOverlay(const SlimMenuContext& ctx, Uint8 alpha) {
+    if (alpha == 0) return;
+    SDL_SetRenderTarget(ctx.ren, ctx.gameTarget);
+    SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(ctx.ren, 0, 0, 0, alpha);
+    SDL_Rect overlay{0, 0, ctx.baseScreenW, ctx.baseScreenH};
+    SDL_RenderFillRect(ctx.ren, &overlay);
+    SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_NONE);
+}
+
+void presentMenuFrame(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContext& ctx, int selected, Uint8 fadeAlpha = 0) {
+    renderMenu(menu, runtime, ctx, selected);
+    renderMenuFadeOverlay(ctx, fadeAlpha);
+    SDL_SetRenderTarget(ctx.ren, nullptr);
+    SDL_RenderTexture(ctx.ren, ctx.gameTarget, static_cast<const SDL_Rect*>(nullptr), static_cast<const SDL_Rect*>(nullptr));
+    SDL_RenderPresent(ctx.ren);
+}
+
+void playMenuFade(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContext& ctx, int selected, bool fadeIn) {
+    const Uint64 start = SDL_GetTicks();
+    while (ctx.running && *ctx.running) {
+        const Uint64 elapsed = SDL_GetTicks() - start;
+        const float t = std::clamp((float)elapsed / (float)kMenuFadeMs, 0.0f, 1.0f);
+        const float alphaT = fadeIn ? (1.0f - t) : t;
+        const Uint8 alpha = (Uint8)std::clamp((int)std::lround(alphaT * 255.0f), 0, 255);
+        presentMenuFrame(menu, runtime, ctx, selected, alpha);
+        if (elapsed >= kMenuFadeMs) break;
+        SDL_Delay(16);
     }
 }
 
@@ -872,27 +1294,40 @@ int buttonCount(const SlimMenu& menu) {
 }
 
 bool toggleBool(const std::string& name, SlimMenuContext& ctx) {
-    bool* target = nullptr;
-    if (name == "menu_music_enabled") target = ctx.menuMusicEnabled;
-    if (name == "mute_all_audio") target = ctx.muteAllAudio;
-    if (name == "level_select_enabled") target = ctx.levelSelectEnabled;
-    if (name == "native_text_resolution_enabled") target = ctx.nativeTextResolutionEnabled;
+    const std::string var = normalizeVarName(name);
+    bool* target = boolSettingPtr(var, ctx);
     if (!target) return false;
-    *target = !*target;
-    if (name == "native_text_resolution_enabled") SetNativeTextResolutionEnabled(*target);
-    if (ctx.applyMenuMusicToggle) ctx.applyMenuMusicToggle();
-    if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
+    const bool next = !*target;
+    if (var == "fullscreen" && ctx.applyFullscreen) {
+        if (!ctx.applyFullscreen(next)) return false;
+    }
+    *target = next;
+    if (var == "vsync_enabled" && ctx.applyRenderVsync) ctx.applyRenderVsync();
+    if (var == "native_text_resolution_enabled") SetNativeTextResolutionEnabled(*target);
+    if (var == "menu_music_enabled" && ctx.applyMenuMusicToggle) ctx.applyMenuMusicToggle();
+    if ((var == "mute_all_audio" || var == "menu_music_enabled") && ctx.applyAudioVolumes) ctx.applyAudioVolumes();
     if (ctx.saveClientSettings) ctx.saveClientSettings();
     return true;
 }
 
 bool adjustInt(const std::string& name, int delta, SlimMenuContext& ctx) {
     int* target = nullptr;
-    if (name == "music_volume") target = ctx.musicVolume;
-    if (name == "sfx_volume") target = ctx.sfxVolume;
+    const std::string var = normalizeVarName(name);
+    if (var == "music_volume") target = ctx.musicVolume;
+    if (var == "sfx_volume") target = ctx.sfxVolume;
+    if (var == "ui_scale_percent") target = ctx.uiScalePercent;
+    if (var == "ui_edge_padding") target = ctx.uiEdgePadding;
     if (!target) return false;
-    *target = std::clamp(*target + delta, 0, 128);
-    if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
+    if (var == "ui_scale_percent") {
+        *target = UiScale::stepPercent(*target, delta > 0 ? 1 : -1);
+        SetTextScaleMultiplier(UiScale::multiplier(*target));
+        if (ctx.updateDynamicResolution) ctx.updateDynamicResolution();
+    } else if (var == "ui_edge_padding") {
+        *target = UiScale::stepEdgePadding(*target, delta > 0 ? 1 : -1);
+    } else {
+        *target = std::clamp(*target + delta, 0, 128);
+        if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
+    }
     if (ctx.saveClientSettings) ctx.saveClientSettings();
     return true;
 }
@@ -963,6 +1398,17 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
         if (path.empty()) return SlimMenuExit::Continue;
         *ctx.selectedLevelPath = path;
         return SlimMenuExit::StartGame;
+    }
+    if (command == "create_level") {
+        const std::string createdPath = OpenLocalLevelEditorForMenu(ctx.win, ctx.ren, {});
+        if (!createdPath.empty() && ctx.selectedLevelPath) {
+            *ctx.selectedLevelPath = createdPath;
+            return SlimMenuExit::StartGame;
+        }
+        runtime.vars["level_detail_status"] = "Create cancelled.";
+        currentMenu = "locallevels";
+        runtime.vars["__reload_menu"] = "1";
+        return SlimMenuExit::Continue;
     }
     if (command == "edit_level") {
         const int index = std::atoi(arg.c_str());
@@ -1045,6 +1491,22 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
         runtime.vars["__reload_menu"] = "1";
         return SlimMenuExit::Continue;
     }
+    if (command == "vote_online_level") {
+        const std::string::size_type colon = arg.find(':');
+        const int index = std::atoi((colon == std::string::npos ? arg : arg.substr(0, colon)).c_str());
+        const std::string vote = colon == std::string::npos ? "like" : arg.substr(colon + 1);
+        std::vector<SlimLevelEntry> levels = filteredGeneratedLevels("online", runtime, ctx);
+        if (index < 0 || index >= (int)levels.size()) {
+            runtime.vars["level_detail_status"] = "Level no longer available.";
+            runtime.vars["__reload_menu"] = "1";
+            return SlimMenuExit::Continue;
+        }
+        std::string status;
+        const bool ok = putOnlineLevelVote(levels[index], vote, ctx, status);
+        runtime.vars["level_detail_status"] = status.empty() ? (ok ? "Vote saved." : "Vote failed.") : status;
+        runtime.vars["__reload_menu"] = "1";
+        return SlimMenuExit::Continue;
+    }
     if (command == "saved") {
         if (ctx.selectedLevelPath) *ctx.selectedLevelPath = kSavedGameSelectionToken;
         return SlimMenuExit::StartGame;
@@ -1078,8 +1540,58 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
         if (ctx.selectedLevelPath) *ctx.selectedLevelPath = arg;
         return SlimMenuExit::StartGame;
     }
+    if (command == "account_open") {
+        std::string url = ctx.accountManagerUrl ? *ctx.accountManagerUrl : std::string();
+        if (url.empty() && ctx.levelServerUrl) url = *ctx.levelServerUrl;
+        if (url.empty()) {
+            runtime.vars["account_action_status"] = "Account manager unavailable.";
+        } else if (!SDL_OpenURL(url.c_str())) {
+            runtime.vars["account_action_status"] = "Could not open account manager.";
+        } else {
+            runtime.vars["account_action_status"] = "Opened account manager.";
+        }
+        runtime.vars["__reload_menu"] = "1";
+        return SlimMenuExit::Continue;
+    }
+    if (command == "account_logout") {
+        RevokeLevelServerSession();
+        if (ctx.levelServerAuthToken) ctx.levelServerAuthToken->clear();
+        if (ctx.levelServerAccountUsername) ctx.levelServerAccountUsername->clear();
+        SetLevelServerAuthToken(ctx.levelServerAuthToken ? *ctx.levelServerAuthToken : std::string());
+        SetLevelServerAccountUsername(ctx.levelServerAccountUsername ? *ctx.levelServerAccountUsername : std::string());
+        if (ctx.saveClientSettings) ctx.saveClientSettings();
+        runtime.vars["account_action_status"] = "Logged out.";
+        runtime.vars["__reload_menu"] = "1";
+        return SlimMenuExit::Continue;
+    }
+    if (command == "account_repair") {
+        if (ctx.levelServerAuthToken) ctx.levelServerAuthToken->clear();
+        if (ctx.levelServerAccountUsername) ctx.levelServerAccountUsername->clear();
+        SetLevelServerAuthToken(ctx.levelServerAuthToken ? *ctx.levelServerAuthToken : std::string());
+        SetLevelServerAccountUsername(ctx.levelServerAccountUsername ? *ctx.levelServerAccountUsername : std::string());
+        if (ctx.saveClientSettings) ctx.saveClientSettings();
+        runtime.vars["account_action_status"] = "Cleared saved login.";
+        runtime.vars["__reload_menu"] = "1";
+        return SlimMenuExit::Continue;
+    }
+    if (command == "server_update") {
+        if (!currentAccountIsMod(runtime, ctx)) {
+            runtime.vars["account_action_status"] = "Moderator account required.";
+            runtime.vars["__reload_menu"] = "1";
+            return SlimMenuExit::Continue;
+        }
+        std::string status;
+        const bool ok = putServerUpdateTrigger(ctx, status);
+        runtime.vars["account_action_status"] = status.empty() ? (ok ? "Server update triggered." : "Server update failed.") : status;
+        runtime.vars["__reload_menu"] = "1";
+        return SlimMenuExit::Continue;
+    }
     if (command == "toggle") {
         (void)toggleBool(arg, ctx);
+        return SlimMenuExit::Continue;
+    }
+    if (command == "bind") {
+        runtime.waitingBind = normalizeVarName(arg);
         return SlimMenuExit::Continue;
     }
     if (command == "inc") {
@@ -1111,6 +1623,7 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
     while (ctx.running && *ctx.running) {
         SlimMenu menu = loadMenu(currentMenu, runtime, ctx);
         int selected = 0;
+        playMenuFade(menu, runtime, ctx, selected, true);
         SDL_Event e;
         while (ctx.running && *ctx.running) {
             const int count = std::max(1, buttonCount(menu));
@@ -1121,6 +1634,20 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                     return SlimMenuExit::Quit;
                 }
                 if (e.type == SDL_EVENT_KEY_DOWN && e.key.repeat == 0) {
+                    if (!runtime.waitingBind.empty()) {
+                        if (e.key.key == SDLK_ESCAPE || e.key.key == SDLK_AC_BACK) {
+                            runtime.waitingBind.clear();
+                            continue;
+                        }
+                        if (SDL_Scancode* binding = keyBindingPtr(runtime.waitingBind, ctx)) {
+                            if (e.key.scancode > SDL_SCANCODE_UNKNOWN && e.key.scancode < SDL_SCANCODE_COUNT) {
+                                *binding = e.key.scancode;
+                                if (ctx.saveClientSettings) ctx.saveClientSettings();
+                            }
+                        }
+                        runtime.waitingBind.clear();
+                        continue;
+                    }
                     if (e.key.key == SDLK_ESCAPE || e.key.key == SDLK_AC_BACK) return SlimMenuExit::Back;
                     if (e.key.key == SDLK_UP || e.key.key == SDLK_LEFT) selected = (selected + count - 1) % count;
                     if (e.key.key == SDLK_DOWN || e.key.key == SDLK_RIGHT) selected = (selected + 1) % count;
@@ -1130,8 +1657,14 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                             const SlimMenuExit exit = execute(*item, runtime, ctx, currentMenu);
                             if (exit == SlimMenuExit::Back) return exit;
                             if (exit == SlimMenuExit::StartGame || exit == SlimMenuExit::Quit) return exit;
-                            if (runtime.vars.erase("__reload_menu") > 0) goto next_menu;
-                            if (currentMenu != before) goto next_menu;
+                            if (runtime.vars.erase("__reload_menu") > 0) {
+                                playMenuFade(menu, runtime, ctx, selected, false);
+                                goto next_menu;
+                            }
+                            if (currentMenu != before) {
+                                playMenuFade(menu, runtime, ctx, selected, false);
+                                goto next_menu;
+                            }
                         }
                     }
                 }
@@ -1144,8 +1677,9 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                     int winW = 0, winH = 0, gx = 0, gy = 0;
                     getWindowSizeInPixelsCompat(ctx.win, winW, winH);
                     if (!windowToGamePoint(e.button.x, e.button.y, winW, winH, ctx.baseScreenW, ctx.baseScreenH, gx, gy, 1.0f)) continue;
+                    const int textRows = textRowCountFor(menu, runtime);
                     for (int i = 0; i < count; ++i) {
-                        SDL_Rect r = buttonRectFor(ctx, i, count);
+                        SDL_Rect r = buttonRectFor(ctx, i, count, textRows);
                         SDL_Point pt{gx, gy};
                         if (!SDL_PointInRect(&pt, &r)) continue;
                         selected = i;
@@ -1154,16 +1688,19 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                             const SlimMenuExit exit = execute(*item, runtime, ctx, currentMenu);
                             if (exit == SlimMenuExit::Back) return exit;
                             if (exit == SlimMenuExit::StartGame || exit == SlimMenuExit::Quit) return exit;
-                            if (runtime.vars.erase("__reload_menu") > 0) goto next_menu;
-                            if (currentMenu != before) goto next_menu;
+                            if (runtime.vars.erase("__reload_menu") > 0) {
+                                playMenuFade(menu, runtime, ctx, selected, false);
+                                goto next_menu;
+                            }
+                            if (currentMenu != before) {
+                                playMenuFade(menu, runtime, ctx, selected, false);
+                                goto next_menu;
+                            }
                         }
                     }
                 }
             }
-            renderMenu(menu, runtime, ctx, selected);
-            SDL_SetRenderTarget(ctx.ren, nullptr);
-            SDL_RenderTexture(ctx.ren, ctx.gameTarget, static_cast<const SDL_Rect*>(nullptr), static_cast<const SDL_Rect*>(nullptr));
-            SDL_RenderPresent(ctx.ren);
+            presentMenuFrame(menu, runtime, ctx, selected);
             SDL_Delay(16);
         }
 next_menu:

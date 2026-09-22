@@ -1,0 +1,9 @@
+# DF Slim Menu: controls settings
+title "Controls"
+text "Choose a binding, then press a key."
+button "Move Left: ${move_left}" bind move_left
+button "Move Right: ${move_right}" bind move_right
+button "Move Down: ${move_down}" bind move_down
+button "Jump: ${jump}" bind jump
+button "Pause: ${pause}" bind pause
+button "Back" menu mainsetting

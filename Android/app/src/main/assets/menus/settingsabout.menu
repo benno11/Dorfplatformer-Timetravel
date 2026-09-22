@@ -1,0 +1,17 @@
+# DF Slim Menu: about
+title "About"
+text "Dorfplatformer Timetravel"
+text "Version: ${about_version} (${about_version_id})"
+text "SDL: ${about_sdl_version}"
+text "Platform: ${about_platform}"
+text "Renderer: ${about_renderer}"
+text "Window: ${about_window_size}  Base: ${about_base_size}"
+text "UI: ${about_ui_scale}  Edge: ${about_ui_edge_padding}"
+text "Video: ${about_video_driver}"
+text "Audio: ${about_audio_driver}"
+text "CPU: ${about_cpu_cores}  RAM: ${about_system_ram}"
+text "Build: ${about_build_uuid}"
+text "Time: ${about_build_time} ${about_build_timezone}"
+text "Updater: ${about_updater_status}"
+button "SDL Revision" menu settingsaboutrevision
+button "Back" menu mainsetting

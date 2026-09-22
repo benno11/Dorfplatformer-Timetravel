@@ -1,0 +1,9 @@
+# DF Slim Menu: debug settings
+title "Debug Settings"
+button "FPS Counter: ${show_fps_counter}" toggle show_fps_counter
+button "Detailed Debugger: ${show_detailed_debugger}" toggle show_detailed_debugger
+button "Show Hitboxes: ${show_hitboxes}" toggle show_hitboxes
+button "Player Hitbox: ${show_player_hitbox}" toggle show_player_hitbox
+button "Debug HUD: ${show_debug_view}" toggle show_debug_view
+button "Hide Unknown Objects: ${hide_unknown_object_types}" toggle hide_unknown_object_types
+button "Back" menu mainsetting

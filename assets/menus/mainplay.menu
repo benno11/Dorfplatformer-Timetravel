@@ -1,7 +1,8 @@
-# DF Slim Menu: play hub
-title "Play"
-text "Choose how to start."
-button "Save Selector" menu saves
-button "Campaign Levels" campaign
-button "All Levels" levels
+# DF Slim Menu: save selector
+title "Save Selector"
+text "Active slot: ${active_save_slot}"
+button "Slot 1: ${save_slot_1_status}" save_slot 1
+button "Slot 2: ${save_slot_2_status}" save_slot 2
+button "Slot 3: ${save_slot_3_status}" save_slot 3
+button "Save Settings" menu savesettings
 button "Back" back

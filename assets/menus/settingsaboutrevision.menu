@@ -1,0 +1,4 @@
+# DF Slim Menu: about revision
+title "SDL Revision"
+text "${about_sdl_revision}"
+button "Back" menu settingsabout

@@ -1,0 +1,9 @@
+# DF Slim Menu: account settings
+title "Account"
+text "Status: ${account_status}"
+text "${account_action_status}"
+button "Open Account Manager" account_open
+button "Update Server" server_update
+button "Log Out" account_logout
+button "Repair Login" account_repair
+button "Back" menu mainsetting

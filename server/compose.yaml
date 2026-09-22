@@ -7,6 +7,8 @@ services:
     command: ["python", "server/game_server.py", "--no-dashboard"]
     environment:
       PUBLIC_URL: https://${DOMAIN:?Set DOMAIN to your game server hostname}
+      SERVER_UPDATE_COMMAND: ${SERVER_UPDATE_COMMAND:-}
+      SERVER_UPDATE_CWD: ${SERVER_UPDATE_CWD:-/app}
     volumes:
       - game-data:/data
       - game-releases:/app/server/releases:ro

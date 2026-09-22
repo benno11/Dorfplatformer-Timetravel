@@ -48,6 +48,7 @@ API:
 - GET /levels.json?shallow=true: object mapping level IDs to true.
 - GET /levels/<id>.json: full level; GET /levels/<id>/data.json: JSON string.
 - PUT /levels/<id>.json: Bearer token, name, data, optional api_version_id.
+- PUT /levels/<id>/vote: Bearer token, {"vote":"like"|"dislike"|"clear"}.
 - DELETE /levels/<id>.json: Bearer token, owner only.
 - GET /health and GET /api.json: health and service descriptor.
 
@@ -73,11 +74,31 @@ The server uses Python's standard HTTP implementation with bounded concurrency;
 load-test for the expected player count before public rollout.
 
 
-Optional update hosting: put update-manifest.json and release installers in
-server/releases (or --releases / RELEASES_PATH). The server exposes the manifest
-at /update-manifest.json and installers at /releases/<filename>. The default
-game config uses this manifest URL. Until a manifest is published, update checks
-report that it is unavailable. An example manifest:
+Automatic updates: by default the server redirects /update-manifest.json to
+https://benno111.github.io/Dorfplatformer-API/update-manifest.json, and packaged
+game configs use that same manifest URL. Existing clients that still point at a
+custom server's /update-manifest.json automatically follow the redirect.
+
+Moderator-triggered server updates are disabled until the operator configures a
+fixed command:
+    SERVER_UPDATE_COMMAND="/path/to/update-server.sh" python server/game_server.py
+or:
+    python server/game_server.py --server-update-command /path/to/update-server.sh
+The in-game Account settings page exposes Update Server. Only accounts with the
+moderator role can trigger it. The game never sends a shell command; it only
+asks the server to run the operator-configured command in the background.
+Use --server-update-cwd or SERVER_UPDATE_CWD to choose the command's working
+directory. Wrap complex update flows such as git pull, docker compose pull/up,
+or service restarts in a script and point SERVER_UPDATE_COMMAND at that script.
+Requests are audited in the server database as server_update_requested and
+server_update_succeeded/server_update_failed.
+
+Optional local update hosting: start the server with --update-manifest-url ""
+(or UPDATE_MANIFEST_URL="") and put update-manifest.json plus release installers
+in server/releases (or --releases / RELEASES_PATH). The server then exposes the
+local manifest at /update-manifest.json and installers at /releases/<filename>.
+Until a local manifest is published, update checks report that it is unavailable.
+An example manifest:
     {"version":"2.3.2","version_id":28,
      "installer_url":"https://game.example.com/releases/game-setup.exe",
      "notes":"Release notes"}
@@ -156,8 +177,13 @@ The API is PUT /levels/<id>/difficulty with a Bearer token and {"difficulty": 5}
 GET /levels.json?metadata=true returns level metadata and difficulty without
 downloading all level content. Full level responses also include difficulty;
 null means Unrated. Existing shallow-list and data-download formats still work.
+Metadata and full level responses also include server-owned downloads, likes and
+dislikes. Downloads increment on GET /levels/<id>/data.json. Signed-in players
+can set one like or dislike per level with PUT /levels/<id>/vote, or clear their
+vote; changing a vote updates the aggregate counts.
 
-Ordinary uploads cannot set difficulty, even when the uploader owns the level.
+Ordinary uploads cannot set difficulty, downloads, likes or dislikes, even when
+the uploader owns the level.
 Changing a level's content clears its rating for moderator review; changing only
 its name preserves the rating. Imported levels start Unrated. Ratings and roles
 are persisted in SQLite; existing databases get the new tables automatically.

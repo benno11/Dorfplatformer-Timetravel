@@ -76,8 +76,8 @@ class AdminTests(unittest.TestCase):
             self.assertEqual(self.request("GET", "/levels.json", headers={"User-Agent": ua}, public=True)[0], 200)
         for path in ["/", "/health"]:
             self.assertEqual(self.request("GET", path, headers=headers, public=True)[0], 200)
-        # Missing update files return 404 rather than a blacklist rejection.
-        self.assertEqual(self.request("GET", "/update-manifest.json", headers=headers, public=True)[0], 404)
+        # Update distribution remains reachable rather than being blocked by client version policy.
+        self.assertEqual(self.request("GET", "/update-manifest.json", headers=headers, public=True)[0], 302)
         self.assertEqual(self.request("GET", "/releases/game.apk", headers=headers, public=True)[0], 404)
         self.assertEqual(self.request("GET", "/admin/api/state", headers=headers)[0], 200)
         from game_server import Store

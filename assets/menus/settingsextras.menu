@@ -1,0 +1,5 @@
+# DF Slim Menu: extra settings
+title "Extra Settings"
+text "More legacy categories unlock through experimental features."
+button "Anonymous Metrics: ${send_anonymous_metrics}" toggle send_anonymous_metrics
+button "Back" menu mainsetting

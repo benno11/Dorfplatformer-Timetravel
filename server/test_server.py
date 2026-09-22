@@ -6,11 +6,12 @@ import sqlite3
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from game_server import GameServer, Store, MAX_BODY
+from game_server import GameServer, Store, MAX_BODY, DEFAULT_UPDATE_MANIFEST_URL
 
 
 class ServerTests(unittest.TestCase):
@@ -82,11 +83,64 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(level["owner"], "player")
         self.assertGreater(level["uploaded_at"], 0)
+        self.assertEqual(level["downloads"], 0)
+        self.assertEqual(level["likes"], 0)
+        self.assertEqual(level["dislikes"], 0)
         self.assertEqual(self.request("GET", "/levels/player-demo/data.json")[1], data["data"])
+        self.assertEqual(self.request("GET", "/levels/player-demo.json")[1]["downloads"], 1)
         self.assertEqual(self.request("GET", "/levels.json?shallow=true")[1], {"player-demo": True})
-        self.assertEqual(self.request("GET", "/levels.json")[1]["player-demo"]["name"], "My level")
+        listed = self.request("GET", "/levels.json")[1]["player-demo"]
+        self.assertEqual(listed["name"], "My level")
+        self.assertEqual(listed["downloads"], 1)
         self.assertEqual(self.request("DELETE", "/levels/player-demo.json", token=token)[0], 200)
         self.assertEqual(self.request("GET", "/levels/player-demo.json")[0], 404)
+
+    def test_level_votes_and_download_counts(self):
+        owner = self.register("owner")["idToken"]
+        liker = self.register("liker")["idToken"]
+        disliker = self.register("disliker")["idToken"]
+        self.request("PUT", "/levels/voted.json", {"name": "Voted", "data": "level"}, owner)
+        self.assertEqual(self.request("GET", "/levels/voted/data.json")[0], 200)
+        self.assertEqual(self.request("GET", "/levels/voted/data.json")[0], 200)
+        self.assertEqual(self.request("PUT", "/levels/voted/vote", {"vote": "like"})[0], 401)
+        self.assertEqual(self.request("PUT", "/levels/voted/vote", {"vote": "like"}, liker)[1],
+                         {"level_id": "voted", "downloads": 2, "likes": 1, "dislikes": 0})
+        self.assertEqual(self.request("PUT", "/levels/voted/vote", {"vote": "dislike"}, disliker)[1]["dislikes"], 1)
+        self.assertEqual(self.request("PUT", "/levels/voted/vote", {"vote": "dislike"}, liker)[1],
+                         {"level_id": "voted", "downloads": 2, "likes": 0, "dislikes": 2})
+        self.assertEqual(self.request("PUT", "/levels/voted/vote", {"vote": "clear"}, liker)[1],
+                         {"level_id": "voted", "downloads": 2, "likes": 0, "dislikes": 1})
+        metadata = self.request("GET", "/levels.json?metadata=true")[1]["voted"]
+        self.assertEqual(metadata["downloads"], 2)
+        self.assertEqual(metadata["likes"], 0)
+        self.assertEqual(metadata["dislikes"], 1)
+        self.assertEqual(self.request("PUT", "/levels/voted/vote", {"vote": "bad"}, liker)[0], 400)
+        self.assertEqual(self.request("PUT", "/levels/missing/vote", {"vote": "like"}, liker)[0], 404)
+
+    def test_moderator_can_trigger_configured_server_update(self):
+        user = self.register("player")["idToken"]
+        moderator = self.register("servermod")
+        token = moderator["idToken"]
+        self.server.store.set_moderator("servermod", True)
+        self.assertEqual(self.request("PUT", "/api/server/update", {})[0], 401)
+        self.assertEqual(self.request("PUT", "/api/server/update", {}, user)[0], 403)
+        self.assertEqual(self.request("PUT", "/api/server/update", {}, token)[0], 503)
+
+        marker = Path(self.temp.name) / "updated.txt"
+        self.server.server_update_command = [sys.executable, "-c", "from pathlib import Path; Path(r'" + str(marker) + "').write_text('ok')"]
+        self.server.server_update_status["configured"] = True
+        self.server.server_update_status["state"] = "idle"
+        self.server.server_update_status["detail"] = "Ready."
+        status, result = self.request("PUT", "/api/server/update", {}, token)
+        self.assertEqual(status, 202, result)
+        self.assertTrue(result["running"])
+        for _ in range(50):
+            state = self.request("GET", "/api/server/update", token=token)[1]
+            if not state["running"]:
+                break
+            time.sleep(0.05)
+        self.assertEqual(state["state"], "succeeded")
+        self.assertEqual(marker.read_text(), "ok")
 
     def test_cross_account_overwrite_and_delete_rejected(self):
         a, b = self.register("first")["idToken"], self.register("second")["idToken"]
@@ -143,6 +197,15 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.request("POST", "/api/auth/login", raw="", headers={"Content-Length": str(MAX_BODY + 1)})[0], 413)
 
     def test_release_files(self):
+        connection = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=10)
+        connection.request("GET", "/update-manifest.json")
+        response = connection.getresponse()
+        self.assertEqual(response.status, 302)
+        self.assertEqual(response.getheader("Location"), DEFAULT_UPDATE_MANIFEST_URL)
+        response.read()
+        connection.close()
+
+        self.server.update_manifest_url = ""
         self.assertEqual(self.request("GET", "/update-manifest.json")[0], 404)
         manifest = {"version": "2.3.1", "version_id": 27, "installer_url": "https://game.example.com/releases/setup.exe"}
         (self.releases / "update-manifest.json").write_text(json.dumps(manifest))

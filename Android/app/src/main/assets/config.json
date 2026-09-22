@@ -22,7 +22,7 @@
   "level_api_version_id": 26,
   "level_server_url": "http://critique-unsmooth.tun.ply.gg:49642/",
   "account_manager_url": "http://critique-unsmooth.tun.ply.gg:49642/",
-  "windows_update_manifest_url": "http://critique-unsmooth.tun.ply.gg:49642/update-manifest.json",
+  "windows_update_manifest_url": "https://benno111.github.io/Dorfplatformer-API/update-manifest.json",
   "firebase_api_key": "AIzaSyC-lBtzoK98rO6TH6nQV4ugiPsVMbAJ-44",
   "level_server_account_username": "",
   "level_server_auth_token": ""

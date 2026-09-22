@@ -10,7 +10,9 @@ import os
 from pathlib import Path
 import re
 import secrets
+import shlex
 import sqlite3
+import subprocess
 import sys
 import threading
 import time
@@ -19,6 +21,7 @@ from urllib.parse import urlsplit, parse_qs
 ROOT = Path(__file__).resolve().parent.parent
 MAX_BODY = 2 * 1024 * 1024
 SESSION_SECONDS = 30 * 24 * 3600
+DEFAULT_UPDATE_MANIFEST_URL = "https://benno111.github.io/Dorfplatformer-API/update-manifest.json"
 USERNAME = re.compile(r"[A-Za-z0-9_-]{3,48}")
 LEVEL_ID = re.compile(r"[A-Za-z0-9_-]{1,160}")
 
@@ -36,6 +39,17 @@ def require_password(value):
     if not isinstance(value, str) or not 10 <= len(value) <= 256:
         raise ApiError(400, "Password must contain 10 to 256 characters.")
     return value
+
+
+def normalize_command(command):
+    if command is None:
+        return []
+    if isinstance(command, (list, tuple)):
+        return [str(part) for part in command if str(part)]
+    command = str(command).strip()
+    if not command:
+        return []
+    return shlex.split(command, posix=(os.name != "nt"))
 
 
 class Store:
@@ -63,6 +77,16 @@ class Store:
                     level_id TEXT PRIMARY KEY REFERENCES levels(id) ON DELETE CASCADE,
                     difficulty INTEGER NOT NULL CHECK(difficulty BETWEEN 1 AND 9),
                     rated_by TEXT NOT NULL REFERENCES users(id), rated_at INTEGER NOT NULL);
+                CREATE TABLE IF NOT EXISTS level_stats(
+                    level_id TEXT PRIMARY KEY REFERENCES levels(id) ON DELETE CASCADE,
+                    downloads INTEGER NOT NULL DEFAULT 0 CHECK(downloads >= 0));
+                CREATE TABLE IF NOT EXISTS level_votes(
+                    level_id TEXT NOT NULL REFERENCES levels(id) ON DELETE CASCADE,
+                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    value INTEGER NOT NULL CHECK(value IN (-1, 1)),
+                    voted_at INTEGER NOT NULL,
+                    PRIMARY KEY(level_id,user_id));
+                CREATE INDEX IF NOT EXISTS level_votes_level ON level_votes(level_id);
                 CREATE TABLE IF NOT EXISTS upload_blocks(
                     user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
                     until INTEGER, reason TEXT NOT NULL, created_at INTEGER NOT NULL);
@@ -73,7 +97,7 @@ class Store:
                 CREATE INDEX IF NOT EXISTS admin_events_target ON admin_events(target_id,id);
                 CREATE TABLE IF NOT EXISTS blocked_versions(
                     version_id TEXT PRIMARY KEY, reason TEXT NOT NULL, created_at INTEGER NOT NULL);
-                PRAGMA user_version=4;
+                PRAGMA user_version=5;
             """)
 
     def check_client_version(self, user_agent):
@@ -197,6 +221,18 @@ class Store:
                        ("grant_moderator" if enabled else "revoke_moderator", user["id"],
                         "Role updated from server console.", "console", int(time.time())))
 
+    def require_moderator(self, token):
+        with self.connect() as db:
+            user = self.authenticate(db, token)
+            if not db.execute("SELECT 1 FROM moderators WHERE user_id=?", (user["id"],)).fetchone():
+                raise ApiError(403, "Only moderators can trigger server updates.")
+            return dict(user)
+
+    def audit_event(self, action, target, reason, actor):
+        with self.connect() as db:
+            db.execute("INSERT INTO admin_events(action,target_id,reason,actor,created_at) VALUES(?,?,?,?,?)",
+                       (action, target, reason, actor, int(time.time())))
+
     def rate_difficulty(self, level_id, body, token):
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
@@ -216,6 +252,56 @@ class Store:
                        ("rate_level", level_id, "Difficulty set to " + str(difficulty), user["id"], int(time.time())))
             return {"level_id": level_id, "difficulty": difficulty}
 
+    def vote_level(self, level_id, body, token):
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            user = self.authenticate(db, token)
+            if not db.execute("SELECT 1 FROM levels WHERE id=?", (level_id,)).fetchone():
+                raise ApiError(404, "Level not found.")
+            value = body.get("vote")
+            if value in ("like", "up", 1):
+                value = 1
+            elif value in ("dislike", "down", -1):
+                value = -1
+            elif value in ("clear", None, 0):
+                db.execute("DELETE FROM level_votes WHERE level_id=? AND user_id=?", (level_id, user["id"]))
+                return self.level_reactions(db, level_id)
+            else:
+                raise ApiError(400, "Vote must be like, dislike or clear.")
+            db.execute("""INSERT INTO level_votes(level_id,user_id,value,voted_at) VALUES(?,?,?,?)
+                ON CONFLICT(level_id,user_id) DO UPDATE SET value=excluded.value,voted_at=excluded.voted_at""",
+                (level_id, user["id"], value, int(time.time())))
+            return self.level_reactions(db, level_id)
+
+    @staticmethod
+    def level_reactions(db, level_id):
+        stats = db.execute("""SELECT
+                COALESCE(SUM(CASE WHEN value=1 THEN 1 ELSE 0 END),0) AS likes,
+                COALESCE(SUM(CASE WHEN value=-1 THEN 1 ELSE 0 END),0) AS dislikes
+            FROM level_votes WHERE level_id=?""", (level_id,)).fetchone()
+        downloads = db.execute("SELECT downloads FROM level_stats WHERE level_id=?", (level_id,)).fetchone()
+        return {"level_id": level_id,
+                "downloads": downloads["downloads"] if downloads else 0,
+                "likes": stats["likes"],
+                "dislikes": stats["dislikes"]}
+
+    @staticmethod
+    def level_select_sql(fields):
+        return f"""SELECT {fields},users.username,d.difficulty,
+                COALESCE(s.downloads,0) AS downloads,
+                COALESCE(v.likes,0) AS likes,
+                COALESCE(v.dislikes,0) AS dislikes
+            FROM levels
+            JOIN users ON users.id=levels.user_id
+            LEFT JOIN level_difficulties d ON d.level_id=levels.id
+            LEFT JOIN level_stats s ON s.level_id=levels.id
+            LEFT JOIN (
+                SELECT level_id,
+                    SUM(CASE WHEN value=1 THEN 1 ELSE 0 END) AS likes,
+                    SUM(CASE WHEN value=-1 THEN 1 ELSE 0 END) AS dislikes
+                FROM level_votes GROUP BY level_id
+            ) v ON v.level_id=levels.id"""
+
     def levels(self, method, level_id, data_only, shallow, body, token, metadata=False):
         with self.connect() as db:
             if method == "GET":
@@ -223,16 +309,16 @@ class Store:
                     if shallow:
                         return {row["id"]: True for row in db.execute("SELECT id FROM levels ORDER BY id")}
                     fields = "levels.id,levels.name,levels.api_version,levels.uploaded_at" if metadata else "levels.*"
-                    rows = db.execute(f"""SELECT {fields},users.username,d.difficulty FROM levels
-                        JOIN users ON users.id=levels.user_id
-                        LEFT JOIN level_difficulties d ON d.level_id=levels.id ORDER BY levels.id""").fetchall()
+                    rows = db.execute(self.level_select_sql(fields) + " ORDER BY levels.id").fetchall()
                     return {r["id"]: self.level_data(r, include_data=not metadata) for r in rows}
-                row = db.execute("""SELECT levels.*,users.username,d.difficulty FROM levels JOIN users
-                    ON users.id=levels.user_id LEFT JOIN level_difficulties d ON d.level_id=levels.id
-                    WHERE levels.id=?""", (level_id,)).fetchone()
+                row = db.execute(self.level_select_sql("levels.*") + " WHERE levels.id=?", (level_id,)).fetchone()
                 if not row:
                     raise ApiError(404, "Level not found.")
-                return row["data"] if data_only else self.level_data(row)
+                if data_only:
+                    db.execute("""INSERT INTO level_stats(level_id,downloads) VALUES(?,1)
+                        ON CONFLICT(level_id) DO UPDATE SET downloads=downloads+1""", (level_id,))
+                    return row["data"]
+                return self.level_data(row)
             if not level_id or data_only:
                 raise ApiError(405, "Write a complete level object.")
             user = self.authenticate(db, token)
@@ -252,8 +338,10 @@ class Store:
                                      (user["id"], int(time.time()))).fetchone()
             if restriction:
                 raise ApiError(403, "Uploads suspended: " + restriction["reason"])
-            if "difficulty" in body:
-                raise ApiError(403, "Use the moderator difficulty endpoint to set ratings.")
+            protected = {"difficulty", "downloads", "likes", "dislikes"}
+            spoofed = protected.intersection(body)
+            if spoofed:
+                raise ApiError(403, "Level stats and ratings are server-owned fields.")
             name, data = body.get("name"), body.get("data")
             if not isinstance(name, str) or not 1 <= len(name.strip()) <= 160:
                 raise ApiError(400, "Level name must contain 1 to 160 characters.")
@@ -276,7 +364,8 @@ class Store:
     def level_data(row, include_data=True):
         result = {"level_id": row["id"], "owner": row["username"], "name": row["name"],
                   "difficulty": row["difficulty"], "api_version_id": row["api_version"],
-                  "uploaded_at": row["uploaded_at"]}
+                  "uploaded_at": row["uploaded_at"], "downloads": row["downloads"],
+                  "likes": row["likes"], "dislikes": row["dislikes"]}
         if include_data:
             result["data"] = row["data"]
         return result
@@ -284,14 +373,85 @@ class Store:
 
 class GameServer(ThreadingHTTPServer):
     daemon_threads = True
-    def __init__(self, address, database, public_url="", releases=None, handler=None):
+    def __init__(self, address, database, public_url="", releases=None,
+                 update_manifest_url=DEFAULT_UPDATE_MANIFEST_URL, server_update_command=None,
+                 server_update_cwd=None, handler=None):
         self.releases = Path(releases or ROOT / "server/releases").resolve()
         self.store = Store(database)
         self.public_url = public_url.rstrip("/")
+        self.update_manifest_url = (update_manifest_url or "").strip()
+        self.server_update_command = normalize_command(server_update_command)
+        self.server_update_cwd = str(server_update_cwd or ROOT)
+        self.server_update_lock = threading.Lock()
+        self.server_update_status = {
+            "configured": bool(self.server_update_command),
+            "running": False,
+            "state": "idle" if self.server_update_command else "not_configured",
+            "detail": "Ready." if self.server_update_command else "SERVER_UPDATE_COMMAND is not configured.",
+            "started_at": None,
+            "finished_at": None,
+            "exit_code": None,
+            "triggered_by": None,
+        }
         self.slots = threading.BoundedSemaphore(32)
         self.rate_lock = threading.Lock()
         self.attempts = {}
         super().__init__(address, handler or Handler)
+
+    def get_server_update_status(self):
+        with self.server_update_lock:
+            return dict(self.server_update_status)
+
+    def trigger_server_update(self, user):
+        if not self.server_update_command:
+            raise ApiError(503, "Server update command is not configured.")
+        with self.server_update_lock:
+            if self.server_update_status["running"]:
+                return dict(self.server_update_status)
+            self.server_update_status.update({
+                "configured": True,
+                "running": True,
+                "state": "running",
+                "detail": "Server update started.",
+                "started_at": int(time.time()),
+                "finished_at": None,
+                "exit_code": None,
+                "triggered_by": user["username"],
+            })
+            status = dict(self.server_update_status)
+        self.store.audit_event("server_update_requested", "server", "Triggered from in-game moderator action.", user["id"])
+        thread = threading.Thread(target=self._run_server_update, args=(user,), daemon=True)
+        thread.start()
+        return status
+
+    def _run_server_update(self, user):
+        exit_code = -1
+        detail = "Server update failed."
+        state = "failed"
+        try:
+            process = subprocess.Popen(self.server_update_command, cwd=self.server_update_cwd,
+                                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                       stderr=subprocess.DEVNULL)
+            exit_code = process.wait()
+            if exit_code == 0:
+                state = "succeeded"
+                detail = "Server update command completed."
+            else:
+                detail = "Server update command exited with code " + str(exit_code) + "."
+        except Exception as error:
+            detail = "Server update command failed to start: " + str(error)
+        try:
+            self.store.audit_event("server_update_" + state, "server", detail, user["id"])
+        except Exception:
+            logging.exception("Could not record server update audit event")
+        with self.server_update_lock:
+            self.server_update_status.update({
+                "running": False,
+                "state": state,
+                "detail": detail,
+                "finished_at": int(time.time()),
+                "exit_code": exit_code,
+            })
 
     def process_request(self, request, client_address):
         if not self.slots.acquire(blocking=False):
@@ -341,6 +501,17 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def redirect(self, location):
+        if not location.startswith(("http://", "https://")) or any(ord(ch) < 32 for ch in location):
+            raise ApiError(500, "Update manifest redirect is misconfigured.")
+        self.send_response(302)
+        self.send_header("Location", location)
+        self.send_header("Content-Length", "0")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.end_headers()
+
     def body(self):
         if self.headers.get("Transfer-Encoding"):
             raise ApiError(400, "Chunked request bodies are not supported.")
@@ -378,17 +549,40 @@ class Handler(BaseHTTPRequestHandler):
             if self.command == "GET" and path == "/api.json":
                 self.send(200, {"name": "Dorfplatformer custom server", "api_version_id": 1,
                                 "level_server_url": self.server.public_url,
-                                "account_manager_url": "/", "auth": "opaque bearer sessions"})
+                                "account_manager_url": "/", "auth": "opaque bearer sessions",
+                                "level_reactions": "/levels/<id>/vote",
+                                "windows_update_manifest_url": self.server.update_manifest_url or "/update-manifest.json",
+                                "server_update": {
+                                    "endpoint": "/api/server/update",
+                                    "configured": self.server.get_server_update_status()["configured"],
+                                    "requires": "moderator bearer token",
+                                }})
                 return
             if self.command == "POST" and path.startswith("/api/auth/"):
                 self.server.throttle(self.client_address[0])
                 self.send(200, self.server.store.auth(path.rsplit("/", 1)[1], self.body(), token))
                 return
+            if path == "/api/server/update":
+                user = self.server.store.require_moderator(token)
+                if self.command == "GET":
+                    self.send(200, self.server.get_server_update_status())
+                    return
+                if self.command == "PUT":
+                    self.body()
+                    self.send(202, self.server.trigger_server_update(user))
+                    return
+                raise ApiError(405, "Use GET for status or PUT to trigger an update.")
             rating = re.fullmatch(r"/levels/([A-Za-z0-9_-]{1,160})/difficulty", path)
             if rating:
                 if self.command != "PUT":
                     raise ApiError(405, "Use PUT to set difficulty.")
                 self.send(200, self.server.store.rate_difficulty(rating[1], self.body(), token))
+                return
+            vote = re.fullmatch(r"/levels/([A-Za-z0-9_-]{1,160})/vote", path)
+            if vote:
+                if self.command != "PUT":
+                    raise ApiError(405, "Use PUT to vote.")
+                self.send(200, self.server.store.vote_level(vote[1], self.body(), token))
                 return
             match = re.fullmatch(r"/levels(?:/([A-Za-z0-9_-]{1,160})(/data)?)?\.json", path)
             if match:
@@ -400,6 +594,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             release_name = None
             if self.command == "GET" and path == "/update-manifest.json":
+                if self.server.update_manifest_url:
+                    self.redirect(self.server.update_manifest_url)
+                    return
                 release_name = "update-manifest.json"
             elif self.command == "GET" and re.fullmatch(r"/releases/[A-Za-z0-9_-][A-Za-z0-9_.-]*\.(exe|msi|zip|apk|aab)", path):
                 release_name = path.rsplit("/", 1)[1]
@@ -451,12 +648,20 @@ def main():
     parser.add_argument("--database", default=os.environ.get("DATABASE_PATH", str(ROOT / "server/data/game.sqlite3")))
     parser.add_argument("--public-url", default=os.environ.get("PUBLIC_URL", ""))
     parser.add_argument("--releases", default=os.environ.get("RELEASES_PATH", str(ROOT / "server/releases")))
+    parser.add_argument("--update-manifest-url",
+                        default=os.environ.get("UPDATE_MANIFEST_URL", DEFAULT_UPDATE_MANIFEST_URL),
+                        help="Redirect /update-manifest.json to this URL. Use an empty value to serve server/releases/update-manifest.json.")
+    parser.add_argument("--server-update-command", default=os.environ.get("SERVER_UPDATE_COMMAND", ""),
+                        help="Fixed command moderators may trigger from the game to update the server.")
+    parser.add_argument("--server-update-cwd", default=os.environ.get("SERVER_UPDATE_CWD", str(ROOT)),
+                        help="Working directory for --server-update-command.")
     parser.add_argument("--admin-port", type=int, default=int(os.environ.get("ADMIN_PORT", "8081")))
     parser.add_argument("--no-dashboard", action="store_true")
     parser.add_argument("--admin-key-file", default=os.environ.get("ADMIN_KEY_FILE", ""))
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    server = GameServer((args.host, args.port), args.database, args.public_url, args.releases)
+    server = GameServer((args.host, args.port), args.database, args.public_url, args.releases,
+                        args.update_manifest_url, args.server_update_command, args.server_update_cwd)
     logging.info("Game server listening on %s:%s", args.host, server.server_port)
     dashboard = None
     dashboard_thread = None
