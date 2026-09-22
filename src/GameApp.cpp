@@ -2715,6 +2715,7 @@ int RunGameApp(int argc, char** argv) {
             }
         }
         bool allowNextLevelProgression = !selectedFromCustomLevelMenu && !selectedFromFrontendMenu;
+        const bool livesSystemEnabled = allowNextLevelProgression;
         audio.haltMusic();
         if (!loadSavedGame) {
             levelManager.setLevelPath(selectedLevelPath);
@@ -5010,13 +5011,15 @@ int RunGameApp(int argc, char** argv) {
         if (deathSequenceActive && !paused) {
             deathTimer += dt;
             if (!deathLifeDeducted && deathTimer >= 0.12f) {
-                livesCount = std::max(0, livesCount - 1);
+                if (livesSystemEnabled) {
+                    livesCount = std::max(0, livesCount - 1);
+                }
                 deathLifeDeducted = true;
             }
             if (deathLifeDeducted && deathTimer >= 0.90f) {
                 deathSequenceActive = false;
                 deathTimer = 0.0f;
-                if (livesCount > 0) {
+                if (!livesSystemEnabled || livesCount > 0) {
                     droppedCoins.clear();
                     reloadLevel();
                     continue;
@@ -7899,9 +7902,11 @@ int RunGameApp(int argc, char** argv) {
         DrawText(ren, hudLeftX + hudSlideOutX, hudTopY + hudLineGap * 2, hudScale, "SCORE");
         DrawText(ren, hudValueX + hudSlideOutX, hudTopY + hudLineGap * 2, hudScale, std::to_string(scoreCount));
 
-        // HUD: lives counter (bottom-left).
-        DrawText(ren, hudLeftX + hudSlideOutX, screenH - hudBottomMargin, hudScale, "LIVES");
-        DrawText(ren, hudValueX + hudSlideOutX, screenH - hudBottomMargin, hudScale, std::to_string(livesCount));
+        if (livesSystemEnabled) {
+            // HUD: lives counter (bottom-left).
+            DrawText(ren, hudLeftX + hudSlideOutX, screenH - hudBottomMargin, hudScale, "LIVES");
+            DrawText(ren, hudValueX + hudSlideOutX, screenH - hudBottomMargin, hudScale, std::to_string(livesCount));
+        }
         if (paused || pauseMenuAnim > 0.001f) {
             const float pauseEase = pauseMenuAnim * pauseMenuAnim * (3.0f - 2.0f * pauseMenuAnim);
             const float pauseButtonT = std::clamp((pauseEase - kPauseButtonFadeDelay) / (1.0f - kPauseButtonFadeDelay), 0.0f, 1.0f);
