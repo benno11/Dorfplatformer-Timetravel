@@ -16,6 +16,7 @@ struct SlimMenuContext {
     bool* menuMusicEnabled = nullptr;
     bool* muteAllAudio = nullptr;
     bool* levelSelectEnabled = nullptr;
+    bool* nativeTextResolutionEnabled = nullptr;
     int* musicVolume = nullptr;
     int* sfxVolume = nullptr;
     int* activeSaveSlotIndex = nullptr;

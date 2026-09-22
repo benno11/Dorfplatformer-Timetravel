@@ -16,6 +16,7 @@ std::unordered_map<std::string, int> gDebugLabelWidthCache;
 // so menu and HUD text stays sharp without the chunky low-res edges.
 constexpr int kFontRenderScale = 10;
 float gTextScaleMultiplier = 1.0f;
+bool gNativeTextResolutionEnabled = true;
 constexpr SDL_ScaleMode kTextTextureScaleMode = SDL_SCALEMODE_LINEAR;
 struct TextCacheEntry {
     SDL_Texture* tex = nullptr;
@@ -275,6 +276,16 @@ float GetTextScaleMultiplier() {
     return gTextScaleMultiplier;
 }
 
+void SetNativeTextResolutionEnabled(bool enabled) {
+    if (gNativeTextResolutionEnabled == enabled) return;
+    gNativeTextResolutionEnabled = enabled;
+    ClearTextRendererCache();
+}
+
+bool GetNativeTextResolutionEnabled() {
+    return gNativeTextResolutionEnabled;
+}
+
 void BeginNativeTextOverlay(SDL_Renderer* ren, int logicalW, int logicalH, const SDL_Rect& outputRect) {
     if (!ren) return;
     auto& overlay = gNativeTextOverlays[ren];
@@ -299,7 +310,9 @@ void FlushNativeTextOverlay(SDL_Renderer* ren) {
     for (const QueuedTextDraw& draw : overlay.queue) {
         const float drawScaleX = draw.renderScaleX * sx;
         const float drawScaleY = draw.renderScaleY * sy;
-        const float nativeRasterScale = std::max(std::abs(drawScaleX), std::abs(drawScaleY));
+        const float nativeRasterScale = gNativeTextResolutionEnabled
+            ? std::max(std::abs(drawScaleX), std::abs(drawScaleY))
+            : 1.0f;
         DrawTextColoredImmediate(
             ren,
             (float)overlay.outputRect.x + (float)draw.x * drawScaleX,

@@ -876,8 +876,10 @@ bool toggleBool(const std::string& name, SlimMenuContext& ctx) {
     if (name == "menu_music_enabled") target = ctx.menuMusicEnabled;
     if (name == "mute_all_audio") target = ctx.muteAllAudio;
     if (name == "level_select_enabled") target = ctx.levelSelectEnabled;
+    if (name == "native_text_resolution_enabled") target = ctx.nativeTextResolutionEnabled;
     if (!target) return false;
     *target = !*target;
+    if (name == "native_text_resolution_enabled") SetNativeTextResolutionEnabled(*target);
     if (ctx.applyMenuMusicToggle) ctx.applyMenuMusicToggle();
     if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
     if (ctx.saveClientSettings) ctx.saveClientSettings();

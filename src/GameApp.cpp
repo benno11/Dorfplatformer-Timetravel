@@ -1553,6 +1553,7 @@ int RunGameApp(int argc, char** argv) {
     bool menuMusicEnabled = true;
     bool muteAllAudio = false;
     bool showOptionalSidebar = true;
+    bool nativeTextResolutionEnabled = true;
     KeyboardBindings keybinds{};
     int uiScalePercent = UiScale::kMaxPercent;
     int uiEdgePadding = 0;
@@ -1589,7 +1590,8 @@ int RunGameApp(int argc, char** argv) {
         nlohmann::json settings;
         settings["ui"] = {
             {"show_optional_sidebar", showOptionalSidebar},
-            {"edge_padding", uiEdgePadding}
+            {"edge_padding", uiEdgePadding},
+            {"native_text_resolution", nativeTextResolutionEnabled}
         };
         settings["display"] = {
             {"fullscreen", savedFullscreen},
@@ -1649,6 +1651,7 @@ int RunGameApp(int argc, char** argv) {
         j["fullscreen"] = savedFullscreen;
         j["vsync"] = vsyncEnabled;
         j["show_optional_sidebar"] = showOptionalSidebar;
+        j["native_text_resolution"] = nativeTextResolutionEnabled;
         j["clamp_cam_x"] = clampCamX;
         j["show_fps_counter"] = defaultShowFpsCounter;
         j["show_detailed_debugger"] = defaultShowDetailedDebugger;
@@ -1740,6 +1743,9 @@ int RunGameApp(int argc, char** argv) {
                     }
                     if (ui.contains("edge_padding") && ui["edge_padding"].is_number_integer()) {
                         uiEdgePadding = UiScale::clampEdgePadding(ui["edge_padding"].get<int>());
+                    }
+                    if (ui.contains("native_text_resolution") && ui["native_text_resolution"].is_boolean()) {
+                        nativeTextResolutionEnabled = ui["native_text_resolution"].get<bool>();
                     }
                 }
                 if (s.contains("camera") && s["camera"].is_object()) {
@@ -1856,6 +1862,9 @@ int RunGameApp(int argc, char** argv) {
             if (j.contains("ui_edge_padding") && j["ui_edge_padding"].is_number_integer()) {
                 uiEdgePadding = UiScale::clampEdgePadding(j["ui_edge_padding"].get<int>());
             }
+            if (j.contains("native_text_resolution") && j["native_text_resolution"].is_boolean()) {
+                nativeTextResolutionEnabled = j["native_text_resolution"].get<bool>();
+            }
             if (j.contains("extra_settings") && j["extra_settings"].is_array()) {
                 const auto& a = j["extra_settings"];
                 for (size_t i = 0; i < extraSettings.size() && i < a.size(); ++i) {
@@ -1929,6 +1938,7 @@ int RunGameApp(int argc, char** argv) {
     SetLevelServerUrl(levelServerUrl);
     SetLevelServerAuthToken(levelServerAuthToken);
     SetLevelServerAccountUsername(levelServerAccountUsername);
+    SetNativeTextResolutionEnabled(nativeTextResolutionEnabled);
     if (!levelServerUrl.empty()) {
         SDL_Log("Level server: %s", levelServerUrl.c_str());
     }
@@ -2233,6 +2243,7 @@ int RunGameApp(int argc, char** argv) {
     frontendCtx.levelSelectEnabled = &levelSelectEnabled;
     frontendCtx.menuMusicEnabled = &menuMusicEnabled;
     frontendCtx.muteAllAudio = &muteAllAudio;
+    frontendCtx.nativeTextResolutionEnabled = &nativeTextResolutionEnabled;
     frontendCtx.keyMoveLeft = &keybinds.moveLeft;
     frontendCtx.keyMoveRight = &keybinds.moveRight;
     frontendCtx.keyMoveDown = &keybinds.moveDown;

@@ -13,6 +13,8 @@ void ClearTextRendererCache(SDL_Renderer* ren = nullptr);
 void CollectTextRendererGarbage(Uint64 maxIdleMs = 15000, size_t targetEntriesPerRenderer = 256);
 void SetTextScaleMultiplier(float multiplier);
 float GetTextScaleMultiplier();
+void SetNativeTextResolutionEnabled(bool enabled);
+bool GetNativeTextResolutionEnabled();
 void BeginNativeTextOverlay(SDL_Renderer* ren, int logicalW, int logicalH, const SDL_Rect& outputRect);
 void FlushNativeTextOverlay(SDL_Renderer* ren);
 void CancelNativeTextOverlay(SDL_Renderer* ren);

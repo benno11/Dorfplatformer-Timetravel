@@ -60,6 +60,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     bool& levelSelectEnabled = ctx.levelSelectEnabled ? *ctx.levelSelectEnabled : levelSelectEnabledLocal;
     bool& menuMusicEnabled = *ctx.menuMusicEnabled;
     bool& muteAllAudio = *ctx.muteAllAudio;
+    bool nativeTextResolutionEnabledLocal = true;
+    bool& nativeTextResolutionEnabled = ctx.nativeTextResolutionEnabled ? *ctx.nativeTextResolutionEnabled : nativeTextResolutionEnabledLocal;
     auto updaterStatusText = [&]() -> std::string {
         if (ctx.getUpdaterStatusText) {
             const std::string text = ctx.getUpdaterStatusText();
@@ -361,50 +363,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     constexpr int IDX_CAM_CLAMP = 1;
     constexpr int IDX_UI_SCALE = 2;
     constexpr int IDX_UI_EDGE_PADDING = 3;
-    constexpr int IDX_DEBUG_MODE = 4;
-    constexpr int IDX_SHOW_FPS = 5;
-    constexpr int IDX_SHOW_DETAILED = 6;
-    constexpr int IDX_SHOW_HITBOXES = 7;
-    constexpr int IDX_SHOW_PLAYER_HITBOX = 8;
-    constexpr int IDX_SHOW_DEBUG_VIEW = 9;
-    constexpr int IDX_POWER_MANAGEMENT = 10;
-    constexpr int IDX_LOW_POWER_MODE = 11;
-    constexpr int IDX_MUSIC = 12;
-    constexpr int IDX_SFX = 13;
-    constexpr int IDX_SHOW_EXPERIMENTAL = 14;
-    constexpr int IDX_LEVEL_SELECT = 15;
-    constexpr int IDX_ABOUT = 16;
-    constexpr int IDX_BACK = 17;
-    constexpr int kSettingsCount = 18;
-#else
-#if defined(_WIN32)
-    constexpr int IDX_FULLSCREEN = 0;
-    constexpr int IDX_VSYNC = 0;
-    constexpr int IDX_CAM_CLAMP = 2;
-    constexpr int IDX_UI_SCALE = 3;
-    constexpr int IDX_UI_EDGE_PADDING = 4;
-    constexpr int IDX_DEBUG_MODE = 5;
-    constexpr int IDX_SHOW_FPS = 6;
-    constexpr int IDX_SHOW_DETAILED = 7;
-    constexpr int IDX_SHOW_HITBOXES = 8;
-    constexpr int IDX_SHOW_PLAYER_HITBOX = 9;
-    constexpr int IDX_SHOW_DEBUG_VIEW = 10;
-    constexpr int IDX_POWER_MANAGEMENT = 11;
-    constexpr int IDX_LOW_POWER_MODE = 12;
-    constexpr int IDX_MUSIC = 13;
-    constexpr int IDX_SFX = 14;
-    constexpr int IDX_SHOW_EXPERIMENTAL = 15;
-    constexpr int IDX_LEVEL_SELECT = 16;
-    constexpr int IDX_UPDATE = 17;
-    constexpr int IDX_ABOUT = 18;
-    constexpr int IDX_BACK = 19;
-    constexpr int kSettingsCount = 20;
-#else
-    constexpr int IDX_FULLSCREEN = 0;
-    constexpr int IDX_VSYNC = 0;
-    constexpr int IDX_CAM_CLAMP = 2;
-    constexpr int IDX_UI_SCALE = 3;
-    constexpr int IDX_UI_EDGE_PADDING = 4;
+    constexpr int IDX_NATIVE_TEXT_RESOLUTION = 4;
     constexpr int IDX_DEBUG_MODE = 5;
     constexpr int IDX_SHOW_FPS = 6;
     constexpr int IDX_SHOW_DETAILED = 7;
@@ -420,6 +379,52 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     constexpr int IDX_ABOUT = 17;
     constexpr int IDX_BACK = 18;
     constexpr int kSettingsCount = 19;
+#else
+#if defined(_WIN32)
+    constexpr int IDX_FULLSCREEN = 0;
+    constexpr int IDX_VSYNC = 0;
+    constexpr int IDX_CAM_CLAMP = 2;
+    constexpr int IDX_UI_SCALE = 3;
+    constexpr int IDX_UI_EDGE_PADDING = 4;
+    constexpr int IDX_NATIVE_TEXT_RESOLUTION = 5;
+    constexpr int IDX_DEBUG_MODE = 6;
+    constexpr int IDX_SHOW_FPS = 7;
+    constexpr int IDX_SHOW_DETAILED = 8;
+    constexpr int IDX_SHOW_HITBOXES = 9;
+    constexpr int IDX_SHOW_PLAYER_HITBOX = 10;
+    constexpr int IDX_SHOW_DEBUG_VIEW = 11;
+    constexpr int IDX_POWER_MANAGEMENT = 12;
+    constexpr int IDX_LOW_POWER_MODE = 13;
+    constexpr int IDX_MUSIC = 14;
+    constexpr int IDX_SFX = 15;
+    constexpr int IDX_SHOW_EXPERIMENTAL = 16;
+    constexpr int IDX_LEVEL_SELECT = 17;
+    constexpr int IDX_UPDATE = 18;
+    constexpr int IDX_ABOUT = 19;
+    constexpr int IDX_BACK = 20;
+    constexpr int kSettingsCount = 21;
+#else
+    constexpr int IDX_FULLSCREEN = 0;
+    constexpr int IDX_VSYNC = 0;
+    constexpr int IDX_CAM_CLAMP = 2;
+    constexpr int IDX_UI_SCALE = 3;
+    constexpr int IDX_UI_EDGE_PADDING = 4;
+    constexpr int IDX_NATIVE_TEXT_RESOLUTION = 5;
+    constexpr int IDX_DEBUG_MODE = 6;
+    constexpr int IDX_SHOW_FPS = 7;
+    constexpr int IDX_SHOW_DETAILED = 8;
+    constexpr int IDX_SHOW_HITBOXES = 9;
+    constexpr int IDX_SHOW_PLAYER_HITBOX = 10;
+    constexpr int IDX_SHOW_DEBUG_VIEW = 11;
+    constexpr int IDX_POWER_MANAGEMENT = 12;
+    constexpr int IDX_LOW_POWER_MODE = 13;
+    constexpr int IDX_MUSIC = 14;
+    constexpr int IDX_SFX = 15;
+    constexpr int IDX_SHOW_EXPERIMENTAL = 16;
+    constexpr int IDX_LEVEL_SELECT = 17;
+    constexpr int IDX_ABOUT = 18;
+    constexpr int IDX_BACK = 19;
+    constexpr int kSettingsCount = 20;
 #endif
 #endif
     int settingsSel = 0;
@@ -1514,6 +1519,11 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         else if (rawGeneralSel == IDX_CAM_CLAMP) clampCamX = !clampCamX;
         else if (rawGeneralSel == IDX_UI_SCALE && dir != 0) uiScalePercent = UiScale::stepPercent(uiScalePercent, dir);
         else if (rawGeneralSel == IDX_UI_EDGE_PADDING && dir != 0) uiEdgePadding = UiScale::stepEdgePadding(uiEdgePadding, dir);
+        else if (rawGeneralSel == IDX_NATIVE_TEXT_RESOLUTION) {
+            nativeTextResolutionEnabled = !nativeTextResolutionEnabled;
+            SetNativeTextResolutionEnabled(nativeTextResolutionEnabled);
+            if (ctx.saveClientSettings) ctx.saveClientSettings();
+        }
         else if (rawGeneralSel == IDX_SHOW_FPS) defaultShowFpsCounter = !defaultShowFpsCounter;
         else if (rawGeneralSel == IDX_POWER_MANAGEMENT) powerManagementEnabled = !powerManagementEnabled;
         else if (rawGeneralSel == IDX_LOW_POWER_MODE) lowPowerModeEnabled = !lowPowerModeEnabled;
@@ -1530,6 +1540,11 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         else if (rawGeneralSel == IDX_CAM_CLAMP) clampCamX = !clampCamX;
         else if (rawGeneralSel == IDX_UI_SCALE && dir != 0) uiScalePercent = UiScale::stepPercent(uiScalePercent, dir);
         else if (rawGeneralSel == IDX_UI_EDGE_PADDING && dir != 0) uiEdgePadding = UiScale::stepEdgePadding(uiEdgePadding, dir);
+        else if (rawGeneralSel == IDX_NATIVE_TEXT_RESOLUTION) {
+            nativeTextResolutionEnabled = !nativeTextResolutionEnabled;
+            SetNativeTextResolutionEnabled(nativeTextResolutionEnabled);
+            if (ctx.saveClientSettings) ctx.saveClientSettings();
+        }
         else if (rawGeneralSel == IDX_SHOW_FPS) defaultShowFpsCounter = !defaultShowFpsCounter;
         else if (rawGeneralSel == IDX_POWER_MANAGEMENT) powerManagementEnabled = !powerManagementEnabled;
         else if (rawGeneralSel == IDX_LOW_POWER_MODE) lowPowerModeEnabled = !lowPowerModeEnabled;
@@ -1697,6 +1712,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         slim.menuMusicEnabled = ctx.menuMusicEnabled;
         slim.muteAllAudio = ctx.muteAllAudio;
         slim.levelSelectEnabled = ctx.levelSelectEnabled;
+        slim.nativeTextResolutionEnabled = ctx.nativeTextResolutionEnabled;
         slim.musicVolume = ctx.musicVolume;
         slim.sfxVolume = ctx.sfxVolume;
         slim.activeSaveSlotIndex = ctx.activeSaveSlotIndex;
@@ -2175,11 +2191,13 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         continue;
                     }
                     if (navUp) {
-                        settingsSel = (settingsSel + kSettingsCount - 1) % kSettingsCount;
+                        const int rows = std::max(1, generalSettingsRowCount());
+                        settingsSel = (settingsSel + rows - 1) % rows;
                         ensureSettingsRowVisible(settingsSel);
                     }
                     if (navDown) {
-                        settingsSel = (settingsSel + 1) % kSettingsCount;
+                        const int rows = std::max(1, generalSettingsRowCount());
+                        settingsSel = (settingsSel + 1) % rows;
                         ensureSettingsRowVisible(settingsSel);
                     }
                     if (e.key.key == SDLK_v) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
@@ -3328,6 +3346,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     if (rawGeneralSel == IDX_UI_EDGE_PADDING) return "Move UI away from screen edges.";
                     if (rawGeneralSel == IDX_SHOW_FPS) return "Show a live FPS badge in the menu interface.";
                     if (rawGeneralSel == IDX_VSYNC) return "Reduce tearing by syncing to display refresh.";
+                    if (rawGeneralSel == IDX_NATIVE_TEXT_RESOLUTION) return "Render HUD text at the display's native pixel density.";
                     if (rawGeneralSel == IDX_LEVEL_SELECT) return "Show or hide level select from the main menu.";
                     return "Use Enter to toggle, arrows to move, Q/E for tabs.";
                 };
@@ -3774,6 +3793,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     std::string("CAM CLAMP: ") + (clampCamX ? "ON" : "OFF"),
                     std::string("UI SCALE: ") + std::to_string(uiScalePercent) + "%",
                     std::string("UI EDGE PAD: ") + std::to_string(uiEdgePadding) + " PX",
+                    std::string("NATIVE TEXT RES: ") + (nativeTextResolutionEnabled ? "ON" : "OFF"),
                     std::string("DEBUG MODE: ") + (debugModeEnabled ? "ON" : "OFF"),
                     std::string("FPS COUNTER: ") + (defaultShowFpsCounter ? "ON" : "OFF"),
                     std::string("DETAILED DEBUGGER: ") + (defaultShowDetailedDebugger ? "ON" : "OFF"),
@@ -3796,6 +3816,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     std::string("CAM CLAMP: ") + (clampCamX ? "ON" : "OFF"),
                     std::string("UI SCALE: ") + std::to_string(uiScalePercent) + "%",
                     std::string("UI EDGE PAD: ") + std::to_string(uiEdgePadding) + " PX",
+                    std::string("NATIVE TEXT RES: ") + (nativeTextResolutionEnabled ? "ON" : "OFF"),
                     std::string("DEBUG MODE: ") + (debugModeEnabled ? "ON" : "OFF"),
                     std::string("FPS COUNTER: ") + (defaultShowFpsCounter ? "ON" : "OFF"),
                     std::string("DETAILED DEBUGGER: ") + (defaultShowDetailedDebugger ? "ON" : "OFF"),
@@ -3822,6 +3843,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
 #if PLATFORMER_MOBILE
                     if (i == 0) drawToggleCheckbox(drawIdx, vsyncEnabled);
                     if (i == 1) drawToggleCheckbox(drawIdx, clampCamX);
+                    if (i == IDX_NATIVE_TEXT_RESOLUTION) drawToggleCheckbox(drawIdx, nativeTextResolutionEnabled);
                     if (i == IDX_SHOW_FPS) drawToggleCheckbox(drawIdx, defaultShowFpsCounter);
                     if (i == IDX_POWER_MANAGEMENT) drawToggleCheckbox(drawIdx, powerManagementEnabled);
                     if (i == IDX_LOW_POWER_MODE) drawToggleCheckbox(drawIdx, lowPowerModeEnabled);
@@ -3831,6 +3853,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     if (i == 0) drawToggleCheckbox(drawIdx, fullscreen);
                     if (i == 1) drawToggleCheckbox(drawIdx, vsyncEnabled);
                     if (i == 2) drawToggleCheckbox(drawIdx, clampCamX);
+                    if (i == IDX_NATIVE_TEXT_RESOLUTION) drawToggleCheckbox(drawIdx, nativeTextResolutionEnabled);
                     if (i == IDX_SHOW_FPS) drawToggleCheckbox(drawIdx, defaultShowFpsCounter);
                     if (i == IDX_POWER_MANAGEMENT) drawToggleCheckbox(drawIdx, powerManagementEnabled);
                     if (i == IDX_LOW_POWER_MODE) drawToggleCheckbox(drawIdx, lowPowerModeEnabled);

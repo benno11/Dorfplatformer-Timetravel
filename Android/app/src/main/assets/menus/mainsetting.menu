@@ -3,6 +3,7 @@ title "Settings"
 text "Account: ${username}"
 button "Toggle Menu Music" toggle menu_music_enabled
 button "Toggle Mute" toggle mute_all_audio
+button "Native Text Resolution" toggle native_text_resolution_enabled
 button "Music Volume +" inc music_volume
 button "Music Volume -" dec music_volume
 button "SFX Volume +" inc sfx_volume
