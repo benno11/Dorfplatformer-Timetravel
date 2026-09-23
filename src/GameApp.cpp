@@ -917,6 +917,26 @@ int RunGameApp(int argc, char** argv) {
     for (const auto& e : entitiesFrameList) entitiesFrameByName[e.name] = e.frame;
     std::unordered_map<std::string, std::string> entityFrameKeyByObjectId;
     entityFrameKeyByObjectId["31"] = "Spring";
+    entityFrameKeyByObjectId["46"] = "Bumper";
+    std::unordered_set<int> knownObjectIds{
+        31, 46, 57, 58, 59, 60, 61, 62, 63, 64, 65, 67, 69, 70, 95, 96, 97
+    };
+    {
+        const std::string text = ReadTextFile("object_type_map.json");
+        if (!text.empty()) {
+            try {
+                const nlohmann::json j = nlohmann::json::parse(text);
+                if (j.is_object()) {
+                    for (auto it = j.begin(); it != j.end(); ++it) {
+                        try {
+                            int id = std::stoi(it.key());
+                            if (id > 0) knownObjectIds.insert(id);
+                        } catch (...) {}
+                    }
+                }
+            } catch (...) {}
+        }
+    }
     const Frame* defaultEntityFrame = !entitiesFrameList.empty() ? &entitiesFrameList[0].frame : nullptr;
     setStartupProgress(0.60f);
 
@@ -6701,6 +6721,26 @@ int RunGameApp(int argc, char** argv) {
                 levelManager.updateTimeWarpIdAtPlayer(map, player, gameplayWrapX, gameplayWrapY);
             }
 
+            auto objectOverlapsPlayer = [&](const ObjectInstance& obj, float halfW = 16.0f, float halfH = 16.0f) {
+                float testX = obj.x - halfW;
+                float testY = obj.y - halfH;
+                return overlapPlayerWithWrappedRect(obj.x - halfW, obj.y - halfH, halfW * 2.0f, halfH * 2.0f, testX, testY);
+            };
+            for (int objIdx = 0; objIdx < (int)objects.size();) {
+                const int objId = (objIdx < (int)objectIds.size()) ? objectIds[objIdx] : parseObjectId(objects[objIdx].id);
+                if (objId == 95 && objectOverlapsPlayer(objects[objIdx], 12.0f, 12.0f)) {
+                    objects.erase(objects.begin() + objIdx);
+                    if (objIdx < (int)objectIds.size()) objectIds.erase(objectIds.begin() + objIdx);
+                    levelManager.addCoins(1);
+                    audio.playCoinSfx();
+                    continue;
+                }
+                if (objId == 97 && objectOverlapsPlayer(objects[objIdx], 16.0f, 16.0f) && !levelCompleteActive) {
+                    startLevelCompleteSequence();
+                }
+                ++objIdx;
+            }
+
             // Spring objects (id 31): bounce player upward on top contact.
             for (int objIdx = 0; objIdx < (int)objects.size(); ++objIdx) {
                 const auto& obj = objects[objIdx];
@@ -7308,7 +7348,8 @@ int RunGameApp(int argc, char** argv) {
             }
             const Frame* of = nullptr;
             SDL_Texture* objectTex = entitiesTex;
-            bool objectTypeKnown = false;
+            bool objectTypeKnown = knownObjectIds.find(objId) != knownObjectIds.end();
+            bool objectFrameFound = false;
             if (isEndSign) {
                 objectTex = endSignTex;
                 std::string key = "SignPost9";
@@ -7327,6 +7368,7 @@ int RunGameApp(int argc, char** argv) {
                 if (sit != endSignFrames.end()) {
                     of = &sit->second;
                     objectTypeKnown = true;
+                    objectFrameFound = true;
                 }
             } else {
                 std::string frameKey = obj.id;
@@ -7340,12 +7382,14 @@ int RunGameApp(int argc, char** argv) {
                 if (it != entitiesFrameByName.end()) {
                     of = &it->second;
                     objectTypeKnown = true;
+                    objectFrameFound = true;
                 } else {
                     std::string pngKey = frameKey + ".png";
                     it = entitiesFrameByName.find(pngKey);
                     if (it != entitiesFrameByName.end()) {
                         of = &it->second;
                         objectTypeKnown = true;
+                        objectFrameFound = true;
                     }
                 }
             }
@@ -7353,6 +7397,23 @@ int RunGameApp(int argc, char** argv) {
             if (!of) of = defaultEntityFrame;
             if (!isFastTravelChanger && !isBumper && !isEndSign && !isWrapControl && hideUnknownObjectTypes &&
                 currentLevelId != 9 && currentLevelId != 10 && !objectTypeKnown) {
+                continue;
+            }
+            if (!isFastTravelChanger && !isBumper && !isEndSign && !isWrapControl && objectTypeKnown && !objectFrameFound) {
+                SDL_Rect placeholder{
+                    (int)std::lround(entityBaseX + 4.0f - camX),
+                    (int)std::lround(entityBaseY + 4.0f - camY),
+                    24,
+                    24
+                };
+                Uint8 r = 220, g = 220, b = 240;
+                if (objId == 95) { r = 120; g = 255; b = 185; }
+                else if (objId == 96) { r = 255; g = 120; b = 105; }
+                else if (objId == 97) { r = 255; g = 245; b = 150; }
+                SDL_SetRenderDrawColor(ren, r, g, b, 230);
+                SDL_RenderFillRect(ren, &placeholder);
+                SDL_SetRenderDrawColor(ren, 20, 24, 32, 255);
+                SDL_RenderDrawRect(ren, &placeholder);
                 continue;
             }
 
