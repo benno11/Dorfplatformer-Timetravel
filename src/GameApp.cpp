@@ -45,6 +45,7 @@
 #include "LevelSelect.h"
 #include "AssetPath.h"
 #include "LevelManager.h"
+#include "LevelWrap.h"
 #include "FrontendMenu.h"
 #include "GameSupport.h"
 #include "ParallaxRenderer.h"
@@ -2878,14 +2879,14 @@ int RunGameApp(int argc, char** argv) {
             return meta.levelId > 0 ? meta.levelId : parseLevelIdFromLevelPath(levelManager.levelPath());
         };
         auto levelWrapXEnabled = [&]() -> bool {
-            if (std::find(objectIds.begin(), objectIds.end(), 69) != objectIds.end()) return false;
-            if (meta.wrapX) return true;
-            return std::find(objectIds.begin(), objectIds.end(), 62) != objectIds.end();
+            if (PlayerTouchesLevelWrapTrigger(player, objects, objectIds, 69)) return false;
+            if (PlayerTouchesLevelWrapTrigger(player, objects, objectIds, 62)) return true;
+            return meta.wrapX;
         };
         auto levelWrapYEnabled = [&]() -> bool {
-            if (std::find(objectIds.begin(), objectIds.end(), 70) != objectIds.end()) return false;
-            if (meta.wrapY) return true;
-            return std::find(objectIds.begin(), objectIds.end(), 63) != objectIds.end();
+            if (PlayerTouchesLevelWrapTrigger(player, objects, objectIds, 70)) return false;
+            if (PlayerTouchesLevelWrapTrigger(player, objects, objectIds, 63)) return true;
+            return meta.wrapY;
         };
         auto activeThemeWorldId = [&]() -> int {
             return currentLevelThemeOverride > 0 ? currentLevelThemeOverride : levelManager.worldId();
@@ -6064,7 +6065,10 @@ int RunGameApp(int argc, char** argv) {
                         wrappedX = true;
                     }
                 }
-                const bool verticalWrapNow = isVerticalWrapEnabledAtX(player.x);
+                // Keep the trigger state sampled before movement for this frame.
+                // The player may have crossed the map edge and no longer overlap
+                // the trigger by the time its wrapped position is normalized.
+                const bool verticalWrapNow = gameplayWrapY;
                 verticalWrapActive = verticalWrapNow;
                 if (verticalWrapNow) {
                     const float mapHeightPx = (float)(map.h * map.tileSize);
@@ -7332,6 +7336,10 @@ int RunGameApp(int argc, char** argv) {
             const bool isBumper = (objId == 46);
             const bool isEndSign = (objId == 67);
             const bool isWrapControl = (objId == 62 || objId == 63 || objId == 69 || objId == 70);
+            // Wrap controls affect wrap state through levelWrap*Enabled(). They
+            // are editor-only triggers and must not borrow an entity frame (or
+            // the fallback frame) during gameplay.
+            if (isWrapControl) continue;
             float entityBaseX = obj.x - 16.0f;
             float entityBaseY = obj.y - 16.0f;
             if (renderWrapX) {

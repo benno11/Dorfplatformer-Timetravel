@@ -1,5 +1,7 @@
 # DF Slim Menu: play hub
 title "Play"
+text "WARNING: Main levels may be broken after this update."
+text "Update the main levels manually before playing."
 text "Choose how to start."
 button "Save Selector" menu saves
 button "Campaign Levels" campaign

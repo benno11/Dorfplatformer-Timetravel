@@ -528,10 +528,6 @@ bool loadLevelBNNLVL(const std::string& path,
         if (meta.name.empty()) meta.name = magic;
         meta.entitySpawnPos.clear();
         meta.entitySpawnType.clear();
-        for (const auto& obj : objects) {
-            if (obj.id == "62") meta.wrapX = true;
-            if (obj.id == "63") meta.wrapY = true;
-        }
         return true;
     }
 
@@ -651,13 +647,7 @@ bool loadLevelBNNLVL(const std::string& path,
         objects.push_back(o);
     }
 
-    for (const auto& obj : objects) {
-        if (obj.id == "62") meta.wrapX = true;
-        if (obj.id == "63") meta.wrapY = true;
-    }
-
     if (meta.name.empty()) meta.name = "Legacy " + std::to_string(ver);
     SDL_Log("Legacy load OK: %s tiles=%d objects=%d", path.c_str(), total, (int)objects.size());
     return true;
 }
-

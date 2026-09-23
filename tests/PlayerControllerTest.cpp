@@ -1,4 +1,5 @@
 #include "PlayerController.h"
+#include "LevelWrap.h"
 
 #include <SDL3/SDL.h>
 #include <cassert>
@@ -54,6 +55,39 @@ int main() {
     assert(semisolidPlayer.onGround);
     assert(semisolidPlayer.vy == 0.0f);
     assert(std::fabs(semisolidPlayer.y - 99.0f) < 0.001f);
+
+    TileMap wrapMap;
+    wrapMap.tileSize = 64;
+    wrapMap.resize(3, 3);
+    wrapMap.setSolid(2, 1, 1);
+    SetHorizontalWrapCollision(false);
+    assert(!RectHitsSolid(wrapMap, -32.0f, 64.0f, 30, 30));
+    SetHorizontalWrapCollision(true);
+    assert(RectHitsSolid(wrapMap, -32.0f, 64.0f, 30, 30));
+
+    wrapMap.setSolid(1, 2, 1);
+    SetVerticalWrapCollision(false);
+    assert(!RectHitsSolid(wrapMap, 64.0f, -32.0f, 30, 30));
+    SetVerticalWrapCollision(true);
+    assert(RectHitsSolid(wrapMap, 64.0f, -32.0f, 30, 30));
+
+    SetHorizontalWrapCollision(false);
+    SetVerticalWrapCollision(false);
+
+    std::vector<ObjectInstance> wrapTriggers{
+        ObjectInstance{"62", 32.0f, 32.0f},
+        ObjectInstance{"63", 160.0f, 160.0f},
+    };
+    const std::vector<int> wrapTriggerIds{62, 63};
+    Player triggerPlayer;
+    triggerPlayer.x = 16.0f;
+    triggerPlayer.y = 16.0f;
+    triggerPlayer.w = 30;
+    triggerPlayer.h = 30;
+    assert(PlayerTouchesLevelWrapTrigger(triggerPlayer, wrapTriggers, wrapTriggerIds, 62));
+    assert(!PlayerTouchesLevelWrapTrigger(triggerPlayer, wrapTriggers, wrapTriggerIds, 63));
+    triggerPlayer.x = 64.0f;
+    assert(!PlayerTouchesLevelWrapTrigger(triggerPlayer, wrapTriggers, wrapTriggerIds, 62));
 
     SDL_Quit();
     return 0;

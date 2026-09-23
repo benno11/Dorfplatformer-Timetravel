@@ -1,5 +1,7 @@
 # DF Slim Menu: save selector
 title "Save Selector"
+text "WARNING: Main levels may be broken after this update."
+text "Update the main levels manually before playing."
 text "Active slot: ${active_save_slot}"
 button "Slot 1: ${save_slot_1_status}" save_slot 1
 button "Slot 2: ${save_slot_2_status}" save_slot 2
