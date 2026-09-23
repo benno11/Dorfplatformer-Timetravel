@@ -205,8 +205,21 @@ std::string ReadTextFile(const std::string& path) {
     }
 #else
     if (isHttpUrl(resolved)) {
+#if defined(__ANDROID__)
+        // Android builds intentionally do not require libcurl.  Keep remote reads
+        // (including the slim menu's server requests) on the Java networking
+        // bridge, just like the legacy mobile UI's account requests.
+        SDL_Log("NET: using Java GET because curl support is disabled: %s", resolved.c_str());
+        const std::string body = androidHttpGetViaJava(resolved, 10000);
+        if (!body.empty()) {
+            SDL_Log("NET: Java GET ok %s bytes=%d", resolved.c_str(), (int)body.size());
+            return body;
+        }
+        SDL_Log("NET: Java GET failed %s", resolved.c_str());
+#else
         SDL_Log("NET: HTTP requested but curl support is disabled at build time (HAVE_CURL=0): %s",
                 resolved.c_str());
+#endif
         return {};
     }
 #endif
