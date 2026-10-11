@@ -86,8 +86,21 @@ int main() {
     triggerPlayer.h = 30;
     assert(PlayerTouchesLevelWrapTrigger(triggerPlayer, wrapTriggers, wrapTriggerIds, 62));
     assert(!PlayerTouchesLevelWrapTrigger(triggerPlayer, wrapTriggers, wrapTriggerIds, 63));
-    triggerPlayer.x = 64.0f;
+    assert(LevelHasWrapTrigger(wrapTriggerIds, 62));
+    assert(!LevelHasWrapTrigger(wrapTriggerIds, 69));
+    assert(LevelHasWrapControlTrigger(wrapTriggerIds, 62, 69));
+    bool wrapXActive = false;
+    wrapXActive = UpdateLevelWrapTriggerState(triggerPlayer, wrapTriggers, wrapTriggerIds, 62, 69, wrapXActive);
+    assert(wrapXActive);
+    triggerPlayer.x = 120.0f;
     assert(!PlayerTouchesLevelWrapTrigger(triggerPlayer, wrapTriggers, wrapTriggerIds, 62));
+    wrapXActive = UpdateLevelWrapTriggerState(triggerPlayer, wrapTriggers, wrapTriggerIds, 62, 69, wrapXActive);
+    assert(wrapXActive);
+    wrapTriggers.push_back(ObjectInstance{"69", 96.0f, 32.0f});
+    std::vector<int> wrapDisableIds{62, 63, 69};
+    triggerPlayer.x = 80.0f;
+    wrapXActive = UpdateLevelWrapTriggerState(triggerPlayer, wrapTriggers, wrapDisableIds, 62, 69, wrapXActive);
+    assert(!wrapXActive);
 
     SDL_Quit();
     return 0;

@@ -5,6 +5,22 @@
 #include "LevelLoader.h"
 #include "Player.h"
 
+inline bool LevelHasWrapTrigger(const std::vector<int>& objectIds, int triggerId) {
+    for (int id : objectIds) {
+        if (id == triggerId) return true;
+    }
+    return false;
+}
+
+inline bool LevelHasWrapControlTrigger(const std::vector<int>& objectIds,
+                                       int enableTriggerId,
+                                       int disableTriggerId) {
+    for (int id : objectIds) {
+        if (id == enableTriggerId || id == disableTriggerId) return true;
+    }
+    return false;
+}
+
 inline bool PlayerTouchesLevelWrapTrigger(const Player& player,
                                           const std::vector<ObjectInstance>& objects,
                                           const std::vector<int>& objectIds,
@@ -21,4 +37,19 @@ inline bool PlayerTouchesLevelWrapTrigger(const Player& player,
         }
     }
     return false;
+}
+
+inline bool UpdateLevelWrapTriggerState(const Player& player,
+                                        const std::vector<ObjectInstance>& objects,
+                                        const std::vector<int>& objectIds,
+                                        int enableTriggerId,
+                                        int disableTriggerId,
+                                        bool active) {
+    if (PlayerTouchesLevelWrapTrigger(player, objects, objectIds, disableTriggerId)) {
+        return false;
+    }
+    if (PlayerTouchesLevelWrapTrigger(player, objects, objectIds, enableTriggerId)) {
+        return true;
+    }
+    return active;
 }

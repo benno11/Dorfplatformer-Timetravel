@@ -173,11 +173,29 @@ void DrawTextColoredImmediate(SDL_Renderer* ren, float x, float y, float scaleX,
 
 bool InitTextRenderer(const std::string& fontPath) {
     gFontPath = fontPath;
-    gTtfInited = TTF_Init();
-    if (!gTtfInited) {
-        SDL_Log("TTF_Init failed: %s", SDL_GetError());
+    if (gTtfInited) {
+        for (auto& kv : gFontCache) {
+            if (kv.second) TTF_CloseFont(kv.second);
+        }
+        gFontCache.clear();
+        ClearTextRendererCache();
     }
-    return gTtfInited;
+    if (!gTtfInited) {
+        gTtfInited = TTF_Init();
+        if (!gTtfInited) {
+            SDL_Log("TTF_Init failed: %s", SDL_GetError());
+            gFontPath.clear();
+            return false;
+        }
+    }
+    TTF_Font* probeFont = TTF_OpenFont(gFontPath.c_str(), 16);
+    if (!probeFont) {
+        SDL_Log("TTF_OpenFont failed for '%s': %s", gFontPath.c_str(), SDL_GetError());
+        gFontPath.clear();
+        return false;
+    }
+    TTF_CloseFont(probeFont);
+    return true;
 }
 
 void ShutdownTextRenderer() {

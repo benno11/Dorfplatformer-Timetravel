@@ -520,7 +520,10 @@ int RunGameApp(int argc, char** argv) {
         }
     }
     logStartup(std::string("connected gamepads: ") + listConnectedGamepads());
-    InitTextRenderer(ResolveAssetPath("assets/Fonts/Main.ttf"));
+    const std::string mainFontPath = ResolveAssetPath("assets/Fonts/Main.ttf");
+    if (!InitTextRenderer(mainFontPath)) {
+        SDL_Log("Failed to initialize text renderer with font: %s", mainFontPath.c_str());
+    }
     AudioSystem audio;
     audio.setLoopingEnabled(true);
     bool audioRecoveryEnabled = true;
@@ -2748,6 +2751,12 @@ int RunGameApp(int argc, char** argv) {
         std::vector<int> objectIds;
         LevelMeta meta;
         Player player;
+        bool wrapTriggerXActive = false;
+        bool wrapTriggerYActive = false;
+        auto resetLevelWrapTriggerState = [&]() {
+            wrapTriggerXActive = meta.wrapX && !LevelHasWrapTrigger(objectIds, 62);
+            wrapTriggerYActive = meta.wrapY && !LevelHasWrapTrigger(objectIds, 63);
+        };
         int livesCount = 5;
         int scoreCount = 0;
         bool levelCompleteActive = false;
@@ -2879,14 +2888,10 @@ int RunGameApp(int argc, char** argv) {
             return meta.levelId > 0 ? meta.levelId : parseLevelIdFromLevelPath(levelManager.levelPath());
         };
         auto levelWrapXEnabled = [&]() -> bool {
-            if (PlayerTouchesLevelWrapTrigger(player, objects, objectIds, 69)) return false;
-            if (PlayerTouchesLevelWrapTrigger(player, objects, objectIds, 62)) return true;
-            return meta.wrapX;
+            return wrapTriggerXActive;
         };
         auto levelWrapYEnabled = [&]() -> bool {
-            if (PlayerTouchesLevelWrapTrigger(player, objects, objectIds, 70)) return false;
-            if (PlayerTouchesLevelWrapTrigger(player, objects, objectIds, 63)) return true;
-            return meta.wrapY;
+            return wrapTriggerYActive;
         };
         auto activeThemeWorldId = [&]() -> int {
             return currentLevelThemeOverride > 0 ? currentLevelThemeOverride : levelManager.worldId();
@@ -3171,6 +3176,7 @@ int RunGameApp(int argc, char** argv) {
         auto reloadLevel = [&](bool showIntroCard = true) {
             levelManager.reloadLevel(map, objects, meta, player);
             refreshObjectIdCache();
+            resetLevelWrapTriggerState();
             currentLevelThemeOverride = meta.themeOverride;
             syncWorldBackground();
             levelTimerSeconds = 0.0f;
@@ -3365,6 +3371,7 @@ int RunGameApp(int argc, char** argv) {
                 }
             }
             refreshObjectIdCache();
+            resetLevelWrapTriggerState();
             if (savedGameRoot.contains("checkpoint") && savedGameRoot["checkpoint"].is_object()) {
                 const auto& cj = savedGameRoot["checkpoint"];
                 checkpointActive = cj.value("active", false);
@@ -4458,6 +4465,8 @@ int RunGameApp(int argc, char** argv) {
                 updateFpsAccumFrames = 0;
             }
             bool temp1TouchedThisFrame = false;
+            wrapTriggerXActive = UpdateLevelWrapTriggerState(player, objects, objectIds, 62, 69, wrapTriggerXActive);
+            wrapTriggerYActive = UpdateLevelWrapTriggerState(player, objects, objectIds, 63, 70, wrapTriggerYActive);
             const bool gameplayWrapX = levelWrapXEnabled();
             const bool gameplayWrapY = isVerticalWrapEnabledAtX(player.x);
             verticalWrapActive = gameplayWrapY;
