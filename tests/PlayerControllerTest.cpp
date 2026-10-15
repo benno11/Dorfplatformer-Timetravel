@@ -1,9 +1,11 @@
 #include "PlayerController.h"
 #include "LevelWrap.h"
+#include "SimulationTiming.h"
 
 #include <SDL3/SDL.h>
 #include <cassert>
 #include <cmath>
+#include <limits>
 
 namespace {
 Player makeFallingPlayer() {
@@ -16,19 +18,23 @@ Player makeFallingPlayer() {
     return player;
 }
 
-void update(Player& player, const TileMap& map) {
-    MovementConfig movement;
-    movement.gravityGround = 0.0f;
+void step(Player& player, const TileMap& map, float dt, MovementConfig movement = {}) {
     KeyboardBindings bindings;
     float inputMove = 0.0f;
     bool inputDown = false;
     const PlayerUpdateResult result = UpdatePlayerMovement(
-        player, map, 0.2f, movement,
+        player, map, dt, movement,
         0.0f, false, false,
         0.0f, false, false, false, false,
         bindings, inputMove, inputDown
     );
     assert(result == PlayerUpdateResult::Normal);
+}
+
+void update(Player& player, const TileMap& map) {
+    MovementConfig movement;
+    movement.gravityGround = 0.0f;
+    for (int i = 0; i < 6; ++i) step(player, map, 1.0f / 30.0f, movement);
 }
 }
 
@@ -61,7 +67,8 @@ int main() {
     wrapMap.resize(3, 3);
     wrapMap.setSolid(2, 1, 1);
     SetHorizontalWrapCollision(false);
-    assert(!RectHitsSolid(wrapMap, -32.0f, 64.0f, 30, 30));
+    // Non-wrapping horizontal map bounds are solid walls.
+    assert(RectHitsSolid(wrapMap, -32.0f, 64.0f, 30, 30));
     SetHorizontalWrapCollision(true);
     assert(RectHitsSolid(wrapMap, -32.0f, 64.0f, 30, 30));
 
@@ -70,10 +77,76 @@ int main() {
     assert(!RectHitsSolid(wrapMap, 64.0f, -32.0f, 30, 30));
     SetVerticalWrapCollision(true);
     assert(RectHitsSolid(wrapMap, 64.0f, -32.0f, 30, 30));
-
     SetHorizontalWrapCollision(false);
     SetVerticalWrapCollision(false);
 
+    // Each face must eject to the closest clear side without held input.
+    TileMap ejectMap;
+    ejectMap.tileSize = 64;
+    ejectMap.resize(8, 8);
+    ejectMap.setSolid(3, 3, 1);
+    const float positions[][2] = {{170, 205}, {250, 205}, {205, 170}, {205, 250}};
+    for (int face = 0; face < 4; ++face) {
+        Player embedded;
+        embedded.w = embedded.h = 30;
+        embedded.x = positions[face][0];
+        embedded.y = positions[face][1];
+        embedded.vx = face == 0 ? 100.0f : (face == 1 ? -100.0f : 0.0f);
+        embedded.vy = face == 2 ? 100.0f : (face == 3 ? -100.0f : 0.0f);
+        assert(RectHitsSolid(ejectMap, embedded.x, embedded.y, embedded.w, embedded.h));
+        step(embedded, ejectMap, 0.0f);
+        assert(!RectHitsSolid(ejectMap, embedded.x, embedded.y, embedded.w, embedded.h));
+        assert(embedded.vx == 0.0f && embedded.vy == 0.0f);
+        if (face == 0) assert(embedded.x < positions[face][0]);
+        if (face == 1) assert(embedded.x > positions[face][0]);
+        if (face == 2) assert(embedded.y < positions[face][1] && embedded.onGround);
+        if (face == 3) assert(embedded.y > positions[face][1] && !embedded.onGround);
+    }
+
+    TileMap sealedMap;
+    sealedMap.resize(16, 16);
+    for (int y = 0; y < sealedMap.h; ++y)
+        for (int x = 0; x < sealedMap.w; ++x) sealedMap.setSolid(x, y, 1);
+    Player trapped;
+    trapped.x = trapped.y = 400.0f;
+    trapped.vx = trapped.vy = 100.0f;
+    step(trapped, sealedMap, 1.0f);
+    assert(trapped.x == 400.0f && trapped.y == 400.0f);
+    assert(trapped.vx == 0.0f && trapped.vy == 0.0f);
+
+    TileMap emptyMap;
+    emptyMap.resize(32, 32);
+    MovementConfig limits;
+    for (float velocity : {-10000.0f, 10000.0f}) {
+        Player fast;
+        fast.x = fast.y = 500.0f;
+        fast.vy = velocity;
+        step(fast, emptyMap, 1.0f / 60.0f, limits);
+        assert(fast.vy >= -limits.maxRiseSpeed && fast.vy <= limits.maxFallSpeed);
+    }
+    TileMap waterMap = emptyMap;
+    waterMap.setWater(14, 14, 1);
+    Player swimmer;
+    swimmer.x = swimmer.y = 450.0f;
+    swimmer.vy = 1000.0f;
+    step(swimmer, waterMap, 1.0f / 60.0f, limits);
+    assert(swimmer.inWater && swimmer.vy == limits.maxFallSpeedInWater);
+
+    // A stall advances one bounded gameplay frame, with no catch-up next frame.
+    Player stalled;
+    stalled.x = stalled.y = 500.0f;
+    stalled.vx = 600.0f;
+    stalled.vy = 1000.0f;
+    Player normal = stalled;
+    step(stalled, emptyMap, 5.0f);
+    step(normal, emptyMap, GameplayDeltaTime(5.0));
+    assert(stalled.x == normal.x && stalled.y == normal.y);
+    step(stalled, emptyMap, 1.0f / 60.0f);
+    step(normal, emptyMap, 1.0f / 60.0f);
+    assert(stalled.x == normal.x && stalled.y == normal.y);
+    assert(GameplayDeltaTime(-1.0) == 0.0f);
+    assert(GameplayDeltaTime(std::numeric_limits<double>::infinity()) == 0.0f);
+    assert(GameplayDeltaTime(std::numeric_limits<double>::quiet_NaN()) == 0.0f);
     std::vector<ObjectInstance> wrapTriggers{
         ObjectInstance{"62", 32.0f, 32.0f},
         ObjectInstance{"63", 160.0f, 160.0f},

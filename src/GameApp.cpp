@@ -41,6 +41,7 @@
 #include "LevelLoader.h"
 #include "Player.h"
 #include "PlayerController.h"
+#include "SimulationTiming.h"
 #include "TextRenderer.h"
 #include "LevelSelect.h"
 #include "AssetPath.h"
@@ -1175,6 +1176,9 @@ int RunGameApp(int argc, char** argv) {
                 readMove("jump_cut_speed", movementCfg.jumpCutSpeed);
                 readMove("swim_up_speed", movementCfg.swimUpSpeed);
                 readMove("swim_rise", movementCfg.swimRise);
+                readMove("max_rise_speed", movementCfg.maxRiseSpeed);
+                readMove("max_fall_speed", movementCfg.maxFallSpeed);
+                readMove("max_fall_speed_in_water", movementCfg.maxFallSpeedInWater);
                 readMove("boss_gravity", bossGravity);
             }
             if (cfg.contains("background") && cfg["background"].is_object()) {
@@ -4428,7 +4432,7 @@ int RunGameApp(int argc, char** argv) {
             recoverAudioIfNeeded(true);
             const Uint64 nowNs = SDL_GetTicksNS();
             const double dtPrecise = (double)(nowNs - lastTicksNs) / 1000000000.0;
-            const float dt = (float)dtPrecise;
+            const float dt = GameplayDeltaTime(dtPrecise);
             lastTicksNs = nowNs;
             lastTicks = SDL_GetTicks();
             SetTextScaleMultiplier(UiScale::multiplier(uiScalePercent));
@@ -6769,7 +6773,8 @@ int RunGameApp(int argc, char** argv) {
                 const float px2 = player.x + (float)player.w;
                 const float py2 = player.y + (float)player.h;
                 const bool xOverlap = (px2 > testSx) && (px1 < testSx + sw);
-                const bool nearTop = (py2 >= testSy) && (py2 <= testSy + sh * 0.75f);
+                const bool crossedTop = beforeNormalY + player.h <= testSy && py2 >= testSy;
+                const bool nearTop = crossedTop || ((py2 >= testSy) && (py2 <= testSy + sh * 0.75f));
                 if (xOverlap && nearTop && player.vy >= 0.0f) {
                     player.y = testSy - (float)player.h;
                     player.vy = -1800.0f;

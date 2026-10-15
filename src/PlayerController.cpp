@@ -1,4 +1,5 @@
 #include "PlayerController.h"
+#include "SimulationTiming.h"
 
 #include <SDL3/SDL.h>
 #include <algorithm>
@@ -104,6 +105,33 @@ static bool keyHeld(const bool* keys, SDL_Scancode sc) {
     return keys[sc];
 }
 
+bool EjectPlayerFromSolid(Player& player, const TileMap& map) {
+    if (!RectHitsSolid(map, player.x, player.y, player.w, player.h)) return true;
+
+    // Find the nearest clear side, including ceilings and either wall. Bound the
+    // search so a sealed room cannot hang the update or teleport across the map.
+    const int maxDistance = map.tileSize * 4 + std::max(player.w, player.h);
+    const int directions[][2] = {{0, -1}, {-1, 0}, {1, 0}, {0, 1}};
+    for (int distance = 1; distance <= maxDistance; ++distance) {
+        for (const auto& direction : directions) {
+            const float x = player.x + direction[0] * distance;
+            const float y = player.y + direction[1] * distance;
+            if (RectHitsSolid(map, x, y, player.w, player.h)) continue;
+            player.x = x;
+            player.y = y;
+            // Only cancel velocity directed back into the surface.
+            if (player.vx * direction[0] < 0.0f) player.vx = 0.0f;
+            if (player.vy * direction[1] < 0.0f) player.vy = 0.0f;
+            player.onGround = rectHasGroundBelow(map, x, y, player.w, player.h);
+            return true;
+        }
+    }
+    player.vx = 0.0f;
+    player.vy = 0.0f;
+    player.onGround = false;
+    return false;
+}
+
 PlayerUpdateResult UpdatePlayerMovement(
     Player& player,
     const TileMap& map,
@@ -121,6 +149,7 @@ PlayerUpdateResult UpdatePlayerMovement(
     float& inputMove,
     bool& inputDown
 ) {
+    dt = GameplayDeltaTime(dt);
     const bool* keys = SDL_GetKeyboardState(nullptr);
     bool shiftDown = allowFreeMove && (keys[SDL_SCANCODE_LSHIFT] || keys[SDL_SCANCODE_RSHIFT]);
     shiftDown = shiftDown || gamepadFreeMove;
@@ -155,7 +184,9 @@ PlayerUpdateResult UpdatePlayerMovement(
     bool downHeld = touchDown || gamepadDown || keyHeld(keys, keybinds.moveDown) || keys[SDL_SCANCODE_DOWN];
     inputMove = move;
     inputDown = downHeld;
-    const bool insideSolid = RectHitsSolid(map, player.x, player.y, player.w, player.h);
+    if (!EjectPlayerFromSolid(player, map)) {
+        return PlayerUpdateResult::Normal;
+    }
 
     bool inWater = rectHitsWater(map, player.x, player.y, player.w, player.h);
     player.inWater = inWater;
@@ -209,23 +240,6 @@ PlayerUpdateResult UpdatePlayerMovement(
         player.jumpBufferTime = 1.0f;
     }
 
-    if (insideSolid) {
-        // Escape-mode controls while embedded in solid tiles: ignore collision locks.
-        player.vx = move * movement.maxSpeedGround;
-        player.vy = 0.0f;
-        player.x += player.vx * dt;
-        if (jumpDown) {
-            player.y -= movement.jumpSpeed * dt;
-        }
-        player.onGround = false;
-        player.jumpHeld = false;
-        player.jumpHoldTime = 0.0f;
-        player.jumpWasDown = jumpDown;
-        player.jumpBufferTime = 0.0f;
-        player.inWater = false;
-        return PlayerUpdateResult::Normal;
-    }
-
     bool bufferedJumpReady = player.jumpBufferTime > 0.0f;
     if (!jumpDown)
     {
@@ -264,10 +278,11 @@ PlayerUpdateResult UpdatePlayerMovement(
                 swimheld = false;
             }
         }
-        if (player.vy > 420.0f) player.vy = 420.0f;
     }
 
     player.vy += gravity * dt;
+    player.vy = std::clamp(player.vy, -std::max(0.0f, movement.maxRiseSpeed),
+        std::max(0.0f, inWater ? movement.maxFallSpeedInWater : movement.maxFallSpeed));
     player.jumpWasDown = jumpDown;
 
     if (inWater) {

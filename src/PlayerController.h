@@ -24,6 +24,9 @@ struct MovementConfig {
     float jumpCutSpeed = 220.0f;
     float swimUpSpeed = 380.0f;
     float swimRise = 900.0f;
+    float maxRiseSpeed = 1800.0f;
+    float maxFallSpeed = 1800.0f;
+    float maxFallSpeedInWater = 420.0f;
 };
 
 struct KeyboardBindings {
@@ -35,6 +38,7 @@ struct KeyboardBindings {
 };
 
 bool RectHitsSolid(const TileMap& map, float x, float y, int w, int h);
+bool EjectPlayerFromSolid(Player& player, const TileMap& map);
 void SetHorizontalWrapCollision(bool enabled);
 void SetVerticalWrapCollision(bool enabled);
 
