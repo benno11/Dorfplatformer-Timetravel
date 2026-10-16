@@ -4,11 +4,17 @@
 
 #include <functional>
 #include <string>
+#include <unordered_map>
+
+struct Frame;
 
 struct SlimMenuContext {
     SDL_Window* win = nullptr;
     SDL_Renderer* ren = nullptr;
     SDL_Texture* gameTarget = nullptr;
+    // Optional assets borrowed from the frontend for this menu session.
+    SDL_Texture* menuTexture = nullptr;
+    const std::unordered_map<std::string, Frame>* menuFrames = nullptr;
     int baseScreenW = 0;
     int baseScreenH = 0;
     std::string buildUuid;

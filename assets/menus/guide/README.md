@@ -11,9 +11,20 @@ buttons, toggle checkboxes, and back/close icons. Toggle icons follow the settin
 automatically; no additional script commands are needed. The selected button is brighter
 for keyboard navigation. If the atlas is unavailable, menus use plain panels and buttons.
 
+Menu switches are immediate, with no fade animation. Script sources and level lists
+are cached for the menu session, and script menus reuse the frontend's loaded atlas.
+Online lists and moderator permissions load in the background. Use the generated
+level browser's Refresh button to fetch updates; uploads, deletions, votes, ratings,
+and editor changes invalidate the relevant cached list automatically. Returning to
+the title screen ends the session, so reopening menus also reloads script changes.
+
 Commands:
 
 - `title "Text"` sets the menu title.
+- `scale 0.8` scales the whole menu, including text, buttons, icons, and spacing (default `1`, range `0.25` to `4`).
+- `menu_align right bottom` anchors the scaled panel in the screen (default `center center`).
+- `align left top` aligns subsequent text/button objects within the content area on both axes (default `center center`).
+- `text_align left center` aligns labels within subsequent objects on both axes (default `center center`).
 - `text "Text"` draws static text. Variables use `${name}`.
 - `button "Label" menu othermenu` opens another `.menu`.
 - `button "Label" campaign` opens campaign level select.
@@ -40,6 +51,48 @@ Commands:
 - `if var false skip 2` is the same, written more explicitly.
 
 Supported built-in variables include `${username}`, `${api}`, `${active_save_slot}`, `${save_slot_1_status}`, `${save_slot_2_status}`, `${save_slot_3_status}`, `${save_slot_1_exists}`, `${save_slot_2_exists}`, and `${save_slot_3_exists}`. Data fetched with `get` is saved as a variable for the current menu session.
+
+## Scrolling, scale, and alignment
+
+Menus automatically scroll vertically when their content exceeds the visible area.
+Use the mouse wheel, drag the scrollbar, or swipe up/down on a touchscreen. Arrow
+keys select buttons and scroll them into view. Page Up/Down move through buttons
+by a page; Home/End select the first/last button. In menus containing only text,
+these keys scroll the content instead. The title stays fixed while content scrolls.
+Buttons clipped outside the content area cannot be clicked.
+
+Horizontal alignment accepts `left`, `center`, and `right`. Vertical alignment
+accepts `top`, `center`, and `bottom`; `left`/`right` are also accepted as aliases
+for `top`/`bottom`. Alignment directives affect subsequent objects, so place an
+`align` line before an individual object to give it its own alignment.
+
+Objects with the same vertical alignment form a stack in script order. Top stacks
+start at the top, bottom stacks end at the bottom, and center stacks occupy the
+middle space between them. Stacks avoid overlapping; overflowing stacks become
+one scrollable area. Text and buttons participate in the same layout.
+
+`menu_align` positions the entire scaled panel. Scales above `1` enlarge its
+contents while keeping the panel inside the screen and making overflow scrollable.
+`text_align` controls a label inside its object, independently of the object's
+position. Existing scripts default to scale `1` and centered alignment.
+
+```menu
+title "Layout Example"
+scale 0.8
+menu_align center center
+
+align left top
+text "This text sits at the top left."
+
+align center center
+text_align left center
+button "Display Settings" menu settingsdisplay
+button "Audio Settings" menu settingsaudio
+
+align right bottom
+text_align center center
+button "Back" back
+```
 
 Save slot status values:
 

@@ -1706,6 +1706,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         SlimMenuContext slim{};
         slim.win = ctx.win;
         slim.ren = ctx.ren;
+        slim.menuTexture = menuFallbackTex;
+        slim.menuFrames = &menuFallbackFrames;
         slim.gameTarget = (ctx.gameTargetRef && *ctx.gameTargetRef) ? *ctx.gameTargetRef : ctx.gameTarget;
         slim.baseScreenW = ctx.baseScreenW;
         slim.baseScreenH = ctx.baseScreenH;

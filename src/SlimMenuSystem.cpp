@@ -1,4 +1,5 @@
 #include "SlimMenuSystem.h"
+#include "SlimMenuLayout.h"
 
 #include <SDL3/SDL.h>
 #if defined(__ANDROID__)
@@ -42,7 +43,6 @@ namespace {
 
 constexpr const char* kSavedGameSelectionToken = "__DF_SAVEGAME_CONTINUE__";
 constexpr const char* kSlimMenuUserAgent = "DF-New slim-menu";
-constexpr Uint64 kMenuFadeMs = 120;
 
 struct MenuItem {
     enum class Type { Text, Button };
@@ -50,37 +50,19 @@ struct MenuItem {
     std::string label;
     std::string command;
     std::string arg;
+    SlimMenuLayout::Align horizontal = SlimMenuLayout::Align::Center;
+    SlimMenuLayout::Align vertical = SlimMenuLayout::Align::Center;
+    SlimMenuLayout::Align labelHorizontal = SlimMenuLayout::Align::Center;
+    SlimMenuLayout::Align labelVertical = SlimMenuLayout::Align::Center;
 };
 
 struct SlimMenu {
     std::string name;
     std::string title;
     std::vector<MenuItem> items;
-};
-
-struct SlimRuntime {
-    struct PendingGet {
-        std::string variable;
-        std::future<std::string> response;
-    };
-    SDL_Texture* menuTexture = nullptr;
-    std::unordered_map<std::string, Frame> menuFrames;
-    std::unordered_map<std::string, std::string> vars;
-    std::string waitingBind;
-    std::vector<PendingGet> pendingGets;
-
-    SlimRuntime() = default;
-    SlimRuntime(const SlimRuntime&) = delete;
-    SlimRuntime& operator=(const SlimRuntime&) = delete;
-    ~SlimRuntime() {
-        if (menuTexture) SDL_DestroyTexture(menuTexture);
-    }
-};
-
-struct ParsedLine {
-    int lineNo = 0;
-    std::string text;
-    std::vector<std::string> parts;
+    float scale = 1.0f;
+    SlimMenuLayout::Align horizontal = SlimMenuLayout::Align::Center;
+    SlimMenuLayout::Align vertical = SlimMenuLayout::Align::Center;
 };
 
 struct SlimLevelEntry {
@@ -91,6 +73,40 @@ struct SlimLevelEntry {
     int likes = 0;
     int dislikes = 0;
 };
+
+struct SlimRuntime {
+    struct PendingGet {
+        std::string variable;
+        std::future<std::string> response;
+    };
+    SDL_Texture* menuTexture = nullptr;
+    bool ownsMenuTexture = true;
+    std::unordered_map<std::string, Frame> menuFrames;
+    std::unordered_map<std::string, std::string> scriptSources;
+    std::vector<SlimLevelEntry> localLevels, onlineLevels;
+    bool localLevelsLoaded = false, onlineLevelsLoaded = false;
+    std::future<std::vector<SlimLevelEntry>> onlineLevelsRequest;
+    std::future<bool> accountRoleRequest;
+    std::string accountRoleKey, pendingAccountRoleKey;
+    std::unordered_map<std::string, std::string> vars;
+    std::string waitingBind;
+    std::vector<PendingGet> pendingGets;
+    float scrollY = 0.0f;
+
+    SlimRuntime() = default;
+    SlimRuntime(const SlimRuntime&) = delete;
+    SlimRuntime& operator=(const SlimRuntime&) = delete;
+    ~SlimRuntime() {
+        if (menuTexture && ownsMenuTexture) SDL_DestroyTexture(menuTexture);
+    }
+};
+
+struct ParsedLine {
+    int lineNo = 0;
+    std::string text;
+    std::vector<std::string> parts;
+};
+
 
 std::string trim(const std::string& in) {
     std::size_t first = 0;
@@ -303,62 +319,119 @@ bool varIsTruthy(const std::string& name, const SlimRuntime& runtime, const Slim
 }
 
 std::string expandVars(std::string text, const SlimRuntime& runtime, const SlimMenuContext& ctx) {
-    text = replaceAll(text, "${username}", contextVarValue("username", runtime, ctx));
-    text = replaceAll(text, "${api}", contextVarValue("api", runtime, ctx));
-    text = replaceAll(text, "${debugger_attached}", contextVarValue("debugger_attached", runtime, ctx));
-    text = replaceAll(text, "${account_status}", contextVarValue("account_status", runtime, ctx));
-    text = replaceAll(text, "${account_manager_url}", contextVarValue("account_manager_url", runtime, ctx));
-    text = replaceAll(text, "${menu_music_enabled}", contextVarValue("menu_music_enabled", runtime, ctx));
-    text = replaceAll(text, "${mute_all_audio}", contextVarValue("mute_all_audio", runtime, ctx));
-    text = replaceAll(text, "${level_select_enabled}", contextVarValue("level_select_enabled", runtime, ctx));
-    text = replaceAll(text, "${fullscreen}", contextVarValue("fullscreen", runtime, ctx));
-    text = replaceAll(text, "${vsync_enabled}", contextVarValue("vsync_enabled", runtime, ctx));
-    text = replaceAll(text, "${camera_clamp_x}", contextVarValue("camera_clamp_x", runtime, ctx));
-    text = replaceAll(text, "${native_text_resolution_enabled}", contextVarValue("native_text_resolution_enabled", runtime, ctx));
-    text = replaceAll(text, "${show_fps_counter}", contextVarValue("show_fps_counter", runtime, ctx));
-    text = replaceAll(text, "${show_detailed_debugger}", contextVarValue("show_detailed_debugger", runtime, ctx));
-    text = replaceAll(text, "${show_hitboxes}", contextVarValue("show_hitboxes", runtime, ctx));
-    text = replaceAll(text, "${show_player_hitbox}", contextVarValue("show_player_hitbox", runtime, ctx));
-    text = replaceAll(text, "${show_debug_view}", contextVarValue("show_debug_view", runtime, ctx));
-    text = replaceAll(text, "${hide_unknown_object_types}", contextVarValue("hide_unknown_object_types", runtime, ctx));
-    text = replaceAll(text, "${power_management_enabled}", contextVarValue("power_management_enabled", runtime, ctx));
-    text = replaceAll(text, "${low_power_mode_enabled}", contextVarValue("low_power_mode_enabled", runtime, ctx));
-    text = replaceAll(text, "${show_experimental_features}", contextVarValue("show_experimental_features", runtime, ctx));
-    text = replaceAll(text, "${send_anonymous_metrics}", contextVarValue("send_anonymous_metrics", runtime, ctx));
-    text = replaceAll(text, "${move_left}", contextVarValue("move_left", runtime, ctx));
-    text = replaceAll(text, "${move_right}", contextVarValue("move_right", runtime, ctx));
-    text = replaceAll(text, "${move_down}", contextVarValue("move_down", runtime, ctx));
-    text = replaceAll(text, "${jump}", contextVarValue("jump", runtime, ctx));
-    text = replaceAll(text, "${pause}", contextVarValue("pause", runtime, ctx));
-    text = replaceAll(text, "${music_volume}", contextVarValue("music_volume", runtime, ctx));
-    text = replaceAll(text, "${sfx_volume}", contextVarValue("sfx_volume", runtime, ctx));
-    text = replaceAll(text, "${ui_scale_percent}", contextVarValue("ui_scale_percent", runtime, ctx));
-    text = replaceAll(text, "${ui_edge_padding}", contextVarValue("ui_edge_padding", runtime, ctx));
-    text = replaceAll(text, "${active_save_slot}", contextVarValue("active_save_slot", runtime, ctx));
-    text = replaceAll(text, "${save_slot_1_status}", contextVarValue("save_slot_1_status", runtime, ctx));
-    text = replaceAll(text, "${save_slot_2_status}", contextVarValue("save_slot_2_status", runtime, ctx));
-    text = replaceAll(text, "${save_slot_3_status}", contextVarValue("save_slot_3_status", runtime, ctx));
-    text = replaceAll(text, "${save_slot_1_exists}", contextVarValue("save_slot_1_exists", runtime, ctx));
-    text = replaceAll(text, "${save_slot_2_exists}", contextVarValue("save_slot_2_exists", runtime, ctx));
-    text = replaceAll(text, "${save_slot_3_exists}", contextVarValue("save_slot_3_exists", runtime, ctx));
-    text = replaceAll(text, "${about_version}", contextVarValue("about_version", runtime, ctx));
-    text = replaceAll(text, "${about_version_id}", contextVarValue("about_version_id", runtime, ctx));
-    text = replaceAll(text, "${about_build_uuid}", contextVarValue("about_build_uuid", runtime, ctx));
-    text = replaceAll(text, "${about_build_time}", contextVarValue("about_build_time", runtime, ctx));
-    text = replaceAll(text, "${about_build_timezone}", contextVarValue("about_build_timezone", runtime, ctx));
-    text = replaceAll(text, "${about_sdl_version}", contextVarValue("about_sdl_version", runtime, ctx));
-    text = replaceAll(text, "${about_sdl_revision}", contextVarValue("about_sdl_revision", runtime, ctx));
-    text = replaceAll(text, "${about_platform}", contextVarValue("about_platform", runtime, ctx));
-    text = replaceAll(text, "${about_renderer}", contextVarValue("about_renderer", runtime, ctx));
-    text = replaceAll(text, "${about_window_size}", contextVarValue("about_window_size", runtime, ctx));
-    text = replaceAll(text, "${about_base_size}", contextVarValue("about_base_size", runtime, ctx));
-    text = replaceAll(text, "${about_ui_scale}", contextVarValue("about_ui_scale", runtime, ctx));
-    text = replaceAll(text, "${about_ui_edge_padding}", contextVarValue("about_ui_edge_padding", runtime, ctx));
-    text = replaceAll(text, "${about_video_driver}", contextVarValue("about_video_driver", runtime, ctx));
-    text = replaceAll(text, "${about_audio_driver}", contextVarValue("about_audio_driver", runtime, ctx));
-    text = replaceAll(text, "${about_cpu_cores}", contextVarValue("about_cpu_cores", runtime, ctx));
-    text = replaceAll(text, "${about_system_ram}", contextVarValue("about_system_ram", runtime, ctx));
-    text = replaceAll(text, "${about_updater_status}", contextVarValue("about_updater_status", runtime, ctx));
+    if (text.find("${") == std::string::npos) return text;
+    if (text.find("${username}") != std::string::npos)
+        text = replaceAll(text, "${username}", contextVarValue("username", runtime, ctx));
+    if (text.find("${api}") != std::string::npos)
+        text = replaceAll(text, "${api}", contextVarValue("api", runtime, ctx));
+    if (text.find("${debugger_attached}") != std::string::npos)
+        text = replaceAll(text, "${debugger_attached}", contextVarValue("debugger_attached", runtime, ctx));
+    if (text.find("${account_status}") != std::string::npos)
+        text = replaceAll(text, "${account_status}", contextVarValue("account_status", runtime, ctx));
+    if (text.find("${account_manager_url}") != std::string::npos)
+        text = replaceAll(text, "${account_manager_url}", contextVarValue("account_manager_url", runtime, ctx));
+    if (text.find("${menu_music_enabled}") != std::string::npos)
+        text = replaceAll(text, "${menu_music_enabled}", contextVarValue("menu_music_enabled", runtime, ctx));
+    if (text.find("${mute_all_audio}") != std::string::npos)
+        text = replaceAll(text, "${mute_all_audio}", contextVarValue("mute_all_audio", runtime, ctx));
+    if (text.find("${level_select_enabled}") != std::string::npos)
+        text = replaceAll(text, "${level_select_enabled}", contextVarValue("level_select_enabled", runtime, ctx));
+    if (text.find("${fullscreen}") != std::string::npos)
+        text = replaceAll(text, "${fullscreen}", contextVarValue("fullscreen", runtime, ctx));
+    if (text.find("${vsync_enabled}") != std::string::npos)
+        text = replaceAll(text, "${vsync_enabled}", contextVarValue("vsync_enabled", runtime, ctx));
+    if (text.find("${camera_clamp_x}") != std::string::npos)
+        text = replaceAll(text, "${camera_clamp_x}", contextVarValue("camera_clamp_x", runtime, ctx));
+    if (text.find("${native_text_resolution_enabled}") != std::string::npos)
+        text = replaceAll(text, "${native_text_resolution_enabled}", contextVarValue("native_text_resolution_enabled", runtime, ctx));
+    if (text.find("${show_fps_counter}") != std::string::npos)
+        text = replaceAll(text, "${show_fps_counter}", contextVarValue("show_fps_counter", runtime, ctx));
+    if (text.find("${show_detailed_debugger}") != std::string::npos)
+        text = replaceAll(text, "${show_detailed_debugger}", contextVarValue("show_detailed_debugger", runtime, ctx));
+    if (text.find("${show_hitboxes}") != std::string::npos)
+        text = replaceAll(text, "${show_hitboxes}", contextVarValue("show_hitboxes", runtime, ctx));
+    if (text.find("${show_player_hitbox}") != std::string::npos)
+        text = replaceAll(text, "${show_player_hitbox}", contextVarValue("show_player_hitbox", runtime, ctx));
+    if (text.find("${show_debug_view}") != std::string::npos)
+        text = replaceAll(text, "${show_debug_view}", contextVarValue("show_debug_view", runtime, ctx));
+    if (text.find("${hide_unknown_object_types}") != std::string::npos)
+        text = replaceAll(text, "${hide_unknown_object_types}", contextVarValue("hide_unknown_object_types", runtime, ctx));
+    if (text.find("${power_management_enabled}") != std::string::npos)
+        text = replaceAll(text, "${power_management_enabled}", contextVarValue("power_management_enabled", runtime, ctx));
+    if (text.find("${low_power_mode_enabled}") != std::string::npos)
+        text = replaceAll(text, "${low_power_mode_enabled}", contextVarValue("low_power_mode_enabled", runtime, ctx));
+    if (text.find("${show_experimental_features}") != std::string::npos)
+        text = replaceAll(text, "${show_experimental_features}", contextVarValue("show_experimental_features", runtime, ctx));
+    if (text.find("${send_anonymous_metrics}") != std::string::npos)
+        text = replaceAll(text, "${send_anonymous_metrics}", contextVarValue("send_anonymous_metrics", runtime, ctx));
+    if (text.find("${move_left}") != std::string::npos)
+        text = replaceAll(text, "${move_left}", contextVarValue("move_left", runtime, ctx));
+    if (text.find("${move_right}") != std::string::npos)
+        text = replaceAll(text, "${move_right}", contextVarValue("move_right", runtime, ctx));
+    if (text.find("${move_down}") != std::string::npos)
+        text = replaceAll(text, "${move_down}", contextVarValue("move_down", runtime, ctx));
+    if (text.find("${jump}") != std::string::npos)
+        text = replaceAll(text, "${jump}", contextVarValue("jump", runtime, ctx));
+    if (text.find("${pause}") != std::string::npos)
+        text = replaceAll(text, "${pause}", contextVarValue("pause", runtime, ctx));
+    if (text.find("${music_volume}") != std::string::npos)
+        text = replaceAll(text, "${music_volume}", contextVarValue("music_volume", runtime, ctx));
+    if (text.find("${sfx_volume}") != std::string::npos)
+        text = replaceAll(text, "${sfx_volume}", contextVarValue("sfx_volume", runtime, ctx));
+    if (text.find("${ui_scale_percent}") != std::string::npos)
+        text = replaceAll(text, "${ui_scale_percent}", contextVarValue("ui_scale_percent", runtime, ctx));
+    if (text.find("${ui_edge_padding}") != std::string::npos)
+        text = replaceAll(text, "${ui_edge_padding}", contextVarValue("ui_edge_padding", runtime, ctx));
+    if (text.find("${active_save_slot}") != std::string::npos)
+        text = replaceAll(text, "${active_save_slot}", contextVarValue("active_save_slot", runtime, ctx));
+    if (text.find("${save_slot_1_status}") != std::string::npos)
+        text = replaceAll(text, "${save_slot_1_status}", contextVarValue("save_slot_1_status", runtime, ctx));
+    if (text.find("${save_slot_2_status}") != std::string::npos)
+        text = replaceAll(text, "${save_slot_2_status}", contextVarValue("save_slot_2_status", runtime, ctx));
+    if (text.find("${save_slot_3_status}") != std::string::npos)
+        text = replaceAll(text, "${save_slot_3_status}", contextVarValue("save_slot_3_status", runtime, ctx));
+    if (text.find("${save_slot_1_exists}") != std::string::npos)
+        text = replaceAll(text, "${save_slot_1_exists}", contextVarValue("save_slot_1_exists", runtime, ctx));
+    if (text.find("${save_slot_2_exists}") != std::string::npos)
+        text = replaceAll(text, "${save_slot_2_exists}", contextVarValue("save_slot_2_exists", runtime, ctx));
+    if (text.find("${save_slot_3_exists}") != std::string::npos)
+        text = replaceAll(text, "${save_slot_3_exists}", contextVarValue("save_slot_3_exists", runtime, ctx));
+    if (text.find("${about_version}") != std::string::npos)
+        text = replaceAll(text, "${about_version}", contextVarValue("about_version", runtime, ctx));
+    if (text.find("${about_version_id}") != std::string::npos)
+        text = replaceAll(text, "${about_version_id}", contextVarValue("about_version_id", runtime, ctx));
+    if (text.find("${about_build_uuid}") != std::string::npos)
+        text = replaceAll(text, "${about_build_uuid}", contextVarValue("about_build_uuid", runtime, ctx));
+    if (text.find("${about_build_time}") != std::string::npos)
+        text = replaceAll(text, "${about_build_time}", contextVarValue("about_build_time", runtime, ctx));
+    if (text.find("${about_build_timezone}") != std::string::npos)
+        text = replaceAll(text, "${about_build_timezone}", contextVarValue("about_build_timezone", runtime, ctx));
+    if (text.find("${about_sdl_version}") != std::string::npos)
+        text = replaceAll(text, "${about_sdl_version}", contextVarValue("about_sdl_version", runtime, ctx));
+    if (text.find("${about_sdl_revision}") != std::string::npos)
+        text = replaceAll(text, "${about_sdl_revision}", contextVarValue("about_sdl_revision", runtime, ctx));
+    if (text.find("${about_platform}") != std::string::npos)
+        text = replaceAll(text, "${about_platform}", contextVarValue("about_platform", runtime, ctx));
+    if (text.find("${about_renderer}") != std::string::npos)
+        text = replaceAll(text, "${about_renderer}", contextVarValue("about_renderer", runtime, ctx));
+    if (text.find("${about_window_size}") != std::string::npos)
+        text = replaceAll(text, "${about_window_size}", contextVarValue("about_window_size", runtime, ctx));
+    if (text.find("${about_base_size}") != std::string::npos)
+        text = replaceAll(text, "${about_base_size}", contextVarValue("about_base_size", runtime, ctx));
+    if (text.find("${about_ui_scale}") != std::string::npos)
+        text = replaceAll(text, "${about_ui_scale}", contextVarValue("about_ui_scale", runtime, ctx));
+    if (text.find("${about_ui_edge_padding}") != std::string::npos)
+        text = replaceAll(text, "${about_ui_edge_padding}", contextVarValue("about_ui_edge_padding", runtime, ctx));
+    if (text.find("${about_video_driver}") != std::string::npos)
+        text = replaceAll(text, "${about_video_driver}", contextVarValue("about_video_driver", runtime, ctx));
+    if (text.find("${about_audio_driver}") != std::string::npos)
+        text = replaceAll(text, "${about_audio_driver}", contextVarValue("about_audio_driver", runtime, ctx));
+    if (text.find("${about_cpu_cores}") != std::string::npos)
+        text = replaceAll(text, "${about_cpu_cores}", contextVarValue("about_cpu_cores", runtime, ctx));
+    if (text.find("${about_system_ram}") != std::string::npos)
+        text = replaceAll(text, "${about_system_ram}", contextVarValue("about_system_ram", runtime, ctx));
+    if (text.find("${about_updater_status}") != std::string::npos)
+        text = replaceAll(text, "${about_updater_status}", contextVarValue("about_updater_status", runtime, ctx));
     for (const auto& [key, value] : runtime.vars) {
         text = replaceAll(text, "${" + key + "}", value);
     }
@@ -373,6 +446,15 @@ std::string menuPath(const std::string& name) {
 std::string makeApiUrl(const SlimMenuContext& ctx, std::string path);
 SlimMenu buildGeneratedLevelMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuContext& ctx);
 
+bool parseMenuAlignment(std::string value, SlimMenuLayout::Align& out) {
+    value = toLowerAscii(value);
+    if (value == "left" || value == "top" || value == "start") out = SlimMenuLayout::Align::Start;
+    else if (value == "center" || value == "middle") out = SlimMenuLayout::Align::Center;
+    else if (value == "right" || value == "bottom" || value == "end") out = SlimMenuLayout::Align::End;
+    else return false;
+    return true;
+}
+
 SlimMenu loadMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuContext& ctx) {
     if (name == "locallevels" || name == "onlinelevels" || name == "leveldetail") {
         return buildGeneratedLevelMenu(name, runtime, ctx);
@@ -380,7 +462,12 @@ SlimMenu loadMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuC
 
     SlimMenu menu;
     menu.name = name;
-    const std::string text = ReadTextFile(menuPath(name));
+    MenuItem style;
+    auto source = runtime.scriptSources.find(name);
+    if (source == runtime.scriptSources.end()) {
+        source = runtime.scriptSources.emplace(name, ReadTextFile(menuPath(name))).first;
+    }
+    const std::string& text = source->second;
     std::istringstream in(text);
     std::string line;
     int lineNo = 0;
@@ -402,11 +489,45 @@ SlimMenu loadMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuC
             menu.title = parts[1];
             ++i;
         } else if (op == "text" && parts.size() >= 2) {
-            menu.items.push_back(MenuItem{MenuItem::Type::Text, parts[1], {}, {}});
+            MenuItem item = style;
+            item.type = MenuItem::Type::Text;
+            item.label = parts[1];
+            menu.items.push_back(std::move(item));
             ++i;
         } else if (op == "button" && parts.size() >= 3) {
             const std::string arg = parts.size() >= 4 ? parts[3] : std::string();
-            menu.items.push_back(MenuItem{MenuItem::Type::Button, parts[1], parts[2], arg});
+            MenuItem item = style;
+            item.type = MenuItem::Type::Button;
+            item.label = parts[1];
+            item.command = parts[2];
+            item.arg = arg;
+            menu.items.push_back(std::move(item));
+            ++i;
+        } else if (op == "scale" && parts.size() >= 2) {
+            char* end = nullptr;
+            const float value = std::strtof(parts[1].c_str(), &end);
+            if (end != parts[1].c_str() && *end == '\0' && std::isfinite(value) && value > 0.0f) {
+                menu.scale = std::clamp(value, 0.25f, 4.0f);
+            } else {
+                SDL_Log("SLIM MENU: invalid scale at %s:%d", menuPath(name).c_str(), lineInfo.lineNo);
+            }
+            ++i;
+        } else if ((op == "align" || op == "menu_align" || op == "text_align") && parts.size() >= 3) {
+            SlimMenuLayout::Align horizontal, vertical;
+            if (parseMenuAlignment(parts[1], horizontal) && parseMenuAlignment(parts[2], vertical)) {
+                if (op == "menu_align") {
+                    menu.horizontal = horizontal;
+                    menu.vertical = vertical;
+                } else if (op == "text_align") {
+                    style.labelHorizontal = horizontal;
+                    style.labelVertical = vertical;
+                } else {
+                    style.horizontal = horizontal;
+                    style.vertical = vertical;
+                }
+            } else {
+                SDL_Log("SLIM MENU: invalid alignment at %s:%d", menuPath(name).c_str(), lineInfo.lineNo);
+            }
             ++i;
         } else if (op == "get" && parts.size() >= 3) {
             const std::string url = makeApiUrl(ctx, expandVars(parts[2], runtime, ctx));
@@ -524,7 +645,9 @@ std::string accountLookupBody(const SlimMenuContext& ctx) {
     {
         JNIEnv* env = static_cast<JNIEnv*>(SDL_GetAndroidJNIEnv());
         if (env) {
-            jclass cls = env->FindClass("com/Benno111/dorfplatformertimetravel/MainActivity");
+            jobject activity = static_cast<jobject>(SDL_GetAndroidActivity());
+            jclass cls = activity ? env->GetObjectClass(activity) : nullptr;
+            if (activity) env->DeleteLocalRef(activity);
             if (cls) {
                 jmethodID mid = env->GetStaticMethodID(
                     cls, "gameServerLookupAccount",
@@ -599,11 +722,23 @@ std::string accountLookupBody(const SlimMenuContext& ctx) {
 }
 
 bool currentAccountIsMod(SlimRuntime& runtime, const SlimMenuContext& ctx) {
+    std::string base = ctx.levelServerUrl ? *ctx.levelServerUrl : std::string();
+    std::string token = ctx.levelServerAuthToken ? *ctx.levelServerAuthToken : std::string();
+    const std::string key = base + "\n" + token;
+    if (runtime.accountRoleKey != key) runtime.vars.erase("__account_is_mod");
     auto cached = runtime.vars.find("__account_is_mod");
     if (cached != runtime.vars.end()) return cached->second == "true";
-    const bool isMod = accountLookupResponseIsMod(accountLookupBody(ctx));
-    runtime.vars["__account_is_mod"] = isMod ? "true" : "false";
-    return isMod;
+    if (base.empty() || token.empty()) return false;
+    if (!runtime.accountRoleRequest.valid()) {
+        runtime.pendingAccountRoleKey = key;
+        runtime.accountRoleRequest = SubmitNetworkOperation([base, token]() mutable {
+            SlimMenuContext snapshot;
+            snapshot.levelServerUrl = &base;
+            snapshot.levelServerAuthToken = &token;
+            return accountLookupResponseIsMod(accountLookupBody(snapshot));
+        });
+    }
+    return false;
 }
 
 std::string prettyLevelLabelFromPath(const std::filesystem::path& path, const std::filesystem::path& root) {
@@ -686,6 +821,7 @@ std::vector<SlimLevelEntry> loadLocalSlimLevels() {
 
 std::vector<SlimLevelEntry> loadOnlineSlimLevels(const SlimMenuContext& ctx) {
     std::vector<SlimLevelEntry> out;
+    if (!ctx.levelServerUrl || ctx.levelServerUrl->empty()) return out;
     const std::string rootText = ReadTextFile(makeApiUrl(ctx, "/levels.json?metadata=true"));
     if (rootText.empty()) return out;
     nlohmann::json j;
@@ -720,6 +856,25 @@ std::vector<SlimLevelEntry> loadOnlineSlimLevels(const SlimMenuContext& ctx) {
     return out;
 }
 
+const std::vector<SlimLevelEntry>& cachedSlimLevels(bool online, SlimRuntime& runtime, const SlimMenuContext& ctx) {
+    if (online) {
+        if (!runtime.onlineLevelsLoaded && !runtime.onlineLevelsRequest.valid()) {
+            std::string base = ctx.levelServerUrl ? *ctx.levelServerUrl : std::string();
+            runtime.onlineLevelsRequest = SubmitNetworkOperation([base]() mutable {
+                SlimMenuContext snapshot;
+                snapshot.levelServerUrl = &base;
+                return loadOnlineSlimLevels(snapshot);
+            });
+        }
+        return runtime.onlineLevels;
+    }
+    if (!runtime.localLevelsLoaded) {
+        runtime.localLevels = loadLocalSlimLevels();
+        runtime.localLevelsLoaded = true;
+    }
+    return runtime.localLevels;
+}
+
 std::string levelFilterLabel(const std::string& filter) {
     if (filter == "easy") return "EASY 1-3";
     if (filter == "medium") return "MEDIUM 4-6";
@@ -747,7 +902,7 @@ std::string levelStatsSuffix(const SlimLevelEntry& level) {
 }
 
 std::vector<SlimLevelEntry> filteredGeneratedLevels(const std::string& prefix, SlimRuntime& runtime, const SlimMenuContext& ctx) {
-    std::vector<SlimLevelEntry> levels = prefix == "online" ? loadOnlineSlimLevels(ctx) : loadLocalSlimLevels();
+    const auto& levels = cachedSlimLevels(prefix == "online", runtime, ctx);
     const std::string filterVar = prefix + "_level_filter";
     if (!runtime.vars.count(filterVar)) runtime.vars[filterVar] = "all";
     std::vector<SlimLevelEntry> filtered;
@@ -1154,7 +1309,7 @@ SlimMenu buildGeneratedLevelMenu(const std::string& name, SlimRuntime& runtime, 
     if (!runtime.vars.count(pageVar)) runtime.vars[pageVar] = "0";
     if (!runtime.vars.count(filterVar)) runtime.vars[filterVar] = "all";
 
-    std::vector<SlimLevelEntry> levels = online ? loadOnlineSlimLevels(ctx) : loadLocalSlimLevels();
+    const auto& levels = cachedSlimLevels(online, runtime, ctx);
     const std::string filter = runtime.vars[filterVar];
     std::vector<SlimLevelEntry> filtered;
     for (const auto& level : levels) {
@@ -1176,7 +1331,8 @@ SlimMenu buildGeneratedLevelMenu(const std::string& name, SlimRuntime& runtime, 
         menu.items.push_back(MenuItem{MenuItem::Type::Button, "Create", "create_level", {}});
     }
     if (filtered.empty()) {
-        menu.items.push_back(MenuItem{MenuItem::Type::Text, "No levels match this filter.", {}, {}});
+        menu.items.push_back(MenuItem{MenuItem::Type::Text,
+            online && runtime.onlineLevelsRequest.valid() ? "Loading online levels..." : "No levels match this filter.", {}, {}});
     }
 
     const int start = page * kPageSize;
@@ -1187,6 +1343,7 @@ SlimMenu buildGeneratedLevelMenu(const std::string& name, SlimRuntime& runtime, 
             level.label + difficultySuffix(level.difficulty) + (online ? levelStatsSuffix(level) : std::string()),
             "level_detail", prefix + ":" + std::to_string(i)});
     }
+    menu.items.push_back(MenuItem{MenuItem::Type::Button, "Refresh", "refresh_levels", prefix});
     menu.items.push_back(MenuItem{MenuItem::Type::Button, "Previous Page", "level_page", prefix + ":prev"});
     menu.items.push_back(MenuItem{MenuItem::Type::Button, "Next Page", "level_page", prefix + ":next"});
     menu.items.push_back(MenuItem{MenuItem::Type::Button, "Filter: All", "level_filter", prefix + ":all"});
@@ -1198,26 +1355,33 @@ SlimMenu buildGeneratedLevelMenu(const std::string& name, SlimRuntime& runtime, 
     return menu;
 }
 
-int textRowCountFor(const SlimMenu& menu, const SlimRuntime& runtime) {
-    int rows = runtime.waitingBind.empty() ? 0 : 1;
+SlimMenuLayout::Layout layoutFor(const SlimMenu& menu, const SlimRuntime& runtime, const SlimMenuContext& ctx) {
+    std::vector<SlimMenuLayout::Item> items;
+    const int buttonWidth = std::clamp(ctx.baseScreenW * 2 / 5, 220, 520);
     for (const auto& item : menu.items) {
-        if (item.type == MenuItem::Type::Text) ++rows;
+        const bool button = item.type == MenuItem::Type::Button;
+        items.push_back({button ? buttonWidth : MeasureTextWidth(2, expandVars(item.label, runtime, ctx)),
+                         button ? 54 : 24, item.horizontal, item.vertical});
     }
-    return rows;
+    return SlimMenuLayout::build(ctx.baseScreenW, ctx.baseScreenH, menu.scale, menu.horizontal, menu.vertical, items);
 }
 
-SDL_Rect buttonRectFor(const SlimMenuContext& ctx, int buttonIndex, int buttonCount, int textRows = 0) {
-    const int w = std::clamp(ctx.baseScreenW * 2 / 5, 220, 520);
-    const int h = buttonCount > 14 ? 22 : (buttonCount > 10 ? 30 : 54);
-    const int gap = buttonCount > 14 ? 3 : (buttonCount > 10 ? 6 : 14);
-    const int totalH = buttonCount * h + std::max(0, buttonCount - 1) * gap;
-    const int defaultStartY = buttonCount > 10 ? std::max(86, ctx.baseScreenH / 2 - totalH / 2) : std::max(132, ctx.baseScreenH / 2 - totalH / 2);
-    const int textDrivenStartY = textRows > 0 ? 106 + textRows * 28 + 10 : 0;
-    int startY = defaultStartY;
-    if (textDrivenStartY > defaultStartY && textDrivenStartY + totalH <= ctx.baseScreenH - 16) {
-        startY = textDrivenStartY;
+size_t buttonItemIndex(const SlimMenu& menu, int button) {
+    for (size_t i = 0; i < menu.items.size(); ++i) {
+        if (menu.items[i].type == MenuItem::Type::Button && button-- == 0) return i;
     }
-    return SDL_Rect{ctx.baseScreenW / 2 - w / 2, startY + buttonIndex * (h + gap), w, h};
+    return menu.items.size();
+}
+
+SDL_Rect menuScrollTrack(const SlimMenuLayout::Layout& layout) {
+    return {layout.body.x + layout.body.w + 8, layout.body.y, 6, layout.body.h};
+}
+
+SDL_Rect menuScrollThumb(const SlimMenuLayout::Layout& layout, float scroll) {
+    SDL_Rect thumb = menuScrollTrack(layout);
+    thumb.h = std::min(thumb.h, std::max(12, thumb.h * layout.body.h / std::max(1, layout.contentHeight)));
+    thumb.y += (int)std::lround((layout.body.h - thumb.h) * scroll / std::max(1, layout.maxScroll));
+    return thumb;
 }
 
 bool drawMenuSprite(const SlimRuntime& runtime, SDL_Renderer* ren, const char* name,
@@ -1237,47 +1401,52 @@ bool drawMenuSprite(const SlimRuntime& runtime, SDL_Renderer* ren, const char* n
     return true;
 }
 
-void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContext& ctx, int selected) {
+void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContext& ctx, int selected,
+                const SlimMenuLayout::Layout& layout) {
     SDL_SetRenderTarget(ctx.ren, ctx.gameTarget);
+    SDL_SetRenderViewport(ctx.ren, nullptr);
+    SDL_SetRenderClipRect(ctx.ren, nullptr);
+    SDL_SetRenderScale(ctx.ren, 1.0f, 1.0f);
     SDL_SetRenderDrawColor(ctx.ren, 20, 26, 34, 255);
     SDL_RenderClear(ctx.ren);
 
-    const SDL_Rect panel{16, 12, std::max(1, ctx.baseScreenW - 32), std::max(1, ctx.baseScreenH - 24)};
+    runtime.scrollY = std::clamp(runtime.scrollY, 0.0f, (float)layout.maxScroll);
+    SDL_SetRenderScale(ctx.ren, layout.scale, layout.scale);
+    const SDL_Rect panel = layout.panel;
+    SDL_SetRenderClipRect(ctx.ren, &panel);
     if (!drawMenuSprite(runtime, ctx.ren, "window", panel, 56.0f)) {
         SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_BLEND);
         SDL_SetRenderDrawColor(ctx.ren, 66, 101, 126, 255);
-        SDL_Rect top{0, 0, ctx.baseScreenW, std::max(92, ctx.baseScreenH / 6)};
-        SDL_RenderFillRect(ctx.ren, &top);
+        SDL_RenderFillRect(ctx.ren, &panel);
         SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_NONE);
     }
 
-    const int titleScale = 4;
     const std::string title = expandVars(menu.title, runtime, ctx);
-    DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(titleScale, title) / 2, 34, titleScale, title);
-    if (!runtime.pendingGets.empty()) {
-        const std::string loading = "Loading" + std::string((SDL_GetTicks() / 250) % 4, '.');
-        DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(1, loading) / 2, 82, 1, loading);
+    int titleScale = 4;
+    while (titleScale > 1 && MeasureTextWidth(titleScale, title) > panel.w - 40) --titleScale;
+    DrawText(ctx.ren, panel.x + (panel.w - MeasureTextWidth(titleScale, title)) / 2, panel.y + 22, titleScale, title);
+    if (!runtime.waitingBind.empty() || !runtime.pendingGets.empty() ||
+        runtime.onlineLevelsRequest.valid() || runtime.accountRoleRequest.valid()) {
+        const std::string status = runtime.waitingBind.empty()
+            ? "Loading" + std::string((SDL_GetTicks() / 250) % 4, '.')
+            : "Press a key for " + runtime.waitingBind;
+        DrawText(ctx.ren, panel.x + (panel.w - MeasureTextWidth(1, status)) / 2, panel.y + 70, 1, status);
     }
 
-    int buttonCount = 0;
-    for (const auto& item : menu.items) if (item.type == MenuItem::Type::Button) ++buttonCount;
-    const int textRows = textRowCountFor(menu, runtime);
+    SDL_SetRenderClipRect(ctx.ren, &layout.body);
     int buttonIndex = 0;
-    int textY = 106;
-    if (!runtime.waitingBind.empty()) {
-        const std::string bindLabel = "Press a key for " + runtime.waitingBind;
-        DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(2, bindLabel) / 2, textY, 2, bindLabel);
-        textY += 28;
-    }
-    for (const auto& item : menu.items) {
+    for (size_t index = 0; index < menu.items.size(); ++index) {
+        const auto& item = menu.items[index];
         const std::string label = expandVars(item.label, runtime, ctx);
+        const SDL_Rect r = SlimMenuLayout::scrolled(layout.items[index], runtime.scrollY);
+        const bool isSelected = item.type == MenuItem::Type::Button && buttonIndex++ == selected;
+        if (r.y + r.h <= layout.body.y || r.y >= layout.body.y + layout.body.h) continue;
         if (item.type == MenuItem::Type::Text) {
-            DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(2, label) / 2, textY, 2, label);
-            textY += 28;
+            const int textScale = MeasureTextWidth(2, label) <= r.w ? 2 : 1;
+            DrawText(ctx.ren, r.x + SlimMenuLayout::offset(r.w - MeasureTextWidth(textScale, label), item.labelHorizontal),
+                     r.y + SlimMenuLayout::offset(r.h - textScale * 10, item.labelVertical), textScale, label);
             continue;
         }
-        SDL_Rect r = buttonRectFor(ctx, buttonIndex, buttonCount, textRows);
-        const bool isSelected = buttonIndex == selected;
         if (runtime.menuTexture) {
             const Uint8 brightness = isSelected ? 255 : 205;
             SDL_SetTextureColorMod(runtime.menuTexture, brightness, brightness, brightness);
@@ -1301,42 +1470,40 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
         } else if (item.command == "back" || item.command == "quit" || label == "Back") {
             hasIcon = drawMenuSprite(runtime, ctx.ren, "close-window", icon);
         }
-        const int labelWidth = r.w - (hasIcon ? 2 * (iconSize + 16) : 16);
+        const int labelWidth = std::max(1, r.w - (hasIcon ? 2 * (iconSize + 16) : 16));
         const int labelScale = MeasureTextWidth(2, label) <= labelWidth ? 2 : 1;
-        DrawText(ctx.ren, r.x + (r.w - MeasureTextWidth(labelScale, label)) / 2, r.y + (r.h - labelScale * 10) / 2, labelScale, label);
-        ++buttonIndex;
+        const int textInset = hasIcon ? iconSize + 16 : 8;
+        DrawText(ctx.ren, r.x + textInset + SlimMenuLayout::offset(labelWidth - MeasureTextWidth(labelScale, label), item.labelHorizontal),
+                 r.y + 4 + SlimMenuLayout::offset(r.h - 8 - labelScale * 10, item.labelVertical), labelScale, label);
     }
+    SDL_SetRenderClipRect(ctx.ren, &panel);
+    if (layout.maxScroll > 0) {
+        const SDL_Rect track = menuScrollTrack(layout);
+        const SDL_Rect thumb = menuScrollThumb(layout, runtime.scrollY);
+        SDL_SetRenderDrawColor(ctx.ren, 45, 45, 45, 255);
+        SDL_RenderFillRect(ctx.ren, &track);
+        SDL_SetRenderDrawColor(ctx.ren, 220, 220, 220, 255);
+        SDL_RenderFillRect(ctx.ren, &thumb);
+    }
+    SDL_SetRenderClipRect(ctx.ren, nullptr);
+    SDL_SetRenderScale(ctx.ren, 1.0f, 1.0f);
 }
 
-void renderMenuFadeOverlay(const SlimMenuContext& ctx, Uint8 alpha) {
-    if (alpha == 0) return;
-    SDL_SetRenderTarget(ctx.ren, ctx.gameTarget);
-    SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_BLEND);
-    SDL_SetRenderDrawColor(ctx.ren, 0, 0, 0, alpha);
-    SDL_Rect overlay{0, 0, ctx.baseScreenW, ctx.baseScreenH};
-    SDL_RenderFillRect(ctx.ren, &overlay);
-    SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_NONE);
-}
-
-void presentMenuFrame(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContext& ctx, int selected, Uint8 fadeAlpha = 0) {
-    renderMenu(menu, runtime, ctx, selected);
-    renderMenuFadeOverlay(ctx, fadeAlpha);
+void presentMenuFrame(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContext& ctx, int selected,
+                      const SlimMenuLayout::Layout* prepared = nullptr) {
+    const auto computed = prepared ? SlimMenuLayout::Layout{} : layoutFor(menu, runtime, ctx);
+    renderMenu(menu, runtime, ctx, selected, prepared ? *prepared : computed);
     SDL_SetRenderTarget(ctx.ren, nullptr);
-    SDL_RenderTexture(ctx.ren, ctx.gameTarget, static_cast<const SDL_Rect*>(nullptr), static_cast<const SDL_Rect*>(nullptr));
+    SDL_SetRenderViewport(ctx.ren, nullptr);
+    SDL_SetRenderClipRect(ctx.ren, nullptr);
+    SDL_SetRenderScale(ctx.ren, 1.0f, 1.0f);
+    int outputW = 0, outputH = 0;
+    SDL_GetCurrentRenderOutputSize(ctx.ren, &outputW, &outputH);
+    const SDL_Rect dst = computePresentRect(outputW, outputH, ctx.baseScreenW, ctx.baseScreenH);
+    SDL_SetRenderDrawColor(ctx.ren, 0, 0, 0, 255);
+    SDL_RenderClear(ctx.ren);
+    SDL_RenderTexture(ctx.ren, ctx.gameTarget, static_cast<const SDL_Rect*>(nullptr), &dst);
     SDL_RenderPresent(ctx.ren);
-}
-
-void playMenuFade(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContext& ctx, int selected, bool fadeIn) {
-    const Uint64 start = SDL_GetTicks();
-    while (ctx.running && *ctx.running) {
-        const Uint64 elapsed = SDL_GetTicks() - start;
-        const float t = std::clamp((float)elapsed / (float)kMenuFadeMs, 0.0f, 1.0f);
-        const float alphaT = fadeIn ? (1.0f - t) : t;
-        const Uint8 alpha = (Uint8)std::clamp((int)std::lround(alphaT * 255.0f), 0, 255);
-        presentMenuFrame(menu, runtime, ctx, selected, alpha);
-        if (elapsed >= kMenuFadeMs) break;
-        SDL_Delay(16);
-    }
 }
 
 MenuItem* buttonAt(SlimMenu& menu, int selected) {
@@ -1406,6 +1573,12 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
         if (!arg.empty()) currentMenu = arg;
         return SlimMenuExit::Continue;
     }
+    if (command == "refresh_levels") {
+        if (arg == "online") runtime.onlineLevelsLoaded = false;
+        else runtime.localLevelsLoaded = false;
+        runtime.vars["__reload_menu"] = "1";
+        return SlimMenuExit::Continue;
+    }
     if (command == "level_page") {
         const std::string::size_type colon = arg.find(':');
         const std::string prefix = colon == std::string::npos ? "local" : arg.substr(0, colon);
@@ -1450,6 +1623,7 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
     if (command == "levels") {
         if (!ctx.selectedLevelPath) return SlimMenuExit::Back;
         const std::string path = RunLevelSelect(ctx.win, ctx.ren);
+        runtime.localLevelsLoaded = false;
         if (path.empty()) return SlimMenuExit::Continue;
         *ctx.selectedLevelPath = path;
         return SlimMenuExit::StartGame;
@@ -1457,12 +1631,14 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
     if (command == "custom") {
         if (!ctx.selectedLevelPath) return SlimMenuExit::Back;
         const std::string path = RunCustomLevelSelect(ctx.win, ctx.ren);
+        runtime.localLevelsLoaded = false;
         if (path.empty()) return SlimMenuExit::Continue;
         *ctx.selectedLevelPath = path;
         return SlimMenuExit::StartGame;
     }
     if (command == "create_level") {
         const std::string createdPath = OpenLocalLevelEditorForMenu(ctx.win, ctx.ren, {});
+        runtime.localLevelsLoaded = false;
         if (!createdPath.empty() && ctx.selectedLevelPath) {
             *ctx.selectedLevelPath = createdPath;
             return SlimMenuExit::StartGame;
@@ -1481,6 +1657,7 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
             return SlimMenuExit::Continue;
         }
         const std::string editedPath = OpenLocalLevelEditorForMenu(ctx.win, ctx.ren, levels[index].path);
+        runtime.localLevelsLoaded = false;
         if (!editedPath.empty() && ctx.selectedLevelPath) {
             *ctx.selectedLevelPath = editedPath;
             return SlimMenuExit::StartGame;
@@ -1499,6 +1676,7 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
         }
         std::string status;
         const bool ok = uploadLocalLevelToServer(LevelEntry{levels[index].label, levels[index].path, levels[index].difficulty}, status);
+        if (ok) runtime.onlineLevelsLoaded = false;
         runtime.vars["level_detail_status"] = status.empty() ? (ok ? "Uploaded." : "Upload failed.") : status;
         runtime.vars["__reload_menu"] = "1";
         return SlimMenuExit::Continue;
@@ -1515,6 +1693,7 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
             runtime.vars["level_detail_status"] = "Level no longer available.";
         }
         currentMenu = "locallevels";
+        runtime.localLevelsLoaded = false;
         runtime.vars["__reload_menu"] = "1";
         return SlimMenuExit::Continue;
     }
@@ -1529,7 +1708,10 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
         std::string cachedPath;
         const bool ok = updateOnlineLevelCache(levels[index], cachedPath);
         runtime.vars["level_detail_status"] = ok ? "Updated downloaded copy." : "Update failed.";
-        if (ok) runtime.vars["detail_cached_path"] = cachedPath;
+        if (ok) {
+            runtime.vars["detail_cached_path"] = cachedPath;
+            runtime.onlineLevelsLoaded = false;
+        }
         runtime.vars["__reload_menu"] = "1";
         return SlimMenuExit::Continue;
     }
@@ -1549,6 +1731,7 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
         const int nextDifficulty = levels[index].difficulty >= 9 ? 0 : levels[index].difficulty + 1;
         std::string status;
         const bool ok = putOnlineLevelDifficulty(levels[index], nextDifficulty, ctx, status);
+        if (ok) runtime.onlineLevelsLoaded = false;
         runtime.vars["level_detail_status"] = status.empty() ? (ok ? "Rating updated." : "Rate failed.") : status;
         runtime.vars["__reload_menu"] = "1";
         return SlimMenuExit::Continue;
@@ -1565,6 +1748,7 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
         }
         std::string status;
         const bool ok = putOnlineLevelVote(levels[index], vote, ctx, status);
+        if (ok) runtime.onlineLevelsLoaded = false;
         runtime.vars["level_detail_status"] = status.empty() ? (ok ? "Vote saved." : "Vote failed.") : status;
         runtime.vars["__reload_menu"] = "1";
         return SlimMenuExit::Continue;
@@ -1686,20 +1870,88 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
 } // namespace
 
 SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
+    // Script menu text is rendered inside its scrolling clip, rather than a
+    // deferred gameplay text overlay that does not share the menu viewport.
+    CancelNativeTextOverlay(ctx.ren);
     SlimRuntime runtime;
-    runtime.menuTexture = loadTextureSafe(ctx.ren, "assets/Sheets/DF_Menus-uhd.png");
-    runtime.menuFrames = loadPlistFrames("assets/Sheets/DF_Menus-uhd.plist");
+    runtime.ownsMenuTexture = !ctx.menuTexture;
+    runtime.menuTexture = ctx.menuTexture ? ctx.menuTexture : loadTextureSafe(ctx.ren, "assets/Sheets/DF_Menus-uhd.png");
+    runtime.menuFrames = ctx.menuFrames ? *ctx.menuFrames : loadPlistFrames("assets/Sheets/DF_Menus-uhd.plist");
     if (runtime.menuTexture) {
         SDL_SetTextureScaleMode(runtime.menuTexture, SDL_SCALEMODE_NEAREST);
         SDL_SetTextureBlendMode(runtime.menuTexture, SDL_BLENDMODE_BLEND);
     }
     std::string currentMenu = menuName;
+    std::string viewedMenu;
+    std::string restoreCommand, restoreArgument, restoreLabel;
+    bool restoreSelection = false;
+    int selected = 0;
     while (ctx.running && *ctx.running) {
         SlimMenu menu = loadMenu(currentMenu, runtime, ctx);
-        int selected = 0;
-        playMenuFade(menu, runtime, ctx, selected, true);
+        if (restoreSelection) {
+            selected = 0;
+            int index = 0;
+            for (const auto& item : menu.items) {
+                if (item.type != MenuItem::Type::Button) continue;
+                if (item.command == restoreCommand && item.arg == restoreArgument &&
+                    (item.command != "level_detail" || item.label == restoreLabel)) {
+                    selected = index;
+                    break;
+                }
+                ++index;
+            }
+            runtime.scrollY = SlimMenuLayout::reveal(layoutFor(menu, runtime, ctx), buttonItemIndex(menu, selected), runtime.scrollY);
+            restoreSelection = false;
+        }
+        if (viewedMenu != currentMenu) {
+            viewedMenu = currentMenu;
+            selected = 0;
+            runtime.scrollY = SlimMenuLayout::reveal(layoutFor(menu, runtime, ctx), buttonItemIndex(menu, selected), 0.0f);
+        }
+        bool draggingScrollbar = false, touchActive = false, touchDragged = false;
+        SDL_FingerID trackedFinger = 0;
+        float thumbGrab = 0.0f, touchStartX = 0.0f, touchStartY = 0.0f, touchStartScroll = 0.0f;
+        presentMenuFrame(menu, runtime, ctx, selected);
         SDL_Event e;
         while (ctx.running && *ctx.running) {
+            bool reloadOnline = false;
+            if (runtime.onlineLevelsRequest.valid() &&
+                runtime.onlineLevelsRequest.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
+                try { runtime.onlineLevels = runtime.onlineLevelsRequest.get(); }
+                catch (const std::exception& error) { SDL_Log("Online menu load failed: %s", error.what()); }
+                runtime.onlineLevelsLoaded = true;
+                reloadOnline = true;
+            }
+            if (runtime.accountRoleRequest.valid() &&
+                runtime.accountRoleRequest.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
+                bool isMod = false;
+                try { isMod = runtime.accountRoleRequest.get(); }
+                catch (const std::exception& error) { SDL_Log("Account role lookup failed: %s", error.what()); }
+                const std::string currentRoleKey = (ctx.levelServerUrl ? *ctx.levelServerUrl : std::string()) + "\n" +
+                    (ctx.levelServerAuthToken ? *ctx.levelServerAuthToken : std::string());
+                if (runtime.pendingAccountRoleKey == currentRoleKey) {
+                    runtime.accountRoleKey = currentRoleKey;
+                    runtime.vars["__account_is_mod"] = isMod ? "true" : "false";
+                }
+                if (currentMenu == "leveldetail") reloadOnline = true;
+            }
+            if (reloadOnline && (currentMenu == "onlinelevels" ||
+                (currentMenu == "leveldetail" && runtime.vars["detail_source"] == "online"))) {
+                if (const MenuItem* focused = buttonAt(menu, selected)) {
+                    restoreCommand = focused->command;
+                    restoreArgument = focused->arg;
+                    restoreLabel = focused->label;
+                    restoreSelection = true;
+                }
+                if (currentMenu == "leveldetail") {
+                    const auto levels = filteredGeneratedLevels("online", runtime, ctx);
+                    const auto found = std::find_if(levels.begin(), levels.end(), [&](const SlimLevelEntry& level) {
+                        return level.path == runtime.vars["detail_path"];
+                    });
+                    runtime.vars["detail_index"] = found == levels.end() ? "-1" : std::to_string(found - levels.begin());
+                }
+                goto next_menu;
+            }
             for (auto it = runtime.pendingGets.begin(); it != runtime.pendingGets.end();) {
                 if (it->response.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
                     ++it;
@@ -1715,13 +1967,41 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
             }
             const int count = std::max(1, buttonCount(menu));
             selected = std::clamp(selected, 0, count - 1);
+            const auto layout = layoutFor(menu, runtime, ctx);
+            runtime.scrollY = std::clamp(runtime.scrollY, 0.0f, (float)layout.maxScroll);
+            auto scrollTo = [&](float y) { runtime.scrollY = std::clamp(y, 0.0f, (float)layout.maxScroll); };
+            auto pointer = [&](float x, float y, bool normalized, float& outX, float& outY) {
+                int winW = 0, winH = 0, gx = 0, gy = 0;
+                SDL_GetWindowSize(ctx.win, &winW, &winH);
+                if (normalized) { x *= winW; y *= winH; }
+                if (!windowToGamePoint((int)x, (int)y, winW, winH, ctx.baseScreenW, ctx.baseScreenH, gx, gy)) return false;
+                outX = gx / layout.scale;
+                outY = gy / layout.scale;
+                return true;
+            };
+            auto hitButton = [&](float x, float y) {
+                int button = 0;
+                for (size_t i = 0; i < menu.items.size(); ++i) {
+                    if (menu.items[i].type != MenuItem::Type::Button) continue;
+                    if (SlimMenuLayout::hit(layout, i, x, y, runtime.scrollY)) return button;
+                    ++button;
+                }
+                return -1;
+            };
+            auto dragScrollbar = [&](float y) {
+                const auto track = menuScrollTrack(layout);
+                const auto thumb = menuScrollThumb(layout, runtime.scrollY);
+                scrollTo((y - track.y - thumbGrab) * layout.maxScroll / std::max(1, track.h - thumb.h));
+            };
             while (SDL_PollEvent(&e)) {
+                int activate = -1;
                 if (e.type == SDL_EVENT_QUIT) {
                     *ctx.running = false;
                     return SlimMenuExit::Quit;
                 }
-                if (e.type == SDL_EVENT_KEY_DOWN && e.key.repeat == 0) {
+                if (e.type == SDL_EVENT_KEY_DOWN) {
                     if (!runtime.waitingBind.empty()) {
+                        if (e.key.repeat) continue;
                         if (e.key.key == SDLK_ESCAPE || e.key.key == SDLK_AC_BACK) {
                             runtime.waitingBind.clear();
                             continue;
@@ -1736,58 +2016,81 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                         continue;
                     }
                     if (e.key.key == SDLK_ESCAPE || e.key.key == SDLK_AC_BACK) return SlimMenuExit::Back;
+                    const int before = selected;
                     if (e.key.key == SDLK_UP || e.key.key == SDLK_LEFT) selected = (selected + count - 1) % count;
                     if (e.key.key == SDLK_DOWN || e.key.key == SDLK_RIGHT) selected = (selected + 1) % count;
-                    if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) {
-                        if (MenuItem* item = buttonAt(menu, selected)) {
-                            const std::string before = currentMenu;
-                            const SlimMenuExit exit = execute(*item, runtime, ctx, currentMenu);
-                            if (exit == SlimMenuExit::Back) return exit;
-                            if (exit == SlimMenuExit::StartGame || exit == SlimMenuExit::Quit) return exit;
-                            if (runtime.vars.erase("__reload_menu") > 0) {
-                                playMenuFade(menu, runtime, ctx, selected, false);
-                                goto next_menu;
-                            }
-                            if (currentMenu != before) {
-                                playMenuFade(menu, runtime, ctx, selected, false);
-                                goto next_menu;
-                            }
-                        }
+                    const int page = std::max(1, layout.body.h / 66);
+                    if (e.key.key == SDLK_PAGEUP) selected = std::max(0, selected - page);
+                    if (e.key.key == SDLK_PAGEDOWN) selected = std::min(count - 1, selected + page);
+                    if (e.key.key == SDLK_HOME) selected = 0;
+                    if (e.key.key == SDLK_END) selected = count - 1;
+                    if (buttonCount(menu) == 0) {
+                        if (e.key.key == SDLK_UP) scrollTo(runtime.scrollY - 36);
+                        if (e.key.key == SDLK_DOWN) scrollTo(runtime.scrollY + 36);
+                        if (e.key.key == SDLK_PAGEUP) scrollTo(runtime.scrollY - layout.body.h);
+                        if (e.key.key == SDLK_PAGEDOWN) scrollTo(runtime.scrollY + layout.body.h);
+                        if (e.key.key == SDLK_HOME) scrollTo(0);
+                        if (e.key.key == SDLK_END) scrollTo((float)layout.maxScroll);
+                    } else if (selected != before || e.key.key == SDLK_HOME || e.key.key == SDLK_END ||
+                               e.key.key == SDLK_UP || e.key.key == SDLK_DOWN || e.key.key == SDLK_LEFT || e.key.key == SDLK_RIGHT ||
+                               e.key.key == SDLK_PAGEUP || e.key.key == SDLK_PAGEDOWN) {
+                        runtime.scrollY = SlimMenuLayout::reveal(layout, buttonItemIndex(menu, selected), runtime.scrollY);
+                    }
+                    if (!e.key.repeat && (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER)) activate = selected;
+                }
+                if (e.type == SDL_EVENT_MOUSE_WHEEL) {
+                    const float direction = e.wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -1.0f : 1.0f;
+                    scrollTo(runtime.scrollY - e.wheel.y * direction * 48.0f / layout.scale);
+                }
+                float x = 0.0f, y = 0.0f;
+                if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN && e.button.button == SDL_BUTTON_LEFT && e.button.which != SDL_TOUCH_MOUSEID &&
+                    pointer(e.button.x, e.button.y, false, x, y)) {
+                    auto track = menuScrollTrack(layout);
+                    track.x -= 4; track.w += 8;
+                    if (layout.maxScroll && SlimMenuLayout::contains(track, x, y)) {
+                        const auto thumb = menuScrollThumb(layout, runtime.scrollY);
+                        thumbGrab = SlimMenuLayout::contains(thumb, x, y) ? y - thumb.y : thumb.h / 2.0f;
+                        draggingScrollbar = true;
+                        dragScrollbar(y);
+                    } else {
+                        activate = hitButton(x, y);
                     }
                 }
-                const bool isMouseButtonDown =
-#if defined(SDL_EVENT_MOUSE_BUTTON_DOWN)
-                    (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN) ||
-#endif
-                    (e.type == SDL_MOUSEBUTTONDOWN);
-                if (isMouseButtonDown && e.button.button == SDL_BUTTON_LEFT) {
-                    int winW = 0, winH = 0, gx = 0, gy = 0;
-                    getWindowSizeInPixelsCompat(ctx.win, winW, winH);
-                    if (!windowToGamePoint(e.button.x, e.button.y, winW, winH, ctx.baseScreenW, ctx.baseScreenH, gx, gy, 1.0f)) continue;
-                    const int textRows = textRowCountFor(menu, runtime);
-                    for (int i = 0; i < count; ++i) {
-                        SDL_Rect r = buttonRectFor(ctx, i, count, textRows);
-                        SDL_Point pt{gx, gy};
-                        if (!SDL_PointInRect(&pt, &r)) continue;
-                        selected = i;
-                        if (MenuItem* item = buttonAt(menu, selected)) {
-                            const std::string before = currentMenu;
-                            const SlimMenuExit exit = execute(*item, runtime, ctx, currentMenu);
-                            if (exit == SlimMenuExit::Back) return exit;
-                            if (exit == SlimMenuExit::StartGame || exit == SlimMenuExit::Quit) return exit;
-                            if (runtime.vars.erase("__reload_menu") > 0) {
-                                playMenuFade(menu, runtime, ctx, selected, false);
-                                goto next_menu;
-                            }
-                            if (currentMenu != before) {
-                                playMenuFade(menu, runtime, ctx, selected, false);
-                                goto next_menu;
-                            }
+                if (e.type == SDL_EVENT_MOUSE_MOTION && draggingScrollbar && pointer(e.motion.x, e.motion.y, false, x, y)) dragScrollbar(y);
+                if (e.type == SDL_EVENT_MOUSE_BUTTON_UP && e.button.button == SDL_BUTTON_LEFT) draggingScrollbar = false;
+                if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST) {
+                    draggingScrollbar = false;
+                    touchActive = false;
+                }
+                if (e.type == SDL_EVENT_FINGER_DOWN && !touchActive && pointer(e.tfinger.x, e.tfinger.y, true, x, y) &&
+                    SlimMenuLayout::contains(layout.body, x, y)) {
+                    touchActive = true;
+                    touchDragged = false;
+                    trackedFinger = e.tfinger.fingerID;
+                    touchStartX = x; touchStartY = y; touchStartScroll = runtime.scrollY;
+                }
+                if (touchActive && e.type == SDL_EVENT_FINGER_MOTION && e.tfinger.fingerID == trackedFinger &&
+                    pointer(e.tfinger.x, e.tfinger.y, true, x, y)) {
+                    if (std::abs(y - touchStartY) > 8.0f / layout.scale || std::abs(x - touchStartX) > 8.0f / layout.scale) touchDragged = true;
+                    if (touchDragged) scrollTo(touchStartScroll + touchStartY - y);
+                }
+                if (touchActive && (e.type == SDL_EVENT_FINGER_UP || e.type == SDL_EVENT_FINGER_CANCELED) && e.tfinger.fingerID == trackedFinger) {
+                    if (e.type == SDL_EVENT_FINGER_UP && !touchDragged && pointer(e.tfinger.x, e.tfinger.y, true, x, y)) activate = hitButton(x, y);
+                    touchActive = false;
+                }
+                if (activate >= 0) {
+                    selected = activate;
+                    if (MenuItem* item = buttonAt(menu, selected)) {
+                        const std::string before = currentMenu;
+                        const SlimMenuExit exit = execute(*item, runtime, ctx, currentMenu);
+                        if (exit == SlimMenuExit::Back || exit == SlimMenuExit::StartGame || exit == SlimMenuExit::Quit) return exit;
+                        if (runtime.vars.erase("__reload_menu") > 0 || currentMenu != before) {
+                            goto next_menu;
                         }
                     }
                 }
             }
-            presentMenuFrame(menu, runtime, ctx, selected);
+            presentMenuFrame(menu, runtime, ctx, selected, &layout);
             SDL_Delay(16);
         }
 next_menu:
