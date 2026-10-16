@@ -1,4 +1,5 @@
 #include "TextRenderer.h"
+#include "AssetPath.h"
 
 #include <SDL3_ttf/SDL_ttf.h>
 #include <algorithm>
@@ -171,8 +172,8 @@ void DrawTextColoredImmediate(SDL_Renderer* ren, float x, float y, float scaleX,
 }
 }
 
-bool InitTextRenderer(const std::string& fontPath) {
-    gFontPath = fontPath;
+bool InitTextRenderer() {
+    gFontPath = ResolveAssetPath("assets/Fonts/Main.ttf");
     if (gTtfInited) {
         for (auto& kv : gFontCache) {
             if (kv.second) TTF_CloseFont(kv.second);

@@ -1,6 +1,7 @@
 #include "BuildInfo.h"
 #include "LevelSelect.h"
 #include "AssetPath.h"
+#include "NetworkTransport.h"
 
 #include <SDL3_image/SDL_image.h>
 
@@ -3077,7 +3078,7 @@ bool resolveAccountUsernameFromToken(const std::string& authToken, std::string& 
                 return size * nmemb;
             });
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &respBody);
-        const CURLcode rc = curl_easy_perform(curl);
+        const CURLcode rc = PerformNetworkRequest(curl);
         long code = 0;
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
         curl_slist_free_all(headers);
@@ -3119,7 +3120,7 @@ bool resolveAccountUsernameFromToken(const std::string& authToken, std::string& 
                 if (mid) {
                     jstring jApi = env->NewStringUTF(serverBase.c_str());
                     jstring jToken = env->NewStringUTF(authToken.c_str());
-                    jobject jRespObj = env->CallStaticObjectMethod(cls, mid, jApi, jToken, (jint)10000);
+                    jobject jRespObj = PerformJavaNetworkObject(env, cls, mid, {jApi, jToken}, (jint)10000);
                     if (env->ExceptionCheck()) env->ExceptionClear();
                     if (jApi) env->DeleteLocalRef(jApi);
                     if (jToken) env->DeleteLocalRef(jToken);
@@ -3328,7 +3329,7 @@ bool uploadLocalLevelToServer(const LevelEntry& level, std::string& statusText) 
         jstring jUrl = env->NewStringUTF(uploadUrl.c_str());
         jstring jBody = env->NewStringUTF(body.c_str());
         jstring jToken = env->NewStringUTF(authToken.c_str());
-        jint code = env->CallStaticIntMethod(cls, mid, jUrl, jBody, jToken, (jint)15000);
+        jint code = PerformJavaNetworkInt(env, cls, mid, {jUrl, jBody, jToken}, (jint)15000);
         if (jToken) env->DeleteLocalRef(jToken);
         if (env->ExceptionCheck()) env->ExceptionClear();
         if (jUrl) env->DeleteLocalRef(jUrl);
@@ -3364,11 +3365,15 @@ bool uploadLocalLevelToServer(const LevelEntry& level, std::string& statusText) 
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(curl, CURLOPT_USERAGENT, PLATFORMER_CLIENT_USER_AGENT);
-    const CURLcode rc = curl_easy_perform(curl);
+    const CURLcode rc = PerformNetworkRequest(curl);
     long code = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
+    if (rc == CURLE_ABORTED_BY_CALLBACK) {
+        statusText = "Upload cancelled.";
+        return false;
+    }
     if (rc != CURLE_OK || code < 200 || code >= 300) {
         if (tryAndroidJavaUpload()) return true;
         statusText = "Upload failed.";

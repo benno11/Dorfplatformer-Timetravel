@@ -45,6 +45,7 @@
 #include "TextRenderer.h"
 #include "LevelSelect.h"
 #include "AssetPath.h"
+#include "NetworkTransport.h"
 #include "LevelManager.h"
 #include "LevelWrap.h"
 #include "FrontendMenu.h"
@@ -125,7 +126,7 @@ static bool isDebuggerAttachedToGameProcess() {
 }
 #endif
 
-#if defined(HAVE_CURL) && HAVE_CURL && !defined(_WIN32)
+#if defined(HAVE_CURL) && HAVE_CURL
 struct CurlRuntime {
     CurlRuntime() {
         const CURLcode rc = curl_global_init(CURL_GLOBAL_DEFAULT);
@@ -148,9 +149,10 @@ struct CurlRuntime {
 
 int RunGameApp(int argc, char** argv) {
     CrashReporter::start();
-#if defined(HAVE_CURL) && HAVE_CURL && !defined(_WIN32)
+#if defined(HAVE_CURL) && HAVE_CURL
     [[maybe_unused]] CurlRuntime curlRuntime;
 #endif
+    NetworkRuntime networkRuntime;
     bool enableGameLog = false;
     bool allowDevTools = false;
     for (int i = 1; i < argc; ++i) {
@@ -521,9 +523,8 @@ int RunGameApp(int argc, char** argv) {
         }
     }
     logStartup(std::string("connected gamepads: ") + listConnectedGamepads());
-    const std::string mainFontPath = ResolveAssetPath("assets/Fonts/Main.ttf");
-    if (!InitTextRenderer(mainFontPath)) {
-        SDL_Log("Failed to initialize text renderer with font: %s", mainFontPath.c_str());
+    if (!InitTextRenderer()) {
+        SDL_Log("Failed to initialize text renderer with assets/Fonts/Main.ttf");
     }
     AudioSystem audio;
     audio.setLoopingEnabled(true);
@@ -738,6 +739,7 @@ int RunGameApp(int argc, char** argv) {
         return 1;
     }
     SDL_Log("Window and renderer created");
+    networkRuntime.setWindow(win, ren);
     setStartupProgress(0.30f);
     SDL_Texture* gameTarget = SDL_CreateTexture(
         ren,
@@ -2056,8 +2058,6 @@ int RunGameApp(int argc, char** argv) {
         if (!telemetryEnabled()) return;
         if (telemetryWebhookUrl.empty()) return;
 #if defined(HAVE_CURL) && HAVE_CURL
-        CURL* curl = curl_easy_init();
-        if (!curl) return;
         nlohmann::json embed;
         embed["title"] = "DF-New Telemetry";
         embed["description"] = event;
@@ -2073,24 +2073,31 @@ int RunGameApp(int argc, char** argv) {
         payload["username"] = "DF-New Telemetry";
         payload["embeds"] = nlohmann::json::array({embed});
         const std::string body = payload.dump();
-        struct curl_slist* headers = nullptr;
-        headers = curl_slist_append(headers, "Content-Type: application/json");
-        curl_easy_setopt(curl, CURLOPT_URL, telemetryWebhookUrl.c_str());
-        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-        curl_easy_setopt(curl, CURLOPT_POST, 1L);
-        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
-        curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)body.size());
-        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 3L);
-        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
-        curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
-        const CURLcode rc = curl_easy_perform(curl);
-        long code = 0;
-        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
-        if (rc != CURLE_OK || code < 200 || code >= 300) {
-            SDL_Log("telemetry: webhook failed code=%ld curl=%d", code, (int)rc);
-        }
-        curl_slist_free_all(headers);
-        curl_easy_cleanup(curl);
+        // Own the payload and URL; no game state or SDL renderer on the worker.
+        (void)SubmitNetworkOperation([url = telemetryWebhookUrl, body] {
+            CURL* curl = curl_easy_init();
+            if (!curl) return;
+            struct curl_slist* headers = nullptr;
+            headers = curl_slist_append(headers, "Content-Type: application/json");
+            curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+            curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+            curl_easy_setopt(curl, CURLOPT_POST, 1L);
+            curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
+            curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)body.size());
+            curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 3L);
+            curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
+            curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,
+                +[](char*, size_t size, size_t count, void*) -> size_t { return size * count; });
+            const CURLcode rc = curl_easy_perform(curl);
+            long code = 0;
+            curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
+            if (rc != CURLE_OK || code < 200 || code >= 300) {
+                SDL_Log("telemetry: webhook failed code=%ld curl=%d", code, (int)rc);
+            }
+            curl_slist_free_all(headers);
+            curl_easy_cleanup(curl);
+        });
 #else
         (void)event;
         (void)details;
@@ -8852,6 +8859,8 @@ int RunGameApp(int argc, char** argv) {
         {"version", appVersion},
         {"uptime_ms", (long long)SDL_GetTicks()}
     });
+    networkRuntime.shutdown();
+    networkRuntime.setWindow(nullptr, nullptr);
     SDL_DestroyRenderer(ren);
     SDL_DestroyWindow(win);
     SDL_Log("Shutting down");

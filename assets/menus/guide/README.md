@@ -6,6 +6,11 @@ Menus are `.menu` text files in `assets/menus`. The title screen loads:
 - `mainedit.menu` from the Editor button.
 - `mainsetting.menu` from the Settings button.
 
+All script menus use `assets/Sheets/DF_Menus-uhd.png` and its `.plist` for window panels,
+buttons, toggle checkboxes, and back/close icons. Toggle icons follow the setting value
+automatically; no additional script commands are needed. The selected button is brighter
+for keyboard navigation. If the atlas is unavailable, menus use plain panels and buttons.
+
 Commands:
 
 - `title "Text"` sets the menu title.
@@ -72,6 +77,12 @@ Level verification:
 ## Get Command
 
 `get` downloads text from a URL and stores the response in a menu variable.
+
+Button `get` requests run in the background while the menu remains usable. A loading
+indicator appears until the response is applied on the main thread. Repeated requests
+for the same variable are ignored while one is pending. Leaving the menu session
+discards its results safely. Top-level `get` waits with a loading screen so subsequent
+`set` and `if` lines can use the downloaded value in script order.
 
 There are two ways to use it:
 

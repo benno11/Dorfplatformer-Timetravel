@@ -183,6 +183,7 @@ set(PLATFORMER_GAME_SOURCES
   src/LevelSelect.cpp
   src/PlayerController.cpp
   src/AssetPath.cpp
+  src/NetworkTransport.cpp
   src/LevelManager.cpp
   src/GameSupport.cpp
   src/CrashReporter.cpp
@@ -904,7 +905,9 @@ if(PLATFORMER_ENABLE_LOWERCASE_SDL_SHIM)
   endif()
 endif()
 
+find_package(Threads REQUIRED)
 set(PLATFORMER_LINK_LIBS
+  Threads::Threads
   ${SDL3_LINK_TARGET}
   ${SDL3_IMAGE_LINK_TARGET}
   ${SDL3_TTF_LINK_TARGET}
@@ -1003,6 +1006,11 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING AND NOT ANDROID AND NOT IOS)
+  add_executable(async_network_test tests/AsyncNetworkTest.cpp)
+  target_include_directories(async_network_test PRIVATE src)
+  target_link_libraries(async_network_test PRIVATE Threads::Threads)
+  add_test(NAME async_network COMMAND async_network_test)
+  set_tests_properties(async_network PROPERTIES TIMEOUT 15)
   add_executable(player_controller_test
     tests/PlayerControllerTest.cpp
     src/PlayerController.cpp

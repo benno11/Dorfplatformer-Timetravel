@@ -1,5 +1,6 @@
 #include "BuildInfo.h"
 #include "AssetPath.h"
+#include "NetworkTransport.h"
 #include "Platform.h"
 
 #include <SDL3/SDL.h>
@@ -89,7 +90,7 @@ std::string androidHttpGetViaJava(const std::string& url, int timeoutMs) {
         env->DeleteLocalRef(activity);
         return {};
     }
-    jstring jout = static_cast<jstring>(env->CallStaticObjectMethod(cls, mid, jurl, (jint)timeoutMs));
+    jstring jout = static_cast<jstring>(PerformJavaNetworkObject(env, cls, mid, {jurl}, (jint)timeoutMs));
     if (env->ExceptionCheck()) {
         env->ExceptionDescribe();
         env->ExceptionClear();
@@ -178,7 +179,7 @@ std::string ReadTextFile(const std::string& path) {
                              return size * nmemb;
                          });
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &body);
-        const CURLcode rc = curl_easy_perform(curl);
+        const CURLcode rc = PerformNetworkRequest(curl);
         long code = 0;
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
         double totalSecs = 0.0;
@@ -186,6 +187,7 @@ std::string ReadTextFile(const std::string& path) {
         curl_easy_cleanup(curl);
         const auto t1 = std::chrono::steady_clock::now();
         const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+        if (rc == CURLE_ABORTED_BY_CALLBACK) return {};
         if (rc != CURLE_OK || code < 200 || code >= 300) {
             SDL_Log("NET: fail GET %s code=%ld curl=%d elapsed_ms=%lld curl_total=%.3fs",
                     resolved.c_str(), code, (int)rc, (long long)ms, totalSecs);
@@ -274,6 +276,10 @@ std::string ReadTextFile(const std::string& path) {
         return std::string(data.begin(), data.end());
     }
     return {};
+}
+
+std::future<std::string> ReadTextFileAsync(std::string path) {
+    return SubmitNetworkOperation([path = std::move(path)] { return ReadTextFile(path); });
 }
 
 bool FileExists(const std::string& path) {
@@ -385,7 +391,7 @@ void RevokeLevelServerSession() {
             if (mid) {
                 jstring jBase = env->NewStringUTF(base.c_str());
                 jstring jToken = env->NewStringUTF(token.c_str());
-                jobject result = env->CallStaticObjectMethod(cls, mid, jBase, jToken, (jint)5000);
+                jobject result = PerformJavaNetworkObject(env, cls, mid, {jBase, jToken}, (jint)5000);
                 if (env->ExceptionCheck()) env->ExceptionClear();
                 if (result) env->DeleteLocalRef(result);
                 if (jBase) env->DeleteLocalRef(jBase);
@@ -413,7 +419,7 @@ void RevokeLevelServerSession() {
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,
         +[](char*, size_t size, size_t count, void*) -> size_t { return size * count; });
-    (void)curl_easy_perform(curl);
+    (void)PerformNetworkRequest(curl);
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
 #endif

@@ -25,6 +25,7 @@
 #endif
 
 #include "AssetPath.h"
+#include "NetworkTransport.h"
 #include "GameSupport.h"
 #include "InputSystem.h"
 #include "LevelSelect.h"
@@ -750,7 +751,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                         if (env->ExceptionCheck()) {
                             env->ExceptionClear();
                         }
-                        jobject jRespObj = env->CallStaticObjectMethod(cls, mid, jApi, jEmail, jPass, (jint)12000);
+                        jobject jRespObj = PerformJavaNetworkObject(env, cls, mid, {jApi, jEmail, jPass}, (jint)12000);
                         if (env->ExceptionCheck()) {
                             env->ExceptionClear();
                         }
@@ -834,7 +835,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 return size * nmemb;
             });
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &respBody);
-        const CURLcode rc = curl_easy_perform(curl);
+        const CURLcode rc = PerformNetworkRequest(curl);
         long code = 0;
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
         curl_slist_free_all(headers);

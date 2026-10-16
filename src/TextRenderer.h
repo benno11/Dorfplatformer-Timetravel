@@ -7,7 +7,8 @@
 #undef DrawText
 #endif
 
-bool InitTextRenderer(const std::string& fontPath);
+// All game text uses the bundled assets/Fonts/Main.ttf font.
+bool InitTextRenderer();
 void ShutdownTextRenderer();
 void ClearTextRendererCache(SDL_Renderer* ren = nullptr);
 void CollectTextRendererGarbage(Uint64 maxIdleMs = 15000, size_t targetEntriesPerRenderer = 256);

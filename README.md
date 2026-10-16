@@ -63,6 +63,13 @@ Custom game server:
 - Desktop and Android use this server for login, upload and download.
 - See [server/README.md](server/README.md) for deployment, configuration and tests.
 
+In-game networking:
+- HTTP requests run on background workers on desktop, iOS, and Android, including the Android Java fallback.
+- Actions that need a response show a loading indicator and keep processing window events. Gameplay waits for required data; independent telemetry requests run without a loading screen.
+- Esc cancels pending curl transfers. Android Java calls finish within their existing timeout before a cancelled result is discarded.
+- Workers finish accepted requests before SDL and curl shut down.
+- `ReadTextFileAsync` returns a future for callers that can poll results in their normal update loop. Worker tasks must own their inputs; update game state and render on the main thread.
+
 Custom levels:
 - Main menu `Play` opens campaign levels; `Editor` opens custom levels.
 - Desktop local files: `custom_levels/` or `assets/custom_levels/`.

@@ -20,6 +20,7 @@
 #include <nlohmann/json.hpp>
 
 #include "AssetPath.h"
+#include "NetworkTransport.h"
 #include "GameSupport.h"
 #include "LevelSelect.h"
 #include "UiScale.h"
@@ -58,8 +59,22 @@ struct SlimMenu {
 };
 
 struct SlimRuntime {
+    struct PendingGet {
+        std::string variable;
+        std::future<std::string> response;
+    };
+    SDL_Texture* menuTexture = nullptr;
+    std::unordered_map<std::string, Frame> menuFrames;
     std::unordered_map<std::string, std::string> vars;
     std::string waitingBind;
+    std::vector<PendingGet> pendingGets;
+
+    SlimRuntime() = default;
+    SlimRuntime(const SlimRuntime&) = delete;
+    SlimRuntime& operator=(const SlimRuntime&) = delete;
+    ~SlimRuntime() {
+        if (menuTexture) SDL_DestroyTexture(menuTexture);
+    }
 };
 
 struct ParsedLine {
@@ -517,7 +532,7 @@ std::string accountLookupBody(const SlimMenuContext& ctx) {
                 if (mid) {
                     jstring jBase = env->NewStringUTF(base.c_str());
                     jstring jToken = env->NewStringUTF(token.c_str());
-                    jobject jRespObj = env->CallStaticObjectMethod(cls, mid, jBase, jToken, (jint)10000);
+                    jobject jRespObj = PerformJavaNetworkObject(env, cls, mid, {jBase, jToken}, (jint)10000);
                     if (env->ExceptionCheck()) env->ExceptionClear();
                     if (jBase) env->DeleteLocalRef(jBase);
                     if (jToken) env->DeleteLocalRef(jToken);
@@ -572,7 +587,7 @@ std::string accountLookupBody(const SlimMenuContext& ctx) {
             return size * nmemb;
         });
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &respBody);
-    const CURLcode rc = curl_easy_perform(curl);
+    const CURLcode rc = PerformNetworkRequest(curl);
     long code = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
     curl_slist_free_all(headers);
@@ -813,7 +828,7 @@ bool putOnlineLevelDifficulty(const SlimLevelEntry& level, int difficulty, const
                     jstring jUrl = env->NewStringUTF(url.c_str());
                     jstring jBody = env->NewStringUTF(body.c_str());
                     jstring jToken = env->NewStringUTF(token.c_str());
-                    jint code = env->CallStaticIntMethod(cls, mid, jUrl, jBody, jToken, (jint)15000);
+                    jint code = PerformJavaNetworkInt(env, cls, mid, {jUrl, jBody, jToken}, (jint)15000);
                     if (jToken) env->DeleteLocalRef(jToken);
                     if (env->ExceptionCheck()) env->ExceptionClear();
                     if (jUrl) env->DeleteLocalRef(jUrl);
@@ -862,7 +877,7 @@ bool putOnlineLevelDifficulty(const SlimLevelEntry& level, int difficulty, const
             return size * nmemb;
         });
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &respBody);
-    const CURLcode rc = curl_easy_perform(curl);
+    const CURLcode rc = PerformNetworkRequest(curl);
     long code = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
     curl_slist_free_all(headers);
@@ -910,7 +925,7 @@ bool putOnlineLevelVote(const SlimLevelEntry& level, const std::string& vote, co
                     jstring jUrl = env->NewStringUTF(url.c_str());
                     jstring jBody = env->NewStringUTF(body.c_str());
                     jstring jToken = env->NewStringUTF(token.c_str());
-                    jint code = env->CallStaticIntMethod(cls, mid, jUrl, jBody, jToken, (jint)15000);
+                    jint code = PerformJavaNetworkInt(env, cls, mid, {jUrl, jBody, jToken}, (jint)15000);
                     if (jToken) env->DeleteLocalRef(jToken);
                     if (env->ExceptionCheck()) env->ExceptionClear();
                     if (jUrl) env->DeleteLocalRef(jUrl);
@@ -959,7 +974,7 @@ bool putOnlineLevelVote(const SlimLevelEntry& level, const std::string& vote, co
             return size * nmemb;
         });
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &respBody);
-    const CURLcode rc = curl_easy_perform(curl);
+    const CURLcode rc = PerformNetworkRequest(curl);
     long code = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
     curl_slist_free_all(headers);
@@ -1005,7 +1020,7 @@ bool putServerUpdateTrigger(const SlimMenuContext& ctx, std::string& status) {
                     jstring jUrl = env->NewStringUTF(url.c_str());
                     jstring jBody = env->NewStringUTF(body.c_str());
                     jstring jToken = env->NewStringUTF(token.c_str());
-                    jint code = env->CallStaticIntMethod(cls, mid, jUrl, jBody, jToken, (jint)15000);
+                    jint code = PerformJavaNetworkInt(env, cls, mid, {jUrl, jBody, jToken}, (jint)15000);
                     if (jToken) env->DeleteLocalRef(jToken);
                     if (env->ExceptionCheck()) env->ExceptionClear();
                     if (jUrl) env->DeleteLocalRef(jUrl);
@@ -1056,7 +1071,7 @@ bool putServerUpdateTrigger(const SlimMenuContext& ctx, std::string& status) {
             return size * nmemb;
         });
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &respBody);
-    const CURLcode rc = curl_easy_perform(curl);
+    const CURLcode rc = PerformNetworkRequest(curl);
     long code = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
     curl_slist_free_all(headers);
@@ -1205,20 +1220,44 @@ SDL_Rect buttonRectFor(const SlimMenuContext& ctx, int buttonIndex, int buttonCo
     return SDL_Rect{ctx.baseScreenW / 2 - w / 2, startY + buttonIndex * (h + gap), w, h};
 }
 
+bool drawMenuSprite(const SlimRuntime& runtime, SDL_Renderer* ren, const char* name,
+                    const SDL_Rect& dst, float border = 0.0f) {
+    const auto it = runtime.menuFrames.find(name);
+    if (!runtime.menuTexture || it == runtime.menuFrames.end()) return false;
+    const Frame& frame = it->second;
+    if (border > 0.0f && !frame.rotated) {
+        const SDL_FRect src{(float)frame.rect.x, (float)frame.rect.y, (float)frame.rect.w, (float)frame.rect.h};
+        const SDL_FRect out{(float)dst.x, (float)dst.y, (float)dst.w, (float)dst.h};
+        // Keep the atlas corners and bevels intact when resizing a panel or button.
+        const float scale = std::min(1.0f, std::min(dst.w, dst.h) / (border * 2.0f));
+        return SDL_RenderTexture9Grid(ren, runtime.menuTexture, &src, border, border, border, border, scale, &out);
+    } else {
+        renderFrame(ren, runtime.menuTexture, frame, dst);
+    }
+    return true;
+}
+
 void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContext& ctx, int selected) {
     SDL_SetRenderTarget(ctx.ren, ctx.gameTarget);
     SDL_SetRenderDrawColor(ctx.ren, 20, 26, 34, 255);
     SDL_RenderClear(ctx.ren);
 
-    SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_BLEND);
-    SDL_SetRenderDrawColor(ctx.ren, 66, 101, 126, 255);
-    SDL_Rect top{0, 0, ctx.baseScreenW, std::max(92, ctx.baseScreenH / 6)};
-    SDL_RenderFillRect(ctx.ren, &top);
-    SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_NONE);
+    const SDL_Rect panel{16, 12, std::max(1, ctx.baseScreenW - 32), std::max(1, ctx.baseScreenH - 24)};
+    if (!drawMenuSprite(runtime, ctx.ren, "window", panel, 56.0f)) {
+        SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(ctx.ren, 66, 101, 126, 255);
+        SDL_Rect top{0, 0, ctx.baseScreenW, std::max(92, ctx.baseScreenH / 6)};
+        SDL_RenderFillRect(ctx.ren, &top);
+        SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_NONE);
+    }
 
     const int titleScale = 4;
     const std::string title = expandVars(menu.title, runtime, ctx);
     DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(titleScale, title) / 2, 34, titleScale, title);
+    if (!runtime.pendingGets.empty()) {
+        const std::string loading = "Loading" + std::string((SDL_GetTicks() / 250) % 4, '.');
+        DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(1, loading) / 2, 82, 1, loading);
+    }
 
     int buttonCount = 0;
     for (const auto& item : menu.items) if (item.type == MenuItem::Type::Button) ++buttonCount;
@@ -1239,11 +1278,32 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
         }
         SDL_Rect r = buttonRectFor(ctx, buttonIndex, buttonCount, textRows);
         const bool isSelected = buttonIndex == selected;
-        SDL_SetRenderDrawColor(ctx.ren, isSelected ? 96 : 54, isSelected ? 116 : 74, isSelected ? 134 : 92, 255);
-        SDL_RenderFillRect(ctx.ren, &r);
+        if (runtime.menuTexture) {
+            const Uint8 brightness = isSelected ? 255 : 205;
+            SDL_SetTextureColorMod(runtime.menuTexture, brightness, brightness, brightness);
+        }
+        const bool textured = drawMenuSprite(runtime, ctx.ren, "button_genreaic", r, 6.0f);
+        if (runtime.menuTexture) SDL_SetTextureColorMod(runtime.menuTexture, 255, 255, 255);
+        if (!textured) {
+            SDL_SetRenderDrawColor(ctx.ren, isSelected ? 96 : 54, isSelected ? 116 : 74, isSelected ? 134 : 92, 255);
+            SDL_RenderFillRect(ctx.ren, &r);
+        }
         SDL_SetRenderDrawColor(ctx.ren, isSelected ? 220 : 160, isSelected ? 232 : 184, isSelected ? 242 : 204, 255);
         SDL_RenderRect(ctx.ren, &r);
-        DrawText(ctx.ren, r.x + (r.w - MeasureTextWidth(2, label)) / 2, r.y + (r.h - 20) / 2, 2, label);
+        const int iconSize = std::max(12, std::min(36, r.h - 6));
+        const SDL_Rect icon{r.x + r.w - iconSize - 8, r.y + (r.h - iconSize) / 2, iconSize, iconSize};
+        bool hasIcon = false;
+        if (item.command == "toggle") {
+            const std::string value = boolSettingValue(normalizeVarName(expandVars(item.arg, runtime, ctx)), ctx);
+            if (!value.empty()) {
+                hasIcon = drawMenuSprite(runtime, ctx.ren, value == "ON" ? "checkbox_active" : "checkbox_disabled", icon);
+            }
+        } else if (item.command == "back" || item.command == "quit" || label == "Back") {
+            hasIcon = drawMenuSprite(runtime, ctx.ren, "close-window", icon);
+        }
+        const int labelWidth = r.w - (hasIcon ? 2 * (iconSize + 16) : 16);
+        const int labelScale = MeasureTextWidth(2, label) <= labelWidth ? 2 : 1;
+        DrawText(ctx.ren, r.x + (r.w - MeasureTextWidth(labelScale, label)) / 2, r.y + (r.h - labelScale * 10) / 2, labelScale, label);
         ++buttonIndex;
     }
 }
@@ -1609,7 +1669,13 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
         if (eq != std::string::npos) {
             const std::string name = arg.substr(0, eq);
             const std::string url = makeApiUrl(ctx, arg.substr(eq + 1));
-            runtime.vars[name] = url.empty() ? std::string() : ReadTextFile(url);
+            if (url.empty()) {
+                runtime.vars[name].clear();
+            } else {
+                const bool pending = std::any_of(runtime.pendingGets.begin(), runtime.pendingGets.end(),
+                    [&](const SlimRuntime::PendingGet& get) { return get.variable == name; });
+                if (!pending) runtime.pendingGets.push_back({name, ReadTextFileAsync(url)});
+            }
         }
         return SlimMenuExit::Continue;
     }
@@ -1621,6 +1687,12 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
 
 SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
     SlimRuntime runtime;
+    runtime.menuTexture = loadTextureSafe(ctx.ren, "assets/Sheets/DF_Menus-uhd.png");
+    runtime.menuFrames = loadPlistFrames("assets/Sheets/DF_Menus-uhd.plist");
+    if (runtime.menuTexture) {
+        SDL_SetTextureScaleMode(runtime.menuTexture, SDL_SCALEMODE_NEAREST);
+        SDL_SetTextureBlendMode(runtime.menuTexture, SDL_BLENDMODE_BLEND);
+    }
     std::string currentMenu = menuName;
     while (ctx.running && *ctx.running) {
         SlimMenu menu = loadMenu(currentMenu, runtime, ctx);
@@ -1628,6 +1700,19 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
         playMenuFade(menu, runtime, ctx, selected, true);
         SDL_Event e;
         while (ctx.running && *ctx.running) {
+            for (auto it = runtime.pendingGets.begin(); it != runtime.pendingGets.end();) {
+                if (it->response.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
+                    ++it;
+                    continue;
+                }
+                try {
+                    runtime.vars[it->variable] = it->response.get();
+                } catch (const std::exception& error) {
+                    runtime.vars[it->variable].clear();
+                    SDL_Log("Menu GET failed: %s", error.what());
+                }
+                it = runtime.pendingGets.erase(it);
+            }
             const int count = std::max(1, buttonCount(menu));
             selected = std::clamp(selected, 0, count - 1);
             while (SDL_PollEvent(&e)) {
