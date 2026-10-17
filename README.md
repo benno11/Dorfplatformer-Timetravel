@@ -18,7 +18,8 @@ use these IDs; existing level object IDs are not remapped.
 **95 = ShellChraker**, available in the editor's object palette. Within 2.5
 blocks it extends its arm toward the player, retracts, then briefly recovers.
 Only the exposed arm damages the player; touching the body destroys the enemy
-and knocks the player away. The arm's rear half is hidden behind the shell.
+and knocks the player upward without changing horizontal momentum. The arm's
+rear half is hidden behind the shell.
 **97 = shield**, using `Shied_icon.png`. Place it on a coin box (tile 20) to
 replace that box's five coins with a one-hit shield and visible force field.
 The object alone does not grant a shield. The shield takes damage before coins,

@@ -6925,10 +6925,8 @@ int RunGameApp(int argc, char** argv) {
                     ShellChraker::update(state, dt, dx, dy, (float)map.tileSize);
                     const auto geometry = ShellChraker::geometry(state, obj.x, obj.y, (float)map.tileSize);
                     auto knockPlayerAway = [&]() {
-                        player.vx = (dx < 0.0f ? -1.0f : 1.0f) * 520.0f;
                         player.vy = -480.0f;
                         player.onGround = false;
-                        player.tilePushDirection = 0;
                         player.tile12BounceActive = false;
                         player.anim = ANIM_HURT;
                         player.animTime = 0.0f;

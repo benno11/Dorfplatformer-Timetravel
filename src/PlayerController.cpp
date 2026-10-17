@@ -285,7 +285,7 @@ PlayerUpdateResult UpdatePlayerMovement(
     }
     if (pushDirection != 0) {
         constexpr float kTilePushSpeed = 360.0f;
-        player.vx = pushDirection * kTilePushSpeed;
+        player.vx = (pushDirection * kTilePushSpeed * 4);
         player.tilePushDirection = pushDirection;
     } else if (player.vx * player.tilePushDirection <= 0.0f) {
         player.tilePushDirection = 0;
@@ -420,7 +420,7 @@ PlayerUpdateResult UpdatePlayerMovement(
         player.tile12BounceActive = false;
     } else if (player.onGround && !inWater && map.bouncyTile12 && standingOnTile12(map, player) && !jumpDown) {
         // v^2 = 2*g*h: start a 1/5-block hop, then use ordinary gravity.
-        const float height = map.tileSize / 5.0f;
+        const float height = (map.tileSize / 5.0f * 16);
         player.vy = -std::sqrt(2.0f * std::max(0.0f, movement.gravityGround) * height);
         player.onGround = player.vy == 0.0f;
         player.tile12BounceActive = player.vy < 0.0f;
