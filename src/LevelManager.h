@@ -20,6 +20,8 @@ public:
     std::string nextLevelPath() const;
 
     int collectCoinsAtPlayer(TileMap& map, const Player& player, bool wrapX = false, bool wrapY = false);
+    bool openCoinBox(TileMap& map, int index, const std::vector<ObjectInstance>& objects, Player& player,
+                     bool wrapX = false, bool wrapY = false);
     int activateButtonsAtPlayer(TileMap& map, const Player& player, bool wrapX = false, bool wrapY = false);
     void updateTimeWarpIdAtPlayer(const TileMap& map, const Player& player, bool wrapX = false, bool wrapY = false);
     void setTileAt(TileMap& map, int idx, unsigned short tileId) const;

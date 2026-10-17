@@ -3,6 +3,7 @@
 #include "LevelManager.h"
 #include "ObjectIds.h"
 #include "GameProgression.h"
+#include "Shield.h"
 
 #ifdef NDEBUG
 #undef NDEBUG
@@ -78,17 +79,53 @@ int main() {
     files["unsupported.bin"] = "DFLVL5 " + tiles;
     assert(!loadLevelBNNLVL("unsupported.bin", map, objects, loaded));
     // Custom IDs must survive loading without reinterpreting colliding legacy IDs.
-    const std::string objectTiles = "2 2\n2 2 2 2\nOBJ 4\n" +
+    const std::string objectTiles = "2 2\n2 2 2 2\nOBJ 6\n" +
         std::to_string(ObjectIds::Pickup) + " 16 32\n" +
-        std::to_string(ObjectIds::Goal) + " 48 32\n95 80 32\n97 112 32\n";
+        std::to_string(ObjectIds::Goal) + " 48 32\n95 80 32\n97 112 32\n" +
+        std::to_string(ObjectIds::ShellChraker) + " 144 32\n" +
+        std::to_string(ObjectIds::Shield) + " 48 48\n";
     for (int version : {2, 3, 4}) {
         files["object_ids.bin"] = "DFLVL" + std::to_string(version) + " " + objectTiles;
         assert(loadLevelBNNLVL("object_ids.bin", map, objects, loaded));
-        assert(objects.size() == 4);
+        assert(objects.size() == 6);
         assert(objects[0].id == std::to_string(ObjectIds::Pickup));
         assert(objects[1].id == std::to_string(ObjectIds::Goal));
         assert(objects[2].id == "95" && objects[3].id == "97");
+        assert(objects[4].id == std::to_string(ObjectIds::ShellChraker));
+        assert(objects[5].id == std::to_string(ObjectIds::Shield));
     }
+    map.resize(4, 4);
+    objects = {{std::to_string(ObjectIds::Shield), 48, 80}};
+    manager.resetCoinCount();
+    manager.addCoins(7);
+    player = Player{};
+    assert(!manager.openCoinBox(map, 9, objects, player));
+    assert(!player.hasShield && manager.coinCount() == 7); // Standalone marker does nothing.
+    manager.setTileAt(map, 9, 20);
+    assert(manager.openCoinBox(map, 9, objects, player));
+    assert(player.hasShield && manager.coinCount() == 7 && map.tileIds[9] == 21);
+    assert(!manager.openCoinBox(map, 9, objects, player)); // Empty boxes cannot award another shield.
+    player.vx = 123;
+    player.vy = -75;
+    assert(Shield::absorbDamage(player));
+    assert(!player.hasShield && manager.coinCount() == 7 && player.vx == 123 && player.vy == -75);
+    assert(!Shield::absorbDamage(player));
+    manager.setTileAt(map, 10, 20);
+    assert(manager.openCoinBox(map, 10, objects, player));
+    assert(!player.hasShield && manager.coinCount() == 12); // Other boxes still award coins.
+    objects = {{std::to_string(ObjectIds::Shield), -16, 16}};
+    manager.setTileAt(map, 3, 20);
+    assert(manager.openCoinBox(map, 3, objects, player, true, false));
+    assert(player.hasShield && manager.coinCount() == 12);
+    manager.setLevelPath("configured.bin");
+    manager.reloadLevel(map, objects, loaded, player);
+    assert(player.hasShield); // Restart preserves the shield.
+    manager.setLevelPath(HardmodeLevelPath(1));
+    manager.reloadLevel(map, objects, loaded, player);
+    assert(player.hasShield); // Moving to a different level also preserves it.
+    player.hasShield = false; // Death consumes it before reload.
+    manager.reloadLevel(map, objects, loaded, player);
+    assert(!player.hasShield);
     for (int level = 1; level <= kHardmodeLevelCount; ++level) {
         const auto path = HardmodeLevelPath(level);
         assert(loadLevelBNNLVL(path, map, objects, loaded));

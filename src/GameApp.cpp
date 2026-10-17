@@ -41,6 +41,9 @@
 #include "WaterEffects.h"
 #include "LevelLoader.h"
 #include "ObjectIds.h"
+#include "ShellChrakerRenderer.h"
+#include "Shield.h"
+#include "ShieldRenderer.h"
 #include "Player.h"
 #include "PlayerController.h"
 #include "SimulationTiming.h"
@@ -929,8 +932,9 @@ int RunGameApp(int argc, char** argv) {
     std::unordered_map<std::string, std::string> entityFrameKeyByObjectId;
     entityFrameKeyByObjectId["31"] = "Spring";
     entityFrameKeyByObjectId["46"] = "Bumper";
+    entityFrameKeyByObjectId[std::to_string(ObjectIds::Shield)] = "Shied_icon";
     std::unordered_set<int> knownObjectIds{
-        31, 46, 57, 58, 59, 60, 61, 62, 63, 64, 65, 67, 69, 70, 96, ObjectIds::Pickup, ObjectIds::Goal
+        31, 46, 57, 58, 59, 60, 61, 62, 63, 64, 65, 67, 69, 70, 96, ObjectIds::Pickup, ObjectIds::Goal, ObjectIds::ShellChraker, ObjectIds::Shield
     };
     {
         const std::string text = ReadTextFile("object_type_map.json");
@@ -2805,6 +2809,7 @@ int RunGameApp(int argc, char** argv) {
         TileMap map;
         std::vector<ObjectInstance> objects;
         std::vector<int> objectIds;
+        std::vector<ShellChraker::State> shellChrakerStates;
         LevelMeta meta;
         Player player;
         bool wrapTriggerXActive = false;
@@ -2836,6 +2841,7 @@ int RunGameApp(int argc, char** argv) {
             return value;
         };
         auto refreshObjectIdCache = [&]() {
+            shellChrakerStates.assign(objects.size(), ShellChraker::State{});
             objectIds.clear();
             objectIds.reserve(objects.size());
             for (const auto& obj : objects) {
@@ -3429,6 +3435,7 @@ int RunGameApp(int argc, char** argv) {
                 player.vx = pj.value("vx", player.vx);
                 player.tilePushDirection = std::clamp(pj.value("tilePushDirection", 0), -1, 1);
                 player.tile12BounceActive = pj.value("tile12BounceActive", false);
+                player.hasShield = pj.value("hasShield", false);
                 player.vy = pj.value("vy", player.vy);
                 player.w = pj.value("w", player.w);
                 player.h = pj.value("h", player.h);
@@ -3855,6 +3862,7 @@ int RunGameApp(int argc, char** argv) {
             int h = 0;
             bool onGround = false;
             bool inWater = false;
+            bool hasShield = false;
             int facing = 1;
             bool freeMove = false;
             int anim = 0;
@@ -3957,6 +3965,7 @@ int RunGameApp(int argc, char** argv) {
                 s.h = p.value("h", 32);
                 s.onGround = p.value("on_ground", false);
                 s.inWater = p.value("in_water", false);
+                s.hasShield = p.value("has_shield", false);
                 s.facing = p.value("facing", 1);
                 s.freeMove = p.value("free_move", false);
                 s.anim = p.value("anim", 0);
@@ -3994,6 +4003,7 @@ int RunGameApp(int argc, char** argv) {
             j["vx"] = p.vx;
             j["tilePushDirection"] = p.tilePushDirection;
             j["tile12BounceActive"] = p.tile12BounceActive;
+            j["hasShield"] = p.hasShield;
             j["vy"] = p.vy;
             j["w"] = p.w;
             j["h"] = p.h;
@@ -4144,6 +4154,7 @@ int RunGameApp(int argc, char** argv) {
             }
         };
         auto beginDeathSequence = [&]() {
+            player.hasShield = false;
             deathSequenceActive = true;
             deathLifeDeducted = false;
             deathTimer = 0.0f;
@@ -4152,6 +4163,12 @@ int RunGameApp(int argc, char** argv) {
             audio.playLoseSfx();
             // Persist failure immediately so reopening the run cannot resume a lost attempt.
             if (hardmodeRun) (void)saveGameToDisk();
+        };
+        auto absorbShieldDamage = [&]() -> bool {
+            if (!Shield::absorbDamage(player)) return false;
+            playerInvincibleTimer = kPlayerInvincibleDuration;
+            audio.playMessageSfx();
+            return true;
         };
         if (hardmodeRun) (void)saveGameToDisk();
         // Replay recording is opt-in; keep disabled until user toggles it.
@@ -5215,6 +5232,7 @@ int RunGameApp(int argc, char** argv) {
                     player.h = s.h;
                     player.onGround = s.onGround;
                     player.inWater = s.inWater;
+                    player.hasShield = s.hasShield;
                     player.facing = s.facing;
                     player.freeMove = s.freeMove;
                     player.anim = s.anim;
@@ -6353,6 +6371,7 @@ int RunGameApp(int argc, char** argv) {
 
             if (bossState.active && bossState.activationCooldown <= 0.0f && !levelCompleteActive) {
                 auto applyBossContactDamageToPlayer = [&]() -> bool {
+                    if (absorbShieldDamage()) return false;
                     const bool hasCoins = levelManager.coinCount() > 0;
                     if (hasCoins) {
                         dropPlayerCoins(player.x + player.w * 0.5f, player.y + player.h * 0.5f);
@@ -6820,12 +6839,13 @@ int RunGameApp(int argc, char** argv) {
                     const int idx = ty * map.w + tx;
                     const int standingTileId = (int)map.tileIds[idx];
                     if (standingTileId == 20) {
-                        levelManager.setTileAt(map, idx, 21);
-                        levelManager.addCoins(5);
+                        levelManager.openCoinBox(map, idx, objects, player, gameplayWrapX, gameplayWrapY);
                         audio.playCoinSfx();
                     } else if (standingTileId == 13 && playerInvincibleTimer <= 0.0f && levelLoadDeathGraceTimer <= 0.0f) {
                         const bool hasCoins = levelManager.coinCount() > 0;
-                        if (hasCoins) {
+                        if (absorbShieldDamage()) {
+                            // The shield takes this hit before coins, knockback, or death.
+                        } else if (hasCoins) {
                             dropPlayerCoins(player.x + player.w * 0.5f, player.y + player.h * 0.5f);
                             playerInvincibleTimer = kPlayerInvincibleDuration;
                             player.anim = ANIM_HURT;
@@ -6889,11 +6909,59 @@ int RunGameApp(int argc, char** argv) {
                 float testY = obj.y - halfH;
                 return overlapPlayerWithWrappedRect(obj.x - halfW, obj.y - halfH, halfW * 2.0f, halfH * 2.0f, testX, testY);
             };
+            auto eraseGameplayObject = [&](int index) {
+                objects.erase(objects.begin() + index);
+                if (index < (int)objectIds.size()) objectIds.erase(objectIds.begin() + index);
+                if (index < (int)shellChrakerStates.size()) shellChrakerStates.erase(shellChrakerStates.begin() + index);
+                if (endSignState.objectIndex > index) --endSignState.objectIndex;
+            };
             for (int objIdx = 0; objIdx < (int)objects.size();) {
                 const int objId = (objIdx < (int)objectIds.size()) ? objectIds[objIdx] : parseObjectId(objects[objIdx].id);
+                if (objId == ObjectIds::ShellChraker && !paused && !deathSequenceActive && !levelCompleteActive) {
+                    auto& state = shellChrakerStates[objIdx];
+                    const auto& obj = objects[objIdx];
+                    const float dx = wrapDeltaNear(player.x + player.w * 0.5f - obj.x, mapWrapW, gameplayWrapX);
+                    const float dy = wrapDeltaNear(player.y + player.h * 0.5f - obj.y, mapWrapH, gameplayWrapY);
+                    ShellChraker::update(state, dt, dx, dy, (float)map.tileSize);
+                    const auto geometry = ShellChraker::geometry(state, obj.x, obj.y, (float)map.tileSize);
+                    auto knockPlayerAway = [&]() {
+                        player.vx = (dx < 0.0f ? -1.0f : 1.0f) * 520.0f;
+                        player.vy = -480.0f;
+                        player.onGround = false;
+                        player.tilePushDirection = 0;
+                        player.tile12BounceActive = false;
+                        player.anim = ANIM_HURT;
+                        player.animTime = 0.0f;
+                    };
+                    float hitX = 0.0f, hitY = 0.0f;
+                    if (fastTravelActiveDir < 0 && !player.freeMove) {
+                        const auto& body = geometry.body;
+                        if (overlapPlayerWithWrappedRect(body.x, body.y, body.w, body.h, hitX, hitY)) {
+                            knockPlayerAway();
+                            eraseGameplayObject(objIdx);
+                            audio.playMessageSfx();
+                            continue;
+                        }
+                        const auto& arm = geometry.exposedArm;
+                        if (arm.w > 0.0f && playerInvincibleTimer <= 0.0f && levelLoadDeathGraceTimer <= 0.0f &&
+                            overlapPlayerWithWrappedRect(arm.x, arm.y, arm.w, arm.h, hitX, hitY)) {
+                            if (absorbShieldDamage()) {
+                                // Absorbed hits do not interrupt movement or drop coins.
+                            } else if (levelManager.coinCount() > 0) {
+                                knockPlayerAway();
+                                dropPlayerCoins(player.x + player.w * 0.5f, player.y + player.h * 0.5f);
+                                playerInvincibleTimer = kPlayerInvincibleDuration;
+                                audio.playLoseSfx();
+                            } else {
+                                knockPlayerAway();
+                                beginDeathSequence();
+                            }
+                        }
+                    }
+                }
+                if (deathSequenceActive) break;
                 if (objId == ObjectIds::Pickup && objectOverlapsPlayer(objects[objIdx], 12.0f, 12.0f)) {
-                    objects.erase(objects.begin() + objIdx);
-                    if (objIdx < (int)objectIds.size()) objectIds.erase(objectIds.begin() + objIdx);
+                    eraseGameplayObject(objIdx);
                     levelManager.addCoins(1);
                     audio.playCoinSfx();
                     continue;
@@ -6903,6 +6971,7 @@ int RunGameApp(int argc, char** argv) {
                 }
                 ++objIdx;
             }
+            if (deathSequenceActive) continue;
 
             // Spring objects (id 31): bounce player upward on top contact.
             for (int objIdx = 0; objIdx < (int)objects.size(); ++objIdx) {
@@ -7492,6 +7561,30 @@ int RunGameApp(int argc, char** argv) {
         for (int objIdx = 0; objIdx < (int)objects.size(); ++objIdx) {
             const auto& obj = objects[objIdx];
             const int objId = (objIdx < (int)objectIds.size()) ? objectIds[objIdx] : -1;
+            if (objId == ObjectIds::Shield) {
+                int x = (int)std::floor(obj.x / map.tileSize), y = (int)std::floor(obj.y / map.tileSize);
+                if (renderWrapX) x = (x % map.w + map.w) % map.w;
+                if (renderWrapY) y = (y % map.h + map.h) % map.h;
+                if (x >= 0 && x < map.w && y >= 0 && y < map.h && map.tileIds[y * map.w + x] == 21) continue;
+            }
+            if (objId == ObjectIds::ShellChraker) {
+                const auto base = entitiesFrameByName.find("ShellChraker_base");
+                const auto arm = entitiesFrameByName.find("ShellChraker_arm");
+                float cx = obj.x - camX, cy = obj.y - camY;
+                const float wrapW = (float)(map.w * map.tileSize), wrapH = (float)(map.h * map.tileSize);
+                if (renderWrapX) cx -= std::floor((cx + wrapW * 0.5f) / wrapW) * wrapW;
+                if (renderWrapY) cy -= std::floor((cy + wrapH * 0.5f) / wrapH) * wrapH;
+                for (int iy = renderWrapY ? -1 : 0; iy <= (renderWrapY ? 1 : 0); ++iy)
+                    for (int ix = renderWrapX ? -1 : 0; ix <= (renderWrapX ? 1 : 0); ++ix) {
+                        const auto geometry = ShellChraker::geometry(shellChrakerStates[objIdx], cx + ix * wrapW,
+                            cy + iy * wrapH, (float)map.tileSize);
+                        if (geometry.body.x + map.tileSize * 3.0f < 0.0f || geometry.body.x - map.tileSize * 3.0f > worldViewW ||
+                            geometry.body.y + geometry.body.h < 0.0f || geometry.body.y > worldViewH) continue;
+                        RenderShellChraker(ren, entitiesTex, base == entitiesFrameByName.end() ? nullptr : &base->second,
+                            arm == entitiesFrameByName.end() ? nullptr : &arm->second, geometry);
+                    }
+                continue;
+            }
             const bool isFastTravelChanger = (objId >= 57 && objId <= 61);
             const bool isBumper = (objId == 46);
             const bool isEndSign = (objId == 67);
@@ -8058,6 +8151,16 @@ int RunGameApp(int argc, char** argv) {
             }
         }
 
+        if (player.hasShield && fastTravelActiveDir < 0) {
+            const float wrapW = (float)(map.w * map.tileSize), wrapH = (float)(map.h * map.tileSize);
+            for (int iy = renderWrapY ? -1 : 0; iy <= (renderWrapY ? 1 : 0); ++iy)
+                for (int ix = renderWrapX ? -1 : 0; ix <= (renderWrapX ? 1 : 0); ++ix) {
+                    const SDL_FRect fieldPlayer{pr.x + ix * wrapW, pr.y + iy * wrapH, pr.w, pr.h};
+                    if (fieldPlayer.x + fieldPlayer.w + 10 < 0 || fieldPlayer.x - 10 > worldViewW ||
+                        fieldPlayer.y + fieldPlayer.h + 10 < 0 || fieldPlayer.y - 10 > worldViewH) continue;
+                    RenderShieldField(ren, fieldPlayer, (float)((double)SDL_GetTicksNS() / 1000000000.0));
+                }
+        }
         // Water refracts the completed world, including the player, before the HUD.
         if (waterEffectsEnabled) {
             waterEffects.render(ren, worldTarget, map, camX, camY, worldViewW, worldViewH,
@@ -8343,6 +8446,7 @@ int RunGameApp(int argc, char** argv) {
                     {"vx", player.vx}, {"vy", player.vy},
                     {"on_ground", player.onGround},
                     {"in_water", player.inWater},
+                    {"has_shield", player.hasShield},
                     {"facing", player.facing},
                     {"free_move", player.freeMove},
                     {"anim", player.anim},

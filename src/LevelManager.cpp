@@ -10,6 +10,7 @@
 
 #include "AssetPath.h"
 #include "GameProgression.h"
+#include "ObjectIds.h"
 #include "PlayerController.h"
 
 LevelManager::LevelManager()
@@ -86,7 +87,9 @@ void LevelManager::reloadLevel(TileMap& map, std::vector<ObjectInstance>& object
         }
     }
 
+    const bool shield = player.hasShield;
     player = Player{};
+    player.hasShield = shield;
     bool foundSpawn = false;
     for (const auto& o : objects) {
         if (o.id == "player") {
@@ -247,6 +250,24 @@ int LevelManager::collectCoinsAtPlayer(TileMap& map, const Player& player, bool 
 
     coinCount_ += collected;
     return collected;
+}
+
+bool LevelManager::openCoinBox(TileMap& map, int index, const std::vector<ObjectInstance>& objects, Player& player,
+                               bool wrapX, bool wrapY) {
+    if (index < 0 || index >= (int)map.tileIds.size() || map.tileIds[index] != 20 || map.tileSize <= 0) return false;
+    const int boxX = index % map.w, boxY = index / map.w;
+    bool shieldBox = false;
+    for (const auto& object : objects) {
+        if (object.id != std::to_string(ObjectIds::Shield) || !std::isfinite(object.x) || !std::isfinite(object.y)) continue;
+        int x = (int)std::floor(object.x / map.tileSize), y = (int)std::floor(object.y / map.tileSize);
+        if (wrapX && map.w > 0) x = (x % map.w + map.w) % map.w;
+        if (wrapY && map.h > 0) y = (y % map.h + map.h) % map.h;
+        if (x == boxX && y == boxY) { shieldBox = true; break; }
+    }
+    setTileAt(map, index, 21);
+    if (shieldBox) player.hasShield = true;
+    else addCoins(5);
+    return true;
 }
 
 int LevelManager::activateButtonsAtPlayer(TileMap& map, const Player& player, bool wrapX, bool wrapY) {

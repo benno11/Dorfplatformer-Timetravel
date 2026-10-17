@@ -77,6 +77,8 @@ std::unordered_map<int, std::string> defaultEditorObjectTypes() {
         {67, "end_sign"},
         {ObjectIds::Pickup, "pickup"},
         {ObjectIds::Goal, "goal"},
+        {ObjectIds::ShellChraker, "shell_chraker"},
+        {ObjectIds::Shield, "shield"},
     };
 }
 
@@ -1604,6 +1606,8 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             if (id == 67) { r = 120; g = 180; b = 255; return; }
             if (id == ObjectIds::Pickup) { r = 120; g = 255; b = 185; return; } // pickup
             if (id == ObjectIds::Goal) { r = 255; g = 245; b = 150; return; } // goal
+            if (id == ObjectIds::ShellChraker) { r = 220; g = 45; b = 35; return; }
+            if (id == ObjectIds::Shield) { r = 90; g = 160; b = 255; return; }
             r = 220; g = 220; b = 240;
         };
         auto objectLabel = [&](int id) -> std::string {

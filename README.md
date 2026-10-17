@@ -14,7 +14,16 @@ Normal gravity controls the flight. Jump cancels an active automatic bounce,
 and a jump buffered within 150 ms of landing takes priority over bouncing.
 
 Custom object IDs: **1001 = pickup**, **1002 = goal**. The editor and gameplay
-use these IDs; 95 and 97 are reserved for existing objects and are not remapped.
+use these IDs; existing level object IDs are not remapped.
+**95 = ShellChraker**, available in the editor's object palette. Within 2.5
+blocks it extends its arm toward the player, retracts, then briefly recovers.
+Only the exposed arm damages the player; touching the body destroys the enemy
+and knocks the player away. The arm's rear half is hidden behind the shell.
+**97 = shield**, using `Shied_icon.png`. Place it on a coin box (tile 20) to
+replace that box's five coins with a one-hit shield and visible force field.
+The object alone does not grant a shield. The shield takes damage before coins,
+knockback, or death; actual deaths clear it, while restarts and level transitions
+preserve it. Shield state is included in saves and replays.
 
 Finishing either world 7 ending unlocks **World Select** in Play. The time-4
 good ending also unlocks **Hardmode**. Unlocks and the furthest hardmode level

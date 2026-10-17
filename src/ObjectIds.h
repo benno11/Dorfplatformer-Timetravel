@@ -1,7 +1,9 @@
 #pragma once
 
 namespace ObjectIds {
-// Custom gameplay objects use a separate range from legacy level objects.
+// Shared gameplay object IDs used by the editor and runtime.
 inline constexpr int Pickup = 1001;
 inline constexpr int Goal = 1002;
+inline constexpr int ShellChraker = 95;
+inline constexpr int Shield = 97;
 }
