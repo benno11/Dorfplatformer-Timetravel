@@ -76,6 +76,17 @@ inline bool touchingTop(const Player& player, const SDL_FRect& platform) {
 inline bool standingOn(const Player& player, const SDL_FRect& platform) {
     return !player.freeMove && player.vy >= 0 && touchingTop(player, platform);
 }
+inline bool settleRider(Player& player, const TileMap& map, const SDL_FRect& platform) {
+    if (!standingOn(player, platform)) return false;
+    const float y = platform.y - player.h;
+    if (RectHitsSolid(map, player.x, y, player.w, player.h)) return false;
+    // Gravity and pixel-sized collision steps otherwise cycle through a subpixel
+    // gap/overlap each frame, even while the platform carries the player.
+    player.y = y;
+    player.vy = 0;
+    player.onGround = true;
+    return true;
+}
 inline void carry(Player& player, const TileMap& map, const SDL_FPoint& delta) {
     // Resolve the rider against map solids even if the platform's route crosses them.
     const int steps = std::max(1, (int)std::ceil(std::max(std::fabs(delta.x), std::fabs(delta.y))));

@@ -6,6 +6,41 @@
 #include <vector>
 
 namespace WaterVisuals {
+// Return false on impact; callers retire the droplet rather than drawing it
+// through the obstacle. Small steps also catch walls during long frames.
+inline bool moveSplash(const TileMap& map, float& x, float& y, float dx, float dy,
+                       float size, bool wrapX, bool wrapY,
+                       const std::vector<SDL_FRect>& platforms = {}) {
+    if (map.tileSize <= 0 || map.w <= 0 || map.h <= 0) return false;
+    const float radius = std::max(0.5f, size * 0.5f);
+    const int steps = std::max(1, (int)std::ceil(std::max(std::fabs(dx), std::fabs(dy))));
+    for (int step = 0; step <= steps; ++step) {
+        const float px = x + dx * (step / (float)steps);
+        const float py = y + dy * (step / (float)steps);
+        const int left = (int)std::floor((px - radius) / map.tileSize);
+        const int right = (int)std::floor((px + radius) / map.tileSize);
+        const int top = (int)std::floor((py - radius) / map.tileSize);
+        const int bottom = (int)std::floor((py + radius) / map.tileSize);
+        for (int ty = top; ty <= bottom; ++ty)
+            for (int tx = left; tx <= right; ++tx) {
+                const int qx = wrapX ? (tx % map.w + map.w) % map.w : tx;
+                const int qy = wrapY ? (ty % map.h + map.h) % map.h : ty;
+                if (map.getSolid(qx, qy)) return false;
+            }
+        for (auto platform : platforms) {
+            const float width = (float)(map.w * map.tileSize);
+            const float height = (float)(map.h * map.tileSize);
+            if (wrapX) platform.x -= std::floor((platform.x + platform.w * 0.5f - px + width * 0.5f) / width) * width;
+            if (wrapY) platform.y -= std::floor((platform.y + platform.h * 0.5f - py + height * 0.5f) / height) * height;
+            if (px + radius >= platform.x && px - radius <= platform.x + platform.w &&
+                py + radius >= platform.y && py - radius <= platform.y + platform.h) return false;
+        }
+    }
+    x += dx;
+    y += dy;
+    return true;
+}
+
 inline bool wet(const TileMap& map, int x, int y, bool wrapX, bool wrapY) {
     if (map.w <= 0 || map.h <= 0) return false;
     if (wrapX) x = (x % map.w + map.w) % map.w;

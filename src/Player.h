@@ -1,6 +1,8 @@
 #pragma once
 
 struct Player {
+    static constexpr float kUnderwaterAirSeconds = 45.0f;
+    static constexpr float kAirRefillPerSecond = 3.0f;
     float x = 64.0f;
     float y = 64.0f;
     float vx = 0.0f;

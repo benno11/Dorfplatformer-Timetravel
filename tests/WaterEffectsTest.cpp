@@ -14,6 +14,39 @@ static SDL_Color pixel(SDL_Surface* image, int x, int y) {
 
 int main(int argc, char** argv) {
     try {
+        TileMap collisionMap;
+        collisionMap.resize(8, 8);
+        collisionMap.setSolid(3, 3, 1);
+        float dropX = 80, dropY = 110;
+        require(!WaterVisuals::moveSplash(collisionMap, dropX, dropY, 100, 0, 3, false, false),
+            "Fast splash droplets must collide with walls instead of tunneling");
+        dropX = 110; dropY = 80;
+        require(!WaterVisuals::moveSplash(collisionMap, dropX, dropY, 0, 100, 3, false, false),
+            "Splash droplets must collide with floors");
+        dropY = 150;
+        require(!WaterVisuals::moveSplash(collisionMap, dropX, dropY, 0, -100, 3, false, false),
+            "Splash droplets must collide with ceilings");
+        dropX = 94.5f; dropY = 110;
+        require(!WaterVisuals::moveSplash(collisionMap, dropX, dropY, 0, 0, 4, false, false),
+            "Splash collision must include the droplet's visible size");
+        dropX = 80; dropY = 80;
+        require(WaterVisuals::moveSplash(collisionMap, dropX, dropY, 80, 0, 3, false, false) && dropX == 160,
+            "Unobstructed splash droplets must keep moving");
+        collisionMap.setSolid(0, 1, 1);
+        dropX = 250; dropY = 48;
+        require(!WaterVisuals::moveSplash(collisionMap, dropX, dropY, 30, 0, 3, true, false),
+            "Splash collision must wrap horizontally");
+        collisionMap.setSolid(1, 0, 1);
+        dropX = 48; dropY = 250;
+        require(!WaterVisuals::moveSplash(collisionMap, dropX, dropY, 0, 30, 3, false, true),
+            "Splash collision must wrap vertically");
+        dropX = 160; dropY = 70;
+        require(!WaterVisuals::moveSplash(collisionMap, dropX, dropY, 0, 100, 3, false, false,
+            {{144, 96, 32, 32}}), "Splash droplets must collide with moving platforms");
+        collisionMap.setWater(5, 2, 1);
+        dropX = 176; dropY = 80;
+        require(WaterVisuals::moveSplash(collisionMap, dropX, dropY, 0, 8, 3, false, false),
+            "Water itself must not act as a solid obstacle");
         TileMap map;
         map.resize(6, 4);
         for (int y = 2; y < 4; ++y)

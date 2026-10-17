@@ -2813,6 +2813,11 @@ int RunGameApp(int argc, char** argv) {
         std::vector<int> objectIds;
         std::vector<ShellChraker::State> shellChrakerStates;
         std::vector<MovingPlatform::State> movingPlatformStates;
+        struct SpikeImpact {
+            float x = 0, y = 0;
+            float remaining = 0, duration = 0.28f;
+            bool fatal = false;
+        } spikeImpact;
         LevelMeta meta;
         Player player;
         bool wrapTriggerXActive = false;
@@ -3259,6 +3264,7 @@ int RunGameApp(int argc, char** argv) {
             currentAreaIdText = buildAreaIdText();
         };
         auto reloadLevel = [&](bool showIntroCard = true) {
+            spikeImpact.remaining = 0;
             movingPlatformStates.clear();
             waterEffects.reset();
             levelManager.reloadLevel(map, objects, meta, player);
@@ -4588,6 +4594,7 @@ int RunGameApp(int argc, char** argv) {
             const Uint64 nowNs = SDL_GetTicksNS();
             const double dtPrecise = (double)(nowNs - lastTicksNs) / 1000000000.0;
             const float dt = GameplayDeltaTime(dtPrecise);
+            if (!paused) spikeImpact.remaining = std::max(0.0f, spikeImpact.remaining - dt);
             lastTicksNs = nowNs;
             lastTicks = SDL_GetTicks();
             SetTextScaleMultiplier(UiScale::multiplier(uiScalePercent));
@@ -6207,6 +6214,7 @@ int RunGameApp(int argc, char** argv) {
                     if (upd == PlayerUpdateResult::Normal && !player.freeMove) {
                         for (const auto& bounds : platformSolids) {
                             if (!MovingPlatform::touchingTop(player, bounds) || beforeNormalY + player.h > bounds.y + 1.5f) continue;
+                            MovingPlatform::settleRider(player, map, bounds);
                             MovingPlatform::synchronize(movingPlatformStates, objectIds, true);
                             addMovementReason(MR_PLATFORM);
                             break;
@@ -6254,18 +6262,33 @@ int RunGameApp(int argc, char** argv) {
                 playerWasInWaterLastFrame = false;
             }
 
+            std::vector<SDL_FRect> splashPlatforms;
+            if (!waterParticles.empty()) {
+                for (size_t index = 0; index < objects.size(); ++index) {
+                    if (objectIds[index] != ObjectIds::MovingPlatform) continue;
+                    splashPlatforms.push_back({objects[index].x - map.tileSize * 0.5f,
+                        objects[index].y - map.tileSize * 0.5f, (float)map.tileSize, (float)map.tileSize});
+                }
+            }
             for (auto it = waterParticles.begin(); it != waterParticles.end();) {
                 it->life -= dt;
                 if (it->life <= 0.0f) {
                     it = waterParticles.erase(it);
                     continue;
                 }
-                it->x += it->vx * dt;
-                it->y += it->vy * dt;
                 if (it->splash) {
+                    const float t = std::clamp(it->life / it->maxLife, 0.0f, 1.0f);
+                    const float size = std::max(1.0f, it->size * (0.7f + 0.7f * (1.0f - t)));
+                    if (!WaterVisuals::moveSplash(map, it->x, it->y, it->vx * dt, it->vy * dt,
+                        size, gameplayWrapX, gameplayWrapY, splashPlatforms)) {
+                        it = waterParticles.erase(it);
+                        continue;
+                    }
                     it->vy += 190.0f * dt;
                     it->vx *= std::max(0.0f, 1.0f - 2.4f * dt);
                 } else {
+                    it->x += it->vx * dt;
+                    it->y += it->vy * dt;
                     it->vy -= 5.0f * dt;
                     it->x += std::sin((it->maxLife - it->life) * 9.0f + it->size) * 4.0f * dt;
                 }
@@ -6896,6 +6919,11 @@ int RunGameApp(int argc, char** argv) {
                         audio.playCoinSfx();
                     } else if (standingTileId == 13 && playerInvincibleTimer <= 0.0f && levelLoadDeathGraceTimer <= 0.0f) {
                         const bool hasCoins = levelManager.coinCount() > 0;
+                        spikeImpact.x = player.x + player.w * 0.5f;
+                        spikeImpact.y = player.y + player.h - 2.0f;
+                        spikeImpact.fatal = !hasCoins && !player.hasShield;
+                        spikeImpact.duration = spikeImpact.fatal ? 0.4f : 0.28f;
+                        spikeImpact.remaining = spikeImpact.duration;
                         if (absorbShieldDamage()) {
                             // The shield takes this hit before coins, knockback, or death.
                         } else if (hasCoins) {
@@ -8117,8 +8145,8 @@ int RunGameApp(int argc, char** argv) {
                     SDL_SetTextureAlphaMod(playerTex, 255);
                 }
                 SDL_Rect dst{
-                    (int)pr.x,
-                    (int)(pr.y + pr.h - pr.h),
+                    (int)std::lround(pr.x),
+                    (int)std::lround(pr.y),
                     (int)pr.w,
                     (int)pr.h
                 };
@@ -8292,6 +8320,36 @@ int RunGameApp(int argc, char** argv) {
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
         }
 
+        if (spikeImpact.remaining > 0) {
+            const float fade = spikeImpact.remaining / spikeImpact.duration;
+            const float age = 1.0f - fade;
+            const float radius = 3.0f + age * (spikeImpact.fatal ? 30.0f : 22.0f);
+            const int sparks = spikeImpact.fatal ? 10 : 7;
+            const float wrapW = (float)(map.w * map.tileSize);
+            const float wrapH = (float)(map.h * map.tileSize);
+            float px = spikeImpact.x - camX, py = spikeImpact.y - camY;
+            if (renderWrapX) px -= std::floor((px + wrapW * 0.5f) / wrapW) * wrapW;
+            if (renderWrapY) py -= std::floor((py + wrapH * 0.5f) / wrapH) * wrapH;
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_ADD);
+            SDL_SetRenderDrawColor(ren, 255, spikeImpact.fatal ? 170 : 225, 115, (Uint8)(230 * fade));
+            for (int iy = renderWrapY ? -1 : 0; iy <= (renderWrapY ? 1 : 0); ++iy)
+                for (int ix = renderWrapX ? -1 : 0; ix <= (renderWrapX ? 1 : 0); ++ix) {
+                    const float cx = px + ix * wrapW, cy = py + iy * wrapH;
+                    for (int spark = 0; spark < sparks; ++spark) {
+                        const float angle = spark * 6.2831853f / sparks - 1.5707963f;
+                        const float dx = std::cos(angle), dy = std::sin(angle);
+                        const float tail = std::max(0.0f, radius - 3.0f - 4.0f * fade);
+                        SDL_RenderLine(ren, cx + dx * tail, cy + dy * tail,
+                            cx + dx * radius, cy + dy * radius);
+                    }
+                    if (age < 0.3f) {
+                        SDL_FRect flash{cx - 2, cy - 2, 4, 4};
+                        SDL_RenderFillRect(ren, &flash);
+                    }
+                }
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
+        }
+
         SDL_SetRenderScale(ren, 1.0f, 1.0f);
         SDL_SetRenderTarget(ren, gameTarget);
         BeginNativeTextOverlay(ren, kBaseScreenW, kBaseScreenH, nativeTextPresentDst);
@@ -8318,6 +8376,30 @@ int RunGameApp(int argc, char** argv) {
         DrawText(ren, hudValueX + hudSlideOutX, hudTopY + hudLineGap, hudScale, timerText.str());
         DrawText(ren, hudLeftX + hudSlideOutX, hudTopY + hudLineGap * 2, hudScale, "SCORE");
         DrawText(ren, hudValueX + hudSlideOutX, hudTopY + hudLineGap * 2, hudScale, std::to_string(scoreCount));
+
+        if ((player.inWater || player.drownTimer > 0.0f) && !player.freeMove &&
+            fastTravelActiveDir < 0 && !deathSequenceActive && !levelCompleteActive) {
+            const float airSeconds = std::clamp(Player::kUnderwaterAirSeconds - player.drownTimer,
+                0.0f, Player::kUnderwaterAirSeconds);
+            const float fraction = airSeconds / Player::kUnderwaterAirSeconds;
+            const int barWidth = 240, barHeight = 16;
+            const int barX = (screenW - barWidth) / 2;
+            const int barY = hudTopY + 32;
+            const std::string airLabel = "AIR " + std::to_string((int)std::ceil(airSeconds)) + "s";
+            const SDL_Color color = airSeconds <= 5 ? SDL_Color{255, 85, 75, 255} :
+                airSeconds <= 15 ? SDL_Color{255, 195, 75, 255} : SDL_Color{100, 220, 255, 255};
+            DrawTextColored(ren, (screenW - MeasureTextWidth(2, airLabel)) / 2, hudTopY, 2, airLabel, color);
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+            SDL_SetRenderDrawColor(ren, 12, 22, 36, 220);
+            SDL_Rect background{barX - 2, barY - 2, barWidth + 4, barHeight + 4};
+            SDL_RenderFillRect(ren, &background);
+            SDL_SetRenderDrawColor(ren, color.r, color.g, color.b, color.a);
+            SDL_Rect fill{barX, barY, (int)std::lround(barWidth * fraction), barHeight};
+            if (fill.w > 0) SDL_RenderFillRect(ren, &fill);
+            SDL_SetRenderDrawColor(ren, 210, 235, 255, 220);
+            SDL_RenderDrawRect(ren, &background);
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
+        }
 
         if (livesSystemEnabled) {
             // HUD: lives counter (bottom-left).
@@ -8559,7 +8641,7 @@ int RunGameApp(int argc, char** argv) {
             DrawDebugNumber(ren, 140, 36, 2, "CAMX", (int)camX);
             DrawDebugNumber(ren, 140, 50, 2, "CAMY", (int)camY);
             DrawDebugNumber(ren, 140, 64, 2, "WTR", player.inWater ? 1 : 0);
-            DrawDebugNumber(ren, 140, 78, 2, "DRN", (int)(45.0f - player.drownTimer));
+            DrawDebugNumber(ren, 140, 78, 2, "DRN", (int)(Player::kUnderwaterAirSeconds - player.drownTimer));
             float maxCamX = std::max(0.0f, (float)(map.h * map.tileSize - screenW));
             float maxCamY = std::max(0.0f, (float)(map.w * map.tileSize - screenH));
             DrawDebugNumber(ren, 18, 92, 2, "BW", map.w);

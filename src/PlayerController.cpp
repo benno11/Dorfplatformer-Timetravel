@@ -366,12 +366,12 @@ PlayerUpdateResult UpdatePlayerMovement(
 
     if (inWater) {
         player.drownTimer += dt;
-        if (player.drownTimer >= 45.0f) {
+        if (player.drownTimer >= Player::kUnderwaterAirSeconds) {
             player.drownTimer = 0.0f;
             return PlayerUpdateResult::Reloaded;
         }
     } else {
-        player.drownTimer = 0.0f;
+        player.drownTimer = std::max(0.0f, player.drownTimer - Player::kAirRefillPerSecond * dt);
     }
 
     // Sweep long frame movements in tile-sized substeps. Checking only the final

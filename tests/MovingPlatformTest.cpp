@@ -103,17 +103,25 @@ int main() {
             require(UpdatePlayerMovement(player, map, 1.0f / 60, movement, 0, false, false,
                 0, false, false, false, false, keys, inputMove, inputDown, &solids) == PlayerUpdateResult::Normal,
                 "Rider physics must remain active");
+            require(MovingPlatform::settleRider(player, map, bounds), "A carried rider must settle on the surface");
             require(MovingPlatform::standingOn(player, bounds), "Solid collision must keep the rider on top");
-            require(player.y + player.h < bounds.y + 1 && bounds.y - player.y - player.h <= 1.5f,
-                "Player must stay on the platform's top surface within collision resolution tolerance");
+            require(close(player.y + player.h, bounds.y) && player.vy == 0 && player.onGround,
+                "The rider's feet must stay fixed to the surface without gravity wobble");
         }
         require(close(cx, 672) && close(cy, 608), "Rider must arrive at the final platform position");
         require(close(player.x + player.w * 0.5f, cx), "Platform must carry horizontal position without drift");
         player.onGround = true;
         auto bounds = MovingPlatform::nearPlayer(cx, cy, 32, player);
         std::vector<SDL_FRect> solids{bounds};
+        for (int frame = 0; frame < 240; ++frame) {
+            UpdatePlayerMovement(player, map, frame % 2 ? 1.0f / 30 : 1.0f / 144, movement, 0, false, false,
+                0, false, false, false, false, keys, inputMove, inputDown, &solids);
+            require(MovingPlatform::settleRider(player, map, bounds) && close(player.y + player.h, bounds.y) &&
+                player.vy == 0 && player.onGround, "A stopped platform must remain stable at varying frame rates");
+        }
         UpdatePlayerMovement(player, map, 1.0f / 60, movement, 0, false, true,
             0, false, false, false, false, keys, inputMove, inputDown, &solids);
+        require(!MovingPlatform::settleRider(player, map, bounds), "Settling must not cancel jumping off a platform");
         require(player.vy < 0 && !MovingPlatform::standingOn(player, bounds),
             "Jumping must detach the rider from the platform");
         solids = {{624, 640, 32, 32}};
@@ -126,6 +134,7 @@ int main() {
             0, false, false, false, false, keys, inputMove, inputDown, &solids);
         require(player.vy < 0 && !player.onGround && player.jumpBufferTime == 0,
             "Buffered jumps must fire on solid platform landing");
+        require(!MovingPlatform::settleRider(player, map, solids[0]), "Settling must preserve buffered jumps");
         require(MovingPlatform::touchingTop(player, solids[0]), "Buffered jump landings must still trigger the platform group");
         player = Player{};
         player.x = 625;
