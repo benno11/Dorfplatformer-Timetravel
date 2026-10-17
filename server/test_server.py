@@ -21,6 +21,9 @@ class ServerTests(unittest.TestCase):
         self.releases = Path(self.temp.name) / "releases"
         self.releases.mkdir()
         self.server = GameServer(("127.0.0.1", 0), self.database, releases=self.releases)
+        # Exercise per-level compatibility independently of the global floor.
+        with self.server.store.connect() as db:
+            db.execute("UPDATE client_version_policy SET minimum_build=0 WHERE id=1")
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
 
@@ -100,7 +103,7 @@ class ServerTests(unittest.TestCase):
         for version in (1, 2, 10, 28, 29, 99999999999999999999999999999999):
             body = {"name": "Versioned", "data": "data-" + str(version), "api_version_id": version}
             self.assertEqual(self.request("PUT", f"/levels/v{version}.json", body, token)[0], 200)
-        for build in (2, 10, 28, 29):
+        for build in (27, 28, 29):
             headers = {"User-Agent": f"DF-New/3.0.0 Alpha 1 (build/{build})"}
             expected = {"v" + str(v) for v in (1, 2, 10, 28, 29) if v <= build}
             for suffix in ("", "?shallow=true", "?metadata=true"):
@@ -118,7 +121,7 @@ class ServerTests(unittest.TestCase):
         # Rejected downloads do not count as successful downloads.
         with self.server.store.connect() as db:
             counts = dict(db.execute("SELECT level_id,downloads FROM level_stats"))
-        self.assertEqual(counts, {"v2": 4, "v10": 3, "v28": 2, "v29": 1})
+        self.assertEqual(counts, {"v2": 3, "v10": 3, "v28": 2, "v29": 1})
 
     def test_upload_uses_compiled_build_and_reupload_updates_compatibility(self):
         token = self.register()["idToken"]
@@ -142,11 +145,13 @@ class ServerTests(unittest.TestCase):
         self.request("PUT", "/levels/unknown.json", {"name": "Unknown", "data": "level"}, token)
         with self.server.store.connect() as db:
             db.execute("UPDATE levels SET api_version='unknown' WHERE id='unknown'")
-        for user_agent in ("", "Mozilla/5.0", "DF-New/1.0", "DF-New/invalid", "DF-New slim-menu"):
+        for user_agent in ("", "Mozilla/5.0", "DF-New slim-menu"):
             headers = {"User-Agent": user_agent}
             self.assertEqual(set(self.request("GET", "/levels.json", headers=headers)[1]), {"v1"})
             for level in ("v28", "unknown"):
                 self.assertEqual(self.request("GET", f"/levels/{level}/data.json", headers=headers)[0], 426)
+        for user_agent in ("DF-New/1.0", "DF-New/invalid"):
+            self.assertEqual(self.request("GET", "/levels.json", headers={"User-Agent": user_agent})[0], 426)
         headers = {"User-Agent": "DF-New/3.0.0 Alpha 1 (build/28)"}
         self.assertEqual(self.request("GET", "/levels/unknown.json", headers=headers)[0], 426)
         self.assertEqual(set(self.request("GET", "/levels.json?shallow=true", headers=headers)[1]), {"v1", "v28"})
@@ -161,6 +166,65 @@ class ServerTests(unittest.TestCase):
             self.assertEqual(self.request("PUT", "/levels/versioned.json", {**body, field: "0028"}, token)[0], 200)
             with self.server.store.connect() as db:
                 self.assertEqual(db.execute("SELECT api_version FROM levels WHERE id='versioned'").fetchone()[0], "28")
+
+    def test_level_list_pagination_filters_versions_before_slicing(self):
+        owner = self.register()
+        with self.server.store.connect() as db:
+            db.executemany("INSERT INTO levels VALUES(?,?,?,?,?,?)", [
+                (f"level-{i:02}", owner["localId"], f"Level {i}", "large level payload " * 100,
+                 "29" if i % 5 == 0 else "28", 1) for i in range(28)])
+        headers = {"User-Agent": "DF-New/3.0.0 Alpha 1 (build/28)"}
+        expected = [f"level-{i:02}" for i in range(28) if i % 5 != 0]
+        received = []
+        for page in range(3):
+            status, result = self.request("GET", f"/levels.json?metadata=true&page={page}&page_size=10", headers=headers)
+            self.assertEqual(status, 200)
+            self.assertEqual(result["page"], page)
+            self.assertEqual(result["page_count"], 3)
+            self.assertEqual(result["total"], len(expected))
+            self.assertEqual(result["page_size"], 10)
+            self.assertEqual(list(result["levels"]), expected[page * 10:(page + 1) * 10])
+            self.assertTrue(all("data" not in level for level in result["levels"].values()))
+            received.extend(result["levels"])
+        self.assertEqual(received, expected)
+        last = self.request("GET", "/levels.json?metadata=true&page=999", headers=headers)[1]
+        self.assertEqual(last["page"], 2)
+        self.assertEqual(list(last["levels"]), expected[20:])
+        shallow = self.request("GET", "/levels.json?shallow=true&page=1", headers=headers)[1]
+        self.assertEqual(shallow["levels"], {level: True for level in expected[10:20]})
+        with self.server.store.connect() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM level_stats").fetchone()[0], 0)
+
+    def test_level_list_pagination_applies_difficulty_and_handles_empty_pages(self):
+        owner = self.register()
+        with self.server.store.connect() as db:
+            db.executemany("INSERT INTO levels VALUES(?,?,?,?,?,?)", [
+                (f"level-{i}", owner["localId"], f"Level {i}", "level", "1", 1) for i in range(10)])
+            db.executemany("INSERT INTO level_difficulties VALUES(?,?,?,?)", [
+                (f"level-{i}", i, owner["localId"], 1) for i in range(1, 10)])
+        for filter_name, expected in (("all", list(range(10))), ("easy", [1, 2, 3]),
+                                      ("medium", [4, 5, 6]), ("hard", [7, 8, 9]), ("unrated", [0])):
+            status, result = self.request("GET", f"/levels.json?metadata=true&page=0&page_size=2&filter={filter_name}")
+            self.assertEqual(status, 200)
+            self.assertEqual(result["total"], len(expected))
+            self.assertEqual(list(result["levels"]), [f"level-{i}" for i in expected[:2]])
+            self.assertEqual(result["page_count"], (len(expected) + 1) // 2)
+        with self.server.store.connect() as db:
+            db.execute("DELETE FROM levels")
+        result = self.request("GET", "/levels.json?metadata=true&page=12")[1]
+        self.assertEqual(result, {"levels": {}, "page": 0, "page_size": 10, "total": 0, "page_count": 1})
+
+    def test_level_list_pagination_validation(self):
+        for query in ("page=-1", "page=abc", "page=1.5", "page=", "page=2147483648",
+                      "page=99999999999999999999", "page=0&page=1", "page_size=0", "page_size=101",
+                      "page_size=-1", "page_size=2&page_size=3", "filter=invalid", "filter=all&filter=hard"):
+            self.assertEqual(self.request("GET", "/levels.json?" + query)[0], 400, query)
+        self.assertEqual(self.request("GET", "/levels/missing.json?page=0")[0], 400)
+        status, result = self.request("GET", "/levels.json?page_size=100")
+        self.assertEqual(status, 200)
+        self.assertEqual(result["page_size"], 100)
+        # Existing non-paginated API clients retain their response shape.
+        self.assertEqual(self.request("GET", "/levels.json?metadata=true")[1], {})
 
     def test_level_votes_and_download_counts(self):
         owner = self.register("owner")["idToken"]
@@ -282,6 +346,34 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.request("GET", "/releases/setup.exe"), (200, b"test-installer"))
         self.assertEqual(self.request("GET", "/releases/private.txt")[0], 404)
         self.assertEqual(self.request("GET", "/releases/../setup.exe")[0], 404)
+
+    def test_updates_remain_available_to_blocked_and_legacy_clients(self):
+        with self.server.store.connect() as db:
+            db.execute("UPDATE client_version_policy SET minimum_build=239 WHERE id=1")
+            db.execute("INSERT INTO blocked_versions VALUES('240','Blocked current build',1)")
+        manifest = {"version": "4.0.2", "version_id": 241,
+                    "installer_url": "/releases/setup.exe"}
+        (self.releases / "update-manifest.json").write_text(json.dumps(manifest))
+        (self.releases / "setup.exe").write_bytes(b"windows-installer")
+        (self.releases / "game.apk").write_bytes(b"android-installer")
+        for user_agent in ("DF-New/1.0", "DF-New/1.0-android", "DF-New/3.0.0 Alpha 1 (build/28)",
+                           "DF-New/4.0.0 (build/238)", "DF-New/4.0.1 (build/240)"):
+            with self.subTest(user_agent=user_agent):
+                headers = {"User-Agent": user_agent, "Authorization": "Bearer expired-session"}
+                self.assertEqual(self.request("GET", "/api.json", headers=headers)[0], 426)
+                self.assertEqual(self.request("GET", "/levels.json", headers=headers)[0], 426)
+                self.server.update_manifest_url = DEFAULT_UPDATE_MANIFEST_URL
+                connection = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=10)
+                connection.request("GET", "/update-manifest.json?current_version=1", headers=headers)
+                response = connection.getresponse()
+                self.assertEqual(response.status, 302)
+                self.assertEqual(response.getheader("Location"), DEFAULT_UPDATE_MANIFEST_URL)
+                response.read()
+                connection.close()
+                self.server.update_manifest_url = ""
+                self.assertEqual(self.request("GET", "/update-manifest.json", headers=headers), (200, manifest))
+                self.assertEqual(self.request("GET", "/releases/setup.exe", headers=headers), (200, b"windows-installer"))
+                self.assertEqual(self.request("GET", "/releases/game.apk", headers=headers), (200, b"android-installer"))
 
     def test_web_and_health(self):
         self.assertEqual(self.request("GET", "/health")[1]["status"], "ok")

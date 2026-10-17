@@ -20,6 +20,8 @@ class AdminTests(unittest.TestCase):
         self.path = Path(self.temp.name) / "game.sqlite3"
         self.key = "local-test-key-" + "x" * 40
         self.game = GameServer(("127.0.0.1", 0), self.path)
+        with self.game.store.connect() as db:
+            db.execute("UPDATE client_version_policy SET minimum_build=0 WHERE id=1")
         self.admin = AdminServer(("127.0.0.1", 0), self.path, self.key)
         self.threads = [threading.Thread(target=s.serve_forever, daemon=True) for s in (self.game, self.admin)]
         for thread in self.threads:
@@ -72,7 +74,7 @@ class AdminTests(unittest.TestCase):
             code, result = self.request(method, path, payload, key=self.token, headers=headers, public=True)
             self.assertEqual(code, 426, path)
             self.assertIn(body["reason"], result["error"]["message"])
-        for ua in ["DF-New/2.3.2 (build/28)", "Mozilla/5.0", "DF-New/1.0"]:
+        for ua in ["DF-New/2.3.2 (build/28)", "Mozilla/5.0"]:
             self.assertEqual(self.request("GET", "/levels.json", headers={"User-Agent": ua}, public=True)[0], 200)
         for path in ["/", "/health"]:
             self.assertEqual(self.request("GET", path, headers=headers, public=True)[0], 200)
@@ -85,12 +87,94 @@ class AdminTests(unittest.TestCase):
             Store(self.path).check_client_version(headers["User-Agent"])
         self.assertEqual(error.exception.status, 426)
         state = self.request("GET", "/admin/api/state")[1]
-        self.assertEqual(state["blocked_versions"][0]["version_id"], "27")
+        self.assertIn("27", [row["version_id"] for row in state["blocked_versions"]])
         self.assertEqual(state["events"][0]["action"], "block_version")
         body["enabled"] = False
         self.assertEqual(self.request("POST", "/admin/api/version-block", body)[0], 200)
         self.assertEqual(self.request("GET", "/levels.json", headers=headers, public=True)[0], 200)
         self.assertEqual(self.request("GET", "/admin/api/state")[1]["events"][0]["action"], "unblock_version")
+
+    def test_pre_231_versions_are_blocked_by_default(self):
+        state = self.request("GET", "/admin/api/state")[1]
+        self.assertEqual({row["version_id"] for row in state["blocked_versions"]},
+                         {str(version) for version in range(1, 27)} | {"legacy"})
+        for build in range(1, 27):
+            headers = {"User-Agent": f"DF-New/2.3.0 (build/{build})"}
+            code, result = self.request("GET", "/levels.json", headers=headers, public=True)
+            self.assertEqual(code, 426, build)
+            self.assertIn("2.3.1", result["error"]["message"])
+        for ua in ("DF-New/1.0", "DF-New/1.0-android", "DF-New/invalid"):
+            self.assertEqual(self.request("GET", "/api.json", headers={"User-Agent": ua}, public=True)[0], 426)
+        for ua in ("DF-New/2.3.1 (build/27)", "DF-New/3.0.0 Alpha 1 (build/28)", "Mozilla/5.0"):
+            self.assertEqual(self.request("GET", "/levels.json", headers={"User-Agent": ua}, public=True)[0], 200)
+
+    def test_pre_231_blacklist_migration_preserves_operator_changes(self):
+        from game_server import Store
+        with self.game.store.connect() as db:
+            db.execute("DELETE FROM blocked_versions")
+            db.execute("INSERT INTO blocked_versions VALUES('5','Existing operator reason',1)")
+            db.execute("PRAGMA user_version=5")
+        migrated = Store(self.path)
+        with migrated.connect() as db:
+            self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 7)
+            self.assertEqual(db.execute("SELECT reason FROM blocked_versions WHERE version_id='5'").fetchone()[0],
+                             "Existing operator reason")
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM blocked_versions").fetchone()[0], 27)
+        self.assertEqual(self.request("POST", "/admin/api/version-block",
+            {"version_id": 5, "enabled": False, "reason": "Operator override"})[0], 200)
+        self.assertEqual(self.request("POST", "/admin/api/version-block",
+            {"version_id": "legacy", "enabled": False, "reason": "Operator override"})[0], 200)
+        reopened = Store(self.path)
+        reopened.check_client_version("DF-New/2.0.0 (build/5)")
+        reopened.check_client_version("DF-New/1.0")
+        with self.assertRaises(ApiError):
+            reopened.check_client_version("DF-New/2.3.0 (build/26)")
+
+    def test_minimum_version_default_and_persistence(self):
+        from game_server import Store
+        path = Path(self.temp.name) / "fresh.sqlite3"
+        store = Store(path)
+        with store.connect() as db:
+            self.assertEqual(db.execute("SELECT minimum_build FROM client_version_policy").fetchone()[0], 239)
+        for ua in ("DF-New/2.3.1 (build/27)", "DF-New/4.0.0 (build/238)", "DF-New/1.0"):
+            with self.assertRaises(ApiError) as result:
+                store.check_client_version(ua)
+            self.assertEqual(result.exception.status, 426)
+            self.assertIn("239", result.exception.message)
+        for ua in ("DF-New/4.0.0 (build/239)", "DF-New/4.1.0 Alpha 1 (build/240)", "Mozilla/5.0"):
+            store.check_client_version(ua)
+        with store.connect() as db:
+            db.execute("UPDATE client_version_policy SET minimum_build=300 WHERE id=1")
+        with Store(path).connect() as db:
+            self.assertEqual(db.execute("SELECT minimum_build FROM client_version_policy").fetchone()[0], 300)
+
+    def test_minimum_version_dashboard_and_enforcement(self):
+        body = {"minimum_build": 239, "reason": "Update required"}
+        self.assertEqual(self.request("POST", "/admin/api/minimum-version", body, key=None)[0], 401)
+        self.assertEqual(self.request("POST", "/admin/api/minimum-version", body, public=True)[0], 404)
+        for value in (None, True, -1, 2100000001, 2.5, "239", [], {}):
+            self.assertEqual(self.request("POST", "/admin/api/minimum-version", {**body, "minimum_build": value})[0], 400)
+        self.assertEqual(self.request("POST", "/admin/api/minimum-version", {**body, "reason": ""})[0], 400)
+        self.assertEqual(self.request("POST", "/admin/api/minimum-version", body)[0], 200)
+        state = self.request("GET", "/admin/api/state")[1]
+        self.assertEqual(state["minimum_version_policy"]["minimum_build"], 239)
+        self.assertEqual(state["events"][0]["action"], "set_minimum_version")
+        headers = {"User-Agent": "DF-New/4.0.0 (build/238)"}
+        for method, route, payload in (("GET", "/levels.json", None), ("GET", "/api.json", None),
+                ("POST", "/api/auth/lookup", {}), ("PUT", "/levels/test.json", self.payload),
+                ("DELETE", "/levels/test.json", None)):
+            code, result = self.request(method, route, payload, key=self.token, headers=headers, public=True)
+            self.assertEqual(code, 426)
+            self.assertIn("239", result["error"]["message"])
+        for route in ("/", "/health"):
+            self.assertEqual(self.request("GET", route, headers=headers, public=True)[0], 200)
+        self.assertEqual(self.request("GET", "/update-manifest.json", headers=headers, public=True)[0], 302)
+        self.assertEqual(self.request("GET", "/levels.json", headers={"User-Agent": "DF-New/4.0.0 (build/239)"}, public=True)[0], 200)
+        # Removing an individual block cannot bypass the configured floor.
+        self.request("POST", "/admin/api/version-block", {"version_id": 238, "enabled": False, "reason": "Override"})
+        self.assertEqual(self.request("GET", "/api.json", headers=headers, public=True)[0], 426)
+        self.request("POST", "/admin/api/minimum-version", {**body, "minimum_build": 0})
+        self.assertEqual(self.request("GET", "/api.json", headers=headers, public=True)[0], 200)
 
     def test_version_blacklist_validation_and_legacy(self):
         body = {"version_id": 27, "enabled": True, "reason": "Update required"}

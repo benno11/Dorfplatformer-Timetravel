@@ -1955,7 +1955,7 @@ std::vector<LevelEntry> loadCampaignLevels() {
 #endif
 }
 
-std::vector<LevelEntry> loadCustomLevels() {
+std::vector<LevelEntry> loadCustomLevels(int requestedPage = 0, int* resolvedPage = nullptr) {
     auto addUniqueByPath = [](std::vector<LevelEntry>& dst, const std::vector<LevelEntry>& src) {
         for (const auto& e : src) {
             bool exists = false;
@@ -1970,6 +1970,8 @@ std::vector<LevelEntry> loadCustomLevels() {
     };
 
     std::vector<LevelEntry> out;
+    int page = std::max(0, requestedPage);
+    int pageCount = 1;
     const std::string levelServerUrl = GetLevelServerUrl();
     auto buildGameServerUrl = [&](const std::string& base, const std::string& path, const std::string& extraQuery = "") -> std::string {
         std::string u = base;
@@ -1986,13 +1988,16 @@ std::vector<LevelEntry> loadCustomLevels() {
     if (!levelServerUrl.empty()) {
         std::string base = levelServerUrl;
         while (!base.empty() && base.back() == '/') base.pop_back();
-        std::string levelsRootText = ReadTextFile(buildGameServerUrl(base, "/levels", "metadata=true"));
-        if (levelsRootText.empty()) {
-            levelsRootText = ReadTextFile(buildGameServerUrl(base, "/levels"));
-        }
+        std::string levelsRootText = ReadTextFile(buildGameServerUrl(base, "/levels",
+            "metadata=true&page=" + std::to_string(page) + "&page_size=10"));
         if (!levelsRootText.empty()) {
             nlohmann::json levelsRoot;
-            try { levelsRoot = nlohmann::json::parse(levelsRootText); } catch (...) { levelsRoot = nlohmann::json(); }
+            try {
+                const auto response = nlohmann::json::parse(levelsRootText);
+                page = response.at("page").get<int>();
+                pageCount = std::max(1, response.at("page_count").get<int>());
+                levelsRoot = response.at("levels");
+            } catch (...) { levelsRoot = nlohmann::json(); }
             if (levelsRoot.is_object()) {
                 for (auto it = levelsRoot.begin(); it != levelsRoot.end(); ++it) {
                     const std::string id = it.key();
@@ -2025,17 +2030,17 @@ std::vector<LevelEntry> loadCustomLevels() {
 #if PLATFORMER_MOBILE
     addUniqueByPath(out, loadLevelListFromJson("assets/custom_levels/levels.json", "assets/custom_levels"));
     addUniqueByPath(out, loadLevelListFromDir(localLevelsFolderPath(), true));
-    std::sort(out.begin(), out.end(), [](const LevelEntry& a, const LevelEntry& b) { return a.label < b.label; });
-    return out;
 #else
     addUniqueByPath(out, loadLevelListFromDir("custom_levels"));
-#endif
-#if !PLATFORMER_MOBILE
     std::vector<LevelEntry> assetsOut = loadLevelListFromDir("assets/custom_levels");
     addUniqueByPath(out, assetsOut);
-    std::sort(out.begin(), out.end(), [](const LevelEntry& a, const LevelEntry& b) { return a.label < b.label; });
-    return out;
 #endif
+    std::sort(out.begin(), out.end(), [](const LevelEntry& a, const LevelEntry& b) { return a.label < b.label; });
+    if (resolvedPage) *resolvedPage = page;
+    if (page > 0) out.push_back({"Previous Online Page", "__online_previous__"});
+    if (page + 1 < pageCount) out.push_back({"Next Online Page (" + std::to_string(page + 2) + "/" +
+        std::to_string(pageCount) + ")", "__online_next__"});
+    return out;
 }
 }
 
@@ -2045,8 +2050,9 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
     const OnlineLevelsMenuLabels menuLabels = loadOnlineLevelsMenuLabels();
     std::vector<LevelEntry> campaignLevels = loadCampaignLevels();
     std::vector<LevelEntry> customLevels;
+    int onlinePage = 0;
     if (includeCustom) {
-        customLevels = loadCustomLevels();
+        customLevels = loadCustomLevels(onlinePage, &onlinePage);
     }
     std::vector<LevelEntry> localLevels = loadLevelListFromDir(localLevelsFolderPath(), true);
     if (!includeCampaign) campaignLevels.clear();
@@ -2164,6 +2170,10 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
         auto tryDownloadSelected = [&]() {
             if (levels.empty()) return;
             const LevelEntry& e = levels[selectedIndex];
+            if (e.path == "__online_previous__" || e.path == "__online_next__") {
+                showStatus("Select this row to change page.");
+                return;
+            }
             if (e.path == "__local_editor__") {
                 showStatus("Select this row to open editor.");
                 return;
@@ -2189,7 +2199,7 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
             std::string uploadStatus;
             if (uploadLocalLevelToServer(localLevels[idx], uploadStatus)) {
                 showStatus(uploadStatus);
-                customLevels = loadCustomLevels();
+                customLevels = loadCustomLevels(onlinePage, &onlinePage);
             } else {
                 showStatus(uploadStatus);
             }
@@ -2204,6 +2214,15 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
             }
         };
         auto resolveSelectedPath = [&](const LevelEntry& sel) -> std::string {
+            if (sel.path == "__online_previous__" || sel.path == "__online_next__") {
+                const int nextPage = std::max(0, onlinePage + (sel.path == "__online_next__" ? 1 : -1));
+                customLevels = loadCustomLevels(nextPage, &onlinePage);
+                if (userTabIndex >= 0 && userTabIndex < 3) {
+                    selected[userTabIndex] = 0;
+                    scrollY[userTabIndex] = 0;
+                }
+                return {};
+            }
             if (sel.path == "__local_editor__") {
                 const NewLevelPromptResult prompt = RunNewLevelPrompt(win, ren);
                 if (!prompt.accepted) return {};

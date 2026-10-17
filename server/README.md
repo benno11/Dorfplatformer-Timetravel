@@ -46,6 +46,7 @@ API:
 - POST /api/auth/update: Bearer token, currentPassword, displayName/password.
 - POST /api/auth/logout: Bearer token.
 - GET /levels.json?shallow=true: object mapping level IDs to true.
+- GET /levels.json?metadata=true&page=0&page_size=10&filter=all: one page of compatible level metadata.
 - GET /levels/<id>.json: full level; GET /levels/<id>/data.json: JSON string.
 - PUT /levels/<id>.json: Bearer token, name, data, optional api_version_id.
 - PUT /levels/<id>/vote: Bearer token, {"vote":"like"|"dislike"|"clear"}.
@@ -66,6 +67,16 @@ labels); the server also records that build as the upload's `api_version_id`.
 For clients without a recognized build, reads use legacy version ID 1 and uploads
 use the payload's positive numeric `api_version_id` (or `level_api_version_id`),
 defaulting to 1. Stored nonnumeric version IDs cannot be downloaded over HTTP.
+
+Paginated lists return `{ "levels": { "id": { ... } }, "page": 0,
+"page_size": 10, "total": 22, "page_count": 3 }`. Pages start at zero, and
+`page_size` accepts 1–100 (default 10). Filters are `all`, `easy` (1–3), `medium`
+(4–6), `hard` (7–9), and `unrated`. Version and difficulty checks happen before
+counting and selecting a page. Requests beyond the last page return the last
+available page; an empty list returns page 0 with `page_count: 1`. Omitting all
+pagination parameters keeps the existing response format. The game requests
+only the current page and never falls back to downloading the entire list.
+
 Writes are limited to 2 MiB per request and 100 levels per account. Account
 routes allow 20 requests per minute per peer IP. Behind a proxy this is a shared
 limit; add per-client rate limiting at the proxy when hosting many players.
@@ -260,6 +271,24 @@ Do not start this alongside another dashboard on the same port.
 
 
 ### Client version blacklist
+
+The minimum supported compiled build ID defaults to **239**. The dashboard's
+Minimum allowed build bar and numeric field edit this threshold; Apply minimum
+saves the setting and reason, records the change in history, and immediately
+blocks official clients below it with HTTP 426. Legacy clients are also blocked
+while a minimum is enabled. Build 239 itself is allowed unless individually
+blacklisted. This setting persists across restarts and is initialized to 239
+on both new and upgraded databases. Set it to 0 to disable the minimum check.
+
+`GET /update-manifest.json` (redirected or locally hosted) and published
+`GET /releases/...` installers are always served before version and account
+checks. Legacy clients, clients below the minimum, and individually blocked
+builds can update without signing in, including with an expired session token.
+
+Individual blocks still apply independently of the minimum. Builds 1–26 and
+`legacy` are also blacklisted by the earlier pre-2.3.1 policy. Existing block
+reasons and dashboard unblocks are preserved; unblocking an individual build
+does not bypass the minimum threshold.
 
 Open the local dashboard at `http://127.0.0.1:8081` and use **Client version blacklist**. Enter the numeric compiled build ID (currently `28`, version `2.3.2`) and a reason, then choose Block version or Unblock version. Changes persist in SQLite and appear in moderation history. Blocking applies immediately to account and level requests, including existing sessions, with HTTP 426 and the reason. Local/offline play is unaffected.
 

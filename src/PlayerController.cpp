@@ -105,6 +105,29 @@ static bool keyHeld(const bool* keys, SDL_Scancode sc) {
     return keys[sc];
 }
 
+static int touchingPushTileDirection(const TileMap& map, const Player& player) {
+    const int t = map.tileSize;
+    if (t <= 0 || map.w <= 0 || map.h <= 0) return 0;
+    const int left = (int)std::floor(player.x / t);
+    const int right = (int)std::floor((player.x + player.w - 1) / t);
+    const int top = (int)std::floor(player.y / t);
+    // Include the surface directly under the feet for solid push tiles.
+    const int bottom = (int)std::floor((player.y + player.h) / t);
+    int direction = 0;
+    for (int ty = top; ty <= bottom; ++ty) {
+        for (int tx = left; tx <= right; ++tx) {
+            const int qx = g_horizontalWrapCollision ? wrapTileX(tx, map.w) : tx;
+            const int qy = g_verticalWrapCollision ? wrapTileY(ty, map.h) : ty;
+            if (qx < 0 || qx >= map.w || qy < 0 || qy >= map.h) continue;
+            const size_t index = (size_t)qy * map.w + qx;
+            if (index >= map.tileIds.size()) continue;
+            if (map.tileIds[index] == 83) direction += 1;
+            else if (map.tileIds[index] == 86) direction -= 1;
+        }
+    }
+    return (direction > 0) - (direction < 0);
+}
+
 bool EjectPlayerFromSolid(Player& player, const TileMap& map) {
     if (!RectHitsSolid(map, player.x, player.y, player.w, player.h)) return true;
 
@@ -120,13 +143,17 @@ bool EjectPlayerFromSolid(Player& player, const TileMap& map) {
             player.x = x;
             player.y = y;
             // Only cancel velocity directed back into the surface.
-            if (player.vx * direction[0] < 0.0f) player.vx = 0.0f;
+            if (player.vx * direction[0] < 0.0f) {
+                player.vx = 0.0f;
+                player.tilePushDirection = 0;
+            }
             if (player.vy * direction[1] < 0.0f) player.vy = 0.0f;
             player.onGround = rectHasGroundBelow(map, x, y, player.w, player.h);
             return true;
         }
     }
     player.vx = 0.0f;
+    player.tilePushDirection = 0;
     player.vy = 0.0f;
     player.onGround = false;
     return false;
@@ -168,6 +195,7 @@ PlayerUpdateResult UpdatePlayerMovement(
         player.x += dx * freeSpeed * dt;
         player.y += dy * freeSpeed * dt;
         player.vx = 0.0f;
+        player.tilePushDirection = 0;
         player.vy = 0.0f;
         player.onGround = false;
         player.jumpHeld = false;
@@ -204,6 +232,12 @@ PlayerUpdateResult UpdatePlayerMovement(
 
     float controlAccel = accel;
     float controlFriction = friction;
+    const int pushDirection = touchingPushTileDirection(map, player);
+    if (pushDirection == 0 && move * player.tilePushDirection > 0.0f) {
+        // Matching input takes control again after leaving the push tile.
+        player.vx = 0.0f;
+        player.tilePushDirection = 0;
+    }
 
     if (move != 0.0f) {
         const float targetVx = move * maxSpeed;
@@ -231,6 +265,13 @@ PlayerUpdateResult UpdatePlayerMovement(
         const float recover = (!inWater && player.onGround) ? 14.0f : 7.0f;
         excess *= std::max(0.0f, 1.0f - recover * dt);
         player.vx = speedSign * (maxSpeed + excess);
+    }
+    if (pushDirection != 0) {
+        constexpr float kTilePushSpeed = 360.0f;
+        player.vx = pushDirection * kTilePushSpeed;
+        player.tilePushDirection = pushDirection;
+    } else if (player.vx * player.tilePushDirection <= 0.0f) {
+        player.tilePushDirection = 0;
     }
 
     bool jumpDown = touchJump || gamepadJump || keyHeld(keys, keybinds.jump) || keys[SDL_SCANCODE_UP];
@@ -314,6 +355,7 @@ PlayerUpdateResult UpdatePlayerMovement(
             player.x += dir;
         }
         player.vx = 0.0f;
+        player.tilePushDirection = 0;
         break;
     }
 

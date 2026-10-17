@@ -18,13 +18,13 @@ Player makeFallingPlayer() {
     return player;
 }
 
-void step(Player& player, const TileMap& map, float dt, MovementConfig movement = {}) {
+void step(Player& player, const TileMap& map, float dt, MovementConfig movement = {}, float move = 0.0f) {
     KeyboardBindings bindings;
     float inputMove = 0.0f;
     bool inputDown = false;
     const PlayerUpdateResult result = UpdatePlayerMovement(
         player, map, dt, movement,
-        0.0f, false, false,
+        move, false, false,
         0.0f, false, false, false, false,
         bindings, inputMove, inputDown
     );
@@ -131,6 +131,74 @@ int main() {
     swimmer.vy = 1000.0f;
     step(swimmer, waterMap, 1.0f / 60.0f, limits);
     assert(swimmer.inWater && swimmer.vy == limits.maxFallSpeedInWater);
+
+    // Push tiles move in both directions, leave decaying momentum, and hand
+    // control back to the player when matching directional input is pressed.
+    MovementConfig pushMovement;
+    pushMovement.gravityGround = 0.0f;
+    for (int direction : {-1, 1}) {
+        TileMap pushMap = emptyMap;
+        pushMap.tileIds[6 * pushMap.w + 6] = direction > 0 ? 83 : 86;
+        Player pushed;
+        pushed.x = pushed.y = 200.0f;
+        pushed.w = pushed.h = 30;
+        step(pushed, pushMap, 1.0f / 60.0f, pushMovement);
+        assert((pushed.x - 200.0f) * direction > 0.0f);
+        assert(pushed.vx * direction > 0.0f);
+        assert(pushed.tilePushDirection == direction);
+        const float pushSpeed = std::fabs(pushed.vx);
+        // Continuous contact is bounded, rather than stacking impulses.
+        step(pushed, pushMap, 1.0f / 60.0f, pushMovement);
+        assert(std::fabs(pushed.vx) == pushSpeed);
+        pushMap.tileIds[6 * pushMap.w + 6] = 0;
+        Player matchingInput = pushed;
+        Player opposingInput = pushed;
+        const float previousX = pushed.x;
+        step(pushed, pushMap, 1.0f / 60.0f, pushMovement);
+        assert((pushed.x - previousX) * direction > 0.0f);
+        assert(pushed.vx * direction > 0.0f && std::fabs(pushed.vx) < pushSpeed);
+        step(matchingInput, pushMap, 1.0f / 60.0f, pushMovement, (float)direction);
+        assert(matchingInput.tilePushDirection == 0);
+        assert(std::fabs(matchingInput.vx) < std::fabs(pushed.vx));
+        assert(matchingInput.vx * direction > 0.0f);
+        step(opposingInput, pushMap, 1.0f / 60.0f, pushMovement, (float)-direction);
+        assert(opposingInput.vx * direction > 0.0f);
+        assert(std::fabs(opposingInput.vx) < std::fabs(pushed.vx));
+        for (int frame = 0; frame < 120; ++frame) step(pushed, pushMap, 1.0f / 60.0f, pushMovement);
+        assert(pushed.vx == 0.0f && pushed.tilePushDirection == 0);
+
+        // A wall stops both the player and the leftover tile momentum.
+        pushMap.tileIds[6 * pushMap.w + 6] = direction > 0 ? 83 : 86;
+        pushMap.setSolid(direction > 0 ? 7 : 5, 6, 1);
+        Player blocked;
+        blocked.x = direction > 0 ? 194.0f : 192.0f;
+        blocked.y = 200.0f;
+        blocked.w = blocked.h = 30;
+        step(blocked, pushMap, 1.0f / 60.0f, pushMovement);
+        assert(blocked.vx == 0.0f && blocked.tilePushDirection == 0);
+        assert(!RectHitsSolid(pushMap, blocked.x, blocked.y, blocked.w, blocked.h));
+    }
+
+    TileMap pushFloor = emptyMap;
+    pushFloor.tileIds[7 * pushFloor.w + 6] = 83;
+    pushFloor.setSolid(6, 7, 1);
+    Player onPushFloor;
+    onPushFloor.x = 200.0f;
+    onPushFloor.y = 194.0f;
+    onPushFloor.w = onPushFloor.h = 30;
+    step(onPushFloor, pushFloor, 1.0f / 60.0f, pushMovement);
+    assert(onPushFloor.x > 200.0f && onPushFloor.tilePushDirection == 1);
+
+    TileMap wrappedPushMap = emptyMap;
+    wrappedPushMap.tileIds[6 * wrappedPushMap.w + wrappedPushMap.w - 1] = 83;
+    Player wrappedPush;
+    wrappedPush.x = -8.0f;
+    wrappedPush.y = 200.0f;
+    wrappedPush.w = wrappedPush.h = 30;
+    SetHorizontalWrapCollision(true);
+    step(wrappedPush, wrappedPushMap, 1.0f / 60.0f, pushMovement);
+    assert(wrappedPush.vx > 0.0f && wrappedPush.tilePushDirection == 1);
+    SetHorizontalWrapCollision(false);
 
     // A stall advances one bounded gameplay frame, with no catch-up next frame.
     Player stalled;

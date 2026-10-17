@@ -46,6 +46,15 @@ def audit(db, action, target, reason, actor="dashboard"):
 
 def admin_action(store, action, body):
     reason = reason_from(body)
+    if action == "minimum-version":
+        version = body.get("minimum_build")
+        if type(version) is not int or not 0 <= version <= 2100000000:
+            raise ApiError(400, "Minimum build must be an integer from 0 to 2100000000.")
+        with store.connect() as db:
+            db.execute("UPDATE client_version_policy SET minimum_build=?,reason=?,updated_at=? WHERE id=1",
+                       (version, reason, int(time.time())))
+            audit(db, "set_minimum_version", str(version), reason)
+        return {"ok": True}
     if action == "version-block":
         version = body.get("version_id")
         enabled = body.get("enabled")
@@ -142,6 +151,7 @@ def dashboard_state(store, query):
         return {
             "users": [dict(row) for row in users], "levels": [dict(row) for row in levels],
             "blocked_versions": [dict(row) for row in db.execute("SELECT * FROM blocked_versions ORDER BY created_at DESC,version_id")],
+            "minimum_version_policy": dict(db.execute("SELECT minimum_build,reason,updated_at FROM client_version_policy WHERE id=1").fetchone()),
             "events": [dict(row) for row in events], "page_size": 25,
             "users_total": scalar("SELECT count(*) FROM users WHERE username LIKE ? ESCAPE '!' OR email LIKE ? ESCAPE '!'", (pattern, pattern)),
             "levels_total": scalar("SELECT count(*) FROM levels WHERE id LIKE ? ESCAPE '!' OR name LIKE ? ESCAPE '!'", (pattern, pattern)),
@@ -220,7 +230,7 @@ class AdminHandler(Handler):
                     raise ApiError(400, "Select a level.")
                 self.send(200, self.server.store.rate_difficulty(level_id, body, self.headers.get("X-Moderator-Token", "")))
                 return
-            if self.command == "POST" and url.path in {"/admin/api/moderator", "/admin/api/suspension", "/admin/api/warn", "/admin/api/delete-level", "/admin/api/version-block"}:
+            if self.command == "POST" and url.path in {"/admin/api/moderator", "/admin/api/suspension", "/admin/api/warn", "/admin/api/delete-level", "/admin/api/version-block", "/admin/api/minimum-version"}:
                 self.send(200, admin_action(self.server.store, url.path.rsplit("/", 1)[1], self.body()))
                 return
             raise ApiError(404, "Not found.")

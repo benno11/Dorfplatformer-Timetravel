@@ -1,6 +1,7 @@
 #include "BuildInfo.h"
 #include "SlimMenuSystem.h"
 #include "SlimMenuLayout.h"
+#include "DifficultySelector.h"
 
 #include <SDL3/SDL.h>
 #if defined(__ANDROID__)
@@ -15,6 +16,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -46,7 +48,7 @@ constexpr const char* kSavedGameSelectionToken = "__DF_SAVEGAME_CONTINUE__";
 constexpr const char* kSlimMenuUserAgent = PLATFORMER_CLIENT_USER_AGENT;
 
 struct MenuItem {
-    enum class Type { Text, Button };
+    enum class Type { Text, Button, Slider };
     Type type = Type::Text;
     std::string label;
     std::string command;
@@ -75,6 +77,13 @@ struct SlimLevelEntry {
     int dislikes = 0;
 };
 
+struct OnlineLevelPage {
+    std::vector<SlimLevelEntry> levels;
+    int page = 0;
+    int pageCount = 1;
+    int total = 0;
+};
+
 struct SlimRuntime {
     struct PendingGet {
         std::string variable;
@@ -86,13 +95,19 @@ struct SlimRuntime {
     std::unordered_map<std::string, std::string> scriptSources;
     std::vector<SlimLevelEntry> localLevels, onlineLevels;
     bool localLevelsLoaded = false, onlineLevelsLoaded = false;
-    std::future<std::vector<SlimLevelEntry>> onlineLevelsRequest;
+    std::future<OnlineLevelPage> onlineLevelsRequest;
+    std::string onlineLevelsKey, pendingOnlineLevelsKey;
+    int onlinePageCount = 1, onlineTotal = 0;
     std::future<bool> accountRoleRequest;
     std::string accountRoleKey, pendingAccountRoleKey;
     std::unordered_map<std::string, std::string> vars;
     std::string waitingBind;
     std::vector<PendingGet> pendingGets;
     float scrollY = 0.0f;
+    bool difficultyPopupOpen = false, difficultySaving = false;
+    SlimLevelEntry difficultyLevel;
+    int difficultyChoice = 0, difficultyFocus = 0;
+    std::string difficultyStatus;
 
     SlimRuntime() = default;
     SlimRuntime(const SlimRuntime&) = delete;
@@ -101,6 +116,18 @@ struct SlimRuntime {
         if (menuTexture && ownsMenuTexture) SDL_DestroyTexture(menuTexture);
     }
 };
+
+constexpr SDL_Rect kMenuExitRect{12, 12, 88, 44};
+
+bool menuNetworkBusy(const SlimRuntime& runtime) {
+    if (runtime.difficultySaving) return true;
+    auto pending = [](const auto& request) {
+        return request.valid() && request.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready;
+    };
+    if (pending(runtime.onlineLevelsRequest) || pending(runtime.accountRoleRequest)) return true;
+    return std::any_of(runtime.pendingGets.begin(), runtime.pendingGets.end(),
+        [&](const SlimRuntime::PendingGet& request) { return pending(request.response); });
+}
 
 struct ParsedLine {
     int lineNo = 0;
@@ -495,10 +522,10 @@ SlimMenu loadMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuC
             item.label = parts[1];
             menu.items.push_back(std::move(item));
             ++i;
-        } else if (op == "button" && parts.size() >= 3) {
+        } else if ((op == "button" || op == "slider") && parts.size() >= 3) {
             const std::string arg = parts.size() >= 4 ? parts[3] : std::string();
             MenuItem item = style;
-            item.type = MenuItem::Type::Button;
+            item.type = op == "slider" ? MenuItem::Type::Slider : MenuItem::Type::Button;
             item.label = parts[1];
             item.command = parts[2];
             item.arg = arg;
@@ -820,14 +847,18 @@ std::vector<SlimLevelEntry> loadLocalSlimLevels() {
     return out;
 }
 
-std::vector<SlimLevelEntry> loadOnlineSlimLevels(const SlimMenuContext& ctx) {
-    std::vector<SlimLevelEntry> out;
-    if (!ctx.levelServerUrl || ctx.levelServerUrl->empty()) return out;
-    const std::string rootText = ReadTextFile(makeApiUrl(ctx, "/levels.json?metadata=true"));
-    if (rootText.empty()) return out;
-    nlohmann::json j;
-    try { j = nlohmann::json::parse(rootText); } catch (...) { return out; }
-    if (!j.is_object()) return out;
+OnlineLevelPage loadOnlineSlimLevels(const SlimMenuContext& ctx, int page, const std::string& filter) {
+    OnlineLevelPage result;
+    if (!ctx.levelServerUrl || ctx.levelServerUrl->empty()) return result;
+    const std::string rootText = ReadTextFile(makeApiUrl(ctx, "/levels.json?metadata=true&page=" +
+        std::to_string(page) + "&page_size=10&filter=" + filter));
+    const auto response = nlohmann::json::parse(rootText);
+    const auto& j = response.at("levels");
+    if (!j.is_object()) throw std::runtime_error("Invalid level page response");
+    result.page = response.at("page").get<int>();
+    result.pageCount = std::max(1, response.at("page_count").get<int>());
+    result.total = std::max(0, response.at("total").get<int>());
+    auto& out = result.levels;
     const std::string base = ctx.levelServerUrl ? *ctx.levelServerUrl : std::string();
     for (auto it = j.begin(); it != j.end(); ++it) {
         int difficulty = 0;
@@ -854,17 +885,37 @@ std::vector<SlimLevelEntry> loadOnlineSlimLevels(const SlimMenuContext& ctx) {
         addUniqueLevel(out, SlimLevelEntry{id, joinUrlPath(base, "/levels/" + id + "/data.json"), difficulty, downloads, likes, dislikes});
     }
     std::sort(out.begin(), out.end(), [](const SlimLevelEntry& a, const SlimLevelEntry& b) { return a.label < b.label; });
-    return out;
+    return result;
+}
+
+std::string onlinePageKey(const SlimRuntime& runtime, const SlimMenuContext& ctx) {
+    const auto page = runtime.vars.find("online_level_page");
+    const auto filter = runtime.vars.find("online_level_filter");
+    return (ctx.levelServerUrl ? *ctx.levelServerUrl : std::string()) + "\n" +
+        (page == runtime.vars.end() ? "0" : page->second) + "\n" +
+        (filter == runtime.vars.end() ? "all" : filter->second);
 }
 
 const std::vector<SlimLevelEntry>& cachedSlimLevels(bool online, SlimRuntime& runtime, const SlimMenuContext& ctx) {
     if (online) {
+        if (!runtime.vars.count("online_level_page")) runtime.vars["online_level_page"] = "0";
+        if (!runtime.vars.count("online_level_filter")) runtime.vars["online_level_filter"] = "all";
+        const std::string key = onlinePageKey(runtime, ctx);
+        if (runtime.onlineLevelsKey != key) {
+            runtime.onlineLevelsKey = key;
+            runtime.onlineLevelsLoaded = false;
+            runtime.onlineLevels.clear();
+        }
         if (!runtime.onlineLevelsLoaded && !runtime.onlineLevelsRequest.valid()) {
             std::string base = ctx.levelServerUrl ? *ctx.levelServerUrl : std::string();
-            runtime.onlineLevelsRequest = SubmitNetworkOperation([base]() mutable {
+            const int page = std::max(0, std::atoi(runtime.vars["online_level_page"].c_str()));
+            const std::string filter = runtime.vars.count("online_level_filter") ? runtime.vars["online_level_filter"] : "all";
+            runtime.pendingOnlineLevelsKey = key;
+            runtime.vars["online_level_status"].clear();
+            runtime.onlineLevelsRequest = SubmitNetworkOperation([base, page, filter]() mutable {
                 SlimMenuContext snapshot;
                 snapshot.levelServerUrl = &base;
-                return loadOnlineSlimLevels(snapshot);
+                return loadOnlineSlimLevels(snapshot, page, filter);
             });
         }
         return runtime.onlineLevels;
@@ -1284,11 +1335,7 @@ SlimMenu buildGeneratedLevelMenu(const std::string& name, SlimRuntime& runtime, 
             menu.items.push_back(MenuItem{MenuItem::Type::Button, "Dislike", "vote_online_level", std::to_string(index) + ":dislike"});
             menu.items.push_back(MenuItem{MenuItem::Type::Button, "Clear Vote", "vote_online_level", std::to_string(index) + ":clear"});
             if (currentAccountIsMod(runtime, ctx)) {
-                const int nextDifficulty = level.difficulty >= 9 ? 0 : level.difficulty + 1;
-                const std::string label = nextDifficulty > 0
-                    ? ("Rate D" + std::to_string(nextDifficulty))
-                    : "Clear Rating";
-                menu.items.push_back(MenuItem{MenuItem::Type::Button, label, "rate_online_level", std::to_string(index)});
+                menu.items.push_back(MenuItem{MenuItem::Type::Button, "Set Difficulty", "rate_online_level", std::to_string(index)});
             }
             menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back", "menu", "onlinelevels"});
         } else {
@@ -1318,25 +1365,29 @@ SlimMenu buildGeneratedLevelMenu(const std::string& name, SlimRuntime& runtime, 
     }
 
     constexpr int kPageSize = 10;
-    const int pageCount = std::max(1, (int)((filtered.size() + kPageSize - 1) / kPageSize));
-    int page = std::clamp(std::atoi(runtime.vars[pageVar].c_str()), 0, pageCount - 1);
+    const int pageCount = online ? runtime.onlinePageCount : std::max(1, (int)((filtered.size() + kPageSize - 1) / kPageSize));
+    int page = online ? std::max(0, std::atoi(runtime.vars[pageVar].c_str()))
+                      : std::clamp(std::atoi(runtime.vars[pageVar].c_str()), 0, pageCount - 1);
     runtime.vars[pageVar] = std::to_string(page);
 
     SlimMenu menu;
     menu.name = name;
     menu.title = online ? "Online Levels" : "Local Levels";
     menu.items.push_back(MenuItem{MenuItem::Type::Text,
-        "Filter: " + levelFilterLabel(filter) + "  Page " + std::to_string(page + 1) + "/" + std::to_string(pageCount), {}, {}});
+        "Filter: " + levelFilterLabel(filter) + "  Page " + std::to_string(page + 1) + "/" + std::to_string(pageCount) +
+        (online && runtime.onlineLevelsLoaded ? "  (" + std::to_string(runtime.onlineTotal) + " levels)" : std::string()), {}, {}});
     if (!online) {
         menu.items.push_back(MenuItem{MenuItem::Type::Text, "${level_detail_status}", {}, {}});
         menu.items.push_back(MenuItem{MenuItem::Type::Button, "Create", "create_level", {}});
+    } else if (!runtime.vars["online_level_status"].empty()) {
+        menu.items.push_back(MenuItem{MenuItem::Type::Text, "${online_level_status}", {}, {}});
     }
     if (filtered.empty()) {
         menu.items.push_back(MenuItem{MenuItem::Type::Text,
             online && runtime.onlineLevelsRequest.valid() ? "Loading online levels..." : "No levels match this filter.", {}, {}});
     }
 
-    const int start = page * kPageSize;
+    const int start = online ? 0 : page * kPageSize;
     const int end = std::min((int)filtered.size(), start + kPageSize);
     for (int i = start; i < end; ++i) {
         const auto& level = filtered[i];
@@ -1360,16 +1411,16 @@ SlimMenuLayout::Layout layoutFor(const SlimMenu& menu, const SlimRuntime& runtim
     std::vector<SlimMenuLayout::Item> items;
     const int buttonWidth = std::clamp(ctx.baseScreenW * 2 / 5, 220, 520);
     for (const auto& item : menu.items) {
-        const bool button = item.type == MenuItem::Type::Button;
+        const bool button = item.type != MenuItem::Type::Text;
         items.push_back({button ? buttonWidth : MeasureTextWidth(2, expandVars(item.label, runtime, ctx)),
-                         button ? 54 : 24, item.horizontal, item.vertical});
+                         item.type == MenuItem::Type::Slider ? 80 : (button ? 54 : 24), item.horizontal, item.vertical});
     }
     return SlimMenuLayout::build(ctx.baseScreenW, ctx.baseScreenH, menu.scale, menu.horizontal, menu.vertical, items);
 }
 
 size_t buttonItemIndex(const SlimMenu& menu, int button) {
     for (size_t i = 0; i < menu.items.size(); ++i) {
-        if (menu.items[i].type == MenuItem::Type::Button && button-- == 0) return i;
+        if (menu.items[i].type != MenuItem::Type::Text && button-- == 0) return i;
     }
     return menu.items.size();
 }
@@ -1402,6 +1453,74 @@ bool drawMenuSprite(const SlimRuntime& runtime, SDL_Renderer* ren, const char* n
     return true;
 }
 
+int* audioSliderValue(const MenuItem& item, const SlimMenuContext& ctx) {
+    if (item.type != MenuItem::Type::Slider) return nullptr;
+    const std::string name = normalizeVarName(item.command);
+    if (name == "music_volume") return ctx.musicVolume;
+    if (name == "sfx_volume") return ctx.sfxVolume;
+    return nullptr;
+}
+
+SDL_Rect audioSliderTrack(const SDL_Rect& row) {
+    const int inset = std::min(20, (row.w - 1) / 2);
+    return {row.x + inset, row.y + row.h - 24, std::max(1, row.w - 2 * inset), 8};
+}
+
+void renderMenuExit(const SlimRuntime& runtime, const SlimMenuContext& ctx, bool focused) {
+    const bool enabled = !menuNetworkBusy(runtime);
+    SDL_SetRenderDrawColor(ctx.ren, enabled ? (focused ? 100 : 55) : 45, enabled ? 80 : 48, enabled ? 100 : 52, 255);
+    SDL_RenderFillRect(ctx.ren, &kMenuExitRect);
+    SDL_SetRenderDrawColor(ctx.ren, enabled ? 210 : 85, enabled ? 225 : 90, enabled ? 245 : 95, 255);
+    SDL_RenderRect(ctx.ren, &kMenuExitRect);
+    const SDL_Color color = enabled ? SDL_Color{255, 255, 255, 255} : SDL_Color{125, 130, 140, 255};
+    DrawTextColored(ctx.ren, kMenuExitRect.x + (kMenuExitRect.w - MeasureTextWidth(2, "EXIT")) / 2,
+        kMenuExitRect.y + 10, 2, "EXIT", color);
+}
+
+void renderDifficultyPopup(const SlimRuntime& runtime, const SlimMenuContext& ctx) {
+    int savedW = 0, savedH = 0;
+    SDL_RendererLogicalPresentation savedPresentation;
+    SDL_GetRenderLogicalPresentation(ctx.ren, &savedW, &savedH, &savedPresentation);
+    SDL_SetRenderLogicalPresentation(ctx.ren, ctx.baseScreenW, ctx.baseScreenH, SDL_LOGICAL_PRESENTATION_LETTERBOX);
+    SDL_SetRenderViewport(ctx.ren, nullptr);
+    SDL_SetRenderScale(ctx.ren, 1.0f, 1.0f);
+    SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(ctx.ren, 0, 0, 0, 185);
+    const SDL_Rect canvas{0, 0, ctx.baseScreenW, ctx.baseScreenH};
+    SDL_RenderFillRect(ctx.ren, &canvas);
+    SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_NONE);
+    const auto layout = DifficultySelector::build(ctx.baseScreenW, ctx.baseScreenH);
+    SDL_SetRenderDrawColor(ctx.ren, 34, 49, 65, 255);
+    SDL_RenderFillRect(ctx.ren, &layout.panel);
+    SDL_SetRenderDrawColor(ctx.ren, 175, 205, 230, 255);
+    SDL_RenderRect(ctx.ren, &layout.panel);
+    auto centered = [&](const std::string& text, int y, int scale) {
+        while (scale > 1 && MeasureTextWidth(scale, text) > layout.panel.w - 24) --scale;
+        DrawText(ctx.ren, layout.panel.x + (layout.panel.w - MeasureTextWidth(scale, text)) / 2, y, scale, text);
+    };
+    centered("Select Difficulty", layout.panel.y + 12, layout.panel.h < 300 ? 2 : 3);
+    centered("1-3 Easy   4-6 Medium   7-9 Hard", layout.panel.y + layout.panel.h * 15 / 100, 1);
+    for (int i = 0; i < (int)layout.buttons.size(); ++i) {
+        const bool chosen = i <= 9 && i == runtime.difficultyChoice;
+        const bool focused = i == runtime.difficultyFocus;
+        const auto& rect = layout.buttons[i];
+        SDL_SetRenderDrawColor(ctx.ren, chosen ? 65 : 48, chosen ? 135 : 73, chosen ? 170 : 98, 255);
+        SDL_RenderFillRect(ctx.ren, &rect);
+        SDL_SetRenderDrawColor(ctx.ren, focused ? 255 : 130, focused ? 240 : 165, focused ? 165 : 195, 255);
+        SDL_RenderRect(ctx.ren, &rect);
+        const std::string text = i == 0 ? "Unrated" : (i == 10 ? "Apply" : (i == 11 ? "Cancel" : std::to_string(i)));
+        const int scale = MeasureTextWidth(2, text) < rect.w - 12 ? 2 : 1;
+        DrawText(ctx.ren, rect.x + (rect.w - MeasureTextWidth(scale, text)) / 2,
+            rect.y + (rect.h - scale * 10) / 2, scale, text);
+    }
+    if (runtime.difficultySaving) centered("Saving...", layout.panel.y + layout.panel.h * 80 / 100, 1);
+    else if (!runtime.difficultyStatus.empty()) centered(runtime.difficultyStatus, layout.panel.y + layout.panel.h * 80 / 100, 1);
+    renderMenuExit(runtime, ctx, false);
+    SDL_SetRenderScale(ctx.ren, 1.0f, 1.0f);
+    SDL_SetRenderViewport(ctx.ren, nullptr);
+    SDL_SetRenderLogicalPresentation(ctx.ren, savedW, savedH, savedPresentation);
+}
+
 void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContext& ctx, int selected,
                 const SlimMenuLayout::Layout& layout) {
     SDL_SetRenderTarget(ctx.ren, ctx.gameTarget);
@@ -1424,7 +1543,8 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
 
     const std::string title = expandVars(menu.title, runtime, ctx);
     int titleScale = 4;
-    while (titleScale > 1 && MeasureTextWidth(titleScale, title) > panel.w - 40) --titleScale;
+    const int titleWidth = std::min(panel.w - 40, (int)(ctx.baseScreenW / layout.scale) - 224);
+    while (titleScale > 1 && MeasureTextWidth(titleScale, title) > titleWidth) --titleScale;
     DrawText(ctx.ren, panel.x + (panel.w - MeasureTextWidth(titleScale, title)) / 2, panel.y + 22, titleScale, title);
     if (!runtime.waitingBind.empty() || !runtime.pendingGets.empty() ||
         runtime.onlineLevelsRequest.valid() || runtime.accountRoleRequest.valid()) {
@@ -1440,12 +1560,34 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
         const auto& item = menu.items[index];
         const std::string label = expandVars(item.label, runtime, ctx);
         const SDL_Rect r = SlimMenuLayout::scrolled(layout.items[index], runtime.scrollY);
-        const bool isSelected = item.type == MenuItem::Type::Button && buttonIndex++ == selected;
+        const bool isSelected = item.type != MenuItem::Type::Text && buttonIndex++ == selected;
         if (r.y + r.h <= layout.body.y || r.y >= layout.body.y + layout.body.h) continue;
         if (item.type == MenuItem::Type::Text) {
             const int textScale = MeasureTextWidth(2, label) <= r.w ? 2 : 1;
             DrawText(ctx.ren, r.x + SlimMenuLayout::offset(r.w - MeasureTextWidth(textScale, label), item.labelHorizontal),
                      r.y + SlimMenuLayout::offset(r.h - textScale * 10, item.labelVertical), textScale, label);
+            continue;
+        }
+        if (item.type == MenuItem::Type::Slider) {
+            const int* volume = audioSliderValue(item, ctx);
+            const int value = volume ? std::clamp(*volume, 0, 128) : 0;
+            const std::string sliderLabel = label + ": " + std::to_string((int)std::lround(value * 100.0f / 128.0f)) + "%";
+            SDL_SetRenderDrawColor(ctx.ren, isSelected ? 74 : 45, isSelected ? 100 : 65, isSelected ? 125 : 84, 255);
+            SDL_RenderFillRect(ctx.ren, &r);
+            SDL_SetRenderDrawColor(ctx.ren, isSelected ? 220 : 130, isSelected ? 235 : 155, 255, 255);
+            SDL_RenderRect(ctx.ren, &r);
+            const int textScale = MeasureTextWidth(2, sliderLabel) <= r.w - 16 ? 2 : 1;
+            DrawText(ctx.ren, r.x + (r.w - MeasureTextWidth(textScale, sliderLabel)) / 2, r.y + 8, textScale, sliderLabel);
+            const SDL_Rect track = audioSliderTrack(r);
+            SDL_SetRenderDrawColor(ctx.ren, 24, 35, 48, 255);
+            SDL_RenderFillRect(ctx.ren, &track);
+            const int filled = (int)std::lround(track.w * value / 128.0f);
+            const SDL_Rect fill{track.x, track.y, filled, track.h};
+            SDL_SetRenderDrawColor(ctx.ren, 110, 200, 245, 255);
+            SDL_RenderFillRect(ctx.ren, &fill);
+            const SDL_Rect thumb{track.x + filled - 6, track.y - 6, 12, 20};
+            SDL_SetRenderDrawColor(ctx.ren, isSelected ? 255 : 210, isSelected ? 255 : 230, 255, 255);
+            SDL_RenderFillRect(ctx.ren, &thumb);
             continue;
         }
         if (runtime.menuTexture) {
@@ -1488,6 +1630,8 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
     }
     SDL_SetRenderClipRect(ctx.ren, nullptr);
     SDL_SetRenderScale(ctx.ren, 1.0f, 1.0f);
+    // The exit control stays in the screen corner, outside scrolling content.
+    renderMenuExit(runtime, ctx, selected == buttonIndex);
 }
 
 void presentMenuFrame(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContext& ctx, int selected,
@@ -1506,13 +1650,14 @@ void presentMenuFrame(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenu
     SDL_RenderClear(ctx.ren);
     SDL_RenderTexture(ctx.ren, ctx.gameTarget, static_cast<const SDL_Rect*>(nullptr), &dst);
     FlushNativeTextOverlay(ctx.ren);
+    if (runtime.difficultyPopupOpen) renderDifficultyPopup(runtime, ctx);
     SDL_RenderPresent(ctx.ren);
 }
 
 MenuItem* buttonAt(SlimMenu& menu, int selected) {
     int buttonIndex = 0;
     for (auto& item : menu.items) {
-        if (item.type != MenuItem::Type::Button) continue;
+        if (item.type == MenuItem::Type::Text) continue;
         if (buttonIndex == selected) return &item;
         ++buttonIndex;
     }
@@ -1521,7 +1666,7 @@ MenuItem* buttonAt(SlimMenu& menu, int selected) {
 
 int buttonCount(const SlimMenu& menu) {
     int count = 0;
-    for (const auto& item : menu.items) if (item.type == MenuItem::Type::Button) ++count;
+    for (const auto& item : menu.items) if (item.type != MenuItem::Type::Text) ++count;
     return count;
 }
 
@@ -1565,9 +1710,10 @@ bool adjustInt(const std::string& name, int delta, SlimMenuContext& ctx) {
 }
 
 SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx, std::string& currentMenu) {
+    if (item.type == MenuItem::Type::Slider) return SlimMenuExit::Continue;
     const std::string command = item.command;
     const std::string arg = expandVars(item.arg, runtime, ctx);
-    if (command == "back") return SlimMenuExit::Back;
+    if (command == "back") return menuNetworkBusy(runtime) ? SlimMenuExit::Continue : SlimMenuExit::Back;
     if (command == "quit") {
         if (ctx.running) *ctx.running = false;
         return SlimMenuExit::Quit;
@@ -1589,7 +1735,7 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
         const std::string pageVar = prefix + "_level_page";
         int page = std::max(0, std::atoi(runtime.vars[pageVar].c_str()));
         if (direction == "prev") page = std::max(0, page - 1);
-        if (direction == "next") page += 1;
+        if (direction == "next" && (prefix != "online" || page + 1 < runtime.onlinePageCount)) page += 1;
         runtime.vars[pageVar] = std::to_string(page);
         currentMenu = prefix == "online" ? "onlinelevels" : "locallevels";
         runtime.vars["__reload_menu"] = "1";
@@ -1722,12 +1868,10 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
             runtime.vars["__reload_menu"] = "1";
             return SlimMenuExit::Continue;
         }
-        const int nextDifficulty = levels[index].difficulty >= 9 ? 0 : levels[index].difficulty + 1;
-        std::string status;
-        const bool ok = putOnlineLevelDifficulty(levels[index], nextDifficulty, ctx, status);
-        if (ok) runtime.onlineLevelsLoaded = false;
-        runtime.vars["level_detail_status"] = status.empty() ? (ok ? "Rating updated." : "Rate failed.") : status;
-        runtime.vars["__reload_menu"] = "1";
+        runtime.difficultyLevel = levels[index];
+        runtime.difficultyChoice = runtime.difficultyFocus = std::clamp(levels[index].difficulty, 0, 9);
+        runtime.difficultyStatus.clear();
+        runtime.difficultyPopupOpen = true;
         return SlimMenuExit::Continue;
     }
     if (command == "vote_online_level") {
@@ -1869,6 +2013,8 @@ struct SlimMenuSession {
     std::unordered_map<std::string, std::string> vars;
     std::vector<SlimLevelEntry> localLevels, onlineLevels;
     bool localLevelsLoaded = false, onlineLevelsLoaded = false;
+    std::string onlineLevelsKey;
+    int onlinePageCount = 1, onlineTotal = 0;
     int selected = 0;
     float scrollY = 0.0f;
 };
@@ -1905,6 +2051,9 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
         runtime.onlineLevels = ctx.session->onlineLevels;
         runtime.localLevelsLoaded = ctx.session->localLevelsLoaded;
         runtime.onlineLevelsLoaded = ctx.session->onlineLevelsLoaded;
+        runtime.onlineLevelsKey = ctx.session->onlineLevelsKey;
+        runtime.onlinePageCount = ctx.session->onlinePageCount;
+        runtime.onlineTotal = ctx.session->onlineTotal;
         selected = ctx.session->selected;
         runtime.scrollY = ctx.session->scrollY;
         ctx.session->menu.clear();
@@ -1915,7 +2064,7 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
             selected = 0;
             int index = 0;
             for (const auto& item : menu.items) {
-                if (item.type != MenuItem::Type::Button) continue;
+                if (item.type == MenuItem::Type::Text) continue;
                 if (item.command == restoreCommand && item.arg == restoreArgument &&
                     (item.command != "level_detail" || item.label == restoreLabel)) {
                     selected = index;
@@ -1932,6 +2081,13 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
             runtime.scrollY = SlimMenuLayout::reveal(layoutFor(menu, runtime, ctx), buttonItemIndex(menu, selected), 0.0f);
         }
         bool draggingScrollbar = false, touchActive = false, touchDragged = false;
+        int draggingSlider = -1;
+        bool sliderUsesTouch = false;
+        bool exitTouchActive = false;
+        SDL_FingerID exitFinger = 0;
+        bool popupTouchActive = false;
+        SDL_FingerID popupFinger = 0;
+        int popupTouchButton = -1;
         SDL_FingerID trackedFinger = 0;
         float thumbGrab = 0.0f, touchStartX = 0.0f, touchStartY = 0.0f, touchStartScroll = 0.0f;
         presentMenuFrame(menu, runtime, ctx, selected);
@@ -1940,9 +2096,22 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
             bool reloadOnline = false;
             if (runtime.onlineLevelsRequest.valid() &&
                 runtime.onlineLevelsRequest.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
-                try { runtime.onlineLevels = runtime.onlineLevelsRequest.get(); }
-                catch (const std::exception& error) { SDL_Log("Online menu load failed: %s", error.what()); }
-                runtime.onlineLevelsLoaded = true;
+                const bool current = runtime.pendingOnlineLevelsKey == onlinePageKey(runtime, ctx);
+                try {
+                    OnlineLevelPage result = runtime.onlineLevelsRequest.get();
+                    if (current) {
+                        runtime.onlineLevels = std::move(result.levels);
+                        runtime.onlinePageCount = result.pageCount;
+                        runtime.onlineTotal = result.total;
+                        runtime.vars["online_level_page"] = std::to_string(result.page);
+                        runtime.onlineLevelsKey = onlinePageKey(runtime, ctx);
+                        runtime.vars["online_level_status"].clear();
+                    }
+                } catch (const std::exception& error) {
+                    SDL_Log("Online menu load failed: %s", error.what());
+                    if (current) runtime.vars["online_level_status"] = "Could not load this page. Refresh to retry.";
+                }
+                runtime.onlineLevelsLoaded = current;
                 reloadOnline = true;
             }
             if (runtime.accountRoleRequest.valid() &&
@@ -1988,7 +2157,8 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                 }
                 it = runtime.pendingGets.erase(it);
             }
-            const int count = std::max(1, buttonCount(menu));
+            const int exitIndex = buttonCount(menu);
+            const int count = exitIndex + 1;
             selected = std::clamp(selected, 0, count - 1);
             const auto layout = layoutFor(menu, runtime, ctx);
             runtime.scrollY = std::clamp(runtime.scrollY, 0.0f, (float)layout.maxScroll);
@@ -2002,10 +2172,13 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                 outY = gy / layout.scale;
                 return true;
             };
+            auto overExit = [&](float x, float y) {
+                return SlimMenuLayout::contains(kMenuExitRect, x * layout.scale, y * layout.scale);
+            };
             auto hitButton = [&](float x, float y) {
                 int button = 0;
                 for (size_t i = 0; i < menu.items.size(); ++i) {
-                    if (menu.items[i].type != MenuItem::Type::Button) continue;
+                    if (menu.items[i].type == MenuItem::Type::Text) continue;
                     if (SlimMenuLayout::hit(layout, i, x, y, runtime.scrollY)) return button;
                     ++button;
                 }
@@ -2016,11 +2189,106 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                 const auto thumb = menuScrollThumb(layout, runtime.scrollY);
                 scrollTo((y - track.y - thumbGrab) * layout.maxScroll / std::max(1, track.h - thumb.h));
             };
+            auto dragVolume = [&](float x) {
+                MenuItem* item = buttonAt(menu, draggingSlider);
+                if (!item) return;
+                int* volume = audioSliderValue(*item, ctx);
+                if (!volume) return;
+                const auto row = SlimMenuLayout::scrolled(layout.items[buttonItemIndex(menu, draggingSlider)], runtime.scrollY);
+                const auto track = audioSliderTrack(row);
+                const int value = (int)std::lround(std::clamp((x - track.x) / track.w, 0.0f, 1.0f) * 128.0f);
+                if (value != *volume) adjustInt(item->command, value - *volume, ctx);
+            };
+            auto chooseDifficulty = [&](int option) {
+                if (menuNetworkBusy(runtime)) return;
+                if (option >= 0 && option <= 9) {
+                    runtime.difficultyChoice = runtime.difficultyFocus = option;
+                    runtime.difficultyStatus.clear();
+                } else if (option == 11) {
+                    runtime.difficultyPopupOpen = false;
+                } else if (option == 10) {
+                    runtime.difficultySaving = true;
+                    presentMenuFrame(menu, runtime, ctx, selected, &layout);
+                    std::string status;
+                    bool ok = false;
+                    try { ok = putOnlineLevelDifficulty(runtime.difficultyLevel, runtime.difficultyChoice, ctx, status); }
+                    catch (const std::exception& error) { SDL_Log("Difficulty save failed: %s", error.what()); }
+                    runtime.difficultySaving = false;
+                    runtime.vars["level_detail_status"] = status.empty() ? (ok ? "Rating updated." : "Rate failed.") : status;
+                    if (ok) {
+                        runtime.difficultyPopupOpen = false;
+                        runtime.onlineLevelsLoaded = false;
+                        runtime.vars["__reload_menu"] = "1";
+                    } else {
+                        runtime.difficultyStatus = "Could not save. Try again.";
+                    }
+                }
+            };
             while (SDL_PollEvent(&e)) {
                 int activate = -1;
                 if (e.type == SDL_EVENT_QUIT) {
                     *ctx.running = false;
                     return SlimMenuExit::Quit;
+                }
+                if (runtime.difficultyPopupOpen) {
+                    const auto popupLayout = DifficultySelector::build(ctx.baseScreenW, ctx.baseScreenH);
+                    auto hitPopup = [&](float x, float y) {
+                        if (overExit(x, y)) return 12;
+                        return DifficultySelector::hit(popupLayout, x * layout.scale, y * layout.scale);
+                    };
+                    auto navigatePopup = [&](int dx, int dy) {
+                        runtime.difficultyFocus = DifficultySelector::navigate(runtime.difficultyFocus, dx, dy);
+                        if (runtime.difficultyFocus <= 9) runtime.difficultyChoice = runtime.difficultyFocus;
+                    };
+                    auto activatePopup = [&](int option) {
+                        if (option == 12) return !menuNetworkBusy(runtime);
+                        chooseDifficulty(option);
+                        return false;
+                    };
+                    if (e.type == SDL_EVENT_KEY_DOWN) {
+                        const auto key = e.key.key;
+                        if (key == SDLK_ESCAPE || key == SDLK_AC_BACK) chooseDifficulty(11);
+                        else if (key == SDLK_LEFT) navigatePopup(-1, 0);
+                        else if (key == SDLK_RIGHT) navigatePopup(1, 0);
+                        else if (key == SDLK_UP) navigatePopup(0, -1);
+                        else if (key == SDLK_DOWN) navigatePopup(0, 1);
+                        else if (key == SDLK_TAB) runtime.difficultyFocus = (runtime.difficultyFocus + ((e.key.mod & SDL_KMOD_SHIFT) ? 11 : 1)) % 12;
+                        else if (key >= SDLK_0 && key <= SDLK_9) chooseDifficulty((int)(key - SDLK_0));
+                        else if (!e.key.repeat && (key == SDLK_RETURN || key == SDLK_KP_ENTER)) {
+                            const int focused = runtime.difficultyFocus;
+                            chooseDifficulty(focused);
+                            if (focused <= 9) runtime.difficultyFocus = 10;
+                        }
+                    }
+                    if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
+                        const auto button = e.gbutton.button;
+                        if (button == SDL_GAMEPAD_BUTTON_EAST || button == SDL_GAMEPAD_BUTTON_BACK) chooseDifficulty(11);
+                        else if (button == SDL_GAMEPAD_BUTTON_DPAD_LEFT) navigatePopup(-1, 0);
+                        else if (button == SDL_GAMEPAD_BUTTON_DPAD_RIGHT) navigatePopup(1, 0);
+                        else if (button == SDL_GAMEPAD_BUTTON_DPAD_UP) navigatePopup(0, -1);
+                        else if (button == SDL_GAMEPAD_BUTTON_DPAD_DOWN) navigatePopup(0, 1);
+                        else if (button == SDL_GAMEPAD_BUTTON_SOUTH || button == SDL_GAMEPAD_BUTTON_START) {
+                            const int focused = runtime.difficultyFocus;
+                            chooseDifficulty(focused);
+                            if (focused <= 9) runtime.difficultyFocus = 10;
+                        }
+                    }
+                    float px = 0.0f, py = 0.0f;
+                    if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN && e.button.button == SDL_BUTTON_LEFT && e.button.which != SDL_TOUCH_MOUSEID &&
+                        pointer(e.button.x, e.button.y, false, px, py) && activatePopup(hitPopup(px, py))) return SlimMenuExit::Back;
+                    if (e.type == SDL_EVENT_FINGER_DOWN && !popupTouchActive && pointer(e.tfinger.x, e.tfinger.y, true, px, py)) {
+                        popupTouchActive = true;
+                        popupFinger = e.tfinger.fingerID;
+                        popupTouchButton = hitPopup(px, py);
+                    }
+                    if (popupTouchActive && (e.type == SDL_EVENT_FINGER_UP || e.type == SDL_EVENT_FINGER_CANCELED) && e.tfinger.fingerID == popupFinger) {
+                        popupTouchActive = false;
+                        if (e.type == SDL_EVENT_FINGER_UP && pointer(e.tfinger.x, e.tfinger.y, true, px, py) &&
+                            hitPopup(px, py) == popupTouchButton && activatePopup(popupTouchButton)) return SlimMenuExit::Back;
+                    }
+                    if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST) popupTouchActive = false;
+                    if (runtime.vars.erase("__reload_menu") > 0) goto next_menu;
+                    continue;
                 }
                 if (e.type == SDL_EVENT_KEY_DOWN) {
                     if (!runtime.waitingBind.empty()) {
@@ -2038,7 +2306,22 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                         runtime.waitingBind.clear();
                         continue;
                     }
-                    if (e.key.key == SDLK_ESCAPE || e.key.key == SDLK_AC_BACK) return SlimMenuExit::Back;
+                    if (e.key.key == SDLK_ESCAPE || e.key.key == SDLK_AC_BACK) {
+                        if (!menuNetworkBusy(runtime)) return SlimMenuExit::Back;
+                        continue;
+                    }
+                    if (MenuItem* item = buttonAt(menu, selected); item && audioSliderValue(*item, ctx)) {
+                        const int value = *audioSliderValue(*item, ctx);
+                        int delta = 0;
+                        if (e.key.key == SDLK_LEFT) delta = -8;
+                        if (e.key.key == SDLK_RIGHT) delta = 8;
+                        if (e.key.key == SDLK_HOME) delta = -value;
+                        if (e.key.key == SDLK_END) delta = 128 - value;
+                        if (e.key.key == SDLK_LEFT || e.key.key == SDLK_RIGHT || e.key.key == SDLK_HOME || e.key.key == SDLK_END) {
+                            if (delta) adjustInt(item->command, delta, ctx);
+                            continue;
+                        }
+                    }
                     const int before = selected;
                     if (e.key.key == SDLK_UP || e.key.key == SDLK_LEFT) selected = (selected + count - 1) % count;
                     if (e.key.key == SDLK_DOWN || e.key.key == SDLK_RIGHT) selected = (selected + 1) % count;
@@ -2061,6 +2344,24 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                     }
                     if (!e.key.repeat && (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER)) activate = selected;
                 }
+                if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN && runtime.waitingBind.empty()) {
+                    const auto button = e.gbutton.button;
+                    if (button == SDL_GAMEPAD_BUTTON_EAST || button == SDL_GAMEPAD_BUTTON_BACK) {
+                        if (!menuNetworkBusy(runtime)) return SlimMenuExit::Back;
+                        continue;
+                    }
+                    const bool left = button == SDL_GAMEPAD_BUTTON_DPAD_LEFT;
+                    const bool right = button == SDL_GAMEPAD_BUTTON_DPAD_RIGHT;
+                    MenuItem* item = buttonAt(menu, selected);
+                    if ((left || right) && item && audioSliderValue(*item, ctx)) {
+                        adjustInt(item->command, right ? 8 : -8, ctx);
+                    } else {
+                        if (button == SDL_GAMEPAD_BUTTON_DPAD_UP || left) selected = (selected + count - 1) % count;
+                        if (button == SDL_GAMEPAD_BUTTON_DPAD_DOWN || right) selected = (selected + 1) % count;
+                        runtime.scrollY = SlimMenuLayout::reveal(layout, buttonItemIndex(menu, selected), runtime.scrollY);
+                    }
+                    if (button == SDL_GAMEPAD_BUTTON_SOUTH || button == SDL_GAMEPAD_BUTTON_START) activate = selected;
+                }
                 if (e.type == SDL_EVENT_MOUSE_WHEEL) {
                     const float direction = e.wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -1.0f : 1.0f;
                     scrollTo(runtime.scrollY - e.wheel.y * direction * 48.0f / layout.scale);
@@ -2068,6 +2369,10 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                 float x = 0.0f, y = 0.0f;
                 if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN && e.button.button == SDL_BUTTON_LEFT && e.button.which != SDL_TOUCH_MOUSEID &&
                     pointer(e.button.x, e.button.y, false, x, y)) {
+                    if (overExit(x, y)) {
+                        if (!menuNetworkBusy(runtime)) return SlimMenuExit::Back;
+                        continue;
+                    }
                     auto track = menuScrollTrack(layout);
                     track.x -= 4; track.w += 8;
                     if (layout.maxScroll && SlimMenuLayout::contains(track, x, y)) {
@@ -2077,13 +2382,39 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                         dragScrollbar(y);
                     } else {
                         activate = hitButton(x, y);
+                        if (MenuItem* item = buttonAt(menu, activate); item && audioSliderValue(*item, ctx)) {
+                            selected = draggingSlider = activate;
+                            sliderUsesTouch = false;
+                            dragVolume(x);
+                            activate = -1;
+                        }
                     }
                 }
                 if (e.type == SDL_EVENT_MOUSE_MOTION && draggingScrollbar && pointer(e.motion.x, e.motion.y, false, x, y)) dragScrollbar(y);
-                if (e.type == SDL_EVENT_MOUSE_BUTTON_UP && e.button.button == SDL_BUTTON_LEFT) draggingScrollbar = false;
+                if (e.type == SDL_EVENT_MOUSE_MOTION && draggingSlider >= 0 && !sliderUsesTouch &&
+                    pointer(e.motion.x, e.motion.y, false, x, y)) dragVolume(x);
+                if (e.type == SDL_EVENT_MOUSE_BUTTON_UP && e.button.button == SDL_BUTTON_LEFT) {
+                    draggingScrollbar = false;
+                    if (!sliderUsesTouch) draggingSlider = -1;
+                }
                 if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST) {
                     draggingScrollbar = false;
                     touchActive = false;
+                    draggingSlider = -1;
+                    exitTouchActive = false;
+                }
+                if (e.type == SDL_EVENT_FINGER_DOWN && !touchActive && !exitTouchActive &&
+                    pointer(e.tfinger.x, e.tfinger.y, true, x, y) && overExit(x, y)) {
+                    exitTouchActive = !menuNetworkBusy(runtime);
+                    exitFinger = e.tfinger.fingerID;
+                    continue;
+                }
+                if (exitTouchActive && (e.type == SDL_EVENT_FINGER_UP || e.type == SDL_EVENT_FINGER_CANCELED) &&
+                    e.tfinger.fingerID == exitFinger) {
+                    exitTouchActive = false;
+                    if (e.type == SDL_EVENT_FINGER_UP && pointer(e.tfinger.x, e.tfinger.y, true, x, y) &&
+                        overExit(x, y) && !menuNetworkBusy(runtime)) return SlimMenuExit::Back;
+                    continue;
                 }
                 if (e.type == SDL_EVENT_FINGER_DOWN && !touchActive && pointer(e.tfinger.x, e.tfinger.y, true, x, y) &&
                     SlimMenuLayout::contains(layout.body, x, y)) {
@@ -2091,18 +2422,32 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                     touchDragged = false;
                     trackedFinger = e.tfinger.fingerID;
                     touchStartX = x; touchStartY = y; touchStartScroll = runtime.scrollY;
+                    const int hit = hitButton(x, y);
+                    if (MenuItem* item = buttonAt(menu, hit); item && audioSliderValue(*item, ctx)) {
+                        selected = draggingSlider = hit;
+                        sliderUsesTouch = true;
+                        dragVolume(x);
+                    }
                 }
                 if (touchActive && e.type == SDL_EVENT_FINGER_MOTION && e.tfinger.fingerID == trackedFinger &&
                     pointer(e.tfinger.x, e.tfinger.y, true, x, y)) {
                     if (std::abs(y - touchStartY) > 8.0f / layout.scale || std::abs(x - touchStartX) > 8.0f / layout.scale) touchDragged = true;
-                    if (touchDragged) scrollTo(touchStartScroll + touchStartY - y);
+                    if (draggingSlider >= 0 && sliderUsesTouch) dragVolume(x);
+                    else if (touchDragged) scrollTo(touchStartScroll + touchStartY - y);
                 }
                 if (touchActive && (e.type == SDL_EVENT_FINGER_UP || e.type == SDL_EVENT_FINGER_CANCELED) && e.tfinger.fingerID == trackedFinger) {
-                    if (e.type == SDL_EVENT_FINGER_UP && !touchDragged && pointer(e.tfinger.x, e.tfinger.y, true, x, y)) activate = hitButton(x, y);
+                    if (draggingSlider >= 0 && sliderUsesTouch) {
+                        if (e.type == SDL_EVENT_FINGER_UP && pointer(e.tfinger.x, e.tfinger.y, true, x, y)) dragVolume(x);
+                        draggingSlider = -1;
+                    } else if (e.type == SDL_EVENT_FINGER_UP && !touchDragged && pointer(e.tfinger.x, e.tfinger.y, true, x, y)) activate = hitButton(x, y);
                     touchActive = false;
                 }
                 if (activate >= 0) {
                     selected = activate;
+                    if (activate == exitIndex) {
+                        if (!menuNetworkBusy(runtime)) return SlimMenuExit::Back;
+                        continue;
+                    }
                     if (MenuItem* item = buttonAt(menu, selected)) {
                         const std::string before = currentMenu;
                         const SlimMenuExit exit = execute(*item, runtime, ctx, currentMenu);
@@ -2113,6 +2458,9 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                             ctx.session->onlineLevels = runtime.onlineLevels;
                             ctx.session->localLevelsLoaded = runtime.localLevelsLoaded;
                             ctx.session->onlineLevelsLoaded = runtime.onlineLevelsLoaded;
+                            ctx.session->onlineLevelsKey = runtime.onlineLevelsKey;
+                            ctx.session->onlinePageCount = runtime.onlinePageCount;
+                            ctx.session->onlineTotal = runtime.onlineTotal;
                             ctx.session->selected = selected;
                             ctx.session->scrollY = runtime.scrollY;
                         }

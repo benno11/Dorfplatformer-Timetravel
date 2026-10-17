@@ -61,6 +61,17 @@
       </div>
       <section class="card">
         <h2>Client version blacklist</h2>
+        <h3>Minimum allowed build</h3>
+        <p id="minimumVersionStatus" class="muted">Minimum build: 239. Older builds and legacy clients cannot connect.</p>
+        <label for="minimumVersionRange">Minimum version</label>
+        <div class="minimum-version-bar">
+          <input id="minimumVersionRange" type="range" min="0" max="1000" step="1" value="239" aria-label="Minimum allowed build">
+          <input id="minimumVersion" type="number" min="0" max="2100000000" step="1" value="239" aria-label="Exact minimum build ID">
+          <button id="applyMinimumVersion" class="primary">Apply minimum</button>
+        </div>
+        <label for="minimumVersionReason">Reason (shown to older clients)</label><textarea id="minimumVersionReason" maxlength="500" rows="2">Please update to build 239 or newer.</textarea>
+        <p class="muted">Use a compiled build ID. Changes apply when you press Apply minimum. Set 0 to disable the minimum; individual blacklist entries still apply.</p>
+        <h3>Individual blocked builds</h3>
         <p class="muted">Block a compiled build ID (for example 27), or legacy for older official clients without build information. Updates and this dashboard remain available.</p>
         <label for="versionId">Build ID or legacy</label><input id="versionId" maxlength="10" placeholder="27">
         <label for="versionReason">Reason (shown to blocked clients)</label><textarea id="versionReason" maxlength="500" rows="2"></textarea>

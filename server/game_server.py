@@ -113,8 +113,25 @@ class Store:
                 CREATE INDEX IF NOT EXISTS admin_events_target ON admin_events(target_id,id);
                 CREATE TABLE IF NOT EXISTS blocked_versions(
                     version_id TEXT PRIMARY KEY, reason TEXT NOT NULL, created_at INTEGER NOT NULL);
-                PRAGMA user_version=5;
+                CREATE TABLE IF NOT EXISTS client_version_policy(
+                    id INTEGER PRIMARY KEY CHECK(id=1),
+                    minimum_build INTEGER NOT NULL CHECK(minimum_build BETWEEN 0 AND 2100000000),
+                    reason TEXT NOT NULL, updated_at INTEGER NOT NULL);
             """)
+            # Seed this policy once for new and existing installations. Later
+            # operator unblocks and custom reasons must survive server restarts.
+            db.execute("BEGIN IMMEDIATE")
+            if db.execute("PRAGMA user_version").fetchone()[0] < 6:
+                reason = "Versions older than 2.3.1 are no longer supported. Update to 2.3.1 or later."
+                created_at = int(time.time())
+                db.executemany("INSERT OR IGNORE INTO blocked_versions VALUES(?,?,?)",
+                               [(str(version), reason, created_at) for version in range(1, 27)] +
+                               [("legacy", reason, created_at)])
+                db.execute("PRAGMA user_version=6")
+            db.execute("INSERT OR IGNORE INTO client_version_policy VALUES(1,239,?,?)",
+                       ("Please update to build 239 or newer.", int(time.time())))
+            if db.execute("PRAGMA user_version").fetchone()[0] < 7:
+                db.execute("PRAGMA user_version=7")
 
     def check_client_version(self, user_agent):
         # Browsers remain usable for account management. This is compatibility
@@ -124,7 +141,10 @@ class Store:
         build = client_build_id(user_agent)
         version = str(build) if build is not None else "legacy"
         with self.connect() as db:
+            policy = db.execute("SELECT minimum_build,reason FROM client_version_policy WHERE id=1").fetchone()
             block = db.execute("SELECT reason FROM blocked_versions WHERE version_id=?", (version,)).fetchone()
+        if policy["minimum_build"] > 0 and (build is None or build < policy["minimum_build"]):
+            raise ApiError(426, f"Minimum supported build is {policy['minimum_build']}. " + policy["reason"])
         if block:
             raise ApiError(426, "This client version is blocked. Please update the game. Reason: " + block["reason"])
 
@@ -318,7 +338,8 @@ class Store:
                 FROM level_votes GROUP BY level_id
             ) v ON v.level_id=levels.id"""
 
-    def levels(self, method, level_id, data_only, shallow, body, token, metadata=False, client_version=None):
+    def levels(self, method, level_id, data_only, shallow, body, token, metadata=False, client_version=None,
+               page=None, page_size=10, difficulty_filter="all"):
         def compatible(version):
             uploaded_version = numeric_version_id(version)
             return client_version is None or (uploaded_version is not None and uploaded_version <= client_version)
@@ -326,6 +347,28 @@ class Store:
         with self.connect() as db:
             if method == "GET":
                 if not level_id:
+                    if page is not None:
+                        if type(page) is not int or not 0 <= page <= 2147483647:
+                            raise ApiError(400, "Page must be a nonnegative integer.")
+                        if type(page_size) is not int or not 1 <= page_size <= 100:
+                            raise ApiError(400, "Page size must be between 1 and 100.")
+                        filters = {"all": "1", "easy": "d.difficulty BETWEEN 1 AND 3",
+                                   "medium": "d.difficulty BETWEEN 4 AND 6",
+                                   "hard": "d.difficulty BETWEEN 7 AND 9", "unrated": "d.difficulty IS NULL"}
+                        if difficulty_filter not in filters:
+                            raise ApiError(400, "Unknown difficulty filter.")
+                        db.create_function("version_compatible", 1, compatible, deterministic=True)
+                        where = " WHERE version_compatible(levels.api_version) AND " + filters[difficulty_filter]
+                        total = db.execute("SELECT COUNT(*) FROM levels LEFT JOIN level_difficulties d "
+                                           "ON d.level_id=levels.id" + where).fetchone()[0]
+                        page_count = max(1, (total + page_size - 1) // page_size)
+                        page = min(page, page_count - 1)
+                        fields = "levels.id,levels.name,levels.api_version,levels.uploaded_at" if metadata or shallow else "levels.*"
+                        rows = db.execute(self.level_select_sql(fields) + where + " ORDER BY levels.id LIMIT ? OFFSET ?",
+                                          (page_size, page * page_size)).fetchall()
+                        levels = {r["id"]: True if shallow else self.level_data(r, include_data=not metadata) for r in rows}
+                        return {"levels": levels, "page": page, "page_size": page_size,
+                                "total": total, "page_count": page_count}
                     if shallow:
                         return {row["id"]: True for row in db.execute("SELECT id,api_version FROM levels ORDER BY id")
                                 if compatible(row["api_version"])}
@@ -566,6 +609,29 @@ class Handler(BaseHTTPRequestHandler):
         try:
             url = urlsplit(self.path)
             path = url.path
+            # Recovery downloads must be handled before any client-version or
+            # account policy so blocked and legacy clients can still update.
+            release_name = None
+            if self.command == "GET" and path == "/update-manifest.json":
+                if self.server.update_manifest_url:
+                    self.redirect(self.server.update_manifest_url)
+                    return
+                release_name = "update-manifest.json"
+            elif self.command == "GET" and re.fullmatch(r"/releases/[A-Za-z0-9_-][A-Za-z0-9_.-]*\.(exe|msi|zip|apk|aab)", path):
+                release_name = path.rsplit("/", 1)[1]
+            if release_name:
+                file = (self.server.releases / release_name).resolve()
+                if file.parent != self.server.releases or not file.is_file():
+                    raise ApiError(404, "Release file not published.")
+                with file.open("rb") as stream:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json" if release_name.endswith(".json") else "application/octet-stream")
+                    self.send_header("Content-Length", str(os.fstat(stream.fileno()).st_size))
+                    self.send_header("X-Content-Type-Options", "nosniff")
+                    self.end_headers()
+                    while chunk := stream.read(65536):
+                        self.wfile.write(chunk)
+                return
             if path == "/api.json" or path.startswith("/api/auth/") or path.startswith("/levels"):
                 self.server.store.check_client_version(self.headers.get("User-Agent", ""))
             token = self.headers.get("Authorization", "")
@@ -616,32 +682,25 @@ class Handler(BaseHTTPRequestHandler):
             if match:
                 body = self.body() if self.command == "PUT" else {}
                 build = client_build_id(self.headers.get("User-Agent", ""))
+                query = parse_qs(url.query, keep_blank_values=True)
+                paginated = any(key in query for key in ("page", "page_size", "filter"))
+                def page_number(key, default):
+                    values = query.get(key, [str(default)])
+                    if len(values) != 1 or not re.fullmatch(r"[0-9]{1,10}", values[0]):
+                        raise ApiError(400, "Invalid pagination parameter: " + key)
+                    return int(values[0])
+                if paginated and (self.command != "GET" or match[1]):
+                    raise ApiError(400, "Pagination is only supported for level lists.")
+                if len(query.get("filter", ["all"])) != 1:
+                    raise ApiError(400, "Specify one difficulty filter.")
                 result = self.server.store.levels(self.command, match[1], bool(match[2]),
-                          parse_qs(url.query).get("shallow") == ["true"], body, token,
-                          metadata=parse_qs(url.query).get("metadata") == ["true"],
-                          client_version=(build or 1) if self.command == "GET" else build)
+                          query.get("shallow") == ["true"], body, token,
+                          metadata=query.get("metadata") == ["true"],
+                          client_version=(build or 1) if self.command == "GET" else build,
+                          page=page_number("page", 0) if paginated else None,
+                          page_size=page_number("page_size", 10) if paginated else 10,
+                          difficulty_filter=query.get("filter", ["all"])[0])
                 self.send(200, result)
-                return
-            release_name = None
-            if self.command == "GET" and path == "/update-manifest.json":
-                if self.server.update_manifest_url:
-                    self.redirect(self.server.update_manifest_url)
-                    return
-                release_name = "update-manifest.json"
-            elif self.command == "GET" and re.fullmatch(r"/releases/[A-Za-z0-9_-][A-Za-z0-9_.-]*\.(exe|msi|zip|apk|aab)", path):
-                release_name = path.rsplit("/", 1)[1]
-            if release_name:
-                file = (self.server.releases / release_name).resolve()
-                if file.parent != self.server.releases or not file.is_file():
-                    raise ApiError(404, "Release file not published.")
-                with file.open("rb") as stream:
-                    self.send_response(200)
-                    self.send_header("Content-Type", "application/json" if release_name.endswith(".json") else "application/octet-stream")
-                    self.send_header("Content-Length", str(os.fstat(stream.fileno()).st_size))
-                    self.send_header("X-Content-Type-Options", "nosniff")
-                    self.end_headers()
-                    while chunk := stream.read(65536):
-                        self.wfile.write(chunk)
                 return
             static = {"/": ("index.html", "text/html; charset=utf-8"),
                       "/account-manager.html": ("index.html", "text/html; charset=utf-8"),

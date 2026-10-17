@@ -1,4 +1,5 @@
 #include "SlimMenuLayout.h"
+#include "DifficultySelector.h"
 
 #include <iostream>
 #include <limits>
@@ -67,6 +68,25 @@ int main() {
         require(reveal(tiny, 0, 0) == 0, "Oversized selected row should reveal its top");
         require(build(960, 540, std::numeric_limits<float>::quiet_NaN(), Align::Center, Align::Center, {}).scale == 1,
                 "Non-finite scale was not handled");
+        for (const auto size : {std::array<int, 2>{320, 240}, {960, 540}, {1920, 1080}}) {
+            const auto popup = DifficultySelector::build(size[0], size[1]);
+            for (int option = 0; option < 12; ++option) {
+                const auto& r = popup.buttons[option];
+                require(r.w > 0 && r.h > 0 && r.x >= popup.panel.x && r.y >= popup.panel.y &&
+                    r.x + r.w <= popup.panel.x + popup.panel.w && r.y + r.h <= popup.panel.y + popup.panel.h,
+                    "Difficulty popup control escaped its panel");
+                require(DifficultySelector::hit(popup, r.x + r.w / 2, r.y + r.h / 2) == option,
+                    "Difficulty popup option is obscured or cannot be selected");
+            }
+            require(DifficultySelector::hit(popup, -1, -1) == -1, "Outside popup click selected a rating");
+        }
+        int focus = 2;
+        for (int next : {5, 8, 0, 10, 2}) {
+            focus = DifficultySelector::navigate(focus, 0, 1);
+            require(focus == next, "Difficulty keyboard navigation cannot reach the rating and action rows");
+        }
+        require(DifficultySelector::navigate(10, 1, 0) == 11, "Cannot navigate to Cancel");
+        require(DifficultySelector::navigate(11, -1, 0) == 10, "Cannot navigate back to Apply");
         std::cout << "Slim menu layout tests passed\n";
         return 0;
     } catch (const std::exception& error) {

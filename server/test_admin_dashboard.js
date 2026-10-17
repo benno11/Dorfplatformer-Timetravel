@@ -22,6 +22,7 @@ test("local dashboard manages players, reviews and rates levels, confirms deleti
     is_moderator: 0, upload_suspended: 0, warning: null };
   let levels = [{ id: "demo", level_id: "demo", name: "Demo", owner: "<player>", difficulty: null, data: "raw level data" }];
   let allowDelete = false;
+  let minimumVersionPolicy = {minimum_build: 239, reason: "Update your game."};
   const requests = [];
   const context = {
     document: { getElementById: q, createElement: () => new Element(), body: new Element() },
@@ -44,10 +45,11 @@ test("local dashboard manages players, reviews and rates levels, confirms deleti
         levels[0].difficulty = body.difficulty;
       }
       if (route === "/admin/api/delete-level") levels = [];
+      if (route === "/admin/api/minimum-version") minimumVersionPolicy = {...body};
       if (route === "/admin/api/level") result = levels[0];
       if (route === "/admin/api/state") result = {
         users: [player], levels, events: [], stats: { players: 1, levels: levels.length, moderators: player.is_moderator, suspended: player.upload_suspended },
-        users_total: 1, levels_total: levels.length
+        users_total: 1, levels_total: levels.length, minimum_version_policy: minimumVersionPolicy
       };
       return { ok: true, json: async () => JSON.parse(JSON.stringify(result)) };
     }
@@ -61,6 +63,28 @@ test("local dashboard manages players, reviews and rates levels, confirms deleti
   await trigger(q("unlockForm"), "submit");
   assert.equal(q("dashboard").hidden, false);
   assert.equal(q("adminKey").value, "");
+  assert.equal(q("minimumVersion").value, "239");
+  assert.equal(q("minimumVersionRange").value, "239");
+  assert.match(q("minimumVersionStatus").textContent, /239/);
+  q("minimumVersionRange").value = "250";
+  const beforeMinimumEdit = requests.length;
+  await trigger(q("minimumVersionRange"), "input");
+  assert.equal(q("minimumVersion").value, "250");
+  assert.equal(requests.length, beforeMinimumEdit);
+  q("minimumVersionReason").value = "New level format";
+  await trigger(q("applyMinimumVersion"));
+  assert.deepEqual(requests.at(-2).body, {minimum_build: 250, reason: "New level format"});
+  assert.equal(q("minimumVersion").value, "250");
+  q("minimumVersion").value = "239";
+  await trigger(q("minimumVersion"), "input");
+  assert.equal(q("minimumVersionRange").value, "239");
+  await trigger(q("applyMinimumVersion"));
+  assert.equal(minimumVersionPolicy.minimum_build, 239);
+  q("minimumVersion").value = "-1";
+  const beforeInvalidMinimum = requests.length;
+  await trigger(q("applyMinimumVersion"));
+  assert.equal(requests.length, beforeInvalidMinimum);
+  assert.match(q("status").textContent, /Enter a minimum build/);
   assert.equal(q("players").children[0].children[0].textContent, "<player>");
   await trigger(q("players").children[0].children[3].children[0]);
   q("playerReason").value = "Trusted reviewer";

@@ -44,8 +44,10 @@ Commands:
 - `button "Label" start assets/levels/level_001.txt` starts a specific level path.
 - `button "Label" toggle menu_music_enabled` toggles a boolean setting.
 - `button "Label" inc music_volume` or `dec music_volume` changes a numeric setting.
+- `slider "Music Volume" music_volume` and `slider "Sound Effects Volume" sfx_volume` create volume sliders with percentage labels. Click/tap or drag to adjust; Up/Down selects a control and Left/Right adjusts it with the keyboard or controller D-pad. Home/End sets the selected slider to 0%/100%. Changes apply immediately and are saved.
 - `button "Label" get var=/api/path` performs a GET request and stores the response in `${var}`.
 - `button "Label" back` returns to the title screen.
+- Every scripted/generated menu has a fixed top-left Exit button that returns directly to the title screen. It is disabled while that menu has an active online-level, account-role, or scripted GET request, and automatically enables when the requests finish. Escape, controller Back, and `back` commands respect the same restriction. Navigate Up from the first control to focus Exit, then press Enter/controller Accept.
 - `button "Label" quit` closes the game.
 - `if var skip 2` skips the next 2 menu lines when `var` is boolean false.
 - `if var false skip 2` is the same, written more explicitly.
@@ -107,6 +109,7 @@ Generated local and online level menus:
 - The generated local-level page includes a Create button that opens the editor.
 - Selecting a generated level opens a dedicated detail page before launching it.
 - Each generated page shows up to 10 levels.
+- Online pages request only that page's metadata from the server using `page`, `page_size=10`, and `filter`. Changing the page or filter requests the new page; late responses for older selections are ignored. Update the game and server together to enable this API.
 - Page controls are `level_page local:prev`, `level_page local:next`, `level_page online:prev`, and `level_page online:next`.
 - Filter controls are `level_filter local:all`, `level_filter local:unrated`, `level_filter online:all`, `level_filter online:easy`, `level_filter online:medium`, `level_filter online:hard`, and `level_filter online:unrated`.
 - Difficulty filters mean easy `1-3`, medium `4-6`, hard `7-9`, and unrated `0` or missing difficulty.
@@ -116,7 +119,7 @@ Level detail pages:
 
 - Local level details show name, difficulty, verification state, and actions for Play, Edit, Upload, Delete, and Back.
 - Online level details show name, difficulty, and actions for Play, Update Download, and Back.
-- Moderator accounts also see a Rate button on online level details. It cycles difficulty from unrated to `1`, then up through `9`, then back to unrated.
+- Moderator accounts also see Set Difficulty on online level details. It opens a popup with ratings `1`–`9`, Unrated (clear the rating), Apply, and Cancel. Mouse/touch selects an option; arrow keys or the controller D-pad navigate, Enter/Accept selects, and Escape/Back cancels. Number keys select ratings directly. Apply saves the selected rating; Cancel leaves the previous rating unchanged.
 - `Update Download` refreshes the downloaded/cached copy of that online level from the server.
 - Uploading a local level requires verification.
 
@@ -239,7 +242,7 @@ Account and upload endpoints exist on the same API, but slim-menu `get` should n
 - `DELETE /levels/<id>.json`
 - `PUT /levels/<id>/difficulty`
 
-The generated online level detail page uses `/api/auth/lookup` to decide whether the signed-in account is a moderator. The Rate button is hidden unless the lookup response contains a moderator/admin signal such as `mod`, `moderator`, `isMod`, `isModerator`, `admin`, `isAdmin`, a `role` of `mod`, `moderator`, `admin`, or `owner`, or the same values inside `roles`, `claims`, or `customClaims`.
+The generated online level detail page uses `/api/auth/lookup` to decide whether the signed-in account is a moderator. Set Difficulty is hidden unless the lookup response contains a moderator/admin signal such as `mod`, `moderator`, `isMod`, `isModerator`, `admin`, `isAdmin`, a `role` of `mod`, `moderator`, `admin`, or `owner`, or the same values inside `roles`, `claims`, or `customClaims`.
 
 When a moderator presses Rate, the client sends:
 

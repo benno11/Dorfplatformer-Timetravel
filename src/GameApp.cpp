@@ -3348,6 +3348,7 @@ int RunGameApp(int argc, char** argv) {
                 player.x = pj.value("x", player.x);
                 player.y = pj.value("y", player.y);
                 player.vx = pj.value("vx", player.vx);
+                player.tilePushDirection = std::clamp(pj.value("tilePushDirection", 0), -1, 1);
                 player.vy = pj.value("vy", player.vy);
                 player.w = pj.value("w", player.w);
                 player.h = pj.value("h", player.h);
@@ -3902,6 +3903,7 @@ int RunGameApp(int argc, char** argv) {
             j["x"] = p.x;
             j["y"] = p.y;
             j["vx"] = p.vx;
+            j["tilePushDirection"] = p.tilePushDirection;
             j["vy"] = p.vy;
             j["w"] = p.w;
             j["h"] = p.h;
@@ -5079,6 +5081,7 @@ int RunGameApp(int argc, char** argv) {
                     player.x = s.x;
                     player.y = s.y;
                     player.vx = s.vx;
+                    player.tilePushDirection = 0;
                     player.vy = s.vy;
                     player.w = s.w;
                     player.h = s.h;
@@ -5254,6 +5257,7 @@ int RunGameApp(int argc, char** argv) {
                 const float ejectSpeed = 620.0f;
                 const float verticalDir = startedInsideSolid ? -1.0f : -0.55f;
                 player.vx = ex * ejectSpeed;
+                player.tilePushDirection = 0;
                 player.vy = verticalDir * ejectSpeed;
                 player.onGround = false;
             };
@@ -5345,6 +5349,7 @@ int RunGameApp(int argc, char** argv) {
                 positionChanged = (std::fabs(player.x - oldX) > eps) || (std::fabs(player.y - oldY) > eps);
                 if (positionChanged) addMovementReason(MR_FAST_TRAVEL);
                 player.vx = fastTravelBlendVx;
+                player.tilePushDirection = 0;
                 player.vy = fastTravelBlendVy;
                 player.onGround = false;
                 if (positionChanged || fastTravelReload) {
@@ -5970,6 +5975,7 @@ int RunGameApp(int argc, char** argv) {
                 player.y = playerSpawnLockY;
                 player.vx = 0.0f;
                 player.vy = 0.0f;
+                player.tilePushDirection = 0;
                 player.jumpHeld = false;
                 player.jumpWasDown = false;
                 player.jumpHoldTime = 0.0f;
@@ -6136,7 +6142,10 @@ int RunGameApp(int argc, char** argv) {
                     if (!foundSafe) {
                         player.x = beforeWrapX;
                         player.y = beforeWrapY;
-                        if (wrappedX) player.vx = 0.0f;
+                        if (wrappedX) {
+                            player.vx = 0.0f;
+                            player.tilePushDirection = 0;
+                        }
                         if (wrappedY) player.vy = 0.0f;
                     } else if (std::fabs(player.y - wrappedPosY) > 0.01f) {
                         player.onGround = false;
@@ -6219,6 +6228,7 @@ int RunGameApp(int argc, char** argv) {
                         const float playerCenterX = player.x + player.w * 0.5f;
                         const float pushDir = (playerCenterX < bossState.x) ? -1.0f : 1.0f;
                         player.vx = pushDir * 520.0f;
+                        player.tilePushDirection = 0;
                         player.vy = -760.0f;
                         player.onGround = false;
                         audio.playLoseSfx();
@@ -6406,9 +6416,11 @@ int RunGameApp(int argc, char** argv) {
                     if (player.x < minPlayerX) {
                         player.x = minPlayerX;
                         if (player.vx < 0.0f) player.vx = 0.0f;
+                        player.tilePushDirection = 0;
                     } else if (player.x > maxPlayerX) {
                         player.x = maxPlayerX;
                         if (player.vx > 0.0f) player.vx = 0.0f;
+                        player.tilePushDirection = 0;
                     }
                     if (player.y < minPlayerY) {
                         player.y = minPlayerY;
@@ -6689,6 +6701,7 @@ int RunGameApp(int argc, char** argv) {
                             player.anim = ANIM_HURT;
                             player.animTime = 0.0f;
                             player.vx = (player.facing < 0) ? 320.0f : -320.0f;
+                            player.tilePushDirection = 0;
                             player.vy = -760.0f;
                             player.onGround = false;
                             audio.playLoseSfx();

@@ -68,6 +68,14 @@ async function refresh() {
     entry.name, entry.owner, entry.difficulty == null ? "Unrated" : entry.difficulty + "/9"
   ], { label: "Review", run: () => selectLevel(entry.id) }));
   q("blockedVersions").replaceChildren();
+  const minimum = state.minimum_version_policy || {minimum_build: 239, reason: "Please update to build 239 or newer."};
+  q("minimumVersion").value = String(minimum.minimum_build);
+  q("minimumVersionRange").max = String(Math.min(2100000000, Math.max(1000, minimum.minimum_build * 2)));
+  q("minimumVersionRange").value = String(minimum.minimum_build);
+  q("minimumVersionReason").value = minimum.reason;
+  q("minimumVersionStatus").textContent = minimum.minimum_build === 0
+    ? "Minimum build disabled. Individual blacklist entries still apply."
+    : "Minimum build: " + minimum.minimum_build + ". Older builds and legacy clients cannot connect.";
   for (const block of state.blocked_versions || []) q("blockedVersions").appendChild(row([
     block.version_id, block.reason, new Date(block.created_at * 1000).toLocaleString()
   ]));
@@ -173,3 +181,18 @@ async function versionBlock(enabled) {
 }
 bind("blockVersion", () => versionBlock(true));
 bind("unblockVersion", () => versionBlock(false));
+q("minimumVersionRange").addEventListener("input", () => { q("minimumVersion").value = q("minimumVersionRange").value; });
+q("minimumVersion").addEventListener("input", () => {
+  const value = Number(q("minimumVersion").value);
+  if (Number.isInteger(value) && value >= 0 && value <= 2100000000) {
+    q("minimumVersionRange").max = String(Math.min(2100000000, Math.max(1000, value * 2)));
+    q("minimumVersionRange").value = String(value);
+  }
+});
+bind("applyMinimumVersion", async () => {
+  const value = q("minimumVersion").value.trim();
+  if (!/^(0|[1-9][0-9]{0,9})$/.test(value) || Number(value) > 2100000000)
+    throw new Error("Enter a minimum build from 0 to 2100000000.");
+  await api("minimum-version", {minimum_build: Number(value), reason: reason("minimumVersionReason")});
+  await refresh(); status("Minimum client build saved.");
+});
