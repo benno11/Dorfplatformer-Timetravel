@@ -7459,7 +7459,8 @@ int RunGameApp(int argc, char** argv) {
                         mapX %= map.w;
                         if (mapX < 0) mapX += map.w;
                     }
-                    const unsigned short id = map.tileIds[row + mapX];
+                    const unsigned short sourceId = map.tileIds[row + mapX];
+                    const unsigned short id = waterEffectsEnabled && sourceId == 29 ? 41 : sourceId;
                     if (id == 0 || (waterEffectsEnabled && map.water[row + mapX])) continue;
 
                     const Frame* frame = nullptr;
@@ -8260,7 +8261,8 @@ int RunGameApp(int argc, char** argv) {
                         if (!WaterVisuals::wet(map, x, y, renderWrapX, renderWrapY)) continue;
                         const int mx = (x % map.w + map.w) % map.w;
                         const int my = (y % map.h + map.h) % map.h;
-                        const int id = map.tileIds[my * map.w + mx];
+                        const int sourceId = map.tileIds[my * map.w + mx];
+                        const int id = sourceId == 29 ? 41 : sourceId;
                         const Frame* frame = nullptr;
                         const auto tile = tileFrameById.find(id);
                         if (tile != tileFrameById.end()) {
