@@ -5,5 +5,6 @@ namespace ObjectIds {
 inline constexpr int Pickup = 1001;
 inline constexpr int Goal = 1002;
 inline constexpr int ShellChraker = 95;
+inline constexpr int MovingPlatform = 96;
 inline constexpr int Shield = 97;
 }

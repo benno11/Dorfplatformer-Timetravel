@@ -44,6 +44,7 @@
 #include "ShellChrakerRenderer.h"
 #include "Shield.h"
 #include "ShieldRenderer.h"
+#include "MovingPlatform.h"
 #include "Player.h"
 #include "PlayerController.h"
 #include "SimulationTiming.h"
@@ -933,6 +934,7 @@ int RunGameApp(int argc, char** argv) {
     entityFrameKeyByObjectId["31"] = "Spring";
     entityFrameKeyByObjectId["46"] = "Bumper";
     entityFrameKeyByObjectId[std::to_string(ObjectIds::Shield)] = "Shied_icon";
+    entityFrameKeyByObjectId[std::to_string(ObjectIds::MovingPlatform)] = "moving_block";
     std::unordered_set<int> knownObjectIds{
         31, 46, 57, 58, 59, 60, 61, 62, 63, 64, 65, 67, 69, 70, 96, ObjectIds::Pickup, ObjectIds::Goal, ObjectIds::ShellChraker, ObjectIds::Shield
     };
@@ -2810,6 +2812,7 @@ int RunGameApp(int argc, char** argv) {
         std::vector<ObjectInstance> objects;
         std::vector<int> objectIds;
         std::vector<ShellChraker::State> shellChrakerStates;
+        std::vector<MovingPlatform::State> movingPlatformStates;
         LevelMeta meta;
         Player player;
         bool wrapTriggerXActive = false;
@@ -2841,6 +2844,7 @@ int RunGameApp(int argc, char** argv) {
             return value;
         };
         auto refreshObjectIdCache = [&]() {
+            movingPlatformStates.resize(objects.size());
             shellChrakerStates.assign(objects.size(), ShellChraker::State{});
             objectIds.clear();
             objectIds.reserve(objects.size());
@@ -3255,6 +3259,7 @@ int RunGameApp(int argc, char** argv) {
             currentAreaIdText = buildAreaIdText();
         };
         auto reloadLevel = [&](bool showIntroCard = true) {
+            movingPlatformStates.clear();
             waterEffects.reset();
             levelManager.reloadLevel(map, objects, meta, player);
             if (hardmodeRun) {
@@ -3465,6 +3470,7 @@ int RunGameApp(int argc, char** argv) {
             }
             if (savedGameRoot.contains("objects") && savedGameRoot["objects"].is_array()) {
                 objects.clear();
+                movingPlatformStates.clear();
                 objects.reserve(savedGameRoot["objects"].size());
                 for (const auto& objj : savedGameRoot["objects"]) {
                     if (!objj.is_object()) continue;
@@ -3473,6 +3479,10 @@ int RunGameApp(int argc, char** argv) {
                     obj.x = objj.value("x", 0.0f);
                     obj.y = objj.value("y", 0.0f);
                     objects.push_back(std::move(obj));
+                    MovingPlatform::State platform;
+                    platform.elapsed = std::clamp(objj.value("platform_elapsed", 0.0f), 0.0f, MovingPlatform::kDuration);
+                    platform.started = objj.value("platform_started", false);
+                    movingPlatformStates.push_back(platform);
                 }
             }
             refreshObjectIdCache();
@@ -4124,8 +4134,13 @@ int RunGameApp(int argc, char** argv) {
                     {"entity_spawn_type", meta.entitySpawnType}
                 };
                 root["objects"] = nlohmann::json::array();
-                for (const auto& obj : objects) {
-                    root["objects"].push_back(saveObjectJson(obj));
+                for (size_t index = 0; index < objects.size(); ++index) {
+                    auto object = saveObjectJson(objects[index]);
+                    if (objectIds[index] == ObjectIds::MovingPlatform) {
+                        object["platform_elapsed"] = movingPlatformStates[index].elapsed;
+                        object["platform_started"] = movingPlatformStates[index].started;
+                    }
+                    root["objects"].push_back(std::move(object));
                 }
                 root["active_button_world_areas"] = levelManager.activeButtonWorldAreas();
                 root["boss"] = saveBossJson(bossState);
@@ -5258,6 +5273,7 @@ int RunGameApp(int argc, char** argv) {
                 MR_WORLD_WRAP = 1u << 2,
                 MR_SPRING = 1u << 3,
                 MR_BUMPER = 1u << 4,
+                MR_PLATFORM = 1u << 5,
             };
             unsigned int movementReasons = 0u;
             auto addMovementReason = [&](unsigned int reasonBit) {
@@ -6148,6 +6164,30 @@ int RunGameApp(int argc, char** argv) {
             }
             PlayerUpdateResult upd = PlayerUpdateResult::RenderOnly;
             const bool wasInWaterBeforeMovement = player.inWater;
+            int platformRider = -1;
+            if (!fastTravelEnabled && !player.freeMove && playerSpawnLockFrames <= 0) {
+                for (int index = 0; index < (int)objects.size(); ++index) {
+                    if (objectIds[index] != ObjectIds::MovingPlatform) continue;
+                    const auto bounds = MovingPlatform::nearPlayer(objects[index].x, objects[index].y, (float)map.tileSize,
+                        player, gameplayWrapX ? mapWrapW : 0, gameplayWrapY ? mapWrapH : 0);
+                    if (MovingPlatform::standingOn(player, bounds)) { platformRider = index; break; }
+                }
+            }
+            for (int index = 0; index < (int)objects.size(); ++index) {
+                if (objectIds[index] != ObjectIds::MovingPlatform) continue;
+                auto& platform = movingPlatformStates[index];
+                if (index == platformRider) platform.started = true;
+                const auto delta = MovingPlatform::advance(platform, dt, (float)map.tileSize);
+                objects[index].x += delta.x;
+                objects[index].y += delta.y;
+                if (index == platformRider) {
+                    MovingPlatform::carry(player, map, delta);
+                    const auto bounds = MovingPlatform::nearPlayer(objects[index].x, objects[index].y, (float)map.tileSize,
+                        player, gameplayWrapX ? mapWrapW : 0, gameplayWrapY ? mapWrapH : 0);
+                    player.onGround = MovingPlatform::standingOn(player, bounds);
+                    if (delta.x != 0 || delta.y != 0) addMovementReason(MR_PLATFORM);
+                }
+            }
             const float beforeNormalX = player.x;
             const float beforeNormalY = player.y;
                 if (!fastTravelEnabled) {
@@ -6159,6 +6199,22 @@ int RunGameApp(int argc, char** argv) {
                         keybinds,
                         inputMove, inputDown
                     );
+                    if (upd == PlayerUpdateResult::Normal && !player.freeMove) {
+                        int landed = -1;
+                        SDL_FRect landing{};
+                        for (int index = 0; index < (int)objects.size(); ++index) {
+                            if (objectIds[index] != ObjectIds::MovingPlatform) continue;
+                            const auto bounds = MovingPlatform::nearPlayer(objects[index].x, objects[index].y, (float)map.tileSize,
+                                player, gameplayWrapX ? mapWrapW : 0, gameplayWrapY ? mapWrapH : 0);
+                            if (player.vy >= 0 && player.x + player.w > bounds.x && player.x < bounds.x + bounds.w &&
+                                beforeNormalY + player.h <= bounds.y + 1.5f && player.y + player.h >= bounds.y &&
+                                (landed < 0 || bounds.y < landing.y)) { landed = index; landing = bounds; }
+                        }
+                        if (landed >= 0 && MovingPlatform::land(player, map, beforeNormalY, landing, movementCfg)) {
+                            movingPlatformStates[landed].started = true;
+                            addMovementReason(MR_PLATFORM);
+                        }
+                    }
                     if (std::fabs(player.x - beforeNormalX) > 0.01f || std::fabs(player.y - beforeNormalY) > 0.01f) {
                         addMovementReason(MR_NORMAL_MOVEMENT);
                     }
@@ -6913,6 +6969,7 @@ int RunGameApp(int argc, char** argv) {
                 objects.erase(objects.begin() + index);
                 if (index < (int)objectIds.size()) objectIds.erase(objectIds.begin() + index);
                 if (index < (int)shellChrakerStates.size()) shellChrakerStates.erase(shellChrakerStates.begin() + index);
+                if (index < (int)movingPlatformStates.size()) movingPlatformStates.erase(movingPlatformStates.begin() + index);
                 if (endSignState.objectIndex > index) --endSignState.objectIndex;
             };
             for (int objIdx = 0; objIdx < (int)objects.size();) {
@@ -7063,6 +7120,7 @@ int RunGameApp(int argc, char** argv) {
                 if (movementReasons & MR_WORLD_WRAP) reasonText += (reasonText.empty() ? "" : ",") + std::string("world_wrap");
                 if (movementReasons & MR_SPRING) reasonText += (reasonText.empty() ? "" : ",") + std::string("spring");
                 if (movementReasons & MR_BUMPER) reasonText += (reasonText.empty() ? "" : ",") + std::string("bumper");
+                if (movementReasons & MR_PLATFORM) reasonText += (reasonText.empty() ? "" : ",") + std::string("platform");
                 if (reasonText.empty()) reasonText = "unknown";
                 SDL_Log("player move: from=(%.2f, %.2f) to=(%.2f, %.2f) delta=(%.2f, %.2f) reason=%s",
                         frameStartX, frameStartY,
@@ -7667,7 +7725,7 @@ int RunGameApp(int argc, char** argv) {
                 };
                 Uint8 r = 220, g = 220, b = 240;
                 if (objId == ObjectIds::Pickup) { r = 120; g = 255; b = 185; }
-                else if (objId == 96) { r = 255; g = 120; b = 105; }
+                else if (objId == ObjectIds::MovingPlatform) { r = 130; g = 155; b = 185; }
                 else if (objId == ObjectIds::Goal) { r = 255; g = 245; b = 150; }
                 SDL_SetRenderDrawColor(ren, r, g, b, 230);
                 SDL_RenderFillRect(ren, &placeholder);
