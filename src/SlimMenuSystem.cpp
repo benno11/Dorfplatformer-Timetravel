@@ -27,6 +27,8 @@
 #include "NetworkTransport.h"
 #include "GameSupport.h"
 #include "LevelSelect.h"
+#include "LevelManager.h"
+#include "GameProgression.h"
 #include "UiScale.h"
 
 #if defined(DrawText)
@@ -314,6 +316,11 @@ std::string contextVarValue(const std::string& name, const SlimRuntime& runtime,
     const std::string var = normalizeVarName(name);
     auto it = runtime.vars.find(var);
     if (it != runtime.vars.end()) return it->second;
+    if (var == "world_select_unlocked") return ctx.progression && ctx.progression->worldSelectUnlocked ? "true" : "false";
+    if (var == "hardmode_unlocked") return ctx.progression && ctx.progression->hardmodeUnlocked ? "true" : "false";
+    if (var == "hardmode_complete") return ctx.progression && ctx.progression->hardmodeComplete ? "YES" : "NO";
+    if (var == "hardmode_furthest_level") return std::to_string(ctx.progression ? ctx.progression->hardmodeFurthestLevel : 0);
+    if (var == "hardmode_save_exists") return FileExists(HardmodeSavePath()) ? "true" : "false";
     if (var == "username" && ctx.levelServerAccountUsername) return *ctx.levelServerAccountUsername;
     if (var == "api" && ctx.levelServerUrl) return *ctx.levelServerUrl;
     if (var == "debugger_attached" && ctx.debuggerAttached) return *ctx.debuggerAttached ? "true" : "false";
@@ -354,6 +361,8 @@ bool varIsTruthy(const std::string& name, const SlimRuntime& runtime, const Slim
 
 std::string expandVars(std::string text, const SlimRuntime& runtime, const SlimMenuContext& ctx) {
     if (text.find("${") == std::string::npos) return text;
+    for (const char* var : {"world_select_unlocked", "hardmode_unlocked", "hardmode_complete", "hardmode_furthest_level", "hardmode_save_exists"})
+        text = replaceAll(text, "${" + std::string(var) + "}", contextVarValue(var, runtime, ctx));
     if (text.find("${username}") != std::string::npos)
         text = replaceAll(text, "${username}", contextVarValue("username", runtime, ctx));
     if (text.find("${api}") != std::string::npos)
@@ -492,7 +501,7 @@ bool parseMenuAlignment(std::string value, SlimMenuLayout::Align& out) {
 }
 
 SlimMenu loadMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuContext& ctx) {
-    if (name == "locallevels" || name == "onlinelevels" || name == "leveldetail") {
+    if (name == "locallevels" || name == "onlinelevels" || name == "leveldetail" || name == "worldselect") {
         return buildGeneratedLevelMenu(name, runtime, ctx);
     }
 
@@ -1309,6 +1318,17 @@ bool putServerUpdateTrigger(const SlimMenuContext& ctx, std::string& status) {
 }
 
 SlimMenu buildGeneratedLevelMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuContext& ctx) {
+    if (name == "worldselect") {
+        SlimMenu menu;
+        menu.name = name;
+        menu.title = "World Select";
+        if (ctx.progression && ctx.progression->worldSelectUnlocked) {
+            for (int world = 1; world <= 7; ++world)
+                menu.items.push_back(MenuItem{MenuItem::Type::Button, "World " + std::to_string(world), "world", std::to_string(world)});
+        } else menu.items.push_back(MenuItem{MenuItem::Type::Text, "Reach an ending to unlock World Select.", {}, {}});
+        menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back", "menu", "mainplay"});
+        return menu;
+    }
     if (name == "leveldetail") {
         const std::string source = runtime.vars.count("detail_source") ? runtime.vars["detail_source"] : "local";
         const int index = runtime.vars.count("detail_index") ? std::atoi(runtime.vars["detail_index"].c_str()) : -1;
@@ -1840,6 +1860,24 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
         currentMenu = "leveldetail";
         runtime.vars["__reload_menu"] = "1";
         return SlimMenuExit::Continue;
+    }
+    if (command == "world") {
+        if (!ctx.progression || !ctx.progression->worldSelectUnlocked || !ctx.selectedLevelPath) return SlimMenuExit::Continue;
+        const int world = std::atoi(arg.c_str());
+        if (world < 1 || world > 7) return SlimMenuExit::Continue;
+        LevelManager manager;
+        const auto path = manager.levelPathByCode(world * 100 + 10 + (world >= 6 ? 3 : 1));
+        if (path.empty()) return SlimMenuExit::Continue;
+        *ctx.selectedLevelPath = path;
+        if (ctx.selectedLevelName) ctx.selectedLevelName->clear();
+        return SlimMenuExit::StartGame;
+    }
+    if (command == "hardmode") {
+        if (!ctx.progression || !ctx.progression->hardmodeUnlocked || !ctx.selectedLevelPath) return SlimMenuExit::Continue;
+        if (arg == "continue" && !FileExists(HardmodeSavePath())) return SlimMenuExit::Continue;
+        *ctx.selectedLevelPath = arg == "continue" ? kContinueHardmodeToken : kStartHardmodeToken;
+        if (ctx.selectedLevelName) ctx.selectedLevelName->clear();
+        return SlimMenuExit::StartGame;
     }
     if (command == "campaign") {
         if (!ctx.selectedLevelPath) return SlimMenuExit::Back;

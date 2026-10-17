@@ -127,7 +127,7 @@ Level verification:
 
 - A local level becomes verified when it is beaten.
 - Editing and saving a local level clears verification.
-- Verification is stored beside the level as `<level file>.verify.json`.
+- Verification is stored in `level_verification/` under the app save folder, separate from level files. Existing `<level file>.verify.json` records migrate there when accessed; records use stable path-based filenames so same-named levels remain separate.
 - The upload command refuses unverified local levels.
 
 ## Get Command

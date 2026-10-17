@@ -2,6 +2,7 @@
 #include "LevelLoader.h"
 #include "LevelManager.h"
 #include "ObjectIds.h"
+#include "GameProgression.h"
 
 #ifdef NDEBUG
 #undef NDEBUG
@@ -15,6 +16,7 @@
 
 // The loader reads fixtures through the same asset boundary as real levels.
 static std::unordered_map<std::string, std::string> files;
+std::string GetAppSaveRootPath() { return "."; }
 std::string ReadTextFile(const std::string& path) {
     const auto found = files.find(path);
     if (found != files.end()) return found->second;

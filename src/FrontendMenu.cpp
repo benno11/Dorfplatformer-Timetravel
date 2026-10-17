@@ -1752,6 +1752,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         slim.levelServerAuthToken = ctx.levelServerAuthToken;
         slim.levelServerAccountUsername = ctx.levelServerAccountUsername;
         slim.selectedLevelPath = ctx.selectedLevelPath;
+        slim.progression = ctx.progression;
         slim.selectedLevelName = ctx.selectedLevelName;
         slim.session = ctx.menuSession;
         slim.debuggerAttached = ctx.debuggerAttached;

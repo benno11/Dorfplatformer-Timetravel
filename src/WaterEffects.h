@@ -13,6 +13,14 @@ inline bool wet(const TileMap& map, int x, int y, bool wrapX, bool wrapY) {
     return x >= 0 && x < map.w && y >= 0 && y < map.h && map.water[y * map.w + x] != 0;
 }
 
+inline bool hasSurface(const TileMap& map, int x, int y, bool wrapX, bool wrapY) {
+    if (!wet(map, x, y, wrapX, wrapY) || wet(map, x, y - 1, wrapX, wrapY)) return false;
+    if (wrapX) x = (x % map.w + map.w) % map.w;
+    int above = y - 1;
+    if (wrapY) above = (above % map.h + map.h) % map.h;
+    return above < 0 || above >= map.h || !map.solid[above * map.w + x];
+}
+
 struct Region {
     SDL_FRect rect;
     bool surface;
@@ -31,9 +39,9 @@ inline std::vector<Region> visibleRegions(const TileMap& map, float camX, float 
         for (int x = left; x < right;) {
             if (!wet(map, x, y, wrapX, wrapY)) { ++x; continue; }
             const int start = x++;
-            const bool surface = !wet(map, start, y - 1, wrapX, wrapY);
+            const bool surface = hasSurface(map, start, y, wrapX, wrapY);
             while (x < right && wet(map, x, y, wrapX, wrapY) &&
-                   (!wet(map, x, y - 1, wrapX, wrapY)) == surface) ++x;
+                   hasSurface(map, x, y, wrapX, wrapY) == surface) ++x;
             regions.push_back({{start * (float)map.tileSize - camX, y * (float)map.tileSize - camY,
                 (x - start) * (float)map.tileSize, (float)map.tileSize}, surface});
         }
@@ -48,7 +56,7 @@ inline bool nearbySurface(const TileMap& map, float x, float top, float bottom,
     const int first = (int)std::floor(top / map.tileSize) - 1;
     const int last = (int)std::floor(bottom / map.tileSize) + 1;
     for (int y = first; y <= last; ++y) {
-        if (wet(map, tx, y, wrapX, wrapY) && !wet(map, tx, y - 1, wrapX, wrapY)) {
+        if (hasSurface(map, tx, y, wrapX, wrapY)) {
             surfaceY = y * (float)map.tileSize;
             return true;
         }
@@ -178,7 +186,7 @@ public:
                         const float angle = step * 6.2831853f / 24.0f;
                         const float x = cx + ix * wrapW + std::cos(angle) * radius;
                         const float y = cy + iy * wrapH + std::sin(angle) * radius * 0.15f;
-                        if (WaterVisuals::wet(map, (int)std::floor((x + camX) / map.tileSize),
+                        if (WaterVisuals::hasSurface(map, (int)std::floor((x + camX) / map.tileSize),
                             (int)std::floor((cy + iy * wrapH + camY + 2.0f) / map.tileSize), wrapX, wrapY))
                             SDL_RenderLine(ren, prevX, prevY, x, y);
                         prevX = x; prevY = y;

@@ -9,6 +9,7 @@
 #include <sstream>
 
 #include "AssetPath.h"
+#include "GameProgression.h"
 #include "PlayerController.h"
 
 LevelManager::LevelManager()
@@ -31,7 +32,8 @@ void LevelManager::reloadLevel(TileMap& map, std::vector<ObjectInstance>& object
     applyLevelConfig(meta);
     coinCount_ = 0;
     timeWarpId_ = 'N';
-    const bool disableEndSignsForArea = (worldId_ >= 1 && worldId_ <= 5 && levelPartId_ == 3);
+    const bool disableEndSignsForArea = HardmodeLevelFromPath(levelPath_) == 0 &&
+        (worldId_ >= 1 && worldId_ <= 5 && levelPartId_ == 3);
 
     if (disableEndSignsForArea) {
         objects.erase(std::remove_if(objects.begin(), objects.end(), [](const ObjectInstance& o) {
@@ -157,6 +159,11 @@ void LevelManager::reloadLevel(TileMap& map, std::vector<ObjectInstance>& object
 }
 
 std::string LevelManager::nextLevelPath() const {
+    const int hardmodeLevel = HardmodeLevelFromPath(levelPath_);
+    if (hardmodeLevel > 0) {
+        const auto next = HardmodeLevelPath(hardmodeLevel + 1);
+        return !next.empty() && FileExists(next) ? next : std::string();
+    }
     int currentLevel = parseLevelIndexFromPath(levelPath_);
     int nextId = nextLevelId(currentLevel);
     if (nextId <= 0 || nextId > (int)levelNumberList_.size()) return "";

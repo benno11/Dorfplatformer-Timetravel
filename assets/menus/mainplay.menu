@@ -6,5 +6,9 @@ text "Active slot: ${active_save_slot}"
 button "Slot 1: ${save_slot_1_status}" save_slot 1
 button "Slot 2: ${save_slot_2_status}" save_slot 2
 button "Slot 3: ${save_slot_3_status}" save_slot 3
+if world_select_unlocked skip 1
+button "World Select" menu worldselect
+if hardmode_unlocked skip 1
+button "Hardmode" menu hardmode
 button "Save Settings" menu savesettings
 button "Back" back

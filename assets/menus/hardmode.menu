@@ -1,0 +1,9 @@
+title "Hardmode"
+text "20 levels. Any death sends you back to level 1."
+text "Furthest level: ${hardmode_furthest_level}/20"
+text "Completed: ${hardmode_complete}"
+if hardmode_unlocked skip 1
+button "Start New Run" hardmode new
+if hardmode_save_exists skip 1
+button "Continue Run" hardmode continue
+button "Back" menu mainplay

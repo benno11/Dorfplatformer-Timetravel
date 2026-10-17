@@ -181,6 +181,8 @@ set(PLATFORMER_GAME_SOURCES
   src/LevelLoader.cpp
   src/TextRenderer.cpp
   src/LevelSelect.cpp
+  src/LevelVerification.cpp
+  src/GameProgression.cpp
   src/PlayerController.cpp
   src/AssetPath.cpp
   src/NetworkTransport.cpp
@@ -1015,6 +1017,9 @@ if(BUILD_TESTING AND NOT ANDROID AND NOT IOS)
   target_link_libraries(water_effects_test PRIVATE ${SDL3_LINK_TARGET})
   target_compile_definitions(water_effects_test PRIVATE SDL_ENABLE_OLD_NAMES=1)
   add_test(NAME water_effects COMMAND water_effects_test)
+  add_executable(level_verification_test tests/LevelVerificationTest.cpp src/LevelVerification.cpp)
+  target_include_directories(level_verification_test PRIVATE src third_party)
+  add_test(NAME level_verification COMMAND level_verification_test)
   add_executable(async_network_test tests/AsyncNetworkTest.cpp)
   target_include_directories(async_network_test PRIVATE src)
   target_link_libraries(async_network_test PRIVATE Threads::Threads)
@@ -1033,6 +1038,7 @@ if(BUILD_TESTING AND NOT ANDROID AND NOT IOS)
     tests/LevelFormatTest.cpp
     src/LevelLoader.cpp
     src/LevelManager.cpp
+    src/GameProgression.cpp
     src/PlayerController.cpp
     src/TileMap.cpp
   )

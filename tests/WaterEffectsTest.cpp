@@ -34,6 +34,21 @@ int main(int argc, char** argv) {
         const auto wrapped = WaterVisuals::visibleRegions(map, 192, 128, 192, 128, true, true);
         require(wrapped.size() == 2 && wrapped[0].rect.x == 32 && wrapped[0].rect.y == 64,
             "Water regions must repeat across both wrapped map boundaries");
+        map.setSolid(2, 1, 1);
+        const auto covered = WaterVisuals::visibleRegions(map, 0, 0, 192, 128, false, false);
+        require(covered.size() == 4 && covered[0].surface && !covered[1].surface && covered[2].surface,
+            "A solid roof must interrupt the water surface without removing underwater regions");
+        require(covered[1].rect.x == 64 && covered[1].rect.w == 32, "Only covered water loses its surface");
+        require(!WaterVisuals::nearbySurface(map, 80, 48, 80, false, false, surface),
+            "Covered water must not spawn surface splashes");
+        require(!WaterVisuals::hasSurface(map, 8, 6, true, true), "Solid roof detection must wrap with water");
+        map.setSolid(2, 1, 0);
+        TileMap edge;
+        edge.resize(2, 2);
+        edge.setWater(0, 0, 1);
+        edge.setSolid(0, 1, 1);
+        require(WaterVisuals::hasSurface(edge, 0, 0, false, false), "Unwrapped top edge is exposed");
+        require(!WaterVisuals::hasSurface(edge, 0, 0, false, true), "Wrapped roof must hide a top-edge surface");
 
         require(SDL_Init(0), "SDL init");
         SDL_Surface* output = SDL_CreateSurface(384, 256, SDL_PIXELFORMAT_RGBA8888);

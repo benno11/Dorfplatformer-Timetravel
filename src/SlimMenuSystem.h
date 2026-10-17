@@ -9,12 +9,14 @@
 
 struct Frame;
 struct SlimMenuSession;
+struct GameProgression;
 
 std::shared_ptr<SlimMenuSession> CreateSlimMenuSession();
 std::string PendingSlimMenu(const std::shared_ptr<SlimMenuSession>& session);
 
 struct SlimMenuContext {
     std::shared_ptr<SlimMenuSession> session;
+    GameProgression* progression = nullptr;
     SDL_Window* win = nullptr;
     SDL_Renderer* ren = nullptr;
     SDL_Texture* gameTarget = nullptr;

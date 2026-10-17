@@ -49,6 +49,7 @@
 #include "AssetPath.h"
 #include "NetworkTransport.h"
 #include "LevelManager.h"
+#include "GameProgression.h"
 #include "LevelWrap.h"
 #include "FrontendMenu.h"
 #include "GameSupport.h"
@@ -2316,6 +2317,8 @@ int RunGameApp(int argc, char** argv) {
     };
     bool reopenUserLevelMenu = false;
     FrontendMenuContext frontendCtx{};
+    GameProgression progression = LoadGameProgression();
+    frontendCtx.progression = &progression;
     frontendCtx.win = win;
     frontendCtx.ren = ren;
     frontendCtx.gameTarget = gameTarget;
@@ -2728,7 +2731,6 @@ int RunGameApp(int argc, char** argv) {
         std::string selectedLevelPath;
         std::string customLevelName;
         bool selectedFromCustomLevelMenu = false;
-        bool selectedFromFrontendMenu = false;
         if (reopenUserLevelMenu) {
             selectedLevelPath = RunCustomLevelSelect(win, ren);
             selectedFromCustomLevelMenu = true;
@@ -2743,9 +2745,7 @@ int RunGameApp(int argc, char** argv) {
 
             selectedLevelPath = frontendSelectedLevelPath;
             customLevelName = frontendSelectedLevelName;
-            if (!selectedLevelPath.empty()) {
-                selectedFromFrontendMenu = true;
-            } else {
+            if (selectedLevelPath.empty()) {
                 selectedLevelPath = effectiveDebugModeEnabled() ? RunCampaignLevelSelect(win, ren)
                                                                : std::string("assets/levels/level_001.txt");
             }
@@ -2755,9 +2755,12 @@ int RunGameApp(int argc, char** argv) {
         }
         bool loadSavedGame = false;
         nlohmann::json savedGameRoot;
-        if (selectedLevelPath == kSavedGameSelectionToken) {
+        const bool continueHardmode = selectedLevelPath == kContinueHardmodeToken;
+        if (selectedLevelPath == kStartHardmodeToken) selectedLevelPath = HardmodeLevelPath(1);
+        if (selectedLevelPath == kSavedGameSelectionToken || continueHardmode) {
             loadSavedGame = true;
-            const std::filesystem::path selectedSavePath = saveGamePathForSlot(activeSaveSlotIndex);
+            const std::filesystem::path selectedSavePath = continueHardmode
+                ? std::filesystem::path(HardmodeSavePath()) : saveGamePathForSlot(activeSaveSlotIndex);
             try {
                 std::ifstream in(selectedSavePath, std::ios::binary);
                 if (!in.is_open()) {
@@ -2779,8 +2782,17 @@ int RunGameApp(int argc, char** argv) {
                 continue;
             }
         }
-        bool allowNextLevelProgression = !selectedFromCustomLevelMenu && !selectedFromFrontendMenu;
-        const bool livesSystemEnabled = allowNextLevelProgression;
+        if (loadSavedGame && !savedGameRoot.is_object()) continue;
+        const std::string entryPath = loadSavedGame ? savedGameRoot.value("level_path", std::string()) : selectedLevelPath;
+        const bool hardmodeRun = HardmodeLevelFromPath(entryPath) > 0;
+        if (continueHardmode && !hardmodeRun) continue;
+        if (hardmodeRun && loadSavedGame && savedGameRoot.value("hardmode_failed", false)) {
+            loadSavedGame = false;
+            selectedLevelPath = HardmodeResumePath(entryPath, true);
+        }
+        bool allowNextLevelProgression = hardmodeRun || IsCampaignLevelPath(entryPath);
+        const bool livesSystemEnabled = allowNextLevelProgression && !hardmodeRun;
+        if (hardmodeRun && !loadSavedGame) levelManager.clearButtonAreasForDebug();
         audio.haltMusic();
         if (!loadSavedGame) {
             levelManager.setLevelPath(selectedLevelPath);
@@ -3218,7 +3230,9 @@ int RunGameApp(int argc, char** argv) {
             std::string path = levelManager.levelPath();
             std::replace(path.begin(), path.end(), '\\', '/');
             const bool campaign = path.rfind("assets/levels/", 0) == 0 || path.find("/assets/levels/") != std::string::npos;
-            if (campaign) {
+            if (hardmodeRun) {
+                currentFancyLevelName = "HARDMODE " + std::to_string(HardmodeLevelFromPath(path));
+            } else if (campaign) {
                 currentFancyLevelName = buildFancyLevelName();
             } else {
                 if (customLevelName.empty()) {
@@ -3234,6 +3248,13 @@ int RunGameApp(int argc, char** argv) {
         auto reloadLevel = [&](bool showIntroCard = true) {
             waterEffects.reset();
             levelManager.reloadLevel(map, objects, meta, player);
+            if (hardmodeRun) {
+                const int reached = HardmodeLevelFromPath(levelManager.levelPath());
+                if (reached > progression.hardmodeFurthestLevel) {
+                    progression.reachHardmodeLevel(reached);
+                    SaveGameProgression(progression);
+                }
+            }
             refreshObjectIdCache();
             resetLevelWrapTriggerState();
             currentLevelThemeOverride = meta.themeOverride;
@@ -3319,10 +3340,17 @@ int RunGameApp(int argc, char** argv) {
         auto startLevelCompleteSequence = [&]() {
             if (levelCompleteActive) return;
             levelCompleteActive = true;
+            if (progression.recordCompletion(levelManager.levelPath(), levelManager.worldId(),
+                levelManager.levelPartId(), levelManager.timeId())) SaveGameProgression(progression);
+            if (hardmodeRun && HardmodeLevelFromPath(levelManager.levelPath()) == kHardmodeLevelCount) {
+                std::error_code ec;
+                std::filesystem::remove(HardmodeSavePath(), ec);
+            }
             {
                 std::string completedPath = levelManager.levelPath();
                 std::replace(completedPath.begin(), completedPath.end(), '\\', '/');
                 const bool localEditableLevel =
+                    !hardmodeRun &&
                     completedPath.find("://") == std::string::npos &&
                     completedPath.rfind("assets/levels/", 0) != 0 &&
                     completedPath.find("/assets/levels/") == std::string::npos;
@@ -3369,7 +3397,7 @@ int RunGameApp(int argc, char** argv) {
             customLevelName = savedGameRoot.value("custom_level_name", std::string());
             syncWorldBackground();
             reloadLevel(false);
-            allowNextLevelProgression = savedGameRoot.value("allow_next_level_progression", allowNextLevelProgression);
+            allowNextLevelProgression = hardmodeRun || savedGameRoot.value("allow_next_level_progression", allowNextLevelProgression);
             if (savedGameRoot.contains("map") && savedGameRoot["map"].is_object()) {
                 const auto& mj = savedGameRoot["map"];
                 const int savedW = mj.value("w", map.w);
@@ -3557,6 +3585,7 @@ int RunGameApp(int argc, char** argv) {
         std::vector<DroppedCoin> droppedCoins;
         auto transitionToLevelPath = [&](const std::string& path) -> bool {
             if (path.empty()) return false;
+            if (hardmodeRun && HardmodeLevelFromPath(path) == 0) return false;
             levelManager.setLevelPath(path);
             syncWorldBackground();
             droppedCoins.clear();
@@ -4022,13 +4051,17 @@ int RunGameApp(int argc, char** argv) {
         saveGameToDisk = [&]() -> bool {
             try {
                 if (levelManager.levelPath().empty()) return false;
-                const std::filesystem::path savePath = saveGamePathForSlot(activeSaveSlotIndex);
+                if (hardmodeRun && levelCompleteActive && HardmodeLevelFromPath(levelManager.levelPath()) == kHardmodeLevelCount) return true;
+                const std::filesystem::path savePath = hardmodeRun
+                    ? std::filesystem::path(HardmodeSavePath()) : saveGamePathForSlot(activeSaveSlotIndex);
                 std::error_code ec;
                 std::filesystem::create_directories(savePath.parent_path(), ec);
                 nlohmann::json root;
                 root["version"] = 1;
                 root["level_path"] = levelManager.levelPath();
                 root["custom_level_name"] = customLevelName;
+                root["hardmode_active"] = hardmodeRun;
+                root["hardmode_failed"] = hardmodeRun && deathSequenceActive;
                 refreshDebuggerDebugOverride();
                 root["debug_mode_enabled"] = effectiveDebugModeEnabled();
                 root["debug"] = {
@@ -4105,6 +4138,17 @@ int RunGameApp(int argc, char** argv) {
                 return false;
             }
         };
+        auto beginDeathSequence = [&]() {
+            deathSequenceActive = true;
+            deathLifeDeducted = false;
+            deathTimer = 0.0f;
+            audio.haltAllChannels();
+            audio.haltMusic();
+            audio.playLoseSfx();
+            // Persist failure immediately so reopening the run cannot resume a lost attempt.
+            if (hardmodeRun) (void)saveGameToDisk();
+        };
+        if (hardmodeRun) (void)saveGameToDisk();
         // Replay recording is opt-in; keep disabled until user toggles it.
         SDL_Event e;
         Uint32 lastTicks = SDL_GetTicks();
@@ -4162,6 +4206,7 @@ int RunGameApp(int argc, char** argv) {
                 pauseMenuAnim = 0.0f;
                 pauseMenuClosing = false;
             } else {
+                if (hardmodeRun) (void)saveGameToDisk();
                 returnToSelect = true;
                 levelRunning = false;
             }
@@ -4701,7 +4746,7 @@ int RunGameApp(int argc, char** argv) {
                     if (!levelCompleteNextPath.empty()) {
                         const int completedWorldId = levelManager.worldId();
                         if (transitionToLevelPath(levelCompleteNextPath)) {
-                            if (levelManager.worldId() != completedWorldId) {
+                            if (hardmodeRun || levelManager.worldId() != completedWorldId) {
                                 (void)saveGameToDisk();
                             }
                             continue;
@@ -4774,7 +4819,10 @@ int RunGameApp(int argc, char** argv) {
                     SDL_Log("controller %s: id=%d name=\"%s\" connected=%d", typeStr, (int)ev.id, ev.name.c_str(), ev.connectedCount);
                 }
             }
-            if (e.type == SDL_QUIT) { running = false; levelRunning = false; }
+            if (e.type == SDL_QUIT) {
+                if (hardmodeRun) (void)saveGameToDisk();
+                running = false; levelRunning = false;
+            }
             if (e.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && debugWin &&
                 e.window.windowID == SDL_GetWindowID(debugWin)) {
                 SDL_HideWindow(debugWin);
@@ -5126,6 +5174,16 @@ int RunGameApp(int argc, char** argv) {
             if (deathLifeDeducted && deathTimer >= 0.90f) {
                 deathSequenceActive = false;
                 deathTimer = 0.0f;
+                if (hardmodeRun) {
+                    checkpointActive = false;
+                    checkpointLevelPath.clear();
+                    checkpointTileX = checkpointTileY = -1;
+                    scoreCount = 0;
+                    levelManager.clearButtonAreasForDebug();
+                    transitionToLevelPath(HardmodeLevelPath(1));
+                    (void)saveGameToDisk();
+                    continue;
+                }
                 if (!livesSystemEnabled || livesCount > 0) {
                     droppedCoins.clear();
                     reloadLevel();
@@ -6263,12 +6321,7 @@ int RunGameApp(int argc, char** argv) {
                         }
                     }
                 }
-                deathSequenceActive = true;
-                deathLifeDeducted = false;
-                deathTimer = 0.0f;
-                audio.haltAllChannels();
-                audio.haltMusic();
-                audio.playLoseSfx();
+                beginDeathSequence();
                 continue;
             }
 
@@ -6311,12 +6364,7 @@ int RunGameApp(int argc, char** argv) {
                         audio.playLoseSfx();
                         return false;
                     }
-                    deathSequenceActive = true;
-                    deathLifeDeducted = false;
-                    deathTimer = 0.0f;
-                    audio.haltAllChannels();
-                    audio.haltMusic();
-                    audio.playLoseSfx();
+                    beginDeathSequence();
                     return true;
                 };
                 auto applyBossDamage = [&](int amount) {
@@ -6784,12 +6832,7 @@ int RunGameApp(int argc, char** argv) {
                             player.onGround = false;
                             audio.playLoseSfx();
                         } else {
-                            deathSequenceActive = true;
-                            deathLifeDeducted = false;
-                            deathTimer = 0.0f;
-                            audio.haltAllChannels();
-                            audio.haltMusic();
-                            audio.playLoseSfx();
+                            beginDeathSequence();
                             continue;
                         }
                     }

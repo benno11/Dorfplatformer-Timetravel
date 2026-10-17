@@ -7,6 +7,7 @@
 #include <string>
 
 struct SlimMenuSession;
+struct GameProgression;
 
 enum class FrontendAction {
     StartGame,
@@ -15,6 +16,7 @@ enum class FrontendAction {
 
 struct FrontendMenuContext {
     std::shared_ptr<SlimMenuSession> menuSession;
+    GameProgression* progression = nullptr;
     SDL_Window* win = nullptr;
     SDL_Renderer* ren = nullptr;
     SDL_Texture* gameTarget = nullptr;

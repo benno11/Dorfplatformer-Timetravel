@@ -3342,53 +3342,6 @@ std::string readLevelApiVersionIdFromConfig() {
     return {};
 }
 
-std::filesystem::path localLevelVerificationPath(const std::string& levelPath) {
-    return std::filesystem::path(levelPath + ".verify.json");
-}
-
-bool IsLocalLevelVerified(const std::string& levelPath) {
-    if (levelPath.empty() || isHttpUrl(levelPath)) return false;
-    const std::string text = ReadTextFile(localLevelVerificationPath(levelPath).string());
-    if (text.empty()) return false;
-    try {
-        const nlohmann::json j = nlohmann::json::parse(text);
-        return j.is_object() && j.value("verified", false);
-    } catch (...) {
-        return false;
-    }
-}
-
-void SetLocalLevelVerified(const std::string& levelPath, bool verified) {
-    if (levelPath.empty() || isHttpUrl(levelPath)) return;
-    const std::filesystem::path metaPath = localLevelVerificationPath(levelPath);
-    std::error_code ec;
-    std::filesystem::create_directories(metaPath.parent_path(), ec);
-    nlohmann::json j;
-    j["verified"] = verified;
-    j["verified_at"] = verified ? (long long)std::time(nullptr) : 0LL;
-    j["level_path"] = levelPath;
-    const std::filesystem::path tmpPath = metaPath.string() + ".tmp";
-    {
-        std::ofstream out(tmpPath, std::ios::binary | std::ios::trunc);
-        if (!out.is_open()) return;
-        out << j.dump(2);
-        out.flush();
-        if (!out.good()) return;
-    }
-    std::filesystem::rename(tmpPath, metaPath, ec);
-    if (ec) {
-        std::filesystem::remove(metaPath, ec);
-        ec.clear();
-        std::filesystem::rename(tmpPath, metaPath, ec);
-    }
-}
-
-void ClearLocalLevelVerification(const std::string& levelPath) {
-    if (levelPath.empty() || isHttpUrl(levelPath)) return;
-    std::error_code ec;
-    std::filesystem::remove(localLevelVerificationPath(levelPath), ec);
-}
-
 bool uploadLocalLevelToServer(const LevelEntry& level, std::string& statusText) {
     if (level.path.empty() || level.path == "__local_editor__") {
         statusText = "No local level selected.";
