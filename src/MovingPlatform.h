@@ -1,6 +1,7 @@
 #pragma once
 #include "PlayerController.h"
 #include "ObjectIds.h"
+#include "LevelLoader.h"
 #include <algorithm>
 #include <cmath>
 
@@ -32,6 +33,35 @@ inline SDL_FPoint advance(State& state, float dt, float tileSize) {
     state.elapsed = std::min(kDuration, previous + dt);
     const float distance = (state.elapsed - previous) / kDuration * kDistanceInBlocks * tileSize;
     return {-distance, distance};
+}
+inline std::vector<SDL_FPoint> advanceObjects(std::vector<ObjectInstance>& objects,
+        std::vector<State>& states, const std::vector<int>& ids, float dt, float tileSize,
+        float wrapW = 0, float wrapH = 0) {
+    std::vector<SDL_FPoint> deltas(objects.size(), SDL_FPoint{0, 0});
+    std::vector<bool> carried(objects.size(), false);
+    const size_t count = std::min(objects.size(), std::min(states.size(), ids.size()));
+    // Find riders before moving anything, so object ordering cannot change support.
+    for (size_t platform = 0; platform < count; ++platform) {
+        if (ids[platform] != ObjectIds::MovingPlatform) continue;
+        const auto delta = advance(states[platform], dt, tileSize);
+        deltas[platform] = delta;
+        for (size_t rider = 0; rider < objects.size(); ++rider) {
+            // Platforms already move as a synchronized group; never carry them twice.
+            if (carried[rider] || (rider < ids.size() && ids[rider] == ObjectIds::MovingPlatform)) continue;
+            float dx = objects[rider].x - objects[platform].x;
+            float dy = objects[rider].y - objects[platform].y;
+            if (wrapW > 0) dx -= std::floor((dx + wrapW * 0.5f) / wrapW) * wrapW;
+            if (wrapH > 0) dy -= std::floor((dy + wrapH * 0.5f) / wrapH) * wrapH;
+            if (std::fabs(dx) >= tileSize || std::fabs(dy + tileSize) > 1.5f) continue;
+            deltas[rider] = delta;
+            carried[rider] = true;
+        }
+    }
+    for (size_t index = 0; index < objects.size(); ++index) {
+        objects[index].x += deltas[index].x;
+        objects[index].y += deltas[index].y;
+    }
+    return deltas;
 }
 inline SDL_FRect nearPlayer(float x, float y, float tileSize, const Player& player,
                             float wrapW = 0, float wrapH = 0) {

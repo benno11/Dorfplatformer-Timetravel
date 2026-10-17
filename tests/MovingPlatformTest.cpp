@@ -46,6 +46,37 @@ int main() {
         delta = MovingPlatform::advance(resumed, 10, 32);
         require(close(delta.x, -176) && close(delta.y, 176), "Resuming a saved half-finished trip must move only the remaining distance");
 
+        std::vector<ObjectInstance> cargo{
+            {"95", 1024, 224}, {"96", 1024, 256}, {"1001", 1040, 224},
+            {"1002", 1024, 288}, {"97", 1056, 224}, {"9999", 1024, 224},
+            {"96", 1024, 256}
+        };
+        const std::vector<int> cargoIds{95, 96, 1001, 1002, 97, 9999, 96};
+        const auto originalCargo = cargo;
+        std::vector<MovingPlatform::State> cargoStates(cargo.size());
+        MovingPlatform::advanceObjects(cargo, cargoStates, cargoIds, 1, 32);
+        require(cargo[0].x == 1024 && cargo[0].y == 224, "Idle platforms must leave their cargo still");
+        MovingPlatform::synchronize(cargoStates, cargoIds, true);
+        for (int frame = 0; frame < 420; ++frame)
+            MovingPlatform::advanceObjects(cargo, cargoStates, cargoIds, 1.0f / 60, 32);
+        for (size_t index : {0u, 1u, 2u, 5u, 6u}) {
+            require(close(cargo[index].x, originalCargo[index].x - 352) &&
+                close(cargo[index].y, originalCargo[index].y + 352),
+                "Every supported object must move exactly once with its platform regardless of ID or ordering");
+        }
+        require(cargo[3].x == originalCargo[3].x && cargo[3].y == originalCargo[3].y &&
+            cargo[4].x == originalCargo[4].x && cargo[4].y == originalCargo[4].y,
+            "Objects below or beside a platform must remain in place");
+        std::vector<ObjectInstance> wrappedCargo{{"96", 504, 8}, {"95", 8, 488}};
+        const std::vector<int> wrappedIds{96, 95};
+        std::vector<MovingPlatform::State> wrappedStates(2);
+        wrappedStates[0].started = true;
+        const auto wrappedDeltas = MovingPlatform::advanceObjects(wrappedCargo, wrappedStates, wrappedIds,
+            3.35f, 32, 512, 512);
+        require(close(wrappedCargo[1].x, 8 - 176) && close(wrappedCargo[1].y, 488 + 176) &&
+            wrappedDeltas[0].x == wrappedDeltas[1].x && wrappedDeltas[0].y == wrappedDeltas[1].y,
+            "Platforms must carry objects across horizontal and vertical wrap seams");
+
         require(SDL_Init(0), "SDL init");
         TileMap map;
         map.resize(64, 64);
@@ -73,7 +104,7 @@ int main() {
                 0, false, false, false, false, keys, inputMove, inputDown, &solids) == PlayerUpdateResult::Normal,
                 "Rider physics must remain active");
             require(MovingPlatform::standingOn(player, bounds), "Solid collision must keep the rider on top");
-            require(player.y + player.h <= bounds.y && bounds.y - player.y - player.h <= 1.5f,
+            require(player.y + player.h < bounds.y + 1 && bounds.y - player.y - player.h <= 1.5f,
                 "Player must stay on the platform's top surface within collision resolution tolerance");
         }
         require(close(cx, 672) && close(cy, 608), "Rider must arrive at the final platform position");
@@ -119,6 +150,31 @@ int main() {
             0, false, false, false, false, keys, inputMove, inputDown, &solids);
         require(player.x >= 656 && player.vx == 0, "Platforms must block their right side");
         require(!RectHitsSolid(map, 630, 650, 10, 10), "Dynamic colliders must not leak outside the player update");
+        // A platform must occupy exactly the same collision pixels as a solid tile,
+        // including fractional positions just inside each edge.
+        TileMap tiledMap;
+        tiledMap.resize(64, 64);
+        tiledMap.setSolid(20, 20, 1);
+        solids = {{640, 640, 32, 32}};
+        const Player defaultPlayer;
+        const SDL_FPoint edgePositions[] = {
+            {640.0f - defaultPlayer.w, 644}, {640.0f - defaultPlayer.w + 0.5f, 644},
+            {672, 644}, {672 - 0.5f, 644},
+            {644, 640.0f - defaultPlayer.h}, {644, 640.0f - defaultPlayer.h + 0.5f},
+            {644, 672}, {644, 672 - 0.5f}
+        };
+        for (const auto& position : edgePositions) {
+            Player onPlatform, onTile;
+            onPlatform.x = onTile.x = position.x;
+            onPlatform.y = onTile.y = position.y;
+            const auto platformResult = UpdatePlayerMovement(onPlatform, map, 1.0f / 60, movement, 0, false, false,
+                0, false, false, false, false, keys, inputMove, inputDown, &solids);
+            const auto tileResult = UpdatePlayerMovement(onTile, tiledMap, 1.0f / 60, movement, 0, false, false,
+                0, false, false, false, false, keys, inputMove, inputDown);
+            require(platformResult == tileResult && close(onPlatform.x, onTile.x) && close(onPlatform.y, onTile.y) &&
+                close(onPlatform.vy, onTile.vy) && onPlatform.onGround == onTile.onGround,
+                "Platform edges must match solid tile edges without an extra collision pixel");
+        }
         player = Player{};
         player.x = 64; player.y = 64;
         map.setSolid(1, 2, 1); map.setSolid(1, 3, 1);

@@ -13,8 +13,11 @@ const std::vector<SDL_FRect>* g_dynamicSolids = nullptr;
 
 bool hitsDynamicSolid(float x, float y, int w, int h) {
     if (!g_dynamicSolids) return false;
+    // Match the inclusive pixel bounds used by the tile collision checks below.
+    // Using x + w / y + h here makes platforms block one pixel too early.
     for (const auto& rect : *g_dynamicSolids)
-        if (x + w > rect.x && x < rect.x + rect.w && y + h > rect.y && y < rect.y + rect.h) return true;
+        if (x + w - 1 >= rect.x && x < rect.x + rect.w &&
+            y + h - 1 >= rect.y && y < rect.y + rect.h) return true;
     return false;
 }
 

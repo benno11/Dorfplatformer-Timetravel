@@ -27,7 +27,8 @@ knockback, or death; actual deaths clear it, while restarts and level transition
 preserve it. Shield state is included in saves and replays.
 **96 = solid moving platform**, using `moving_block.png`. Standing on any one
 starts all platforms together on a diagonal trip of 11 blocks left and 11 blocks
-down over 6.7 seconds. They block the player on every side and carry riders,
+down over 6.7 seconds. They block the player on every side and carry the player
+and any objects resting on top,
 then stay at their destinations until the level restarts. Run saves
 preserve its position and remaining travel time.
 

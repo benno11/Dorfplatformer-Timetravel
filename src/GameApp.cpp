@@ -6174,12 +6174,11 @@ int RunGameApp(int argc, char** argv) {
                 }
             }
             MovingPlatform::synchronize(movingPlatformStates, objectIds, platformRider >= 0);
+            const auto platformDeltas = MovingPlatform::advanceObjects(objects, movingPlatformStates, objectIds,
+                dt, (float)map.tileSize, gameplayWrapX ? mapWrapW : 0, gameplayWrapY ? mapWrapH : 0);
             for (int index = 0; index < (int)objects.size(); ++index) {
                 if (objectIds[index] != ObjectIds::MovingPlatform) continue;
-                auto& platform = movingPlatformStates[index];
-                const auto delta = MovingPlatform::advance(platform, dt, (float)map.tileSize);
-                objects[index].x += delta.x;
-                objects[index].y += delta.y;
+                const auto delta = platformDeltas[index];
                 if (index == platformRider) {
                     MovingPlatform::carry(player, map, delta);
                     const auto bounds = MovingPlatform::nearPlayer(objects[index].x, objects[index].y, (float)map.tileSize,
