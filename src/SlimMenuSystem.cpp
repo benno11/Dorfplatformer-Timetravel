@@ -501,7 +501,7 @@ bool parseMenuAlignment(std::string value, SlimMenuLayout::Align& out) {
 }
 
 SlimMenu loadMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuContext& ctx) {
-    if (name == "locallevels" || name == "onlinelevels" || name == "leveldetail" || name == "worldselect") {
+    if (name == "locallevels" || name == "onlinelevels" || name == "leveldetail" || name == "worldselect" || name == "hardmodepractice") {
         return buildGeneratedLevelMenu(name, runtime, ctx);
     }
 
@@ -1318,6 +1318,19 @@ bool putServerUpdateTrigger(const SlimMenuContext& ctx, std::string& status) {
 }
 
 SlimMenu buildGeneratedLevelMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuContext& ctx) {
+    if (name == "hardmodepractice") {
+        SlimMenu menu;
+        menu.name = name;
+        menu.title = "Hardmode Practice";
+        menu.items.push_back(MenuItem{MenuItem::Type::Text, "Practice does not affect run progress or completion.", {}, {}});
+        if (ctx.progression && ctx.progression->hardmodeUnlocked) {
+            for (int level = 1; level <= kHardmodeLevelCount; ++level)
+                menu.items.push_back(MenuItem{MenuItem::Type::Button, "Level " + std::to_string(level),
+                    "hardmode_practice", std::to_string(level)});
+        } else menu.items.push_back(MenuItem{MenuItem::Type::Text, "Reach the good ending to unlock Hardmode.", {}, {}});
+        menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back", "menu", "hardmode"});
+        return menu;
+    }
     if (name == "worldselect") {
         SlimMenu menu;
         menu.name = name;
@@ -1869,6 +1882,14 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
         const auto path = manager.levelPathByCode(world * 100 + 10 + (world >= 6 ? 3 : 1));
         if (path.empty()) return SlimMenuExit::Continue;
         *ctx.selectedLevelPath = path;
+        if (ctx.selectedLevelName) ctx.selectedLevelName->clear();
+        return SlimMenuExit::StartGame;
+    }
+    if (command == "hardmode_practice") {
+        if (!ctx.progression || !ctx.progression->hardmodeUnlocked || !ctx.selectedLevelPath) return SlimMenuExit::Continue;
+        const auto selection = HardmodePracticeSelection(std::atoi(arg.c_str()));
+        if (selection.empty()) return SlimMenuExit::Continue;
+        *ctx.selectedLevelPath = selection;
         if (ctx.selectedLevelName) ctx.selectedLevelName->clear();
         return SlimMenuExit::StartGame;
     }

@@ -16,6 +16,17 @@ and a jump buffered within 150 ms of landing takes priority over bouncing.
 Custom object IDs: **1001 = pickup**, **1002 = goal**. The editor and gameplay
 use these IDs; 95 and 97 are reserved for existing objects and are not remapped.
 
+Finishing either world 7 ending unlocks **World Select** in Play. The time-4
+good ending also unlocks **Hardmode**. Unlocks and the furthest hardmode level
+persist across save slots in `progression.json` in the app save folder.
+Hardmode runs through `assets/Hardmode levels/level_01.txt` through `level_20.txt`
+in order. Any death resets the run to level 1 while retaining the best level
+reached; finishing level 20 records hardmode completion. Hardmode has its own
+Continue Run save, separate from the three campaign slots.
+The Hardmode menu also offers **Practice Levels** for all 20 stages. Practice
+retries the selected level after death, returns to the selector on completion,
+and does not change unlocks, best progress, completion flags, or the run save.
+
 Build locally:
 - Windows PowerShell: `powershell -ExecutionPolicy Bypass -File .\build-local.ps1`
 - Windows PowerShell + run after build: `powershell -ExecutionPolicy Bypass -File .\build-local.ps1 -Run`

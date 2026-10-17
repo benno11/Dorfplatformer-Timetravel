@@ -19,7 +19,8 @@ void GameProgression::completeHardmode() {
     hardmodeComplete = worldSelectUnlocked = hardmodeUnlocked = true;
     hardmodeFurthestLevel = kHardmodeLevelCount;
 }
-bool GameProgression::recordCompletion(const std::string& path, int world, int area, int time) {
+bool GameProgression::recordCompletion(const std::string& path, int world, int area, int time, bool practice) {
+    if (practice) return false;
     if (HardmodeLevelFromPath(path) == kHardmodeLevelCount) {
         completeHardmode();
         return true;
@@ -102,4 +103,13 @@ std::string HardmodeSavePath() {
 std::string HardmodeResumePath(const std::string& savedPath, bool failed) {
     const int level = HardmodeLevelFromPath(savedPath);
     return level > 0 ? HardmodeLevelPath(failed ? 1 : level) : std::string();
+}
+std::string HardmodePracticeSelection(int level) {
+    return level >= 1 && level <= kHardmodeLevelCount
+        ? "__DF_HARDMODE_PRACTICE__:" + std::to_string(level) : std::string();
+}
+int HardmodePracticeLevel(const std::string& selection) {
+    for (int level = 1; level <= kHardmodeLevelCount; ++level)
+        if (selection == HardmodePracticeSelection(level)) return level;
+    return 0;
 }

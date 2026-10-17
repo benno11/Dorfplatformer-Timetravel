@@ -14,7 +14,7 @@ struct GameProgression {
     void recordEnding(bool goodEnding);
     void reachHardmodeLevel(int level);
     void completeHardmode();
-    bool recordCompletion(const std::string& path, int world, int area, int time);
+    bool recordCompletion(const std::string& path, int world, int area, int time, bool practice = false);
 };
 
 GameProgression LoadGameProgression();
@@ -24,3 +24,5 @@ int HardmodeLevelFromPath(const std::string& path);
 bool IsCampaignLevelPath(const std::string& path);
 std::string HardmodeSavePath();
 std::string HardmodeResumePath(const std::string& savedPath, bool failed);
+std::string HardmodePracticeSelection(int level);
+int HardmodePracticeLevel(const std::string& selection);

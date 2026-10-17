@@ -8,6 +8,7 @@
 #undef NDEBUG
 #endif
 #include <cassert>
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -88,5 +89,18 @@ int main() {
         assert(objects[1].id == std::to_string(ObjectIds::Goal));
         assert(objects[2].id == "95" && objects[3].id == "97");
     }
+    for (int level = 1; level <= kHardmodeLevelCount; ++level) {
+        const auto path = HardmodeLevelPath(level);
+        assert(loadLevelBNNLVL(path, map, objects, loaded));
+        const bool hasEndTile = std::find(map.tileIds.begin(), map.tileIds.end(), 30) != map.tileIds.end();
+        manager.setLevelPath(path);
+        manager.reloadLevel(map, objects, loaded, player);
+        assert(manager.nextLevelPath() == HardmodeLevelPath(level + 1));
+        if (hasEndTile) {
+            assert(std::any_of(objects.begin(), objects.end(), [](const ObjectInstance& object) { return object.id == "67"; }));
+        }
+    }
+    assert(manager.levelPathByCode(613) == "assets/levels/level_051.txt");
+    assert(manager.levelPathByCode(713) == "assets/levels/level_057.txt");
     return 0;
 }

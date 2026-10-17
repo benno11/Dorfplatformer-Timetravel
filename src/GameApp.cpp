@@ -2755,6 +2755,9 @@ int RunGameApp(int argc, char** argv) {
         }
         bool loadSavedGame = false;
         nlohmann::json savedGameRoot;
+        const int practiceLevel = HardmodePracticeLevel(selectedLevelPath);
+        const bool hardmodePractice = practiceLevel > 0;
+        if (hardmodePractice) selectedLevelPath = HardmodeLevelPath(practiceLevel);
         const bool continueHardmode = selectedLevelPath == kContinueHardmodeToken;
         if (selectedLevelPath == kStartHardmodeToken) selectedLevelPath = HardmodeLevelPath(1);
         if (selectedLevelPath == kSavedGameSelectionToken || continueHardmode) {
@@ -2784,7 +2787,7 @@ int RunGameApp(int argc, char** argv) {
         }
         if (loadSavedGame && !savedGameRoot.is_object()) continue;
         const std::string entryPath = loadSavedGame ? savedGameRoot.value("level_path", std::string()) : selectedLevelPath;
-        const bool hardmodeRun = HardmodeLevelFromPath(entryPath) > 0;
+        const bool hardmodeRun = !hardmodePractice && HardmodeLevelFromPath(entryPath) > 0;
         if (continueHardmode && !hardmodeRun) continue;
         if (hardmodeRun && loadSavedGame && savedGameRoot.value("hardmode_failed", false)) {
             loadSavedGame = false;
@@ -2792,7 +2795,7 @@ int RunGameApp(int argc, char** argv) {
         }
         bool allowNextLevelProgression = hardmodeRun || IsCampaignLevelPath(entryPath);
         const bool livesSystemEnabled = allowNextLevelProgression && !hardmodeRun;
-        if (hardmodeRun && !loadSavedGame) levelManager.clearButtonAreasForDebug();
+        if ((hardmodeRun || hardmodePractice) && !loadSavedGame) levelManager.clearButtonAreasForDebug();
         audio.haltMusic();
         if (!loadSavedGame) {
             levelManager.setLevelPath(selectedLevelPath);
@@ -3230,8 +3233,8 @@ int RunGameApp(int argc, char** argv) {
             std::string path = levelManager.levelPath();
             std::replace(path.begin(), path.end(), '\\', '/');
             const bool campaign = path.rfind("assets/levels/", 0) == 0 || path.find("/assets/levels/") != std::string::npos;
-            if (hardmodeRun) {
-                currentFancyLevelName = "HARDMODE " + std::to_string(HardmodeLevelFromPath(path));
+            if (hardmodeRun || hardmodePractice) {
+                currentFancyLevelName = std::string(hardmodePractice ? "PRACTICE " : "HARDMODE ") + std::to_string(HardmodeLevelFromPath(path));
             } else if (campaign) {
                 currentFancyLevelName = buildFancyLevelName();
             } else {
@@ -3341,7 +3344,7 @@ int RunGameApp(int argc, char** argv) {
             if (levelCompleteActive) return;
             levelCompleteActive = true;
             if (progression.recordCompletion(levelManager.levelPath(), levelManager.worldId(),
-                levelManager.levelPartId(), levelManager.timeId())) SaveGameProgression(progression);
+                levelManager.levelPartId(), levelManager.timeId(), hardmodePractice)) SaveGameProgression(progression);
             if (hardmodeRun && HardmodeLevelFromPath(levelManager.levelPath()) == kHardmodeLevelCount) {
                 std::error_code ec;
                 std::filesystem::remove(HardmodeSavePath(), ec);
@@ -3350,7 +3353,7 @@ int RunGameApp(int argc, char** argv) {
                 std::string completedPath = levelManager.levelPath();
                 std::replace(completedPath.begin(), completedPath.end(), '\\', '/');
                 const bool localEditableLevel =
-                    !hardmodeRun &&
+                    !hardmodeRun && !hardmodePractice &&
                     completedPath.find("://") == std::string::npos &&
                     completedPath.rfind("assets/levels/", 0) != 0 &&
                     completedPath.find("/assets/levels/") == std::string::npos;
@@ -3585,6 +3588,7 @@ int RunGameApp(int argc, char** argv) {
         std::vector<DroppedCoin> droppedCoins;
         auto transitionToLevelPath = [&](const std::string& path) -> bool {
             if (path.empty()) return false;
+            if (hardmodePractice && path != levelManager.levelPath()) return false;
             if (hardmodeRun && HardmodeLevelFromPath(path) == 0) return false;
             levelManager.setLevelPath(path);
             syncWorldBackground();
@@ -4050,6 +4054,7 @@ int RunGameApp(int argc, char** argv) {
         };
         saveGameToDisk = [&]() -> bool {
             try {
+                if (hardmodePractice) return false;
                 if (levelManager.levelPath().empty()) return false;
                 if (hardmodeRun && levelCompleteActive && HardmodeLevelFromPath(levelManager.levelPath()) == kHardmodeLevelCount) return true;
                 const std::filesystem::path savePath = hardmodeRun
@@ -7916,7 +7921,7 @@ int RunGameApp(int argc, char** argv) {
             while (pr.y < -wrapH * 0.5f) pr.y += wrapH;
             while (pr.y >  wrapH * 0.5f) pr.y -= wrapH;
         }
-        {
+        if (fastTravelActiveDir < 0) {
             const std::vector<const Frame*>* seq = &animIdleFrames;
             switch (player.anim) {
                 case ANIM_WALK: seq = &animWalkFrames; break;
