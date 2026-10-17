@@ -2194,11 +2194,22 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
                 showStatus(uploadStatus);
             }
         };
+        auto reloadLocalLevels = [&]() {
+            localLevels = loadLevelListFromDir(localLevelsFolderPath(), true);
+            if (includeCustom) {
+                localLevels.insert(localLevels.begin(), LevelEntry{menuLabels.localEditorEntry, "__local_editor__"});
+            }
+            if (localTabIndex >= 0 && localTabIndex < 3) {
+                selected[localTabIndex] = std::clamp(selected[localTabIndex], 0, std::max(0, (int)localLevels.size() - 1));
+            }
+        };
         auto resolveSelectedPath = [&](const LevelEntry& sel) -> std::string {
             if (sel.path == "__local_editor__") {
                 const NewLevelPromptResult prompt = RunNewLevelPrompt(win, ren);
                 if (!prompt.accepted) return {};
-                return RunLocalLevelEditor(win, ren, "", prompt.name, prompt.width, prompt.height);
+                RunLocalLevelEditor(win, ren, "", prompt.name, prompt.width, prompt.height);
+                reloadLocalLevels();
+                return {};
             }
             std::string p = cacheRemoteLevel(sel);
             if (p.empty()) p = sel.path;
@@ -2209,15 +2220,6 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
             if (localPageIndex < 0 || localPageIndex >= (int)localLevels.size()) return {};
             return resolveSelectedPath(localLevels[localPageIndex]);
         };
-        auto reloadLocalLevels = [&]() {
-            localLevels = loadLevelListFromDir(localLevelsFolderPath(), true);
-            if (includeCustom) {
-                localLevels.insert(localLevels.begin(), LevelEntry{menuLabels.localEditorEntry, "__local_editor__"});
-            }
-            if (localTabIndex >= 0 && localTabIndex < 3) {
-                selected[localTabIndex] = std::clamp(selected[localTabIndex], 0, std::max(0, (int)localLevels.size() - 1));
-            }
-        };
         auto deleteLocalAt = [&](int idx) {
             if (idx < 0 || idx >= (int)localLevels.size()) return;
             std::filesystem::remove(localLevels[idx].path);
@@ -2227,12 +2229,8 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
         };
         auto editLocalAt = [&](int idx) {
             std::string loadPath = (idx >= 0 && idx < (int)localLevels.size()) ? localLevels[idx].path : std::string();
-            std::string p = RunLocalLevelEditor(win, ren, loadPath);
-            if (!p.empty()) {
-                chosenPath = p;
-                chosen = true;
-                running = false;
-            }
+            RunLocalLevelEditor(win, ren, loadPath);
+            reloadLocalLevels();
         };
         auto renameLocalAt = [&](int idx) {
             if (idx < 0 || idx >= (int)localLevels.size()) {

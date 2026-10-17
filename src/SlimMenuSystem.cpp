@@ -1,3 +1,4 @@
+#include "BuildInfo.h"
 #include "SlimMenuSystem.h"
 #include "SlimMenuLayout.h"
 
@@ -42,7 +43,7 @@
 namespace {
 
 constexpr const char* kSavedGameSelectionToken = "__DF_SAVEGAME_CONTINUE__";
-constexpr const char* kSlimMenuUserAgent = "DF-New slim-menu";
+constexpr const char* kSlimMenuUserAgent = PLATFORMER_CLIENT_USER_AGENT;
 
 struct MenuItem {
     enum class Type { Text, Button };
@@ -1492,17 +1493,19 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
 void presentMenuFrame(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContext& ctx, int selected,
                       const SlimMenuLayout::Layout* prepared = nullptr) {
     const auto computed = prepared ? SlimMenuLayout::Layout{} : layoutFor(menu, runtime, ctx);
+    int outputW = 0, outputH = 0;
+    SDL_GetRenderOutputSize(ctx.ren, &outputW, &outputH);
+    const SDL_Rect dst = computePresentRect(outputW, outputH, ctx.baseScreenW, ctx.baseScreenH);
+    BeginNativeTextOverlay(ctx.ren, ctx.baseScreenW, ctx.baseScreenH, dst);
     renderMenu(menu, runtime, ctx, selected, prepared ? *prepared : computed);
     SDL_SetRenderTarget(ctx.ren, nullptr);
     SDL_SetRenderViewport(ctx.ren, nullptr);
     SDL_SetRenderClipRect(ctx.ren, nullptr);
     SDL_SetRenderScale(ctx.ren, 1.0f, 1.0f);
-    int outputW = 0, outputH = 0;
-    SDL_GetCurrentRenderOutputSize(ctx.ren, &outputW, &outputH);
-    const SDL_Rect dst = computePresentRect(outputW, outputH, ctx.baseScreenW, ctx.baseScreenH);
     SDL_SetRenderDrawColor(ctx.ren, 0, 0, 0, 255);
     SDL_RenderClear(ctx.ren);
     SDL_RenderTexture(ctx.ren, ctx.gameTarget, static_cast<const SDL_Rect*>(nullptr), &dst);
+    FlushNativeTextOverlay(ctx.ren);
     SDL_RenderPresent(ctx.ren);
 }
 
@@ -1639,12 +1642,7 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
     if (command == "create_level") {
         const std::string createdPath = OpenLocalLevelEditorForMenu(ctx.win, ctx.ren, {});
         runtime.localLevelsLoaded = false;
-        if (!createdPath.empty() && ctx.selectedLevelPath) {
-            *ctx.selectedLevelPath = createdPath;
-            return SlimMenuExit::StartGame;
-        }
-        runtime.vars["level_detail_status"] = "Create cancelled.";
-        currentMenu = "locallevels";
+        runtime.vars["level_detail_status"] = createdPath.empty() ? "Create cancelled." : "Level saved.";
         runtime.vars["__reload_menu"] = "1";
         return SlimMenuExit::Continue;
     }
@@ -1658,11 +1656,7 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
         }
         const std::string editedPath = OpenLocalLevelEditorForMenu(ctx.win, ctx.ren, levels[index].path);
         runtime.localLevelsLoaded = false;
-        if (!editedPath.empty() && ctx.selectedLevelPath) {
-            *ctx.selectedLevelPath = editedPath;
-            return SlimMenuExit::StartGame;
-        }
-        runtime.vars["level_detail_status"] = "Edit cancelled.";
+        runtime.vars["level_detail_status"] = editedPath.empty() ? "Edit cancelled." : "Level saved.";
         runtime.vars["__reload_menu"] = "1";
         return SlimMenuExit::Continue;
     }
@@ -1869,9 +1863,26 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
 
 } // namespace
 
+// Only menu data survives gameplay. Renderer assets belong to each menu visit.
+struct SlimMenuSession {
+    std::string menu;
+    std::unordered_map<std::string, std::string> vars;
+    std::vector<SlimLevelEntry> localLevels, onlineLevels;
+    bool localLevelsLoaded = false, onlineLevelsLoaded = false;
+    int selected = 0;
+    float scrollY = 0.0f;
+};
+
+std::shared_ptr<SlimMenuSession> CreateSlimMenuSession() {
+    return std::make_shared<SlimMenuSession>();
+}
+
+std::string PendingSlimMenu(const std::shared_ptr<SlimMenuSession>& session) {
+    return session ? session->menu : std::string();
+}
+
 SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
-    // Script menu text is rendered inside its scrolling clip, rather than a
-    // deferred gameplay text overlay that does not share the menu viewport.
+    // Drop any queued text belonging to the screen that opened this menu.
     CancelNativeTextOverlay(ctx.ren);
     SlimRuntime runtime;
     runtime.ownsMenuTexture = !ctx.menuTexture;
@@ -1886,6 +1897,18 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
     std::string restoreCommand, restoreArgument, restoreLabel;
     bool restoreSelection = false;
     int selected = 0;
+    if (ctx.session && !ctx.session->menu.empty()) {
+        currentMenu = ctx.session->menu;
+        viewedMenu = currentMenu;
+        runtime.vars = ctx.session->vars;
+        runtime.localLevels = ctx.session->localLevels;
+        runtime.onlineLevels = ctx.session->onlineLevels;
+        runtime.localLevelsLoaded = ctx.session->localLevelsLoaded;
+        runtime.onlineLevelsLoaded = ctx.session->onlineLevelsLoaded;
+        selected = ctx.session->selected;
+        runtime.scrollY = ctx.session->scrollY;
+        ctx.session->menu.clear();
+    }
     while (ctx.running && *ctx.running) {
         SlimMenu menu = loadMenu(currentMenu, runtime, ctx);
         if (restoreSelection) {
@@ -2083,6 +2106,16 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                     if (MenuItem* item = buttonAt(menu, selected)) {
                         const std::string before = currentMenu;
                         const SlimMenuExit exit = execute(*item, runtime, ctx, currentMenu);
+                        if (exit == SlimMenuExit::StartGame && ctx.session) {
+                            ctx.session->menu = currentMenu;
+                            ctx.session->vars = runtime.vars;
+                            ctx.session->localLevels = runtime.localLevels;
+                            ctx.session->onlineLevels = runtime.onlineLevels;
+                            ctx.session->localLevelsLoaded = runtime.localLevelsLoaded;
+                            ctx.session->onlineLevelsLoaded = runtime.onlineLevelsLoaded;
+                            ctx.session->selected = selected;
+                            ctx.session->scrollY = runtime.scrollY;
+                        }
                         if (exit == SlimMenuExit::Back || exit == SlimMenuExit::StartGame || exit == SlimMenuExit::Quit) return exit;
                         if (runtime.vars.erase("__reload_menu") > 0 || currentMenu != before) {
                             goto next_menu;

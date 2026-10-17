@@ -3,7 +3,10 @@
 #include <SDL3/SDL.h>
 
 #include <functional>
+#include <memory>
 #include <string>
+
+struct SlimMenuSession;
 
 enum class FrontendAction {
     StartGame,
@@ -11,6 +14,7 @@ enum class FrontendAction {
 };
 
 struct FrontendMenuContext {
+    std::shared_ptr<SlimMenuSession> menuSession;
     SDL_Window* win = nullptr;
     SDL_Renderer* ren = nullptr;
     SDL_Texture* gameTarget = nullptr;

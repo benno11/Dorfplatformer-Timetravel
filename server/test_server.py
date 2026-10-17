@@ -95,6 +95,73 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.request("DELETE", "/levels/player-demo.json", token=token)[0], 200)
         self.assertEqual(self.request("GET", "/levels/player-demo.json")[0], 404)
 
+    def test_level_download_version_compatibility(self):
+        token = self.register()["idToken"]
+        for version in (1, 2, 10, 28, 29, 99999999999999999999999999999999):
+            body = {"name": "Versioned", "data": "data-" + str(version), "api_version_id": version}
+            self.assertEqual(self.request("PUT", f"/levels/v{version}.json", body, token)[0], 200)
+        for build in (2, 10, 28, 29):
+            headers = {"User-Agent": f"DF-New/3.0.0 Alpha 1 (build/{build})"}
+            expected = {"v" + str(v) for v in (1, 2, 10, 28, 29) if v <= build}
+            for suffix in ("", "?shallow=true", "?metadata=true"):
+                status, levels = self.request("GET", "/levels.json" + suffix, headers=headers)
+                self.assertEqual(status, 200)
+                self.assertEqual(set(levels), expected, (build, suffix))
+                if suffix == "?metadata=true":
+                    self.assertTrue(all("data" not in level for level in levels.values()))
+            for version in (2, 10, 28, 29):
+                for suffix in (".json", "/data.json"):
+                    status, result = self.request("GET", f"/levels/v{version}" + suffix, headers=headers)
+                    self.assertEqual(status, 200 if version <= build else 426)
+                    if status == 426:
+                        self.assertNotIn("data-", json.dumps(result))
+        # Rejected downloads do not count as successful downloads.
+        with self.server.store.connect() as db:
+            counts = dict(db.execute("SELECT level_id,downloads FROM level_stats"))
+        self.assertEqual(counts, {"v2": 4, "v10": 3, "v28": 2, "v29": 1})
+
+    def test_upload_uses_compiled_build_and_reupload_updates_compatibility(self):
+        token = self.register()["idToken"]
+        body = {"name": "Versioned", "data": "level", "api_version_id": 1}
+        old_headers = {"User-Agent": "DF-New/3.0.0 Alpha 1 (build/28)"}
+        new_headers = {"User-Agent": "DF-New/3.0.0 Alpha 2 (build/29)"}
+        path = "/levels/versioned.json"
+        self.assertEqual(self.request("PUT", path, body, token, headers=old_headers)[0], 200)
+        self.assertEqual(self.request("GET", path, headers=old_headers)[1]["api_version_id"], "28")
+        self.assertEqual(self.request("PUT", path, body, token, headers=new_headers)[0], 200)
+        self.assertEqual(self.request("GET", path, headers=old_headers)[0], 426)
+        self.assertEqual(self.request("GET", path, headers=new_headers)[1]["api_version_id"], "29")
+        # Version policy must not prevent an owner from deleting a newer level.
+        self.assertEqual(self.request("DELETE", path, token=token, headers=old_headers)[0], 200)
+
+    def test_legacy_downloads_and_unknown_stored_versions(self):
+        token = self.register()["idToken"]
+        for version in (1, 28):
+            self.request("PUT", f"/levels/v{version}.json",
+                         {"name": "Versioned", "data": "level", "api_version_id": version}, token)
+        self.request("PUT", "/levels/unknown.json", {"name": "Unknown", "data": "level"}, token)
+        with self.server.store.connect() as db:
+            db.execute("UPDATE levels SET api_version='unknown' WHERE id='unknown'")
+        for user_agent in ("", "Mozilla/5.0", "DF-New/1.0", "DF-New/invalid", "DF-New slim-menu"):
+            headers = {"User-Agent": user_agent}
+            self.assertEqual(set(self.request("GET", "/levels.json", headers=headers)[1]), {"v1"})
+            for level in ("v28", "unknown"):
+                self.assertEqual(self.request("GET", f"/levels/{level}/data.json", headers=headers)[0], 426)
+        headers = {"User-Agent": "DF-New/3.0.0 Alpha 1 (build/28)"}
+        self.assertEqual(self.request("GET", "/levels/unknown.json", headers=headers)[0], 426)
+        self.assertEqual(set(self.request("GET", "/levels.json?shallow=true", headers=headers)[1]), {"v1", "v28"})
+
+    def test_upload_version_id_validation(self):
+        token = self.register()["idToken"]
+        body = {"name": "Versioned", "data": "level"}
+        for version in (True, False, None, 0, -1, 1.5, "", "dev", "1.0", "-1", " 28", "9" * 33, [], {}):
+            self.assertEqual(self.request("PUT", "/levels/versioned.json",
+                {**body, "api_version_id": version}, token)[0], 400, version)
+        for field in ("api_version_id", "level_api_version_id"):
+            self.assertEqual(self.request("PUT", "/levels/versioned.json", {**body, field: "0028"}, token)[0], 200)
+            with self.server.store.connect() as db:
+                self.assertEqual(db.execute("SELECT api_version FROM levels WHERE id='versioned'").fetchone()[0], "28")
+
     def test_level_votes_and_download_counts(self):
         owner = self.register("owner")["idToken"]
         liker = self.register("liker")["idToken"]

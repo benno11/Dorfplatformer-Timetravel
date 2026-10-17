@@ -3,12 +3,18 @@
 #include <SDL3/SDL.h>
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <unordered_map>
 
 struct Frame;
+struct SlimMenuSession;
+
+std::shared_ptr<SlimMenuSession> CreateSlimMenuSession();
+std::string PendingSlimMenu(const std::shared_ptr<SlimMenuSession>& session);
 
 struct SlimMenuContext {
+    std::shared_ptr<SlimMenuSession> session;
     SDL_Window* win = nullptr;
     SDL_Renderer* ren = nullptr;
     SDL_Texture* gameTarget = nullptr;

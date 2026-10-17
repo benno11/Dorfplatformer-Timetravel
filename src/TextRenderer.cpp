@@ -37,6 +37,8 @@ struct QueuedTextDraw {
     int scale = 1;
     float renderScaleX = 1.0f;
     float renderScaleY = 1.0f;
+    bool clipEnabled = false;
+    SDL_Rect clipRect{};
 };
 struct NativeTextOverlay {
     bool active = false;
@@ -326,12 +328,26 @@ void FlushNativeTextOverlay(SDL_Renderer* ren) {
 
     const float sx = (float)overlay.outputRect.w / (float)overlay.logicalW;
     const float sy = (float)overlay.outputRect.h / (float)overlay.logicalH;
+    const bool savedClipEnabled = SDL_RenderClipEnabled(ren);
+    SDL_Rect savedClip{};
+    SDL_GetRenderClipRect(ren, &savedClip);
     for (const QueuedTextDraw& draw : overlay.queue) {
         const float drawScaleX = draw.renderScaleX * sx;
         const float drawScaleY = draw.renderScaleY * sy;
         const float nativeRasterScale = gNativeTextResolutionEnabled
             ? std::max(std::abs(drawScaleX), std::abs(drawScaleY))
             : 1.0f;
+        SDL_Rect clip = overlay.outputRect;
+        if (draw.clipEnabled) {
+            const int left = (int)std::floor(overlay.outputRect.x + draw.clipRect.x * drawScaleX);
+            const int top = (int)std::floor(overlay.outputRect.y + draw.clipRect.y * drawScaleY);
+            const int right = (int)std::ceil(overlay.outputRect.x + (draw.clipRect.x + draw.clipRect.w) * drawScaleX);
+            const int bottom = (int)std::ceil(overlay.outputRect.y + (draw.clipRect.y + draw.clipRect.h) * drawScaleY);
+            const SDL_Rect transformed{left, top, right - left, bottom - top};
+            if (!SDL_GetRectIntersection(&clip, &transformed, &clip)) continue;
+        }
+        if (savedClipEnabled && !SDL_GetRectIntersection(&clip, &savedClip, &clip)) continue;
+        SDL_SetRenderClipRect(ren, &clip);
         DrawTextColoredImmediate(
             ren,
             (float)overlay.outputRect.x + (float)draw.x * drawScaleX,
@@ -343,6 +359,7 @@ void FlushNativeTextOverlay(SDL_Renderer* ren) {
             draw.color,
             nativeRasterScale);
     }
+    SDL_SetRenderClipRect(ren, savedClipEnabled ? &savedClip : nullptr);
     overlay.queue.clear();
     overlay.active = false;
 }
@@ -365,7 +382,10 @@ void DrawTextColored(SDL_Renderer* ren, int x, int y, int scale, const std::stri
         float sx = 1.0f;
         float sy = 1.0f;
         SDL_GetRenderScale(ren, &sx, &sy);
-        overlayIt->second.queue.push_back(QueuedTextDraw{text, color, x, y, scale, sx, sy});
+        QueuedTextDraw draw{text, color, x, y, scale, sx, sy};
+        draw.clipEnabled = SDL_RenderClipEnabled(ren);
+        if (draw.clipEnabled) SDL_GetRenderClipRect(ren, &draw.clipRect);
+        overlayIt->second.queue.push_back(std::move(draw));
         return;
     }
 

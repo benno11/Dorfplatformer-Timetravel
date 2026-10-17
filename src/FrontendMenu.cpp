@@ -1703,6 +1703,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         }
     };
     auto runScriptMenu = [&](const std::string& menuName) -> bool {
+        if (!ctx.menuSession) ctx.menuSession = CreateSlimMenuSession();
         SlimMenuContext slim{};
         slim.win = ctx.win;
         slim.ren = ctx.ren;
@@ -1750,6 +1751,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         slim.levelServerAuthToken = ctx.levelServerAuthToken;
         slim.levelServerAccountUsername = ctx.levelServerAccountUsername;
         slim.selectedLevelPath = ctx.selectedLevelPath;
+        slim.session = ctx.menuSession;
         slim.debuggerAttached = ctx.debuggerAttached;
         slim.applyAudioVolumes = ctx.applyAudioVolumes;
         slim.applyMenuMusicToggle = ctx.applyMenuMusicToggle;
@@ -1855,6 +1857,11 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
     if (ctx.applyMenuMusicToggle) ctx.applyMenuMusicToggle();
     normalizeSettingsTab();
+    const std::string resumeMenu = PendingSlimMenu(ctx.menuSession);
+    if (!resumeMenu.empty()) {
+        if (runScriptMenu(resumeMenu)) return FrontendAction::StartGame;
+        if (!running) return FrontendAction::Quit;
+    }
     InputSystem menuInput;
     menuInput.scanConnected();
 
@@ -3002,6 +3009,12 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             // Keep mouse/touch handling behavior in main for now to minimize risk.
         }
 
+        int winW = 0, winH = 0;
+        getWindowSizeInPixelsCompat(ctx.win, winW, winH);
+        SDL_Rect presentDst = computePresentRect(winW, winH, ctx.baseScreenW, ctx.baseScreenH, 1.0f);
+        // Background labels must remain below the quit dialog's dimming layer.
+        if (closeMenuOpen) CancelNativeTextOverlay(ctx.ren);
+        else BeginNativeTextOverlay(ctx.ren, ctx.baseScreenW, ctx.baseScreenH, presentDst);
         SDL_SetRenderTarget(ctx.ren, gameTarget);
         SDL_SetRenderDrawColor(ctx.ren, 118, 225, 255, 255); // #76e1ff
         SDL_RenderClear(ctx.ren);
@@ -3192,6 +3205,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_SetRenderDrawColor(ctx.ren, 170, 190, 220, 255);
                     SDL_RenderDrawRect(ctx.ren, &modal);
                 }
+                BeginNativeTextOverlay(ctx.ren, ctx.baseScreenW, ctx.baseScreenH, presentDst);
                 DrawText(ctx.ren, modal.x + (modal.w - MeasureTextWidth(2, "CLOSE GAME?")) / 2, modal.y + (int)std::lround(18.0f * uiButtonScale()), 2, "CLOSE GAME?");
 
                 SDL_Rect resumeBtn = quitResumeBtnRect(modal);
@@ -3957,12 +3971,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         }
 
         SDL_SetRenderTarget(ctx.ren, nullptr);
-        int winW = 0, winH = 0;
-        getWindowSizeInPixelsCompat(ctx.win, winW, winH);
-        SDL_Rect presentDst = computePresentRect(winW, winH, ctx.baseScreenW, ctx.baseScreenH, 1.0f);
         SDL_SetRenderDrawColor(ctx.ren, 118, 225, 255, 255); // #76e1ff
         SDL_RenderClear(ctx.ren);
         SDL_RenderCopy(ctx.ren, gameTarget, nullptr, &presentDst);
+        FlushNativeTextOverlay(ctx.ren);
         SDL_RenderPresent(ctx.ren);
     }
     cleanupMenuAssets();

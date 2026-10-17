@@ -24,6 +24,22 @@ SESSION_SECONDS = 30 * 24 * 3600
 DEFAULT_UPDATE_MANIFEST_URL = "https://benno111.github.io/Dorfplatformer-API/update-manifest.json"
 USERNAME = re.compile(r"[A-Za-z0-9_-]{3,48}")
 LEVEL_ID = re.compile(r"[A-Za-z0-9_-]{1,160}")
+CLIENT_BUILD = re.compile(r"DF-New/[A-Za-z0-9][A-Za-z0-9 .+_-]* \(build/([1-9][0-9]{0,9})\)")
+
+
+def client_build_id(user_agent):
+    match = CLIENT_BUILD.fullmatch(user_agent)
+    return int(match[1]) if match else None
+
+
+def numeric_version_id(value):
+    if isinstance(value, bool) or not isinstance(value, (str, int)):
+        return None
+    text = str(value)
+    if not re.fullmatch(r"[0-9]{1,32}", text):
+        return None
+    number = int(text)
+    return number if number > 0 else None
 
 
 class ApiError(Exception):
@@ -105,8 +121,8 @@ class Store:
         # enforcement for official clients, not authentication or anti-cheat.
         if not user_agent.startswith("DF-New/"):
             return
-        match = re.fullmatch(r"DF-New/[A-Za-z0-9.+-]+ \(build/([1-9][0-9]{0,9})\)", user_agent)
-        version = match[1] if match else "legacy"
+        build = client_build_id(user_agent)
+        version = str(build) if build is not None else "legacy"
         with self.connect() as db:
             block = db.execute("SELECT reason FROM blocked_versions WHERE version_id=?", (version,)).fetchone()
         if block:
@@ -302,18 +318,26 @@ class Store:
                 FROM level_votes GROUP BY level_id
             ) v ON v.level_id=levels.id"""
 
-    def levels(self, method, level_id, data_only, shallow, body, token, metadata=False):
+    def levels(self, method, level_id, data_only, shallow, body, token, metadata=False, client_version=None):
+        def compatible(version):
+            uploaded_version = numeric_version_id(version)
+            return client_version is None or (uploaded_version is not None and uploaded_version <= client_version)
+
         with self.connect() as db:
             if method == "GET":
                 if not level_id:
                     if shallow:
-                        return {row["id"]: True for row in db.execute("SELECT id FROM levels ORDER BY id")}
+                        return {row["id"]: True for row in db.execute("SELECT id,api_version FROM levels ORDER BY id")
+                                if compatible(row["api_version"])}
                     fields = "levels.id,levels.name,levels.api_version,levels.uploaded_at" if metadata else "levels.*"
                     rows = db.execute(self.level_select_sql(fields) + " ORDER BY levels.id").fetchall()
-                    return {r["id"]: self.level_data(r, include_data=not metadata) for r in rows}
+                    return {r["id"]: self.level_data(r, include_data=not metadata) for r in rows
+                            if compatible(r["api_version"])}
                 row = db.execute(self.level_select_sql("levels.*") + " WHERE levels.id=?", (level_id,)).fetchone()
                 if not row:
                     raise ApiError(404, "Level not found.")
+                if not compatible(row["api_version"]):
+                    raise ApiError(426, "This level requires a newer or unrecognized game version. Please update the game.")
                 if data_only:
                     db.execute("""INSERT INTO level_stats(level_id,downloads) VALUES(?,1)
                         ON CONFLICT(level_id) DO UPDATE SET downloads=downloads+1""", (level_id,))
@@ -347,9 +371,13 @@ class Store:
                 raise ApiError(400, "Level name must contain 1 to 160 characters.")
             if not isinstance(data, str) or not data.strip() or len(data.encode()) > MAX_BODY - 4096:
                 raise ApiError(400, "Level data must be nonempty text smaller than 2 MiB.")
-            version = body.get("api_version_id", "1")
-            if isinstance(version, bool) or not isinstance(version, (str, int)) or len(str(version)) > 32:
-                raise ApiError(400, "Invalid API version.")
+            # Official clients identify the actual uploading build in their
+            # User-Agent; editable asset/payload values cannot lower that ID.
+            version = client_version if client_version is not None else body.get(
+                "api_version_id", body.get("level_api_version_id", "1"))
+            version = numeric_version_id(version)
+            if version is None:
+                raise ApiError(400, "API version ID must be a positive integer of at most 32 digits.")
             if not existing and db.execute("SELECT count(*) FROM levels WHERE user_id=?", (user["id"],)).fetchone()[0] >= 100:
                 raise ApiError(409, "Account level limit reached (100).")
             db.execute("""INSERT INTO levels VALUES(?,?,?,?,?,?)
@@ -587,9 +615,11 @@ class Handler(BaseHTTPRequestHandler):
             match = re.fullmatch(r"/levels(?:/([A-Za-z0-9_-]{1,160})(/data)?)?\.json", path)
             if match:
                 body = self.body() if self.command == "PUT" else {}
+                build = client_build_id(self.headers.get("User-Agent", ""))
                 result = self.server.store.levels(self.command, match[1], bool(match[2]),
                           parse_qs(url.query).get("shallow") == ["true"], body, token,
-                          metadata=parse_qs(url.query).get("metadata") == ["true"])
+                          metadata=parse_qs(url.query).get("metadata") == ["true"],
+                          client_version=(build or 1) if self.command == "GET" else build)
                 self.send(200, result)
                 return
             release_name = None
