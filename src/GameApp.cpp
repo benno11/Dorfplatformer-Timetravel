@@ -6173,10 +6173,10 @@ int RunGameApp(int argc, char** argv) {
                     if (MovingPlatform::standingOn(player, bounds)) { platformRider = index; break; }
                 }
             }
+            MovingPlatform::synchronize(movingPlatformStates, objectIds, platformRider >= 0);
             for (int index = 0; index < (int)objects.size(); ++index) {
                 if (objectIds[index] != ObjectIds::MovingPlatform) continue;
                 auto& platform = movingPlatformStates[index];
-                if (index == platformRider) platform.started = true;
                 const auto delta = MovingPlatform::advance(platform, dt, (float)map.tileSize);
                 objects[index].x += delta.x;
                 objects[index].y += delta.y;
@@ -6191,28 +6191,26 @@ int RunGameApp(int argc, char** argv) {
             const float beforeNormalX = player.x;
             const float beforeNormalY = player.y;
                 if (!fastTravelEnabled) {
+                    std::vector<SDL_FRect> platformSolids;
+                    for (int index = 0; index < (int)objects.size(); ++index) {
+                        if (objectIds[index] != ObjectIds::MovingPlatform) continue;
+                        platformSolids.push_back(MovingPlatform::nearPlayer(objects[index].x, objects[index].y,
+                            (float)map.tileSize, player, gameplayWrapX ? mapWrapW : 0, gameplayWrapY ? mapWrapH : 0));
+                    }
                     upd = UpdatePlayerMovement(
                         player, map, dt, movementCfg,
                         touchMove, touchDown, touchJump,
                         gamepadMove, gamepadDown, gamepadJump, gamepadFreeMove,
                         effectiveDebugModeEnabled(),
                         keybinds,
-                        inputMove, inputDown
+                        inputMove, inputDown, &platformSolids
                     );
                     if (upd == PlayerUpdateResult::Normal && !player.freeMove) {
-                        int landed = -1;
-                        SDL_FRect landing{};
-                        for (int index = 0; index < (int)objects.size(); ++index) {
-                            if (objectIds[index] != ObjectIds::MovingPlatform) continue;
-                            const auto bounds = MovingPlatform::nearPlayer(objects[index].x, objects[index].y, (float)map.tileSize,
-                                player, gameplayWrapX ? mapWrapW : 0, gameplayWrapY ? mapWrapH : 0);
-                            if (player.vy >= 0 && player.x + player.w > bounds.x && player.x < bounds.x + bounds.w &&
-                                beforeNormalY + player.h <= bounds.y + 1.5f && player.y + player.h >= bounds.y &&
-                                (landed < 0 || bounds.y < landing.y)) { landed = index; landing = bounds; }
-                        }
-                        if (landed >= 0 && MovingPlatform::land(player, map, beforeNormalY, landing, movementCfg)) {
-                            movingPlatformStates[landed].started = true;
+                        for (const auto& bounds : platformSolids) {
+                            if (!MovingPlatform::touchingTop(player, bounds) || beforeNormalY + player.h > bounds.y + 1.5f) continue;
+                            MovingPlatform::synchronize(movingPlatformStates, objectIds, true);
                             addMovementReason(MR_PLATFORM);
+                            break;
                         }
                     }
                     if (std::fabs(player.x - beforeNormalX) > 0.01f || std::fabs(player.y - beforeNormalY) > 0.01f) {

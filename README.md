@@ -25,9 +25,10 @@ replace that box's five coins with a one-hit shield and visible force field.
 The object alone does not grant a shield. The shield takes damage before coins,
 knockback, or death; actual deaths clear it, while restarts and level transitions
 preserve it. Shield state is included in saves and replays.
-**96 = moving platform**, using `moving_block.png`. Standing on its top starts
-a diagonal trip of 12 blocks left and 12 blocks down over 6.7 seconds. It carries
-the player, then stays at its destination until the level restarts. Run saves
+**96 = solid moving platform**, using `moving_block.png`. Standing on any one
+starts all platforms together on a diagonal trip of 11 blocks left and 11 blocks
+down over 6.7 seconds. They block the player on every side and carry riders,
+then stay at their destinations until the level restarts. Run saves
 preserve its position and remaining travel time.
 
 Finishing either world 7 ending unlocks **World Select** in Play. The time-4

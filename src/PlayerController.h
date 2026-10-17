@@ -57,5 +57,6 @@ PlayerUpdateResult UpdatePlayerMovement(
     bool allowFreeMove,
     const KeyboardBindings& keybinds,
     float& inputMove,
-    bool& inputDown
+    bool& inputDown,
+    const std::vector<SDL_FRect>* dynamicSolids = nullptr
 );

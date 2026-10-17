@@ -9,6 +9,14 @@ namespace {
 bool g_horizontalWrapCollision = false;
 bool g_verticalWrapCollision = false;
 bool swimheld = false;
+const std::vector<SDL_FRect>* g_dynamicSolids = nullptr;
+
+bool hitsDynamicSolid(float x, float y, int w, int h) {
+    if (!g_dynamicSolids) return false;
+    for (const auto& rect : *g_dynamicSolids)
+        if (x + w > rect.x && x < rect.x + rect.w && y + h > rect.y && y < rect.y + rect.h) return true;
+    return false;
+}
 
 inline int wrapTileX(int x, int w) {
     if (w <= 0) return x;
@@ -34,6 +42,7 @@ void SetVerticalWrapCollision(bool enabled) {
 }
 
 bool RectHitsSolid(const TileMap& map, float x, float y, int w, int h) {
+    if (hitsDynamicSolid(x, y, w, h)) return true;
     int t = map.tileSize;
     int left = (int)std::floor(x / t);
     int right = (int)std::floor((x + w - 1) / t);
@@ -87,6 +96,7 @@ static bool rectHitsWater(const TileMap& map, float x, float y, int w, int h) {
 }
 
 static bool rectHasGroundBelow(const TileMap& map, float x, float y, int w, int h) {
+    if (hitsDynamicSolid(x, y + 1.0f, w, h)) return true;
     int t = map.tileSize;
     int left = (int)std::floor(x / t);
     int right = (int)std::floor((x + w - 1) / t);
@@ -190,8 +200,14 @@ PlayerUpdateResult UpdatePlayerMovement(
     bool allowFreeMove,
     const KeyboardBindings& keybinds,
     float& inputMove,
-    bool& inputDown
+    bool& inputDown,
+    const std::vector<SDL_FRect>* dynamicSolids
 ) {
+    struct SolidScope {
+        const std::vector<SDL_FRect>* previous;
+        ~SolidScope() { g_dynamicSolids = previous; }
+    } solidScope{g_dynamicSolids};
+    g_dynamicSolids = dynamicSolids;
     dt = GameplayDeltaTime(dt);
     const bool* keys = SDL_GetKeyboardState(nullptr);
     bool shiftDown = allowFreeMove && (keys[SDL_SCANCODE_LSHIFT] || keys[SDL_SCANCODE_RSHIFT]);
