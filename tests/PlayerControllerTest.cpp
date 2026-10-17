@@ -3,6 +3,9 @@
 #include "SimulationTiming.h"
 
 #include <SDL3/SDL.h>
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <cassert>
 #include <cmath>
 #include <limits>
@@ -18,13 +21,13 @@ Player makeFallingPlayer() {
     return player;
 }
 
-void step(Player& player, const TileMap& map, float dt, MovementConfig movement = {}, float move = 0.0f) {
+void step(Player& player, const TileMap& map, float dt, MovementConfig movement = {}, float move = 0.0f, bool jump = false) {
     KeyboardBindings bindings;
     float inputMove = 0.0f;
     bool inputDown = false;
     const PlayerUpdateResult result = UpdatePlayerMovement(
         player, map, dt, movement,
-        move, false, false,
+        move, false, jump,
         0.0f, false, false, false, false,
         bindings, inputMove, inputDown
     );
@@ -199,6 +202,68 @@ int main() {
     step(wrappedPush, wrappedPushMap, 1.0f / 60.0f, pushMovement);
     assert(wrappedPush.vx > 0.0f && wrappedPush.tilePushDirection == 1);
     SetHorizontalWrapCollision(false);
+
+    TileMap bounceMap = emptyMap;
+    bounceMap.bouncyTile12 = true;
+    for (int x = 0; x < bounceMap.w; ++x) {
+        bounceMap.setSolid(x, 7, 1);
+        bounceMap.tileIds[7 * bounceMap.w + x] = 12;
+    }
+    Player landing;
+    landing.x = 200.0f;
+    landing.y = 193.0f;
+    landing.w = landing.h = 30;
+    landing.vy = 1000.0f;
+    Player bouncing = landing;
+    step(bouncing, bounceMap, 1.0f / 120.0f);
+    const float bounceSpeed = std::sqrt(2.0f * limits.gravityGround * bounceMap.tileSize / 5.0f);
+    assert(std::fabs(bouncing.vy + bounceSpeed) < 0.001f);
+    assert(bouncing.tile12BounceActive && !bouncing.onGround);
+    const float floorY = bouncing.y;
+    step(bouncing, bounceMap, 1.0f / 240.0f);
+    assert(std::fabs(bouncing.vy - (-bounceSpeed + limits.gravityGround / 240.0f)) < 0.001f);
+    Player canceledBounce = bouncing;
+    step(canceledBounce, bounceMap, 1.0f / 240.0f, {}, 0, true);
+    assert(!canceledBounce.tile12BounceActive && canceledBounce.vy >= 0.0f);
+    assert(canceledBounce.jumpBufferTime > 0.0f);
+    // The canceled bounce's buffered input becomes a normal jump on touchdown.
+    for (int frame = 0; frame < 30 && canceledBounce.vy >= 0.0f; ++frame)
+        step(canceledBounce, bounceMap, 1.0f / 240.0f, {}, 0, true);
+    assert(canceledBounce.vy < -bounceSpeed && !canceledBounce.tile12BounceActive);
+    float highestY = bouncing.y;
+    int relaunches = 0;
+    for (int frame = 0; frame < 240; ++frame) {
+        const float previousVy = bouncing.vy;
+        step(bouncing, bounceMap, 1.0f / 240.0f);
+        highestY = std::min(highestY, bouncing.y);
+        if (previousVy > 0 && bouncing.vy < 0) {
+            ++relaunches;
+            assert(std::fabs(bouncing.vy + bounceSpeed) < 0.001f);
+        }
+    }
+    assert(relaunches >= 3);
+    assert(std::fabs((floorY - highestY) - bounceMap.tileSize / 5.0f) < 0.8f);
+    Player jumpPriority = landing;
+    step(jumpPriority, bounceMap, 1.0f / 120.0f, {}, 0, true);
+    assert(jumpPriority.vy == -limits.jumpSpeed && !jumpPriority.tile12BounceActive);
+    Player bufferedTap = landing;
+    bufferedTap.jumpBufferTime = 0.1f;
+    step(bufferedTap, bounceMap, 1.0f / 120.0f);
+    assert(bufferedTap.vy == -limits.jumpCutSpeed && !bufferedTap.tile12BounceActive);
+    Player expiredBuffer = landing;
+    expiredBuffer.jumpBufferTime = 0.001f;
+    step(expiredBuffer, bounceMap, 1.0f / 120.0f);
+    assert(expiredBuffer.tile12BounceActive);
+    TileMap normalTile12 = bounceMap;
+    normalTile12.bouncyTile12 = false;
+    Player normalLanding = landing;
+    step(normalLanding, normalTile12, 1.0f / 120.0f);
+    assert(normalLanding.onGround && normalLanding.vy == 0 && !normalLanding.tile12BounceActive);
+    TileMap otherTile = bounceMap;
+    for (auto& id : otherTile.tileIds) if (id == 12) id = 1;
+    Player otherLanding = landing;
+    step(otherLanding, otherTile, 1.0f / 120.0f);
+    assert(otherLanding.onGround && otherLanding.vy == 0);
 
     // A stall advances one bounded gameplay frame, with no catch-up next frame.
     Player stalled;

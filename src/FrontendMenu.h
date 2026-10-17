@@ -47,6 +47,7 @@ struct FrontendMenuContext {
     bool* muteAllAudio = nullptr;
     bool* showOptionalSidebar = nullptr;
     bool* nativeTextResolutionEnabled = nullptr;
+    bool* waterEffectsEnabled = nullptr;
     SDL_Scancode* keyMoveLeft = nullptr;
     SDL_Scancode* keyMoveRight = nullptr;
     SDL_Scancode* keyMoveDown = nullptr;
@@ -64,6 +65,7 @@ struct FrontendMenuContext {
     bool* extraSettings = nullptr; // flattened [5 categories * 11 options]
     int extraSettingsCount = 0;
     std::string* selectedLevelPath = nullptr;
+    std::string* selectedLevelName = nullptr;
     bool* devToolsEnabled = nullptr;
     bool* debuggerAttached = nullptr;
 

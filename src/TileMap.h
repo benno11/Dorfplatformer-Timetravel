@@ -5,6 +5,7 @@
 struct TileMap {
     int tileSize = 32;
     int w = 16, h = 9;
+    bool bouncyTile12 = false;
     std::vector<unsigned char> solid;
     std::vector<unsigned char> semisolid;
     std::vector<unsigned char> water;

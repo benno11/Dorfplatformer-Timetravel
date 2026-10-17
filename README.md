@@ -1,5 +1,21 @@
 Platformer Engine
 
+The editor's **Level Config** button (F2, or the controller's left face button)
+opens per-level settings for world (1–7), area (1–3), time (1–4), and **Bouncy
+tile 12**. Zero/Auto preserves path-derived settings when editing older levels.
+Apply changes the editor settings; saving the level writes them to disk.
+
+New saves use **DFLVL4**, with world/area/time and `bouncy_tile_12` in the META
+header. DFLVL2/3 and legacy levels remain readable; their bounce toggle defaults
+to off. The level API format identifier is now 3.
+
+With Bouncy tile 12 enabled, landing on tile 12 starts a one-fifth-block hop.
+Normal gravity controls the flight. Jump cancels an active automatic bounce,
+and a jump buffered within 150 ms of landing takes priority over bouncing.
+
+Custom object IDs: **1001 = pickup**, **1002 = goal**. The editor and gameplay
+use these IDs; 95 and 97 are reserved for existing objects and are not remapped.
+
 Build locally:
 - Windows PowerShell: `powershell -ExecutionPolicy Bypass -File .\build-local.ps1`
 - Windows PowerShell + run after build: `powershell -ExecutionPolicy Bypass -File .\build-local.ps1 -Run`

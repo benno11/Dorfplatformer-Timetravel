@@ -243,6 +243,17 @@ static bool parseBoolSetting(const std::string& value) {
     return v == "1" || v == "true" || v == "yes" || v == "on";
 }
 
+std::string SerializeLevelMetaHeader(const LevelMeta& meta) {
+    std::ostringstream out;
+    out << "META level_id=" << std::max(0, meta.levelId)
+        << " theme_override=" << std::max(0, meta.themeOverride)
+        << " wrap_x=" << (meta.wrapX ? 1 : 0) << " wrap_y=" << (meta.wrapY ? 1 : 0)
+        << " world=" << std::clamp(meta.world, 0, 7) << " area=" << std::clamp(meta.area, 0, 3)
+        << " time=" << std::clamp(meta.time, 0, 4) << " bouncy_tile_12=" << (meta.bouncyTile12 ? 1 : 0)
+        << " ENDMETA\n";
+    return out.str();
+}
+
 static void parseLevelMetaHeader(std::string& data, LevelMeta& meta) {
     meta = LevelMeta{};
     std::istringstream in(data);
@@ -268,6 +279,10 @@ static void parseLevelMetaHeader(std::string& data, LevelMeta& meta) {
         else if (key == "theme_override") meta.themeOverride = std::max(0, std::atoi(value.c_str()));
         else if (key == "wrap_x") meta.wrapX = parseBoolSetting(value);
         else if (key == "wrap_y") meta.wrapY = parseBoolSetting(value);
+        else if (key == "world") meta.world = std::clamp(std::atoi(value.c_str()), 0, 7);
+        else if (key == "area") meta.area = std::clamp(std::atoi(value.c_str()), 0, 3);
+        else if (key == "time") meta.time = std::clamp(std::atoi(value.c_str()), 0, 4);
+        else if (key == "bouncy_tile_12") meta.bouncyTile12 = parseBoolSetting(value);
     }
 
     if (afterMeta != std::streampos(-1)) {
@@ -472,6 +487,7 @@ bool loadLevelBNNLVL(const std::string& path,
     std::string s = readWholeFile(path);
     if (s.empty()) return false;
     parseLevelMetaHeader(s, meta);
+    map.bouncyTile12 = meta.bouncyTile12;
     if (meta.levelId <= 0) meta.levelId = parseLevelIdFromPath(path);
 
     auto trim = [](const std::string& in) -> std::string {
@@ -482,13 +498,14 @@ bool loadLevelBNNLVL(const std::string& path,
         return in.substr(a, b - a);
     };
     const std::string st = trim(s);
-    if (st.rfind("DFLVL2", 0) == 0 || st.rfind("DFLVL3", 0) == 0) {
+    if (st.rfind("DFLVL2", 0) == 0 || st.rfind("DFLVL3", 0) == 0 || st.rfind("DFLVL4", 0) == 0) {
         std::istringstream in(st);
         std::string magic;
         int w = 0;
         int h = 0;
         in >> magic >> w >> h;
-        if ((magic != "DFLVL2" && magic != "DFLVL3") || w <= 0 || h <= 0 || w > 4096 || h > 4096) return false;
+        if ((magic != "DFLVL2" && magic != "DFLVL3" && magic != "DFLVL4") || w <= 0 || h <= 0 || w > 4096 || h > 4096) return false;
+        meta.formatVersion = magic.back() - '0';
         map.resize(w, h);
         const int total = w * h;
         map.tileIds.assign(total, 2);
@@ -537,6 +554,7 @@ bool loadLevelBNNLVL(const std::string& path,
     // parse_next_chunk: version
     if (!nextLegacyToken(s, cur, t) || !t.hasValue) return false;
     int ver = t.value;
+    meta.formatVersion = ver;
 
     // parse_next_chunk: max_x
     if (!nextLegacyToken(s, cur, t) || !t.hasValue) return false;

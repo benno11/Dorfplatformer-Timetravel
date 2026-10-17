@@ -3,6 +3,7 @@ title "Display Settings"
 button "Fullscreen: ${fullscreen}" toggle fullscreen
 button "VSync: ${vsync_enabled}" toggle vsync_enabled
 button "Native Text Resolution: ${native_text_resolution_enabled}" toggle native_text_resolution_enabled
+button "Water Effects: ${water_effects_enabled}" toggle water_effects_enabled
 button "UI Scale + (${ui_scale_percent}%)" inc ui_scale_percent
 button "UI Scale - (${ui_scale_percent}%)" dec ui_scale_percent
 button "UI Edge Padding + (${ui_edge_padding})" inc ui_edge_padding

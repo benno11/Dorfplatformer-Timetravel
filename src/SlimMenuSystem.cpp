@@ -75,6 +75,7 @@ struct SlimLevelEntry {
     int downloads = 0;
     int likes = 0;
     int dislikes = 0;
+    std::string displayName;
 };
 
 struct OnlineLevelPage {
@@ -92,6 +93,9 @@ struct SlimRuntime {
     SDL_Texture* menuTexture = nullptr;
     bool ownsMenuTexture = true;
     std::unordered_map<std::string, Frame> menuFrames;
+    SDL_Texture* difficultyTexture = nullptr;
+    Frame difficultyFrame{};
+    bool difficultyAssetLoaded = false;
     std::unordered_map<std::string, std::string> scriptSources;
     std::vector<SlimLevelEntry> localLevels, onlineLevels;
     bool localLevelsLoaded = false, onlineLevelsLoaded = false;
@@ -114,10 +118,11 @@ struct SlimRuntime {
     SlimRuntime& operator=(const SlimRuntime&) = delete;
     ~SlimRuntime() {
         if (menuTexture && ownsMenuTexture) SDL_DestroyTexture(menuTexture);
+        if (difficultyTexture) SDL_DestroyTexture(difficultyTexture);
     }
 };
 
-constexpr SDL_Rect kMenuExitRect{12, 12, 88, 44};
+constexpr SDL_Rect kMenuExitRect{12, 12, 44, 44};
 
 bool menuNetworkBusy(const SlimRuntime& runtime) {
     if (runtime.difficultySaving) return true;
@@ -240,6 +245,7 @@ bool* boolSettingPtr(const std::string& var, SlimMenuContext& ctx) {
     if (var == "mute_all_audio") return ctx.muteAllAudio;
     if (var == "level_select_enabled") return ctx.levelSelectEnabled;
     if (var == "native_text_resolution_enabled") return ctx.nativeTextResolutionEnabled;
+    if (var == "water_effects_enabled") return ctx.waterEffectsEnabled;
     if (var == "send_anonymous_metrics" && ctx.extraSettings && ctx.extraSettingsCount > 44) return &ctx.extraSettings[44];
     return nullptr;
 }
@@ -372,6 +378,8 @@ std::string expandVars(std::string text, const SlimRuntime& runtime, const SlimM
         text = replaceAll(text, "${camera_clamp_x}", contextVarValue("camera_clamp_x", runtime, ctx));
     if (text.find("${native_text_resolution_enabled}") != std::string::npos)
         text = replaceAll(text, "${native_text_resolution_enabled}", contextVarValue("native_text_resolution_enabled", runtime, ctx));
+    if (text.find("${water_effects_enabled}") != std::string::npos)
+        text = replaceAll(text, "${water_effects_enabled}", contextVarValue("water_effects_enabled", runtime, ctx));
     if (text.find("${show_fps_counter}") != std::string::npos)
         text = replaceAll(text, "${show_fps_counter}", contextVarValue("show_fps_counter", runtime, ctx));
     if (text.find("${show_detailed_debugger}") != std::string::npos)
@@ -883,6 +891,9 @@ OnlineLevelPage loadOnlineSlimLevels(const SlimMenuContext& ctx, int page, const
         }
         const std::string id = it.key();
         addUniqueLevel(out, SlimLevelEntry{id, joinUrlPath(base, "/levels/" + id + "/data.json"), difficulty, downloads, likes, dislikes});
+        if (it.value().is_object() && it.value().contains("name") && it.value()["name"].is_string()) {
+            out.back().displayName = it.value()["name"].get<std::string>();
+        }
     }
     std::sort(out.begin(), out.end(), [](const SlimLevelEntry& a, const SlimLevelEntry& b) { return a.label < b.label; });
     return result;
@@ -1311,7 +1322,7 @@ SlimMenu buildGeneratedLevelMenu(const std::string& name, SlimRuntime& runtime, 
             return menu;
         }
         const SlimLevelEntry& level = levels[index];
-        runtime.vars["detail_label"] = level.label;
+        runtime.vars["detail_label"] = level.displayName.empty() ? level.label : level.displayName;
         runtime.vars["detail_path"] = level.path;
         runtime.vars["detail_difficulty"] = level.difficulty > 0 ? std::to_string(level.difficulty) : "unrated";
         runtime.vars["detail_downloads"] = std::to_string(level.downloads);
@@ -1320,8 +1331,9 @@ SlimMenu buildGeneratedLevelMenu(const std::string& name, SlimRuntime& runtime, 
         if (source != "online") {
             runtime.vars["detail_verified"] = IsLocalLevelVerified(level.path) ? "true" : "false";
         }
-        menu.items.push_back(MenuItem{MenuItem::Type::Text, "Name: " + level.label, {}, {}});
-        menu.items.push_back(MenuItem{MenuItem::Type::Text, "Difficulty: " + runtime.vars["detail_difficulty"], {}, {}});
+        menu.items.push_back(MenuItem{MenuItem::Type::Text, "Name: " + runtime.vars["detail_label"], {}, {}});
+        menu.items.push_back(MenuItem{MenuItem::Type::Text,
+            level.difficulty > 0 ? std::to_string(level.difficulty) : "?", "difficulty_badge", {}});
         if (source == "online") {
             menu.items.push_back(MenuItem{MenuItem::Type::Text, "Source: online", {}, {}});
             menu.items.push_back(MenuItem{MenuItem::Type::Text,
@@ -1412,6 +1424,10 @@ SlimMenuLayout::Layout layoutFor(const SlimMenu& menu, const SlimRuntime& runtim
     const int buttonWidth = std::clamp(ctx.baseScreenW * 2 / 5, 220, 520);
     for (const auto& item : menu.items) {
         const bool button = item.type != MenuItem::Type::Text;
+        if (item.command == "difficulty_badge") {
+            items.push_back({64, 64, item.horizontal, item.vertical});
+            continue;
+        }
         items.push_back({button ? buttonWidth : MeasureTextWidth(2, expandVars(item.label, runtime, ctx)),
                          item.type == MenuItem::Type::Slider ? 80 : (button ? 54 : 24), item.horizontal, item.vertical});
     }
@@ -1468,16 +1484,50 @@ SDL_Rect audioSliderTrack(const SDL_Rect& row) {
 
 void renderMenuExit(const SlimRuntime& runtime, const SlimMenuContext& ctx, bool focused) {
     const bool enabled = !menuNetworkBusy(runtime);
+    if (runtime.menuTexture) {
+        Uint8 red = 255, green = 255, blue = 255;
+        SDL_GetTextureColorMod(runtime.menuTexture, &red, &green, &blue);
+        const Uint8 brightness = enabled ? (focused ? 255 : 220) : 100;
+        SDL_SetTextureColorMod(runtime.menuTexture, brightness, brightness, brightness);
+        const bool textured = drawMenuSprite(runtime, ctx.ren, "close-window", kMenuExitRect);
+        SDL_SetTextureColorMod(runtime.menuTexture, red, green, blue);
+        if (textured) return;
+    }
     SDL_SetRenderDrawColor(ctx.ren, enabled ? (focused ? 100 : 55) : 45, enabled ? 80 : 48, enabled ? 100 : 52, 255);
     SDL_RenderFillRect(ctx.ren, &kMenuExitRect);
     SDL_SetRenderDrawColor(ctx.ren, enabled ? 210 : 85, enabled ? 225 : 90, enabled ? 245 : 95, 255);
     SDL_RenderRect(ctx.ren, &kMenuExitRect);
     const SDL_Color color = enabled ? SDL_Color{255, 255, 255, 255} : SDL_Color{125, 130, 140, 255};
-    DrawTextColored(ctx.ren, kMenuExitRect.x + (kMenuExitRect.w - MeasureTextWidth(2, "EXIT")) / 2,
-        kMenuExitRect.y + 10, 2, "EXIT", color);
+    DrawTextColored(ctx.ren, kMenuExitRect.x + (kMenuExitRect.w - MeasureTextWidth(2, "X")) / 2,
+        kMenuExitRect.y + 10, 2, "X", color);
 }
 
-void renderDifficultyPopup(const SlimRuntime& runtime, const SlimMenuContext& ctx) {
+bool drawDifficultyBadge(SlimRuntime& runtime, SDL_Renderer* ren, const SDL_Rect& rect,
+                         const std::string& label, bool chosen = false) {
+    if (!runtime.difficultyAssetLoaded) {
+        runtime.difficultyAssetLoaded = true;
+        const auto frames = loadPlistFrames("assets/Sheets/df_menu-uhd.plist");
+        const auto frame = frames.find("Diff");
+        if (frame != frames.end()) {
+            runtime.difficultyFrame = frame->second;
+            runtime.difficultyTexture = loadTextureSafe(ren, "assets/Sheets/df_menu-uhd.png");
+            if (runtime.difficultyTexture) {
+                SDL_SetTextureScaleMode(runtime.difficultyTexture, SDL_SCALEMODE_LINEAR);
+                SDL_SetTextureBlendMode(runtime.difficultyTexture, SDL_BLENDMODE_BLEND);
+            }
+        }
+    }
+    if (!runtime.difficultyTexture) return false;
+    SDL_SetTextureColorMod(runtime.difficultyTexture, chosen ? 140 : 255, chosen ? 225 : 255, 255);
+    renderFrame(ren, runtime.difficultyTexture, runtime.difficultyFrame, rect);
+    SDL_SetTextureColorMod(runtime.difficultyTexture, 255, 255, 255);
+    const int scale = rect.h >= 60 ? 3 : (rect.h >= 32 ? 2 : 1);
+    DrawTextColored(ren, rect.x + (rect.w - MeasureTextWidth(scale, label)) / 2,
+        rect.y + (rect.h - scale * 10) / 2, scale, label, SDL_Color{30, 30, 30, 255});
+    return true;
+}
+
+void renderDifficultyPopup(SlimRuntime& runtime, const SlimMenuContext& ctx) {
     int savedW = 0, savedH = 0;
     SDL_RendererLogicalPresentation savedPresentation;
     SDL_GetRenderLogicalPresentation(ctx.ren, &savedW, &savedH, &savedPresentation);
@@ -1490,8 +1540,10 @@ void renderDifficultyPopup(const SlimRuntime& runtime, const SlimMenuContext& ct
     SDL_RenderFillRect(ctx.ren, &canvas);
     SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_NONE);
     const auto layout = DifficultySelector::build(ctx.baseScreenW, ctx.baseScreenH);
-    SDL_SetRenderDrawColor(ctx.ren, 34, 49, 65, 255);
-    SDL_RenderFillRect(ctx.ren, &layout.panel);
+    if (!drawMenuSprite(runtime, ctx.ren, "window", layout.panel, 56.0f)) {
+        SDL_SetRenderDrawColor(ctx.ren, 34, 49, 65, 255);
+        SDL_RenderFillRect(ctx.ren, &layout.panel);
+    }
     SDL_SetRenderDrawColor(ctx.ren, 175, 205, 230, 255);
     SDL_RenderRect(ctx.ren, &layout.panel);
     auto centered = [&](const std::string& text, int y, int scale) {
@@ -1504,10 +1556,29 @@ void renderDifficultyPopup(const SlimRuntime& runtime, const SlimMenuContext& ct
         const bool chosen = i <= 9 && i == runtime.difficultyChoice;
         const bool focused = i == runtime.difficultyFocus;
         const auto& rect = layout.buttons[i];
-        SDL_SetRenderDrawColor(ctx.ren, chosen ? 65 : 48, chosen ? 135 : 73, chosen ? 170 : 98, 255);
-        SDL_RenderFillRect(ctx.ren, &rect);
+        if (!drawMenuSprite(runtime, ctx.ren, "button_genreaic", rect, 6.0f)) {
+            SDL_SetRenderDrawColor(ctx.ren, chosen ? 65 : 48, chosen ? 135 : 73, chosen ? 170 : 98, 255);
+            SDL_RenderFillRect(ctx.ren, &rect);
+        }
         SDL_SetRenderDrawColor(ctx.ren, focused ? 255 : 130, focused ? 240 : 165, focused ? 165 : 195, 255);
         SDL_RenderRect(ctx.ren, &rect);
+        if (i <= 9) {
+            const int size = std::max(1, std::min(rect.w - 8, rect.h - 8));
+            const SDL_Rect badge{i == 0 ? rect.x + 8 : rect.x + (rect.w - size) / 2,
+                rect.y + (rect.h - size) / 2, size, size};
+            if (drawDifficultyBadge(runtime, ctx.ren, badge, i == 0 ? "?" : std::to_string(i), chosen)) {
+                if (chosen) {
+                    SDL_SetRenderDrawColor(ctx.ren, 100, 225, 255, 255);
+                    const SDL_Rect outline{badge.x - 2, badge.y - 2, badge.w + 4, badge.h + 4};
+                    SDL_RenderRect(ctx.ren, &outline);
+                }
+                if (i == 0) {
+                    const int scale = MeasureTextWidth(2, "Unrated") < rect.w - size - 24 ? 2 : 1;
+                    DrawText(ctx.ren, rect.x + size + 16, rect.y + (rect.h - scale * 10) / 2, scale, "Unrated");
+                }
+                continue;
+            }
+        }
         const std::string text = i == 0 ? "Unrated" : (i == 10 ? "Apply" : (i == 11 ? "Cancel" : std::to_string(i)));
         const int scale = MeasureTextWidth(2, text) < rect.w - 12 ? 2 : 1;
         DrawText(ctx.ren, rect.x + (rect.w - MeasureTextWidth(scale, text)) / 2,
@@ -1563,6 +1634,14 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
         const bool isSelected = item.type != MenuItem::Type::Text && buttonIndex++ == selected;
         if (r.y + r.h <= layout.body.y || r.y >= layout.body.y + layout.body.h) continue;
         if (item.type == MenuItem::Type::Text) {
+            if (item.command == "difficulty_badge") {
+                if (!drawDifficultyBadge(runtime, ctx.ren, r, label)) {
+                    const std::string fallback = "Difficulty: " + runtime.vars["detail_difficulty"];
+                    DrawText(ctx.ren, r.x + (r.w - MeasureTextWidth(2, fallback)) / 2,
+                        r.y + (r.h - 20) / 2, 2, fallback);
+                }
+                continue;
+            }
             const int textScale = MeasureTextWidth(2, label) <= r.w ? 2 : 1;
             DrawText(ctx.ren, r.x + SlimMenuLayout::offset(r.w - MeasureTextWidth(textScale, label), item.labelHorizontal),
                      r.y + SlimMenuLayout::offset(r.h - textScale * 10, item.labelVertical), textScale, label);
@@ -1922,6 +2001,9 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
     }
     if (command == "start") {
         if (ctx.selectedLevelPath) *ctx.selectedLevelPath = arg;
+        if (ctx.selectedLevelName) {
+            *ctx.selectedLevelName = arg == runtime.vars["detail_path"] ? runtime.vars["detail_label"] : std::string();
+        }
         return SlimMenuExit::StartGame;
     }
     if (command == "account_open") {

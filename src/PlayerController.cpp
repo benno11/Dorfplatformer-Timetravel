@@ -105,6 +105,22 @@ static bool keyHeld(const bool* keys, SDL_Scancode sc) {
     return keys[sc];
 }
 
+static bool standingOnTile12(const TileMap& map, const Player& player) {
+    if (map.tileSize <= 0 || map.w <= 0 || map.h <= 0) return false;
+    int ty = (int)std::floor((player.y + player.h) / map.tileSize);
+    if (g_verticalWrapCollision) ty = wrapTileY(ty, map.h);
+    if (ty < 0 || ty >= map.h) return false;
+    const int left = (int)std::floor(player.x / map.tileSize);
+    const int right = (int)std::floor((player.x + player.w - 1) / map.tileSize);
+    for (int tx = left; tx <= right; ++tx) {
+        const int qx = g_horizontalWrapCollision ? wrapTileX(tx, map.w) : tx;
+        if (qx < 0 || qx >= map.w) continue;
+        const size_t index = (size_t)ty * map.w + qx;
+        if (index < map.tileIds.size() && map.tileIds[index] == 12) return true;
+    }
+    return false;
+}
+
 static int touchingPushTileDirection(const TileMap& map, const Player& player) {
     const int t = map.tileSize;
     if (t <= 0 || map.w <= 0 || map.h <= 0) return 0;
@@ -202,6 +218,7 @@ PlayerUpdateResult UpdatePlayerMovement(
         player.jumpHoldTime = 0.0f;
         player.jumpWasDown = false;
         player.jumpBufferTime = 0.0f;
+        player.tile12BounceActive = false;
         return PlayerUpdateResult::RenderOnly;
     }
 
@@ -277,22 +294,24 @@ PlayerUpdateResult UpdatePlayerMovement(
     bool jumpDown = touchJump || gamepadJump || keyHeld(keys, keybinds.jump) || keys[SDL_SCANCODE_UP];
     bool jumpPressed = jumpDown && !player.jumpWasDown;
     bool jumpReleased = !jumpDown && player.jumpWasDown;
+    player.jumpBufferTime = std::max(0.0f, player.jumpBufferTime - dt);
+    if (!map.bouncyTile12) player.tile12BounceActive = false;
     if (jumpPressed) {
-        player.jumpBufferTime = 1.0f;
+        player.jumpBufferTime = 0.15f;
+        if (player.tile12BounceActive) {
+            if (player.vy < 0.0f) player.vy = 0.0f;
+            player.tile12BounceActive = false;
+        }
     }
 
     bool bufferedJumpReady = player.jumpBufferTime > 0.0f;
-    if (!jumpDown)
-    {
-        bufferedJumpReady = false;
-
-    }
     if ((player.onGround || inWater) && bufferedJumpReady) {
-        player.vy = -jumpSpeed;
+        player.vy = jumpDown ? -jumpSpeed : -std::min(jumpSpeed, jumpCutSpeed);
         if (player.onGround) player.onGround = false;
         player.jumpHeld = false;
         player.jumpHoldTime = 0.0f;
         player.jumpBufferTime = 0.0f;
+        player.tile12BounceActive = false;
     }
 
     player.jumpHeld = false;
@@ -300,7 +319,7 @@ PlayerUpdateResult UpdatePlayerMovement(
     if (jumpReleased && player.vy < -jumpCutSpeed) {
         player.vy = -jumpCutSpeed;
     }
-    if (!inWater && !jumpDown && player.vy < 0.0f) {
+    if (!inWater && !jumpDown && !player.tile12BounceActive && player.vy < 0.0f) {
         // Early release should create a noticeably shorter hop.
         gravity *= 1.35f;
     }
@@ -392,6 +411,21 @@ PlayerUpdateResult UpdatePlayerMovement(
         // High-FPS stability: explicit probe below feet prevents grounded flicker
         // when vy ~= 0 and no actual Y movement occurs this frame.
         player.onGround = rectHasGroundBelow(map, player.x, player.y, player.w, player.h);
+    }
+    if (player.onGround && player.jumpBufferTime > 0.0f) {
+        // A jump queued before touchdown wins over the automatic tile impulse.
+        player.vy = jumpDown ? -jumpSpeed : -std::min(jumpSpeed, jumpCutSpeed);
+        player.onGround = false;
+        player.jumpBufferTime = 0.0f;
+        player.tile12BounceActive = false;
+    } else if (player.onGround && !inWater && map.bouncyTile12 && standingOnTile12(map, player) && !jumpDown) {
+        // v^2 = 2*g*h: start a 1/5-block hop, then use ordinary gravity.
+        const float height = map.tileSize / 5.0f;
+        player.vy = -std::sqrt(2.0f * std::max(0.0f, movement.gravityGround) * height);
+        player.onGround = player.vy == 0.0f;
+        player.tile12BounceActive = player.vy < 0.0f;
+    } else if (player.onGround) {
+        player.tile12BounceActive = false;
     }
     if (player.y > resetY) {
         return PlayerUpdateResult::Reloaded;

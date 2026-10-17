@@ -46,6 +46,7 @@ struct SlimMenuContext {
     bool* muteAllAudio = nullptr;
     bool* levelSelectEnabled = nullptr;
     bool* nativeTextResolutionEnabled = nullptr;
+    bool* waterEffectsEnabled = nullptr;
     int* musicVolume = nullptr;
     int* sfxVolume = nullptr;
     int* uiScalePercent = nullptr;
@@ -63,6 +64,7 @@ struct SlimMenuContext {
     std::string* levelServerAuthToken = nullptr;
     std::string* levelServerAccountUsername = nullptr;
     std::string* selectedLevelPath = nullptr;
+    std::string* selectedLevelName = nullptr;
     bool* debuggerAttached = nullptr;
 
     std::function<void()> applyAudioVolumes;

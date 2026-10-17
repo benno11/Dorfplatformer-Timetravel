@@ -38,7 +38,9 @@
 #include <curl/curl.h>
 #endif
 #include "TileMap.h"
+#include "WaterEffects.h"
 #include "LevelLoader.h"
+#include "ObjectIds.h"
 #include "Player.h"
 #include "PlayerController.h"
 #include "SimulationTiming.h"
@@ -765,6 +767,7 @@ int RunGameApp(int argc, char** argv) {
         return 1;
     }
     setStartupProgress(0.40f);
+    WaterEffects waterEffects;
     SDL_SetTextureScaleMode(worldTarget, SDL_SCALEMODE_NEAREST);
     SDL_SetTextureScaleMode(gameTarget, SDL_SCALEMODE_NEAREST);
     SDL_Window* debugWin = nullptr;
@@ -926,7 +929,7 @@ int RunGameApp(int argc, char** argv) {
     entityFrameKeyByObjectId["31"] = "Spring";
     entityFrameKeyByObjectId["46"] = "Bumper";
     std::unordered_set<int> knownObjectIds{
-        31, 46, 57, 58, 59, 60, 61, 62, 63, 64, 65, 67, 69, 70, 95, 96, 97
+        31, 46, 57, 58, 59, 60, 61, 62, 63, 64, 65, 67, 69, 70, 96, ObjectIds::Pickup, ObjectIds::Goal
     };
     {
         const std::string text = ReadTextFile("object_type_map.json");
@@ -1460,6 +1463,7 @@ int RunGameApp(int argc, char** argv) {
         }
     };
     auto unloadGameplayAssets = [&]() {
+        waterEffects.reset();
         destroyTextureRef(playerTex);
         destroyTextureRef(bgTexWorld1);
         destroyTextureRef(bgTexWorld2);
@@ -1597,6 +1601,7 @@ int RunGameApp(int argc, char** argv) {
     bool muteAllAudio = false;
     bool showOptionalSidebar = true;
     bool nativeTextResolutionEnabled = true;
+    bool waterEffectsEnabled = true;
     KeyboardBindings keybinds{};
     int uiScalePercent = UiScale::kMaxPercent;
     int uiEdgePadding = 0;
@@ -1638,6 +1643,7 @@ int RunGameApp(int argc, char** argv) {
         };
         settings["display"] = {
             {"fullscreen", savedFullscreen},
+            {"water_effects_enabled", waterEffectsEnabled},
             {"vsync", vsyncEnabled},
             {"ui_scale_percent", uiScalePercent}
         };
@@ -1695,6 +1701,7 @@ int RunGameApp(int argc, char** argv) {
         j["vsync"] = vsyncEnabled;
         j["show_optional_sidebar"] = showOptionalSidebar;
         j["native_text_resolution"] = nativeTextResolutionEnabled;
+        j["water_effects_enabled"] = waterEffectsEnabled;
         j["clamp_cam_x"] = clampCamX;
         j["show_fps_counter"] = defaultShowFpsCounter;
         j["show_detailed_debugger"] = defaultShowDetailedDebugger;
@@ -1775,6 +1782,8 @@ int RunGameApp(int argc, char** argv) {
                     const auto& d = s["display"];
                     if (d.contains("fullscreen") && d["fullscreen"].is_boolean()) fullscreen = d["fullscreen"].get<bool>();
                     if (d.contains("vsync") && d["vsync"].is_boolean()) vsyncEnabled = d["vsync"].get<bool>();
+                    if (d.contains("water_effects_enabled") && d["water_effects_enabled"].is_boolean())
+                        waterEffectsEnabled = d["water_effects_enabled"].get<bool>();
                     if (d.contains("ui_scale_percent") && d["ui_scale_percent"].is_number_integer()) {
                         uiScalePercent = UiScale::clampPercent(d["ui_scale_percent"].get<int>());
                     }
@@ -1907,6 +1916,9 @@ int RunGameApp(int argc, char** argv) {
             }
             if (j.contains("native_text_resolution") && j["native_text_resolution"].is_boolean()) {
                 nativeTextResolutionEnabled = j["native_text_resolution"].get<bool>();
+            }
+            if (j.contains("water_effects_enabled") && j["water_effects_enabled"].is_boolean()) {
+                waterEffectsEnabled = j["water_effects_enabled"].get<bool>();
             }
             if (j.contains("extra_settings") && j["extra_settings"].is_array()) {
                 const auto& a = j["extra_settings"];
@@ -2263,11 +2275,23 @@ int RunGameApp(int argc, char** argv) {
             renderFrame(ren, introCardTex, leftFrame, leftDst);
             renderFrame(ren, introCardTex, topFrame, topDst);
             if (t > 0.30 && t < 1.0) {
-                const int worldW = MeasureTextWidth(introWorldNameStyle.scale, currentFancyLevelName);
+                std::string title = currentFancyLevelName;
+                int titleScale = introWorldNameStyle.scale;
+                const int titleMaxWidth = std::max(40, 2 * std::min(introWorldNameStyle.x, kBaseScreenW - introWorldNameStyle.x) - 24);
+                while (titleScale > 1 && MeasureTextWidth(titleScale, title) > titleMaxWidth) --titleScale;
+                if (MeasureTextWidth(titleScale, title) > titleMaxWidth) {
+                    while (!title.empty() && MeasureTextWidth(titleScale, title + "...") > titleMaxWidth) {
+                        size_t lastChar = title.size() - 1;
+                        while (lastChar > 0 && (static_cast<unsigned char>(title[lastChar]) & 0xc0) == 0x80) --lastChar;
+                        title.erase(lastChar);
+                    }
+                    title += "...";
+                }
+                const int worldW = MeasureTextWidth(titleScale, title);
                 const int worldX = introWorldNameStyle.x - worldW / 2;
                 const int areaW = MeasureTextWidth(introAreaIdStyle.scale, currentAreaIdText);
                 const int areaX = introAreaIdStyle.x - areaW / 2;
-                DrawText(ren, worldX, introWorldNameStyle.y, introWorldNameStyle.scale, currentFancyLevelName);
+                DrawText(ren, worldX, introWorldNameStyle.y, titleScale, title);
                 DrawTextColored(ren, areaX, introAreaIdStyle.y, introAreaIdStyle.scale, currentAreaIdText, SDL_Color{50, 210, 70, 255});
             }
             if (fadeAlpha > 0) {
@@ -2322,6 +2346,7 @@ int RunGameApp(int argc, char** argv) {
     frontendCtx.menuMusicEnabled = &menuMusicEnabled;
     frontendCtx.muteAllAudio = &muteAllAudio;
     frontendCtx.nativeTextResolutionEnabled = &nativeTextResolutionEnabled;
+    frontendCtx.waterEffectsEnabled = &waterEffectsEnabled;
     frontendCtx.keyMoveLeft = &keybinds.moveLeft;
     frontendCtx.keyMoveRight = &keybinds.moveRight;
     frontendCtx.keyMoveDown = &keybinds.moveDown;
@@ -2342,7 +2367,9 @@ int RunGameApp(int argc, char** argv) {
     frontendCtx.debuggerAttached = &debuggerAttachedDebugOverride;
     frontendCtx.showOptionalSidebar = &showOptionalSidebar;
     std::string frontendSelectedLevelPath;
+    std::string frontendSelectedLevelName;
     frontendCtx.selectedLevelPath = &frontendSelectedLevelPath;
+    frontendCtx.selectedLevelName = &frontendSelectedLevelName;
     frontendCtx.applyAudioVolumes = applyAudioVolumes;
     frontendCtx.applyMenuMusicToggle = applyMenuMusicToggle;
     frontendCtx.saveClientSettings = saveClientSettings;
@@ -2699,6 +2726,7 @@ int RunGameApp(int argc, char** argv) {
     while (running) {
         recoverAudioIfNeeded(false);
         std::string selectedLevelPath;
+        std::string customLevelName;
         bool selectedFromCustomLevelMenu = false;
         bool selectedFromFrontendMenu = false;
         if (reopenUserLevelMenu) {
@@ -2707,12 +2735,14 @@ int RunGameApp(int argc, char** argv) {
             reopenUserLevelMenu = false;
         } else {
             frontendSelectedLevelPath.clear();
+            frontendSelectedLevelName.clear();
             refreshDebuggerDebugOverride();
             FrontendAction action = runFrontendMenu(frontendCtx);
             saveClientSettings();
             if (!running || action == FrontendAction::Quit) break;
 
             selectedLevelPath = frontendSelectedLevelPath;
+            customLevelName = frontendSelectedLevelName;
             if (!selectedLevelPath.empty()) {
                 selectedFromFrontendMenu = true;
             } else {
@@ -3184,7 +3214,25 @@ int RunGameApp(int argc, char** argv) {
             }
         };
 
+        auto refreshLevelTitle = [&]() {
+            std::string path = levelManager.levelPath();
+            std::replace(path.begin(), path.end(), '\\', '/');
+            const bool campaign = path.rfind("assets/levels/", 0) == 0 || path.find("/assets/levels/") != std::string::npos;
+            if (campaign) {
+                currentFancyLevelName = buildFancyLevelName();
+            } else {
+                if (customLevelName.empty()) {
+                    std::filesystem::path namePath(path.substr(0, path.find_first_of("?#")));
+                    customLevelName = namePath.filename() == "data.json"
+                        ? namePath.parent_path().filename().string() : namePath.stem().string();
+                    std::replace(customLevelName.begin(), customLevelName.end(), '_', ' ');
+                }
+                currentFancyLevelName = customLevelName.empty() ? "CUSTOM LEVEL" : customLevelName;
+            }
+            currentAreaIdText = buildAreaIdText();
+        };
         auto reloadLevel = [&](bool showIntroCard = true) {
+            waterEffects.reset();
             levelManager.reloadLevel(map, objects, meta, player);
             refreshObjectIdCache();
             resetLevelWrapTriggerState();
@@ -3241,8 +3289,7 @@ int RunGameApp(int argc, char** argv) {
             timeTravelTriggerCooldown = 0.35f;
 
             audio.loadLevelMusic(levelManager.musicPath());
-            currentFancyLevelName = buildFancyLevelName();
-            currentAreaIdText = buildAreaIdText();
+            refreshLevelTitle();
             levelReloadTitleTimer = 2.0f;
             currentLevelId = loadedLevelId();
             const std::string activeLevelPath = levelManager.levelPath();
@@ -3319,6 +3366,7 @@ int RunGameApp(int argc, char** argv) {
                 continue;
             }
             levelManager.setLevelPath(savedLevelPath);
+            customLevelName = savedGameRoot.value("custom_level_name", std::string());
             syncWorldBackground();
             reloadLevel(false);
             allowNextLevelProgression = savedGameRoot.value("allow_next_level_progression", allowNextLevelProgression);
@@ -3349,6 +3397,7 @@ int RunGameApp(int argc, char** argv) {
                 player.y = pj.value("y", player.y);
                 player.vx = pj.value("vx", player.vx);
                 player.tilePushDirection = std::clamp(pj.value("tilePushDirection", 0), -1, 1);
+                player.tile12BounceActive = pj.value("tile12BounceActive", false);
                 player.vy = pj.value("vy", player.vy);
                 player.w = pj.value("w", player.w);
                 player.h = pj.value("h", player.h);
@@ -3367,6 +3416,12 @@ int RunGameApp(int argc, char** argv) {
             if (savedGameRoot.contains("meta") && savedGameRoot["meta"].is_object()) {
                 const auto& mj = savedGameRoot["meta"];
                 meta.name = mj.value("name", meta.name);
+                meta.world = std::clamp(mj.value("world", meta.world), 0, 7);
+                meta.area = std::clamp(mj.value("area", meta.area), 0, 3);
+                meta.time = std::clamp(mj.value("time", meta.time), 0, 4);
+                meta.bouncyTile12 = mj.value("bouncy_tile_12", meta.bouncyTile12);
+                map.bouncyTile12 = meta.bouncyTile12;
+                levelManager.applyLevelConfig(meta);
                 meta.entitySpawnPos = mj.value("entity_spawn_pos", meta.entitySpawnPos);
                 meta.entitySpawnType = mj.value("entity_spawn_type", meta.entitySpawnType);
             }
@@ -3478,6 +3533,7 @@ int RunGameApp(int argc, char** argv) {
             refreshEndSignState();
             currentLevelId = loadedLevelId();
             levelReloadTitleTimer = 0.0f;
+            refreshLevelTitle();
             playSceneIntroCard();
         } else {
             reloadLevel();
@@ -3904,6 +3960,7 @@ int RunGameApp(int argc, char** argv) {
             j["y"] = p.y;
             j["vx"] = p.vx;
             j["tilePushDirection"] = p.tilePushDirection;
+            j["tile12BounceActive"] = p.tile12BounceActive;
             j["vy"] = p.vy;
             j["w"] = p.w;
             j["h"] = p.h;
@@ -3971,6 +4028,7 @@ int RunGameApp(int argc, char** argv) {
                 nlohmann::json root;
                 root["version"] = 1;
                 root["level_path"] = levelManager.levelPath();
+                root["custom_level_name"] = customLevelName;
                 refreshDebuggerDebugOverride();
                 root["debug_mode_enabled"] = effectiveDebugModeEnabled();
                 root["debug"] = {
@@ -4012,6 +4070,8 @@ int RunGameApp(int argc, char** argv) {
                 root["player"] = savePlayerJson(player);
                 root["meta"] = {
                     {"name", meta.name},
+                    {"world", meta.world}, {"area", meta.area}, {"time", meta.time},
+                    {"bouncy_tile_12", meta.bouncyTile12},
                     {"entity_spawn_pos", meta.entitySpawnPos},
                     {"entity_spawn_type", meta.entitySpawnType}
                 };
@@ -4344,20 +4404,24 @@ int RunGameApp(int argc, char** argv) {
         };
         auto spawnPlayerWaterBurst = [&](const Player& p, bool entering) {
             const float cx = p.x + p.w * 0.5f;
-            const float surfaceY = entering ? (p.y + p.h * 0.18f) : (p.y + p.h * 0.55f);
-            const int count = entering ? 10 : 5;
+            float surfaceY = p.y + p.h * 0.5f;
+            const bool surface = WaterVisuals::nearbySurface(map, cx, p.y, p.y + p.h,
+                levelWrapXEnabled(), levelWrapYEnabled(), surfaceY);
+            const float impact = std::clamp((std::fabs(p.vy) + std::fabs(p.vx) * 0.35f) / 240.0f, 0.35f, 1.5f);
+            if (surface) waterEffects.splash(cx, surfaceY, std::fabs(p.vy) + std::fabs(p.vx) * 0.35f);
+            const int count = entering && surface ? 14 : 5;
             waterParticles.reserve(std::min<std::size_t>(180, waterParticles.size() + count));
             for (int i = 0; i < count; ++i) {
                 const float t = (count <= 1) ? 0.0f : (i / (float)(count - 1)) * 2.0f - 1.0f;
-                const float speedBias = entering ? 1.0f : 0.55f;
+                const float speedBias = (entering ? 1.0f : 0.55f) * impact;
                 spawnWaterParticle(
                     cx + t * p.w * 0.55f,
                     surfaceY + std::sin((float)i * 1.7f) * 2.0f,
                     t * 95.0f * speedBias + p.vx * 0.08f,
-                    -70.0f * speedBias - std::fabs(t) * 28.0f,
+                    -100.0f * speedBias - (1.0f - std::fabs(t)) * 55.0f,
                     entering ? 0.55f : 0.38f,
                     entering ? 3.4f : 2.5f,
-                    true
+                    surface
                 );
             }
         };
@@ -5082,6 +5146,7 @@ int RunGameApp(int argc, char** argv) {
                     player.y = s.y;
                     player.vx = s.vx;
                     player.tilePushDirection = 0;
+                    player.tile12BounceActive = false;
                     player.vy = s.vy;
                     player.w = s.w;
                     player.h = s.h;
@@ -5258,6 +5323,7 @@ int RunGameApp(int argc, char** argv) {
                 const float verticalDir = startedInsideSolid ? -1.0f : -0.55f;
                 player.vx = ex * ejectSpeed;
                 player.tilePushDirection = 0;
+                player.tile12BounceActive = false;
                 player.vy = verticalDir * ejectSpeed;
                 player.onGround = false;
             };
@@ -5350,6 +5416,7 @@ int RunGameApp(int argc, char** argv) {
                 if (positionChanged) addMovementReason(MR_FAST_TRAVEL);
                 player.vx = fastTravelBlendVx;
                 player.tilePushDirection = 0;
+                player.tile12BounceActive = false;
                 player.vy = fastTravelBlendVy;
                 player.onGround = false;
                 if (positionChanged || fastTravelReload) {
@@ -5976,6 +6043,7 @@ int RunGameApp(int argc, char** argv) {
                 player.vx = 0.0f;
                 player.vy = 0.0f;
                 player.tilePushDirection = 0;
+                player.tile12BounceActive = false;
                 player.jumpHeld = false;
                 player.jumpWasDown = false;
                 player.jumpHoldTime = 0.0f;
@@ -6018,31 +6086,39 @@ int RunGameApp(int argc, char** argv) {
                 inputMove = 0.0f;
                 inputDown = false;
             }
-            waterKickBurstCooldown = std::max(0.0f, waterKickBurstCooldown - dt);
-            if (player.inWater) {
-                waterBubbleEmitTimer -= dt;
-                const float speed01 = std::clamp((std::fabs(player.vx) + std::fabs(player.vy)) / 260.0f, 0.0f, 1.0f);
-                const float bubbleInterval = 0.22f - speed01 * 0.11f;
-                if (!wasInWaterBeforeMovement || !playerWasInWaterLastFrame) {
-                    spawnPlayerWaterBurst(player, true);
-                    waterBubbleEmitTimer = 0.08f;
+            if (waterEffectsEnabled) {
+                waterKickBurstCooldown = std::max(0.0f, waterKickBurstCooldown - dt);
+                waterEffects.update(dt);
+                if (player.inWater) {
+                    waterBubbleEmitTimer -= dt;
+                    const float speed01 = std::clamp((std::fabs(player.vx) + std::fabs(player.vy)) / 260.0f, 0.0f, 1.0f);
+                    const float bubbleInterval = 0.22f - speed01 * 0.11f;
+                    if (!wasInWaterBeforeMovement || !playerWasInWaterLastFrame) {
+                        spawnPlayerWaterBurst(player, true);
+                        waterBubbleEmitTimer = 0.08f;
+                    }
+                    while (waterBubbleEmitTimer <= 0.0f) {
+                        const float seed = (float)SDL_GetTicks() * 0.001f + (float)waterParticles.size() * 0.37f;
+                        spawnPlayerBubble(player, seed);
+                        waterBubbleEmitTimer += bubbleInterval;
+                    }
+                    if ((std::fabs(player.vx) > 120.0f || std::fabs(player.vy) > 150.0f) && waterKickBurstCooldown <= 0.0f) {
+                        spawnPlayerWaterBurst(player, false);
+                        waterKickBurstCooldown = 0.18f;
+                    }
+                } else {
+                    if (wasInWaterBeforeMovement || playerWasInWaterLastFrame) {
+                        spawnPlayerWaterBurst(player, true);
+                    }
+                    waterBubbleEmitTimer = 0.0f;
                 }
-                while (waterBubbleEmitTimer <= 0.0f) {
-                    const float seed = (float)SDL_GetTicks() * 0.001f + (float)waterParticles.size() * 0.37f;
-                    spawnPlayerBubble(player, seed);
-                    waterBubbleEmitTimer += bubbleInterval;
-                }
-                if ((std::fabs(player.vx) > 120.0f || std::fabs(player.vy) > 150.0f) && waterKickBurstCooldown <= 0.0f) {
-                    spawnPlayerWaterBurst(player, false);
-                    waterKickBurstCooldown = 0.18f;
-                }
+                playerWasInWaterLastFrame = player.inWater;
             } else {
-                if (wasInWaterBeforeMovement || playerWasInWaterLastFrame) {
-                    spawnPlayerWaterBurst(player, true);
-                }
+                waterParticles.clear();
                 waterBubbleEmitTimer = 0.0f;
+                waterKickBurstCooldown = 0.0f;
+                playerWasInWaterLastFrame = false;
             }
-            playerWasInWaterLastFrame = player.inWater;
 
             for (auto it = waterParticles.begin(); it != waterParticles.end();) {
                 it->life -= dt;
@@ -6229,6 +6305,7 @@ int RunGameApp(int argc, char** argv) {
                         const float pushDir = (playerCenterX < bossState.x) ? -1.0f : 1.0f;
                         player.vx = pushDir * 520.0f;
                         player.tilePushDirection = 0;
+                        player.tile12BounceActive = false;
                         player.vy = -760.0f;
                         player.onGround = false;
                         audio.playLoseSfx();
@@ -6702,6 +6779,7 @@ int RunGameApp(int argc, char** argv) {
                             player.animTime = 0.0f;
                             player.vx = (player.facing < 0) ? 320.0f : -320.0f;
                             player.tilePushDirection = 0;
+                            player.tile12BounceActive = false;
                             player.vy = -760.0f;
                             player.onGround = false;
                             audio.playLoseSfx();
@@ -6765,14 +6843,14 @@ int RunGameApp(int argc, char** argv) {
             };
             for (int objIdx = 0; objIdx < (int)objects.size();) {
                 const int objId = (objIdx < (int)objectIds.size()) ? objectIds[objIdx] : parseObjectId(objects[objIdx].id);
-                if (objId == 95 && objectOverlapsPlayer(objects[objIdx], 12.0f, 12.0f)) {
+                if (objId == ObjectIds::Pickup && objectOverlapsPlayer(objects[objIdx], 12.0f, 12.0f)) {
                     objects.erase(objects.begin() + objIdx);
                     if (objIdx < (int)objectIds.size()) objectIds.erase(objectIds.begin() + objIdx);
                     levelManager.addCoins(1);
                     audio.playCoinSfx();
                     continue;
                 }
-                if (objId == 97 && objectOverlapsPlayer(objects[objIdx], 16.0f, 16.0f) && !levelCompleteActive) {
+                if (objId == ObjectIds::Goal && objectOverlapsPlayer(objects[objIdx], 16.0f, 16.0f) && !levelCompleteActive) {
                     startLevelCompleteSequence();
                 }
                 ++objIdx;
@@ -7184,7 +7262,7 @@ int RunGameApp(int argc, char** argv) {
                         if (mapX < 0) mapX += map.w;
                     }
                     const unsigned short id = map.tileIds[row + mapX];
-                    if (id == 0) continue;
+                    if (id == 0 || (waterEffectsEnabled && map.water[row + mapX])) continue;
 
                     const Frame* frame = nullptr;
                     if (id == 24) {
@@ -7215,7 +7293,7 @@ int RunGameApp(int argc, char** argv) {
                 }
             }
         } else {
-            map.renderWater(ren, camX, camY);
+            if (!waterEffectsEnabled) map.renderWater(ren, camX, camY);
             map.renderSemiSolid(ren, camX, camY);
             map.renderSolid(ren, camX, camY);
         }
@@ -7449,9 +7527,9 @@ int RunGameApp(int argc, char** argv) {
                     24
                 };
                 Uint8 r = 220, g = 220, b = 240;
-                if (objId == 95) { r = 120; g = 255; b = 185; }
+                if (objId == ObjectIds::Pickup) { r = 120; g = 255; b = 185; }
                 else if (objId == 96) { r = 255; g = 120; b = 105; }
-                else if (objId == 97) { r = 255; g = 245; b = 150; }
+                else if (objId == ObjectIds::Goal) { r = 255; g = 245; b = 150; }
                 SDL_SetRenderDrawColor(ren, r, g, b, 230);
                 SDL_RenderFillRect(ren, &placeholder);
                 SDL_SetRenderDrawColor(ren, 20, 24, 32, 255);
@@ -7784,52 +7862,6 @@ int RunGameApp(int argc, char** argv) {
             DrawText(ren, 12, 82, 2, "PATH S->F");
         }
 
-        if (!waterParticles.empty()) {
-            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
-            const float wrapW = renderWrapX ? (float)(map.w * map.tileSize) : 0.0f;
-            const float wrapH = renderWrapY ? (float)(map.h * map.tileSize) : 0.0f;
-            auto renderWaterParticleAt = [&](const WaterParticle& p, float x, float y) {
-                if (x < -12.0f || y < -12.0f || x > worldViewW + 12.0f || y > worldViewH + 12.0f) return;
-                const float t = std::clamp(p.life / std::max(0.01f, p.maxLife), 0.0f, 1.0f);
-                const Uint8 alpha = (Uint8)std::clamp((int)std::lround((p.splash ? 150.0f : 185.0f) * t), 0, 210);
-                const float sz = std::max(1.0f, p.size * (p.splash ? (0.7f + 0.7f * (1.0f - t)) : (0.75f + 0.45f * t)));
-                SDL_FRect r{x - sz * 0.5f, y - sz * 0.5f, sz, sz};
-                if (p.splash) {
-                    SDL_SetRenderDrawColor(ren, 140, 215, 255, alpha);
-                    SDL_RenderFillRectF(ren, &r);
-                    SDL_SetRenderDrawColor(ren, 235, 250, 255, alpha);
-                    SDL_RenderLine(ren, x - sz, y, x + sz, y);
-                } else {
-                    SDL_SetRenderDrawColor(ren, 200, 240, 255, (Uint8)std::clamp((int)alpha / 3, 18, 80));
-                    SDL_RenderFillRectF(ren, &r);
-                    SDL_SetRenderDrawColor(ren, 230, 250, 255, alpha);
-                    SDL_RenderDrawRectF(ren, &r);
-                }
-            };
-            for (const WaterParticle& p : waterParticles) {
-                float px = p.x - camX;
-                float py = p.y - camY;
-                if (renderWrapX) {
-                    while (px < -wrapW * 0.5f) px += wrapW;
-                    while (px >  wrapW * 0.5f) px -= wrapW;
-                }
-                if (renderWrapY) {
-                    while (py < -wrapH * 0.5f) py += wrapH;
-                    while (py >  wrapH * 0.5f) py -= wrapH;
-                }
-                renderWaterParticleAt(p, px, py);
-                if (renderWrapX) {
-                    renderWaterParticleAt(p, px - wrapW, py);
-                    renderWaterParticleAt(p, px + wrapW, py);
-                }
-                if (renderWrapY) {
-                    renderWaterParticleAt(p, px, py - wrapH);
-                    renderWaterParticleAt(p, px, py + wrapH);
-                }
-            }
-            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
-        }
-
         SDL_FRect pr{ player.x - camX, player.y - camY, (float)player.w, (float)player.h };
         if (renderWrapX) {
             const float wrapW = (float)(map.w * map.tileSize);
@@ -7976,6 +8008,84 @@ int RunGameApp(int argc, char** argv) {
                     SDL_RenderDrawRectF(ren, &prBR);
                 }
             }
+        }
+
+        // Water refracts the completed world, including the player, before the HUD.
+        if (waterEffectsEnabled) {
+            waterEffects.render(ren, worldTarget, map, camX, camY, worldViewW, worldViewH,
+                renderWrapX, renderWrapY, (float)((double)SDL_GetTicksNS() / 1000000000.0));
+            if (blocksTex && !blocksFrameList.empty()) {
+                SDL_BlendMode previousBlend;
+                Uint8 previousAlpha, previousRed, previousGreen, previousBlue;
+                SDL_GetTextureBlendMode(blocksTex, &previousBlend);
+                SDL_GetTextureAlphaMod(blocksTex, &previousAlpha);
+                SDL_GetTextureColorMod(blocksTex, &previousRed, &previousGreen, &previousBlue);
+                SDL_SetTextureBlendMode(blocksTex, SDL_BLENDMODE_ADD);
+                SDL_SetTextureAlphaMod(blocksTex, 85);
+                SDL_SetTextureColorMod(blocksTex, 75, 150, 205);
+                for (int y = tileMinY; y <= tileMaxY; ++y) {
+                    for (int x = tileMinX; x <= tileMaxX; ++x) {
+                        if (!WaterVisuals::wet(map, x, y, renderWrapX, renderWrapY)) continue;
+                        const int mx = (x % map.w + map.w) % map.w;
+                        const int my = (y % map.h + map.h) % map.h;
+                        const int id = map.tileIds[my * map.w + mx];
+                        const Frame* frame = nullptr;
+                        const auto tile = tileFrameById.find(id);
+                        if (tile != tileFrameById.end()) {
+                            const auto found = blocksFrameByName.find(tile->second);
+                            if (found != blocksFrameByName.end()) frame = &found->second;
+                        }
+                        if (!frame && id < (int)blocksFrameById.size()) frame = blocksFrameById[id];
+                        if (!frame) continue;
+                        const SDL_Rect dst{(int)(x * (float)map.tileSize - camX), (int)(y * (float)map.tileSize - camY),
+                            map.tileSize, map.tileSize};
+                        renderFrame(ren, blocksTex, *frame, dst);
+                    }
+                }
+                SDL_SetTextureBlendMode(blocksTex, previousBlend);
+                SDL_SetTextureAlphaMod(blocksTex, previousAlpha);
+                SDL_SetTextureColorMod(blocksTex, previousRed, previousGreen, previousBlue);
+            }
+        }
+
+        if (!waterParticles.empty()) {
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+            const float wrapW = renderWrapX ? (float)(map.w * map.tileSize) : 0.0f;
+            const float wrapH = renderWrapY ? (float)(map.h * map.tileSize) : 0.0f;
+            auto renderWaterParticleAt = [&](const WaterParticle& p, float x, float y) {
+                if (x < -12.0f || y < -12.0f || x > worldViewW + 12.0f || y > worldViewH + 12.0f) return;
+                const float t = std::clamp(p.life / std::max(0.01f, p.maxLife), 0.0f, 1.0f);
+                const Uint8 alpha = (Uint8)std::clamp((int)std::lround((p.splash ? 150.0f : 185.0f) * t), 0, 210);
+                const float sz = std::max(1.0f, p.size * (p.splash ? (0.7f + 0.7f * (1.0f - t)) : (0.75f + 0.45f * t)));
+                SDL_FRect r{x - sz * 0.5f, y - sz * 0.5f, sz, sz};
+                if (p.splash) {
+                    SDL_SetRenderDrawColor(ren, 140, 215, 255, alpha);
+                    SDL_RenderFillRectF(ren, &r);
+                    SDL_SetRenderDrawColor(ren, 235, 250, 255, alpha);
+                    SDL_RenderLine(ren, x, y, x - p.vx * 0.018f, y - p.vy * 0.018f);
+                } else {
+                    SDL_SetRenderDrawColor(ren, 200, 240, 255, (Uint8)std::clamp((int)alpha / 3, 18, 80));
+                    SDL_RenderFillRectF(ren, &r);
+                    SDL_SetRenderDrawColor(ren, 230, 250, 255, alpha);
+                    SDL_RenderDrawRectF(ren, &r);
+                }
+            };
+            for (const WaterParticle& p : waterParticles) {
+                float px = p.x - camX;
+                float py = p.y - camY;
+                if (renderWrapX) {
+                    while (px < -wrapW * 0.5f) px += wrapW;
+                    while (px >  wrapW * 0.5f) px -= wrapW;
+                }
+                if (renderWrapY) {
+                    while (py < -wrapH * 0.5f) py += wrapH;
+                    while (py >  wrapH * 0.5f) py -= wrapH;
+                }
+                for (int iy = renderWrapY ? -1 : 0; iy <= (renderWrapY ? 1 : 0); ++iy)
+                    for (int ix = renderWrapX ? -1 : 0; ix <= (renderWrapX ? 1 : 0); ++ix)
+                        renderWaterParticleAt(p, px + ix * wrapW, py + iy * wrapH);
+            }
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
         }
 
         SDL_SetRenderScale(ren, 1.0f, 1.0f);
@@ -8849,6 +8959,7 @@ int RunGameApp(int argc, char** argv) {
         }
     }
 
+    waterEffects.reset();
     if (playerTex) SDL_DestroyTexture(playerTex);
     if (blocksTex) SDL_DestroyTexture(blocksTex);
     if (entitiesTex) SDL_DestroyTexture(entitiesTex);

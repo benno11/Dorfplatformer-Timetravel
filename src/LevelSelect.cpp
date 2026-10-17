@@ -27,6 +27,7 @@
 #include "TextRenderer.h"
 #include "GameSupport.h"
 #include "LevelLoader.h"
+#include "ObjectIds.h"
 #include "InputSystem.h"
 #include "Platform.h"
 #if defined(HAVE_CURL) && HAVE_CURL
@@ -74,8 +75,8 @@ std::unordered_map<int, std::string> defaultEditorObjectTypes() {
         {64, "key"},
         {65, "door"},
         {67, "end_sign"},
-        {95, "pickup"},
-        {97, "goal"},
+        {ObjectIds::Pickup, "pickup"},
+        {ObjectIds::Goal, "goal"},
     };
 }
 
@@ -271,18 +272,18 @@ unsigned short normalizeTileIdForSave(unsigned short id) {
 
 std::string writeLocalLevelFile(const std::vector<unsigned short>& rowMajorGrid, int w, int h,
                                 const std::string& targetPath = "",
-                                const std::vector<ObjectInstance>& objects = {}) {
+                                const std::vector<ObjectInstance>& objects = {}, const LevelMeta& config = {}) {
     if (w <= 0 || h <= 0) return {};
     if ((int)rowMajorGrid.size() != w * h) return {};
-    // DFLVL3 stores exact engine row-major tile IDs, avoiding legacy axis/offset transforms.
-    bool wrapX = false;
-    bool wrapY = false;
+    // DFLVL4 adds level configuration while retaining exact row-major tile IDs.
+    bool wrapX = config.wrapX;
+    bool wrapY = config.wrapY;
     for (const auto& obj : objects) {
         if (obj.id == "62") wrapX = true;
         if (obj.id == "63") wrapY = true;
     }
-    int levelId = 0;
-    if (!targetPath.empty()) {
+    int levelId = config.levelId;
+    if (levelId <= 0 && !targetPath.empty()) {
         const std::string stem = std::filesystem::path(targetPath).stem().string();
         int start = -1;
         int len = 0;
@@ -300,16 +301,13 @@ std::string writeLocalLevelFile(const std::vector<unsigned short>& rowMajorGrid,
             levelId = std::atoi(stem.substr((size_t)start, (size_t)len).c_str());
         }
     }
-    std::string data;
+    LevelMeta fileConfig = config;
+    fileConfig.levelId = levelId;
+    fileConfig.wrapX = wrapX;
+    fileConfig.wrapY = wrapY;
+    std::string data = SerializeLevelMetaHeader(fileConfig);
     data.reserve((size_t)w * (size_t)h * 4 + 64);
-    data += "META level_id=";
-    data += std::to_string(std::max(0, levelId));
-    data += " theme_override=0 wrap_x=";
-    data += wrapX ? "1" : "0";
-    data += " wrap_y=";
-    data += wrapY ? "1" : "0";
-    data += " ENDMETA\n";
-    data += "DFLVL3 ";
+    data += "DFLVL4 ";
     data += std::to_string(w);
     data += " ";
     data += std::to_string(h);
@@ -656,6 +654,106 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
     return out;
 }
 
+bool RunLevelConfigMenu(SDL_Window* win, SDL_Renderer* ren, LevelMeta& config) {
+    LevelMeta draft = config;
+    int selected = 0;
+    bool running = true, applied = false, touching = false;
+    SDL_FingerID finger = 0;
+    SDL_Texture* savedTarget = SDL_GetRenderTarget(ren);
+    int savedW = 0, savedH = 0;
+    SDL_RendererLogicalPresentation savedPresentation;
+    SDL_GetRenderLogicalPresentation(ren, &savedW, &savedH, &savedPresentation);
+    SDL_SetRenderTarget(ren, nullptr);
+    SDL_SetRenderLogicalPresentation(ren, 640, 480, SDL_LOGICAL_PRESENTATION_LETTERBOX);
+    SDL_SetRenderViewport(ren, nullptr);
+    SDL_SetRenderClipRect(ren, nullptr);
+    SDL_SetRenderScale(ren, 1.0f, 1.0f);
+    const SDL_Rect rows[] = {{80, 92, 480, 52}, {80, 154, 480, 52}, {80, 216, 480, 52},
+        {80, 278, 480, 52}, {80, 386, 232, 50}, {328, 386, 232, 50}};
+    auto adjust = [&](int row, int direction) {
+        int* value = row == 0 ? &draft.world : (row == 1 ? &draft.area : &draft.time);
+        const int maximum = row == 0 ? 7 : (row == 1 ? 3 : 4);
+        if (row < 3) *value = (*value + direction + maximum + 1) % (maximum + 1);
+        else if (row == 3) draft.bouncyTile12 = !draft.bouncyTile12;
+    };
+    auto activate = [&](int row, int direction) {
+        selected = row;
+        if (row < 4) adjust(row, direction);
+        else { applied = row == 4; running = false; }
+    };
+    while (running) {
+        SDL_Event e;
+        while (SDL_PollEvent(&e)) {
+            if (e.type == SDL_EVENT_QUIT) { SDL_PushEvent(&e); running = false; break; }
+            if (e.type == SDL_EVENT_KEY_DOWN) {
+                const auto key = e.key.key;
+                if (key == SDLK_ESCAPE || key == SDLK_AC_BACK) { running = false; break; }
+                if (key == SDLK_UP) selected = (selected + 5) % 6;
+                if (key == SDLK_DOWN || key == SDLK_TAB) selected = (selected + 1) % 6;
+                if (key == SDLK_LEFT || key == SDLK_RIGHT) {
+                    if (selected < 4) adjust(selected, key == SDLK_LEFT ? -1 : 1);
+                    else selected = selected == 4 ? 5 : 4;
+                }
+                if (!e.key.repeat && (key == SDLK_RETURN || key == SDLK_KP_ENTER || key == SDLK_SPACE)) activate(selected, 1);
+            }
+            if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
+                const auto button = e.gbutton.button;
+                if (button == SDL_GAMEPAD_BUTTON_EAST || button == SDL_GAMEPAD_BUTTON_BACK) { running = false; break; }
+                if (button == SDL_GAMEPAD_BUTTON_DPAD_UP) selected = (selected + 5) % 6;
+                if (button == SDL_GAMEPAD_BUTTON_DPAD_DOWN) selected = (selected + 1) % 6;
+                if (button == SDL_GAMEPAD_BUTTON_DPAD_LEFT || button == SDL_GAMEPAD_BUTTON_DPAD_RIGHT) {
+                    if (selected < 4) adjust(selected, button == SDL_GAMEPAD_BUTTON_DPAD_LEFT ? -1 : 1);
+                    else selected = selected == 4 ? 5 : 4;
+                }
+                if (button == SDL_GAMEPAD_BUTTON_SOUTH || button == SDL_GAMEPAD_BUTTON_START) activate(selected, 1);
+            }
+            int winW = 0, winH = 0, x = 0, y = 0;
+            SDL_GetWindowSize(win, &winW, &winH);
+            bool clicked = false;
+            if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN && e.button.button == SDL_BUTTON_LEFT && e.button.which != SDL_TOUCH_MOUSEID)
+                clicked = windowToGamePoint((int)e.button.x, (int)e.button.y, winW, winH, 640, 480, x, y);
+            if (e.type == SDL_EVENT_FINGER_DOWN && !touching) { touching = true; finger = e.tfinger.fingerID; }
+            if (touching && e.type == SDL_EVENT_FINGER_UP && e.tfinger.fingerID == finger) {
+                touching = false;
+                clicked = windowToGamePoint((int)(e.tfinger.x * winW), (int)(e.tfinger.y * winH), winW, winH, 640, 480, x, y);
+            }
+            if (e.type == SDL_EVENT_FINGER_CANCELED || e.type == SDL_EVENT_WINDOW_FOCUS_LOST) touching = false;
+            if (clicked) {
+                SDL_Point point{x, y};
+                for (int row = 0; row < 6; ++row) if (SDL_PointInRect(&point, &rows[row])) {
+                    activate(row, row < 3 && x < rows[row].x + 70 ? -1 : 1);
+                    break;
+                }
+            }
+        }
+        SDL_SetRenderDrawColor(ren, 20, 29, 42, 255);
+        SDL_RenderClear(ren);
+        DrawText(ren, 320 - MeasureTextWidth(3, "Level Config") / 2, 24, 3, "Level Config");
+        const int values[] = {draft.world, draft.area, draft.time};
+        const char* names[] = {"World", "Area", "Time"};
+        for (int row = 0; row < 6; ++row) {
+            SDL_SetRenderDrawColor(ren, selected == row ? 65 : 39, selected == row ? 96 : 59, selected == row ? 130 : 82, 255);
+            SDL_RenderFillRect(ren, &rows[row]);
+            SDL_SetRenderDrawColor(ren, selected == row ? 230 : 130, 205, 235, 255);
+            SDL_RenderRect(ren, &rows[row]);
+            const std::string label = row < 3 ? std::string(names[row]) + ": " + (values[row] ? std::to_string(values[row]) : "Auto") :
+                (row == 3 ? std::string("Bouncy tile 12: ") + (draft.bouncyTile12 ? "ON" : "OFF") : (row == 4 ? "Apply" : "Cancel"));
+            DrawText(ren, rows[row].x + (rows[row].w - MeasureTextWidth(2, label)) / 2, rows[row].y + 14, 2, label);
+            if (row < 3) {
+                DrawText(ren, rows[row].x + 20, rows[row].y + 14, 2, "-");
+                DrawText(ren, rows[row].x + rows[row].w - 32, rows[row].y + 14, 2, "+");
+            }
+        }
+        DrawText(ren, 80, 345, 1, "Auto keeps the original level setting. Jump overrides tile 12.");
+        SDL_RenderPresent(ren);
+        SDL_Delay(16);
+    }
+    SDL_SetRenderLogicalPresentation(ren, savedW, savedH, savedPresentation);
+    SDL_SetRenderTarget(ren, savedTarget);
+    if (applied) config = draft;
+    return applied;
+}
+
 std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::string& initialPath = "",
                                 const std::string& newLevelName = "", int newLevelW = -1, int newLevelH = -1) {
     constexpr int kEditorTileSize = 32;
@@ -663,6 +761,8 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
     int gridH = (newLevelH > 0) ? std::clamp(newLevelH, 5, 400) : 17;
     std::vector<unsigned short> grid((size_t)gridW * (size_t)gridH, 2);
     std::vector<ObjectInstance> placedObjects;
+    LevelMeta editorConfig;
+    editorConfig.world = editorConfig.area = editorConfig.time = 1;
 
     if (!initialPath.empty()) {
         TileMap loadedMap;
@@ -673,6 +773,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             gridH = loadedMap.h;
             grid = loadedMap.tileIds;
             placedObjects = loadedObjects;
+            editorConfig = loadedMeta;
         }
     } else {
         for (int x = 0; x < gridW; ++x) grid[(gridH - 1) * gridW + x] = 1;
@@ -732,6 +833,10 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
     bool middlePanning = false;
     int lastPanMouseX = 0;
     int lastPanMouseY = 0;
+    auto openLevelConfig = [&]() {
+        editorFingerActive = fingerPainting = fingerPaletteScroll = fingerGridPanning = middlePanning = false;
+        RunLevelConfigMenu(win, ren, editorConfig);
+    };
     InputSystem editorInput;
     editorInput.scanConnected();
 
@@ -932,8 +1037,9 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         const int actionY = winH - margin - 48;
         SDL_Rect saveBtn{panelX, actionY, controlW, 48};
         SDL_Rect cancelBtn{panelX + controlW + controlGap, actionY, controlW, 48};
+        SDL_Rect configBtn{panelX, actionY - 52, sideW, 44};
         const int paletteRowH = 48;
-        const int paletteBottomY = saveBtn.y - 8;
+        const int paletteBottomY = configBtn.y - 66;
         const int paletteViewRows = std::max(1, (paletteBottomY - paletteStartY) / paletteRowH);
         const int paletteCountNow = objectMode ? (int)objectPalette.size() : (int)palette.size();
         int& activePaletteScroll = objectMode ? objectPaletteScroll : tilePaletteScroll;
@@ -956,6 +1062,20 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             editorInput.handleEvent(e);
             if (e.type == SDL_QUIT) { running = false; break; }
             if (SDL_GetTicks() < inputBlockUntilTicks) continue;
+            if (!paused) {
+                bool configure = e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && e.key.key == SDLK_F2;
+                configure = configure || (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN && e.gbutton.button == SDL_GAMEPAD_BUTTON_WEST);
+                SDL_Point point{};
+                if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN && e.button.button == SDL_BUTTON_LEFT && e.button.which != SDL_TOUCH_MOUSEID) {
+                    point = {(int)e.button.x, (int)e.button.y};
+                    configure = configure || SDL_PointInRect(&point, &configBtn);
+                }
+                if (e.type == SDL_EVENT_FINGER_DOWN) {
+                    point = {(int)(e.tfinger.x * winW), (int)(e.tfinger.y * winH)};
+                    configure = configure || SDL_PointInRect(&point, &configBtn);
+                }
+                if (configure) { openLevelConfig(); continue; }
+            }
             if (e.type == SDL_MOUSEWHEEL && !paused) {
                 float mx = 0.0f, my = 0.0f;
                 SDL_GetMouseState(&mx, &my);
@@ -996,7 +1116,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                         paused = false;
                     } else if (SDL_PointInRect(&pt, &pauseSaveBtn)) {
                         pauseSel = 1;
-                        savedPath = writeLocalLevelFile(grid, gridW, gridH, saveTargetPath, placedObjects);
+                        savedPath = writeLocalLevelFile(grid, gridW, gridH, saveTargetPath, placedObjects, editorConfig);
                         if (!savedPath.empty()) {
                             running = false;
                             break;
@@ -1012,7 +1132,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 }
 
                 if (SDL_PointInRect(&pt, &saveBtn)) {
-                    savedPath = writeLocalLevelFile(grid, gridW, gridH, saveTargetPath, placedObjects);
+                    savedPath = writeLocalLevelFile(grid, gridW, gridH, saveTargetPath, placedObjects, editorConfig);
                     if (!savedPath.empty()) {
                         running = false;
                         break;
@@ -1199,7 +1319,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                         if (pauseSel == 0) {
                             paused = false;
                         } else if (pauseSel == 1) {
-                            savedPath = writeLocalLevelFile(grid, gridW, gridH, saveTargetPath, placedObjects);
+                            savedPath = writeLocalLevelFile(grid, gridW, gridH, saveTargetPath, placedObjects, editorConfig);
                             if (!savedPath.empty()) {
                                 running = false;
                                 break;
@@ -1243,7 +1363,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 if (e.key.key == SDLK_UP) viewY = std::max(0, viewY - std::max(8, cell * 2));
                 if (e.key.key == SDLK_DOWN) viewY = std::min(maxViewY, viewY + std::max(8, cell * 2));
                 if (e.key.key == SDLK_s || e.key.key == SDLK_S || e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) {
-                    savedPath = writeLocalLevelFile(grid, gridW, gridH, saveTargetPath, placedObjects);
+                    savedPath = writeLocalLevelFile(grid, gridW, gridH, saveTargetPath, placedObjects, editorConfig);
                     if (!savedPath.empty()) {
                         running = false;
                         break;
@@ -1270,7 +1390,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                         if (pauseSel == 0) {
                             paused = false;
                         } else if (pauseSel == 1) {
-                            savedPath = writeLocalLevelFile(grid, gridW, gridH, saveTargetPath, placedObjects);
+                            savedPath = writeLocalLevelFile(grid, gridW, gridH, saveTargetPath, placedObjects, editorConfig);
                             if (!savedPath.empty()) {
                                 running = false;
                                 break;
@@ -1314,7 +1434,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 }
                 if (SDL_PointInRect(&pt, &pauseSaveBtn)) {
                     pauseSel = 1;
-                    savedPath = writeLocalLevelFile(grid, gridW, gridH, saveTargetPath, placedObjects);
+                    savedPath = writeLocalLevelFile(grid, gridW, gridH, saveTargetPath, placedObjects, editorConfig);
                     if (!savedPath.empty()) {
                         running = false;
                         break;
@@ -1417,7 +1537,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                     continue;
                 }
                 if (SDL_PointInRect(&pt, &saveBtn)) {
-                    savedPath = writeLocalLevelFile(grid, gridW, gridH, saveTargetPath, placedObjects);
+                    savedPath = writeLocalLevelFile(grid, gridW, gridH, saveTargetPath, placedObjects, editorConfig);
                     if (!savedPath.empty()) {
                         running = false;
                         break;
@@ -1482,8 +1602,8 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             if (id == 64) { r = 255; g = 230; b = 90; return; } // key
             if (id == 65) { r = 150; g = 110; b = 255; return; } // door
             if (id == 67) { r = 120; g = 180; b = 255; return; }
-            if (id == 95) { r = 120; g = 255; b = 185; return; } // pickup
-            if (id == 97) { r = 255; g = 245; b = 150; return; } // goal
+            if (id == ObjectIds::Pickup) { r = 120; g = 255; b = 185; return; } // pickup
+            if (id == ObjectIds::Goal) { r = 255; g = 245; b = 150; return; } // goal
             r = 220; g = 220; b = 240;
         };
         auto objectLabel = [&](int id) -> std::string {
@@ -1549,12 +1669,17 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         SDL_RenderDrawRect(ren, &border);
 
         const int helpScale = sideW < 220 ? 1 : 2;
-        DrawText(ren, panelX, actionY - 42, helpScale,
+        DrawText(ren, panelX, configBtn.y - 42, helpScale,
                  touchPanMode ? "DRAG CANVAS TO PAN" : (touchEraseMode ? "DRAG TO ERASE" : "TAP OR DRAG TO PAINT"));
-        DrawText(ren, panelX, actionY - 22, helpScale, "ESC/BACK: MENU");
+        DrawText(ren, panelX, configBtn.y - 22, helpScale, "F2: CONFIG  ESC: MENU");
         if (!statusText.empty() && SDL_GetTicks() < statusUntil) {
-            DrawText(ren, panelX, actionY - 62, helpScale, statusText);
+            DrawText(ren, panelX, configBtn.y - 62, helpScale, statusText);
         }
+        SDL_SetRenderDrawColor(ren, 55, 75, 110, 255);
+        SDL_RenderFillRect(ren, &configBtn);
+        SDL_SetRenderDrawColor(ren, 185, 210, 240, 255);
+        SDL_RenderDrawRect(ren, &configBtn);
+        DrawText(ren, configBtn.x + (configBtn.w - MeasureTextWidth(2, "LEVEL CONFIG")) / 2, configBtn.y + 12, 2, "LEVEL CONFIG");
         SDL_SetRenderDrawColor(ren, 55, 95, 70, 255);
         SDL_RenderFillRect(ren, &saveBtn);
         SDL_SetRenderDrawColor(ren, 190, 230, 200, 255);
@@ -2315,7 +2440,7 @@ static std::string RunLevelSelectImpl(SDL_Window* win, SDL_Renderer* ren, bool i
                     grown[y * prompt.width + x] = loadedMap.tileIds[y * loadedMap.w + x];
                 }
             }
-            const std::string written = writeLocalLevelFile(grown, prompt.width, prompt.height, localLevels[idx].path, loadedObjects);
+            const std::string written = writeLocalLevelFile(grown, prompt.width, prompt.height, localLevels[idx].path, loadedObjects, loadedMeta);
             if (written.empty()) {
                 showStatus("Grow failed.");
                 return;

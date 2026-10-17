@@ -1734,6 +1734,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         slim.muteAllAudio = ctx.muteAllAudio;
         slim.levelSelectEnabled = ctx.levelSelectEnabled;
         slim.nativeTextResolutionEnabled = ctx.nativeTextResolutionEnabled;
+        slim.waterEffectsEnabled = ctx.waterEffectsEnabled;
         slim.musicVolume = ctx.musicVolume;
         slim.sfxVolume = ctx.sfxVolume;
         slim.uiScalePercent = ctx.uiScalePercent;
@@ -1751,6 +1752,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         slim.levelServerAuthToken = ctx.levelServerAuthToken;
         slim.levelServerAccountUsername = ctx.levelServerAccountUsername;
         slim.selectedLevelPath = ctx.selectedLevelPath;
+        slim.selectedLevelName = ctx.selectedLevelName;
         slim.session = ctx.menuSession;
         slim.debuggerAttached = ctx.debuggerAttached;
         slim.applyAudioVolumes = ctx.applyAudioVolumes;

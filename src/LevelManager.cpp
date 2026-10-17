@@ -28,6 +28,7 @@ const std::string& LevelManager::levelPath() const {
 void LevelManager::reloadLevel(TileMap& map, std::vector<ObjectInstance>& objects, LevelMeta& meta, Player& player) {
     loadLevelBNNLVL(levelPath_, map, objects, meta);
     updateLevelMetadata(map);
+    applyLevelConfig(meta);
     coinCount_ = 0;
     timeWarpId_ = 'N';
     const bool disableEndSignsForArea = (worldId_ >= 1 && worldId_ <= 5 && levelPartId_ == 3);
@@ -523,6 +524,12 @@ void LevelManager::applyBlockDefAt(TileMap& map, int idx, unsigned short tileId)
     map.semisolid[idx] = (d == '=') ? 1 : 0;
     map.water[idx]     = (d == '^') ? 1 : 0;
     map.solid[idx]     = (d != '=' && d != '^' && d != '#') ? 0 : 1;
+}
+
+void LevelManager::applyLevelConfig(const LevelMeta& meta) {
+    if (meta.world > 0) worldId_ = meta.world;
+    if (meta.area > 0) levelPartId_ = meta.area;
+    if (meta.time > 0) timeId_ = meta.time;
 }
 
 void LevelManager::updateLevelMetadata(const TileMap& map) {

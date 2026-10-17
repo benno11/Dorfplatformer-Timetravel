@@ -1010,6 +1010,11 @@ if(BUILD_TESTING AND NOT ANDROID AND NOT IOS)
   target_include_directories(slim_menu_layout_test PRIVATE src)
   target_link_libraries(slim_menu_layout_test PRIVATE ${SDL3_LINK_TARGET})
   add_test(NAME slim_menu_layout COMMAND slim_menu_layout_test)
+  add_executable(water_effects_test tests/WaterEffectsTest.cpp src/TileMap.cpp)
+  target_include_directories(water_effects_test PRIVATE src)
+  target_link_libraries(water_effects_test PRIVATE ${SDL3_LINK_TARGET})
+  target_compile_definitions(water_effects_test PRIVATE SDL_ENABLE_OLD_NAMES=1)
+  add_test(NAME water_effects COMMAND water_effects_test)
   add_executable(async_network_test tests/AsyncNetworkTest.cpp)
   target_include_directories(async_network_test PRIVATE src)
   target_link_libraries(async_network_test PRIVATE Threads::Threads)
@@ -1024,6 +1029,18 @@ if(BUILD_TESTING AND NOT ANDROID AND NOT IOS)
   target_link_libraries(player_controller_test PRIVATE ${SDL3_LINK_TARGET})
   target_compile_definitions(player_controller_test PRIVATE SDL_ENABLE_OLD_NAMES=1)
   add_test(NAME player_controller_collision COMMAND player_controller_test)
+  add_executable(level_format_test
+    tests/LevelFormatTest.cpp
+    src/LevelLoader.cpp
+    src/LevelManager.cpp
+    src/PlayerController.cpp
+    src/TileMap.cpp
+  )
+  target_include_directories(level_format_test PRIVATE src third_party)
+  target_link_libraries(level_format_test PRIVATE ${SDL3_LINK_TARGET})
+  target_compile_definitions(level_format_test PRIVATE SDL_ENABLE_OLD_NAMES=1)
+  add_test(NAME level_format COMMAND level_format_test)
+  set_tests_properties(level_format PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 endif()
 
 if(WIN32 AND CURL_FOUND)

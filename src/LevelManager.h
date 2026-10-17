@@ -16,6 +16,7 @@ public:
     const std::string& levelPath() const;
 
     void reloadLevel(TileMap& map, std::vector<ObjectInstance>& objects, LevelMeta& meta, Player& player);
+    void applyLevelConfig(const LevelMeta& meta);
     std::string nextLevelPath() const;
 
     int collectCoinsAtPlayer(TileMap& map, const Player& player, bool wrapX = false, bool wrapY = false);

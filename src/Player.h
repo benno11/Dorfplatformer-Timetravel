@@ -6,6 +6,7 @@ struct Player {
     float vx = 0.0f;
     float vy = 0.0f;
     int tilePushDirection = 0; // Direction of momentum remaining from tiles 83/86.
+    bool tile12BounceActive = false;
     int w = 30;
     int h = 56;
     bool onGround = false;
