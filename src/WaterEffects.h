@@ -98,6 +98,76 @@ inline bool nearbySurface(const TileMap& map, float x, float top, float bottom,
     }
     return false;
 }
+
+inline bool overlapsWater(const TileMap& map, const SDL_FRect& body, bool wrapX, bool wrapY) {
+    if (map.tileSize <= 0 || body.w <= 0 || body.h <= 0) return false;
+    const int left = (int)std::floor(body.x / map.tileSize);
+    const int right = (int)std::ceil((body.x + body.w) / map.tileSize);
+    const int top = (int)std::floor(body.y / map.tileSize);
+    const int bottom = (int)std::ceil((body.y + body.h) / map.tileSize);
+    for (int y = top; y < bottom; ++y)
+        for (int x = left; x < right; ++x)
+            if (wet(map, x, y, wrapX, wrapY)) return true;
+    return false;
+}
+
+// Runtime-only history: initial placement and teleports do not make splashes.
+struct InteractionState {
+    SDL_FRect previous{};
+    bool initialized = false;
+    bool submerged = false;
+    float bubbleTimer = 0.0f;
+    float wakeTimer = 0.0f;
+};
+struct Interaction {
+    bool splash = false, bubble = false, wake = false;
+    float x = 0, surfaceY = 0, vx = 0, vy = 0;
+};
+inline Interaction interact(const TileMap& map, const SDL_FRect& body,
+                            InteractionState& state, float dt, bool wrapX, bool wrapY) {
+    Interaction result;
+    const bool submerged = overlapsWater(map, body, wrapX, wrapY);
+    if (!state.initialized || dt <= 0.0f) {
+        state = {body, true, submerged, 0.12f, 0.0f};
+        return result;
+    }
+    float dx = body.x - state.previous.x, dy = body.y - state.previous.y;
+    const float width = (float)(map.w * map.tileSize), height = (float)(map.h * map.tileSize);
+    if (wrapX && width > 0) dx -= std::round(dx / width) * width;
+    if (wrapY && height > 0) dy -= std::round(dy / height) * height;
+    // Suppress discontinuities such as scene changes and debugger repositioning.
+    if (std::fabs(dx) > map.tileSize * 4 || std::fabs(dy) > map.tileSize * 4) {
+        state = {body, true, submerged, 0.12f, 0.0f};
+        return result;
+    }
+    result.vx = dx / dt;
+    result.vy = dy / dt;
+    result.x = body.x + body.w * 0.5f;
+    const float previousTop = body.y - dy;
+    const bool surface = nearbySurface(map, result.x, std::min(body.y, previousTop),
+        std::max(body.y + body.h, previousTop + state.previous.h), wrapX, wrapY, result.surfaceY);
+    const float previousBottom = previousTop + state.previous.h;
+    const float bottom = body.y + body.h;
+    result.splash = surface && ((submerged != state.submerged &&
+        result.surfaceY >= std::min(body.y, previousTop) && result.surfaceY <= std::max(bottom, previousBottom)) ||
+        (previousBottom <= result.surfaceY && bottom > result.surfaceY) ||
+        (previousBottom > result.surfaceY && bottom <= result.surfaceY));
+    state.bubbleTimer -= dt;
+    state.wakeTimer -= dt;
+    const float speed = std::fabs(result.vx) + std::fabs(result.vy);
+    if (submerged && speed > 12.0f && state.bubbleTimer <= 0.0f) {
+        result.bubble = true;
+        state.bubbleTimer = 0.24f - std::min(speed / 2000.0f, 0.12f);
+    }
+    if (surface && body.y <= result.surfaceY && bottom > result.surfaceY &&
+        std::fabs(result.vx) > 20.0f && state.wakeTimer <= 0.0f) {
+        result.wake = true;
+        state.wakeTimer = 0.16f;
+    }
+    state.previous = body;
+    state.submerged = submerged;
+    return result;
+}
 } // namespace WaterVisuals
 
 class WaterEffects {

@@ -6,6 +6,13 @@ Menus are `.menu` text files in `assets/menus`. The title screen loads:
 - `mainedit.menu` from the Editor button.
 - `mainsetting.menu` from the Settings button.
 
+The Play menu selects a save slot. Slots with ending unlocks open the generated
+`saveplay` menu, offering Continue Adventure, World Select, and Hardmode according
+to that slot's progress. Both campaign and Hardmode snapshots and all unlocks live
+in the slot's `saves/save_slot_N.json`; deleting the slot removes all of them.
+Existing global unlocks and the old Hardmode run migrate once into the active slot,
+with the original files archived using the `.migrated` suffix.
+
 All script menus use `assets/Sheets/DF_Menus-uhd.png` and its `.plist` for window panels,
 buttons, toggle checkboxes, and back/close icons. Toggle icons follow the setting value
 automatically; no additional script commands are needed. The selected button is brighter

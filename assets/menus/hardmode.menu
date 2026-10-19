@@ -8,4 +8,4 @@ if hardmode_save_exists skip 1
 button "Continue Run" hardmode continue
 if hardmode_unlocked skip 1
 button "Practice Levels" menu hardmodepractice
-button "Back" menu mainplay
+button "Back" menu saveplay

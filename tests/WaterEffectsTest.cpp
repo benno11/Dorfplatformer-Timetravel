@@ -59,6 +59,44 @@ int main(int argc, char** argv) {
         require(WaterVisuals::nearbySurface(map, 64, 48, 80, false, false, surface) && surface == 64,
             "Splash must originate at water surface");
         require(!WaterVisuals::nearbySurface(map, 0, 48, 80, false, false, surface), "No splash over dry land");
+        {
+            WaterVisuals::InteractionState player;
+            require(!WaterVisuals::interact(map, {64, 16, 16, 32}, player, 0.1f, false, false).splash,
+                "Initial player placement must not splash");
+            const auto entry = WaterVisuals::interact(map, {64, 40, 16, 32}, player, 0.1f, false, false);
+            require(entry.splash && entry.surfaceY == 64 && entry.vy > 0,
+                "Player entry must splash at the crossed water surface");
+            const auto wake = WaterVisuals::interact(map, {72, 40, 16, 32}, player, 0.2f, false, false);
+            require(wake.wake && !wake.splash && wake.bubble,
+                "Swimming must emit surface wakes and underwater bubbles");
+            const auto exit = WaterVisuals::interact(map, {72, 16, 16, 32}, player, 0.1f, false, false);
+            require(exit.splash && exit.vy < 0, "Leaving water must splash even after the body clears the surface");
+            WaterVisuals::InteractionState object;
+            WaterVisuals::interact(map, {96, 8, 32, 32}, object, 0.1f, false, false);
+            require(WaterVisuals::interact(map, {96, 80, 32, 32}, object, 0.1f, false, false).splash,
+                "Fast moving objects must detect the swept surface crossing");
+            require(!WaterVisuals::interact(map, {96, 80, 32, 32}, object, 0.5f, false, false).bubble,
+                "Stationary submerged objects must not continuously emit bubbles");
+            WaterVisuals::InteractionState teleported;
+            WaterVisuals::interact(map, {64, -160, 16, 32}, teleported, 0.1f, false, false);
+            require(!WaterVisuals::interact(map, {64, 80, 16, 32}, teleported, 0.1f, false, false).splash,
+                "Teleporting into water must reset interaction history");
+            require(!WaterVisuals::overlapsWater(map, {64, 32, 16, 32}, false, false),
+                "Touching the surface without entering water must stay dry");
+            WaterVisuals::InteractionState wrappedBody;
+            WaterVisuals::interact(map, {190, 80, 32, 32}, wrappedBody, 0.1f, true, false);
+            const auto wrappedMotion = WaterVisuals::interact(map, {2, 80, 32, 32}, wrappedBody, 0.1f, true, false);
+            require(wrappedMotion.vx == 40 && !wrappedMotion.splash,
+                "World wrapping must use local movement rather than a map-wide jump");
+            WaterVisuals::InteractionState sideways;
+            WaterVisuals::interact(map, {8, 48, 12, 12}, sideways, 0.1f, false, false);
+            require(!WaterVisuals::interact(map, {40, 48, 12, 12}, sideways, 0.1f, false, false).splash,
+                "Moving above water must not trigger a splash");
+            sideways = {};
+            WaterVisuals::interact(map, {8, 56, 12, 12}, sideways, 0.1f, false, false);
+            require(WaterVisuals::interact(map, {40, 56, 12, 12}, sideways, 0.1f, false, false).splash,
+                "Objects moving sideways into the surface must splash");
+        }
         require(!WaterVisuals::wet(map, 7, 2, false, false) && WaterVisuals::wet(map, 7, 2, true, false),
             "Horizontal water wrapping");
         require(WaterVisuals::wet(map, 1, -1, false, true), "Vertical water wrapping");

@@ -2323,7 +2323,8 @@ int RunGameApp(int argc, char** argv) {
     };
     bool reopenUserLevelMenu = false;
     FrontendMenuContext frontendCtx{};
-    GameProgression progression = LoadGameProgression();
+    MigrateLegacyGameProgression(activeSaveSlotIndex);
+    GameProgression progression = LoadGameProgression(activeSaveSlotIndex);
     frontendCtx.progression = &progression;
     frontendCtx.win = win;
     frontendCtx.ren = ren;
@@ -2734,6 +2735,7 @@ int RunGameApp(int argc, char** argv) {
     std::function<bool()> saveGameToDisk;
     while (running) {
         recoverAudioIfNeeded(false);
+        progression = LoadGameProgression(activeSaveSlotIndex);
         std::string selectedLevelPath;
         std::string customLevelName;
         bool selectedFromCustomLevelMenu = false;
@@ -2768,26 +2770,9 @@ int RunGameApp(int argc, char** argv) {
         if (selectedLevelPath == kStartHardmodeToken) selectedLevelPath = HardmodeLevelPath(1);
         if (selectedLevelPath == kSavedGameSelectionToken || continueHardmode) {
             loadSavedGame = true;
-            const std::filesystem::path selectedSavePath = continueHardmode
-                ? std::filesystem::path(HardmodeSavePath()) : saveGamePathForSlot(activeSaveSlotIndex);
-            try {
-                std::ifstream in(selectedSavePath, std::ios::binary);
-                if (!in.is_open()) {
-                    SDL_Log("SAVE: continue requested but %s was not found", selectedSavePath.string().c_str());
-                    continue;
-                }
-                std::stringstream buffer;
-                buffer << in.rdbuf();
-                if (buffer.str().empty()) {
-                    SDL_Log("SAVE: continue requested but %s was empty", selectedSavePath.string().c_str());
-                    continue;
-                }
-                savedGameRoot = nlohmann::json::parse(buffer.str());
-            } catch (const std::exception& ex) {
-                SDL_Log("SAVE: failed to parse %s (%s)", selectedSavePath.string().c_str(), ex.what());
-                continue;
-            } catch (...) {
-                SDL_Log("SAVE: failed to parse %s", selectedSavePath.string().c_str());
+            savedGameRoot = LoadGameSnapshot(activeSaveSlotIndex, continueHardmode);
+            if (!savedGameRoot.is_object() || !savedGameRoot.contains("level_path")) {
+                SDL_Log("SAVE: no playable snapshot in slot %d", activeSaveSlotIndex + 1);
                 continue;
             }
         }
@@ -2840,6 +2825,19 @@ int RunGameApp(int argc, char** argv) {
         float levelCompleteUiLerp = 0.0f;
         bool levelCompleteFlag = false;         // set this to trigger level completion programmatically
         Uint32 nextLevelCompleteFlagCheckTicks = 0u; // 8 Hz poll timer
+        struct WaterParticle {
+            float x = 0.0f;
+            float y = 0.0f;
+            float vx = 0.0f;
+            float vy = 0.0f;
+            float life = 0.0f;
+            float maxLife = 1.0f;
+            float size = 2.0f;
+            bool splash = false;
+        };
+        std::vector<WaterParticle> waterParticles;
+        WaterVisuals::InteractionState playerWaterState;
+        std::vector<WaterVisuals::InteractionState> objectWaterStates;
         auto parseObjectId = [&](const std::string& idText) -> int {
             int value = -1;
             const char* begin = idText.c_str();
@@ -2851,6 +2849,7 @@ int RunGameApp(int argc, char** argv) {
         auto refreshObjectIdCache = [&]() {
             movingPlatformStates.resize(objects.size());
             shellChrakerStates.assign(objects.size(), ShellChraker::State{});
+            objectWaterStates.assign(objects.size(), WaterVisuals::InteractionState{});
             objectIds.clear();
             objectIds.reserve(objects.size());
             for (const auto& obj : objects) {
@@ -3142,6 +3141,12 @@ int RunGameApp(int argc, char** argv) {
         std::string checkpointLevelPath;
         int checkpointTileX = -1;
         int checkpointTileY = -1;
+        auto clearCheckpoint = [&]() {
+            checkpointActive = false;
+            checkpointLevelPath.clear();
+            checkpointTileX = -1;
+            checkpointTileY = -1;
+        };
         auto normalizeLevelPath = [](std::string path) {
             std::replace(path.begin(), path.end(), '\\', '/');
             std::transform(path.begin(), path.end(), path.begin(), [](unsigned char c) {
@@ -3267,12 +3272,14 @@ int RunGameApp(int argc, char** argv) {
             spikeImpact.remaining = 0;
             movingPlatformStates.clear();
             waterEffects.reset();
+            waterParticles.clear();
+            playerWaterState = {};
             levelManager.reloadLevel(map, objects, meta, player);
             if (hardmodeRun) {
                 const int reached = HardmodeLevelFromPath(levelManager.levelPath());
                 if (reached > progression.hardmodeFurthestLevel) {
                     progression.reachHardmodeLevel(reached);
-                    SaveGameProgression(progression);
+                    SaveGameProgression(progression, activeSaveSlotIndex);
                 }
             }
             refreshObjectIdCache();
@@ -3335,19 +3342,18 @@ int RunGameApp(int argc, char** argv) {
             currentLevelId = loadedLevelId();
             const std::string activeLevelPath = levelManager.levelPath();
             const std::string normalizedActiveLevelPath = normalizeLevelPath(activeLevelPath);
+            // Reloads keep the current checkpoint; changing levels discards it.
+            normalizeCheckpointTiles(map);
+            if (checkpointLevelPath != normalizedActiveLevelPath) clearCheckpoint();
             if (checkpointActive && checkpointLevelPath == normalizedActiveLevelPath) {
                 if (checkpointTileX >= 0 && checkpointTileX < map.w &&
                     checkpointTileY >= 0 && checkpointTileY < map.h) {
-                    normalizeCheckpointTiles(map);
                     const int cpIdx = checkpointTileY * map.w + checkpointTileX;
                     levelManager.setTileAt(map, cpIdx, 50);
                     player.x = (float)(checkpointTileX * map.tileSize);
                     player.y = (float)(checkpointTileY * map.tileSize - player.h);
                 } else {
-                    checkpointActive = false;
-                    checkpointLevelPath.clear();
-                    checkpointTileX = -1;
-                    checkpointTileY = -1;
+                    clearCheckpoint();
                 }
             }
             playerInvincibleTimer = std::max(playerInvincibleTimer, kPlayerSpawnInvincibleDuration);
@@ -3361,10 +3367,9 @@ int RunGameApp(int argc, char** argv) {
             if (levelCompleteActive) return;
             levelCompleteActive = true;
             if (progression.recordCompletion(levelManager.levelPath(), levelManager.worldId(),
-                levelManager.levelPartId(), levelManager.timeId(), hardmodePractice)) SaveGameProgression(progression);
+                levelManager.levelPartId(), levelManager.timeId(), hardmodePractice)) SaveGameProgression(progression, activeSaveSlotIndex);
             if (hardmodeRun && HardmodeLevelFromPath(levelManager.levelPath()) == kHardmodeLevelCount) {
-                std::error_code ec;
-                std::filesystem::remove(HardmodeSavePath(), ec);
+                ClearHardmodeSnapshot(activeSaveSlotIndex);
             }
             {
                 std::string completedPath = levelManager.levelPath();
@@ -3496,9 +3501,18 @@ int RunGameApp(int argc, char** argv) {
             if (savedGameRoot.contains("checkpoint") && savedGameRoot["checkpoint"].is_object()) {
                 const auto& cj = savedGameRoot["checkpoint"];
                 checkpointActive = cj.value("active", false);
-                checkpointLevelPath = cj.value("level_path", std::string());
+                checkpointLevelPath = normalizeLevelPath(cj.value("level_path", std::string()));
                 checkpointTileX = cj.value("tile_x", -1);
                 checkpointTileY = cj.value("tile_y", -1);
+            }
+            if (!checkpointActive || checkpointLevelPath != normalizeLevelPath(levelManager.levelPath()) ||
+                checkpointTileX < 0 || checkpointTileX >= map.w ||
+                checkpointTileY < 0 || checkpointTileY >= map.h) {
+                clearCheckpoint();
+            }
+            normalizeCheckpointTiles(map);
+            if (checkpointActive) {
+                levelManager.setTileAt(map, checkpointTileY * map.w + checkpointTileX, 50);
             }
             levelTimerSeconds = savedGameRoot.value("level_timer_seconds", 0.0f);
             livesCount = savedGameRoot.value("lives_count", livesCount);
@@ -3600,6 +3614,7 @@ int RunGameApp(int argc, char** argv) {
         bool deathLifeDeducted = false;
         float deathTimer = 0.0f;
         struct DroppedCoin {
+            WaterVisuals::InteractionState waterState;
             float x = 0.0f;
             float y = 0.0f;
             float vx = 0.0f;
@@ -3613,6 +3628,7 @@ int RunGameApp(int argc, char** argv) {
             if (path.empty()) return false;
             if (hardmodePractice && path != levelManager.levelPath()) return false;
             if (hardmodeRun && HardmodeLevelFromPath(path) == 0) return false;
+            clearCheckpoint();
             levelManager.setLevelPath(path);
             syncWorldBackground();
             droppedCoins.clear();
@@ -3826,20 +3842,6 @@ int RunGameApp(int argc, char** argv) {
         std::vector<SDL_FRect> waterHitboxes;
         std::vector<SDL_FRect> airDebugHitboxes;
         std::unordered_set<int> activeBumperIndices;
-        struct WaterParticle {
-            float x = 0.0f;
-            float y = 0.0f;
-            float vx = 0.0f;
-            float vy = 0.0f;
-            float life = 0.0f;
-            float maxLife = 1.0f;
-            float size = 2.0f;
-            bool splash = false;
-        };
-        std::vector<WaterParticle> waterParticles;
-        float waterBubbleEmitTimer = 0.0f;
-        float waterKickBurstCooldown = 0.0f;
-        bool playerWasInWaterLastFrame = false;
         int pauseSelection = 0; // 0 = Resume, 1 = Restart, 2 = Quit
         bool returnToSelect = false;
         std::unordered_map<SDL_FingerID, SDL_FPoint> activeTouches;
@@ -4083,8 +4085,7 @@ int RunGameApp(int argc, char** argv) {
                 if (hardmodePractice) return false;
                 if (levelManager.levelPath().empty()) return false;
                 if (hardmodeRun && levelCompleteActive && HardmodeLevelFromPath(levelManager.levelPath()) == kHardmodeLevelCount) return true;
-                const std::filesystem::path savePath = hardmodeRun
-                    ? std::filesystem::path(HardmodeSavePath()) : saveGamePathForSlot(activeSaveSlotIndex);
+                const std::filesystem::path savePath = saveGamePathForSlot(activeSaveSlotIndex);
                 std::error_code ec;
                 std::filesystem::create_directories(savePath.parent_path(), ec);
                 nlohmann::json root;
@@ -4158,10 +4159,7 @@ int RunGameApp(int argc, char** argv) {
                 for (const auto& ex : secretExplosions) {
                     root["secret_explosions"].push_back(saveSecretExplosionJson(ex));
                 }
-                std::ofstream out(savePath, std::ios::binary | std::ios::trunc);
-                if (!out.is_open()) return false;
-                out << root.dump(2);
-                out.flush();
+                if (!SaveGameSnapshot(activeSaveSlotIndex, hardmodeRun, root)) return false;
                 SDL_Log("SAVE: wrote %s", savePath.string().c_str());
                 return true;
             } catch (const std::exception& ex) {
@@ -4191,7 +4189,7 @@ int RunGameApp(int argc, char** argv) {
             audio.playMessageSfx();
             return true;
         };
-        if (hardmodeRun) (void)saveGameToDisk();
+        if (allowNextLevelProgression && !hardmodePractice) (void)saveGameToDisk();
         // Replay recording is opt-in; keep disabled until user toggles it.
         SDL_Event e;
         Uint32 lastTicks = SDL_GetTicks();
@@ -4490,41 +4488,34 @@ int RunGameApp(int argc, char** argv) {
             p.splash = splash;
             waterParticles.push_back(p);
         };
-        auto spawnPlayerWaterBurst = [&](const Player& p, bool entering) {
-            const float cx = p.x + p.w * 0.5f;
-            float surfaceY = p.y + p.h * 0.5f;
-            const bool surface = WaterVisuals::nearbySurface(map, cx, p.y, p.y + p.h,
-                levelWrapXEnabled(), levelWrapYEnabled(), surfaceY);
-            const float impact = std::clamp((std::fabs(p.vy) + std::fabs(p.vx) * 0.35f) / 240.0f, 0.35f, 1.5f);
-            if (surface) waterEffects.splash(cx, surfaceY, std::fabs(p.vy) + std::fabs(p.vx) * 0.35f);
-            const int count = entering && surface ? 14 : 5;
-            waterParticles.reserve(std::min<std::size_t>(180, waterParticles.size() + count));
-            for (int i = 0; i < count; ++i) {
-                const float t = (count <= 1) ? 0.0f : (i / (float)(count - 1)) * 2.0f - 1.0f;
-                const float speedBias = (entering ? 1.0f : 0.55f) * impact;
-                spawnWaterParticle(
-                    cx + t * p.w * 0.55f,
-                    surfaceY + std::sin((float)i * 1.7f) * 2.0f,
-                    t * 95.0f * speedBias + p.vx * 0.08f,
-                    -100.0f * speedBias - (1.0f - std::fabs(t)) * 55.0f,
-                    entering ? 0.55f : 0.38f,
-                    entering ? 3.4f : 2.5f,
-                    surface
-                );
+        auto emitWaterInteraction = [&](const SDL_FRect& body, WaterVisuals::InteractionState& state, float dt) {
+            const auto interaction = WaterVisuals::interact(map, body, state, dt,
+                levelWrapXEnabled(), levelWrapYEnabled());
+            const float speed = std::fabs(interaction.vy) + std::fabs(interaction.vx) * 0.35f;
+            if (interaction.splash) {
+                waterEffects.splash(interaction.x, interaction.surfaceY, speed);
+                const float impact = std::clamp(speed / 240.0f, 0.35f, 1.5f);
+                const int count = std::clamp((int)(body.w * 0.4f), 5, 16);
+                for (int i = 0; i < count; ++i) {
+                    const float side = 2.0f * i / (count - 1) - 1.0f;
+                    spawnWaterParticle(interaction.x + side * body.w * 0.4f, interaction.surfaceY - 1.0f,
+                        side * 95.0f * impact + interaction.vx * 0.08f,
+                        -(80.0f + (1.0f - std::fabs(side)) * 65.0f) * impact,
+                        0.55f, 2.5f, true);
+                }
             }
-        };
-        auto spawnPlayerBubble = [&](const Player& p, float seed) {
-            const float bob = std::sin(seed * 12.9898f) * 0.5f + 0.5f;
-            const float side = std::sin(seed * 78.233f);
-            spawnWaterParticle(
-                p.x + p.w * (0.25f + 0.5f * bob),
-                p.y + p.h * (0.30f + 0.35f * (1.0f - bob)),
-                side * 16.0f - p.vx * 0.035f,
-                -26.0f - bob * 26.0f,
-                0.95f + bob * 0.45f,
-                1.8f + bob * 2.1f,
-                false
-            );
+            if (interaction.wake && !interaction.splash) {
+                waterEffects.splash(interaction.x, interaction.surfaceY, 70.0f);
+            }
+            if (interaction.bubble) {
+                const float x = body.x + body.w * 0.5f;
+                const float y = body.y + body.h * 0.65f;
+                if (WaterVisuals::wet(map, (int)std::floor(x / map.tileSize),
+                    (int)std::floor(y / map.tileSize), levelWrapXEnabled(), levelWrapYEnabled())) {
+                    spawnWaterParticle(x, y, -interaction.vx * 0.04f, -32.0f,
+                        1.2f, std::clamp(body.w * 0.1f, 1.5f, 3.5f), false);
+                }
+            }
         };
 
         auto removeTimewarpObjectsAndExit = [&]() {
@@ -5219,9 +5210,7 @@ int RunGameApp(int argc, char** argv) {
                 deathSequenceActive = false;
                 deathTimer = 0.0f;
                 if (hardmodeRun) {
-                    checkpointActive = false;
-                    checkpointLevelPath.clear();
-                    checkpointTileX = checkpointTileY = -1;
+                    clearCheckpoint();
                     scoreCount = 0;
                     levelManager.clearButtonAreasForDebug();
                     transitionToLevelPath(HardmodeLevelPath(1));
@@ -6170,7 +6159,6 @@ int RunGameApp(int argc, char** argv) {
                 inputDown = false;
             }
             PlayerUpdateResult upd = PlayerUpdateResult::RenderOnly;
-            const bool wasInWaterBeforeMovement = player.inWater;
             int platformRider = -1;
             if (!fastTravelEnabled && !player.freeMove && playerSpawnLockFrames <= 0) {
                 for (int index = 0; index < (int)objects.size(); ++index) {
@@ -6229,37 +6217,23 @@ int RunGameApp(int argc, char** argv) {
                 inputDown = false;
             }
             if (waterEffectsEnabled) {
-                waterKickBurstCooldown = std::max(0.0f, waterKickBurstCooldown - dt);
                 waterEffects.update(dt);
-                if (player.inWater) {
-                    waterBubbleEmitTimer -= dt;
-                    const float speed01 = std::clamp((std::fabs(player.vx) + std::fabs(player.vy)) / 260.0f, 0.0f, 1.0f);
-                    const float bubbleInterval = 0.22f - speed01 * 0.11f;
-                    if (!wasInWaterBeforeMovement || !playerWasInWaterLastFrame) {
-                        spawnPlayerWaterBurst(player, true);
-                        waterBubbleEmitTimer = 0.08f;
-                    }
-                    while (waterBubbleEmitTimer <= 0.0f) {
-                        const float seed = (float)SDL_GetTicks() * 0.001f + (float)waterParticles.size() * 0.37f;
-                        spawnPlayerBubble(player, seed);
-                        waterBubbleEmitTimer += bubbleInterval;
-                    }
-                    if ((std::fabs(player.vx) > 120.0f || std::fabs(player.vy) > 150.0f) && waterKickBurstCooldown <= 0.0f) {
-                        spawnPlayerWaterBurst(player, false);
-                        waterKickBurstCooldown = 0.18f;
-                    }
-                } else {
-                    if (wasInWaterBeforeMovement || playerWasInWaterLastFrame) {
-                        spawnPlayerWaterBurst(player, true);
-                    }
-                    waterBubbleEmitTimer = 0.0f;
+                emitWaterInteraction({player.x, player.y, (float)player.w, (float)player.h}, playerWaterState, dt);
+                for (size_t index = 0; index < objects.size(); ++index) {
+                    // Editor triggers and spawn markers have no physical water interaction.
+                    const int id = objectIds[index];
+                    if (id < 0 || (id >= 57 && id <= 63) || id == 69 || id == 70) continue;
+                    emitWaterInteraction({objects[index].x - 16.0f, objects[index].y - 16.0f, 32.0f, 32.0f},
+                        objectWaterStates[index], dt);
                 }
-                playerWasInWaterLastFrame = player.inWater;
+                for (auto& coin : droppedCoins) {
+                    emitWaterInteraction({coin.x - 8.0f, coin.y - 8.0f, 16.0f, 16.0f}, coin.waterState, dt);
+                }
             } else {
                 waterParticles.clear();
-                waterBubbleEmitTimer = 0.0f;
-                waterKickBurstCooldown = 0.0f;
-                playerWasInWaterLastFrame = false;
+                playerWaterState = {};
+                std::fill(objectWaterStates.begin(), objectWaterStates.end(), WaterVisuals::InteractionState{});
+                for (auto& coin : droppedCoins) coin.waterState = {};
             }
 
             std::vector<SDL_FRect> splashPlatforms;
@@ -6287,8 +6261,20 @@ int RunGameApp(int argc, char** argv) {
                     it->vy += 190.0f * dt;
                     it->vx *= std::max(0.0f, 1.0f - 2.4f * dt);
                 } else {
-                    it->x += it->vx * dt;
-                    it->y += it->vy * dt;
+                    const float previousY = it->y;
+                    if (!WaterVisuals::moveSplash(map, it->x, it->y, it->vx * dt, it->vy * dt,
+                        it->size, gameplayWrapX, gameplayWrapY, splashPlatforms)) {
+                        it = waterParticles.erase(it);
+                        continue;
+                    }
+                    if (!WaterVisuals::wet(map, (int)std::floor(it->x / map.tileSize),
+                        (int)std::floor(it->y / map.tileSize), gameplayWrapX, gameplayWrapY)) {
+                        float surfaceY = it->y;
+                        if (WaterVisuals::nearbySurface(map, it->x, it->y, previousY,
+                            gameplayWrapX, gameplayWrapY, surfaceY)) waterEffects.splash(it->x, surfaceY, 30.0f);
+                        it = waterParticles.erase(it);
+                        continue;
+                    }
                     it->vy -= 5.0f * dt;
                     it->x += std::sin((it->maxLife - it->life) * 9.0f + it->size) * 4.0f * dt;
                 }
@@ -6992,6 +6978,7 @@ int RunGameApp(int argc, char** argv) {
             };
             auto eraseGameplayObject = [&](int index) {
                 objects.erase(objects.begin() + index);
+                if (index < (int)objectWaterStates.size()) objectWaterStates.erase(objectWaterStates.begin() + index);
                 if (index < (int)objectIds.size()) objectIds.erase(objectIds.begin() + index);
                 if (index < (int)shellChrakerStates.size()) shellChrakerStates.erase(shellChrakerStates.begin() + index);
                 if (index < (int)movingPlatformStates.size()) movingPlatformStates.erase(movingPlatformStates.begin() + index);
@@ -9239,11 +9226,13 @@ int RunGameApp(int argc, char** argv) {
             SDL_RenderPresent(debugRen);
         }
         }
+        clearCheckpoint();
         if (!running) break;
         stopReplayRecording(returnToSelect ? "return_to_select" : "level_end");
         audio.unloadLevelMusic();
+        // Every way out of a custom level returns to its originating browser.
+        if (selectedFromCustomLevelMenu) reopenUserLevelMenu = true;
         if (returnToSelect) {
-            if (selectedFromCustomLevelMenu) reopenUserLevelMenu = true;
             continue;
         }
     }

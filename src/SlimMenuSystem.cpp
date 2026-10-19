@@ -320,7 +320,7 @@ std::string contextVarValue(const std::string& name, const SlimRuntime& runtime,
     if (var == "hardmode_unlocked") return ctx.progression && ctx.progression->hardmodeUnlocked ? "true" : "false";
     if (var == "hardmode_complete") return ctx.progression && ctx.progression->hardmodeComplete ? "YES" : "NO";
     if (var == "hardmode_furthest_level") return std::to_string(ctx.progression ? ctx.progression->hardmodeFurthestLevel : 0);
-    if (var == "hardmode_save_exists") return FileExists(HardmodeSavePath()) ? "true" : "false";
+    if (var == "hardmode_save_exists") return HasGameSnapshot(ctx.activeSaveSlotIndex ? *ctx.activeSaveSlotIndex : 0, true) ? "true" : "false";
     if (var == "username" && ctx.levelServerAccountUsername) return *ctx.levelServerAccountUsername;
     if (var == "api" && ctx.levelServerUrl) return *ctx.levelServerUrl;
     if (var == "debugger_attached" && ctx.debuggerAttached) return *ctx.debuggerAttached ? "true" : "false";
@@ -361,8 +361,11 @@ bool varIsTruthy(const std::string& name, const SlimRuntime& runtime, const Slim
 
 std::string expandVars(std::string text, const SlimRuntime& runtime, const SlimMenuContext& ctx) {
     if (text.find("${") == std::string::npos) return text;
-    for (const char* var : {"world_select_unlocked", "hardmode_unlocked", "hardmode_complete", "hardmode_furthest_level", "hardmode_save_exists"})
-        text = replaceAll(text, "${" + std::string(var) + "}", contextVarValue(var, runtime, ctx));
+    for (const char* var : {"world_select_unlocked", "hardmode_unlocked", "hardmode_complete", "hardmode_furthest_level", "hardmode_save_exists"}) {
+        const std::string placeholder = "${" + std::string(var) + "}";
+        if (text.find(placeholder) != std::string::npos)
+            text = replaceAll(text, placeholder, contextVarValue(var, runtime, ctx));
+    }
     if (text.find("${username}") != std::string::npos)
         text = replaceAll(text, "${username}", contextVarValue("username", runtime, ctx));
     if (text.find("${api}") != std::string::npos)
@@ -501,7 +504,7 @@ bool parseMenuAlignment(std::string value, SlimMenuLayout::Align& out) {
 }
 
 SlimMenu loadMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuContext& ctx) {
-    if (name == "locallevels" || name == "onlinelevels" || name == "leveldetail" || name == "worldselect" || name == "hardmodepractice") {
+    if (name == "locallevels" || name == "onlinelevels" || name == "leveldetail" || name == "worldselect" || name == "saveplay" || name == "hardmodepractice") {
         return buildGeneratedLevelMenu(name, runtime, ctx);
     }
 
@@ -1318,6 +1321,20 @@ bool putServerUpdateTrigger(const SlimMenuContext& ctx, std::string& status) {
 }
 
 SlimMenu buildGeneratedLevelMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuContext& ctx) {
+    if (name == "saveplay") {
+        SlimMenu menu;
+        menu.name = name;
+        const int slot = ctx.activeSaveSlotIndex ? *ctx.activeSaveSlotIndex : 0;
+        menu.title = "Save Slot " + std::to_string(slot + 1);
+        if (HasGameSnapshot(slot))
+            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Continue Adventure", "saved", {}});
+        if (ctx.progression && ctx.progression->worldSelectUnlocked)
+            menu.items.push_back(MenuItem{MenuItem::Type::Button, "World Select", "menu", "worldselect"});
+        if (ctx.progression && ctx.progression->hardmodeUnlocked)
+            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Hardmode", "menu", "hardmode"});
+        menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back", "menu", "mainplay"});
+        return menu;
+    }
     if (name == "hardmodepractice") {
         SlimMenu menu;
         menu.name = name;
@@ -1339,7 +1356,7 @@ SlimMenu buildGeneratedLevelMenu(const std::string& name, SlimRuntime& runtime, 
             for (int world = 1; world <= 7; ++world)
                 menu.items.push_back(MenuItem{MenuItem::Type::Button, "World " + std::to_string(world), "world", std::to_string(world)});
         } else menu.items.push_back(MenuItem{MenuItem::Type::Text, "Reach an ending to unlock World Select.", {}, {}});
-        menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back", "menu", "mainplay"});
+        menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back", "menu", "saveplay"});
         return menu;
     }
     if (name == "leveldetail") {
@@ -1895,7 +1912,7 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
     }
     if (command == "hardmode") {
         if (!ctx.progression || !ctx.progression->hardmodeUnlocked || !ctx.selectedLevelPath) return SlimMenuExit::Continue;
-        if (arg == "continue" && !FileExists(HardmodeSavePath())) return SlimMenuExit::Continue;
+        if (arg == "continue" && !HasGameSnapshot(ctx.activeSaveSlotIndex ? *ctx.activeSaveSlotIndex : 0, true)) return SlimMenuExit::Continue;
         *ctx.selectedLevelPath = arg == "continue" ? kContinueHardmodeToken : kStartHardmodeToken;
         if (ctx.selectedLevelName) ctx.selectedLevelName->clear();
         return SlimMenuExit::StartGame;
@@ -2036,13 +2053,19 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
     if (command == "save_slot") {
         const int slot = parseSaveSlotArg(arg);
         if (ctx.activeSaveSlotIndex) *ctx.activeSaveSlotIndex = slot;
-        if (ctx.selectedLevelPath) *ctx.selectedLevelPath = saveSlotExists(slot) ? kSavedGameSelectionToken : "";
+        if (ctx.progression) *ctx.progression = LoadGameProgression(slot);
         if (ctx.saveClientSettings) ctx.saveClientSettings();
+        if (ctx.progression && (ctx.progression->worldSelectUnlocked || ctx.progression->hardmodeUnlocked)) {
+            currentMenu = "saveplay";
+            return SlimMenuExit::Continue;
+        }
+        if (ctx.selectedLevelPath) *ctx.selectedLevelPath = HasGameSnapshot(slot) ? kSavedGameSelectionToken : "";
         return SlimMenuExit::StartGame;
     }
     if (command == "select_save") {
         const int slot = parseSaveSlotArg(arg);
         if (ctx.activeSaveSlotIndex) *ctx.activeSaveSlotIndex = slot;
+        if (ctx.progression) *ctx.progression = LoadGameProgression(slot);
         runtime.vars["last_save_action"] = "Selected slot " + std::to_string(slot + 1) + ".";
         if (ctx.saveClientSettings) ctx.saveClientSettings();
         runtime.vars["__reload_menu"] = "1";
@@ -2052,6 +2075,8 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
         const int slot = parseSaveSlotArg(arg);
         std::error_code ec;
         const bool removed = std::filesystem::remove(saveSlotPath(slot), ec);
+        if (removed && ctx.progression && ctx.activeSaveSlotIndex && *ctx.activeSaveSlotIndex == slot)
+            *ctx.progression = {};
         runtime.vars["last_save_action"] = removed
             ? "Deleted slot " + std::to_string(slot + 1) + "."
             : (ec ? "Could not delete slot " + std::to_string(slot + 1) + "." : "Slot " + std::to_string(slot + 1) + " was already empty.");
@@ -2184,6 +2209,8 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
     std::string restoreCommand, restoreArgument, restoreLabel;
     bool restoreSelection = false;
     int selected = 0;
+    // Gameplay and modal editors can leave release/repeat events queued.
+    Uint64 inputBlockUntilTicks = SDL_GetTicks() + 250;
     if (ctx.session && !ctx.session->menu.empty()) {
         currentMenu = ctx.session->menu;
         viewedMenu = currentMenu;
@@ -2371,6 +2398,13 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                     *ctx.running = false;
                     return SlimMenuExit::Quit;
                 }
+                if (SDL_GetTicks() < inputBlockUntilTicks &&
+                    (e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP ||
+                     e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN || e.type == SDL_EVENT_GAMEPAD_BUTTON_UP ||
+                     e.type == SDL_EVENT_MOUSE_BUTTON_DOWN || e.type == SDL_EVENT_MOUSE_BUTTON_UP ||
+                     e.type == SDL_EVENT_MOUSE_WHEEL || e.type == SDL_EVENT_FINGER_DOWN ||
+                     e.type == SDL_EVENT_FINGER_UP || e.type == SDL_EVENT_FINGER_MOTION ||
+                     e.type == SDL_EVENT_FINGER_CANCELED)) continue;
                 if (runtime.difficultyPopupOpen) {
                     const auto popupLayout = DifficultySelector::build(ctx.baseScreenW, ctx.baseScreenH);
                     auto hitPopup = [&](float x, float y) {
@@ -2448,6 +2482,7 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                         continue;
                     }
                     if (e.key.key == SDLK_ESCAPE || e.key.key == SDLK_AC_BACK) {
+                        if (e.key.repeat) continue;
                         if (!menuNetworkBusy(runtime)) return SlimMenuExit::Back;
                         continue;
                     }
@@ -2591,7 +2626,20 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                     }
                     if (MenuItem* item = buttonAt(menu, selected)) {
                         const std::string before = currentMenu;
+                        const bool opensEditor = item->command == "create_level" || item->command == "edit_level";
+                        if (opensEditor) {
+                            restoreCommand = item->command;
+                            restoreArgument = item->arg;
+                            restoreLabel = item->label;
+                        }
                         const SlimMenuExit exit = execute(*item, runtime, ctx, currentMenu);
+                        if (opensEditor) {
+                            // Return to the menu and focused action that opened the editor,
+                            // regardless of whether it saved or was cancelled.
+                            currentMenu = before;
+                            restoreSelection = true;
+                            inputBlockUntilTicks = SDL_GetTicks() + 250;
+                        }
                         if (exit == SlimMenuExit::StartGame && ctx.session) {
                             ctx.session->menu = currentMenu;
                             ctx.session->vars = runtime.vars;
