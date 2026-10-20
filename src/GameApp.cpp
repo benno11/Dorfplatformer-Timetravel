@@ -2607,6 +2607,7 @@ int RunGameApp(int argc, char** argv) {
 
         std::wstring cmdLine;
         cmdLine += quoteWindowsArg(updaterPath.wstring());
+        cmdLine += L" --silent";
         cmdLine += L" --current-version ";
         cmdLine += quoteWindowsArg(utf8ToWide(appVersion));
         cmdLine += L" --current-version-id ";
@@ -2641,6 +2642,8 @@ int RunGameApp(int argc, char** argv) {
 
         STARTUPINFOW si{};
         si.cb = sizeof(si);
+        si.dwFlags = STARTF_USESHOWWINDOW;
+        si.wShowWindow = SW_HIDE;
         PROCESS_INFORMATION pi{};
         std::vector<wchar_t> mutableCmd(cmdLine.begin(), cmdLine.end());
         mutableCmd.push_back(L'\0');
@@ -2650,7 +2653,7 @@ int RunGameApp(int argc, char** argv) {
             nullptr,
             nullptr,
             FALSE,
-            CREATE_NEW_PROCESS_GROUP,
+            CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW,
             nullptr,
             appDir.c_str(),
             &si,

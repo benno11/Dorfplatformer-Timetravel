@@ -343,7 +343,7 @@ void launchUpdater(const AppState& state) {
         return;
     }
     std::wstring cmdLine = quoteWindowsArg(updaterPath.wstring());
-    cmdLine += L" --mode tray";
+    cmdLine += L" --silent --mode tray";
     cmdLine += L" --current-version ";
     cmdLine += quoteWindowsArg(utf8ToWide(state.currentVersion.empty() ? state.currentVersionId : state.currentVersion));
     cmdLine += L" --current-version-id ";
@@ -357,6 +357,8 @@ void launchUpdater(const AppState& state) {
 
     STARTUPINFOW si{};
     si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
     PROCESS_INFORMATION pi{};
     std::vector<wchar_t> mutableCmd(cmdLine.begin(), cmdLine.end());
     mutableCmd.push_back(L'\0');
@@ -366,7 +368,7 @@ void launchUpdater(const AppState& state) {
         nullptr,
         nullptr,
         FALSE,
-        CREATE_NEW_PROCESS_GROUP,
+        CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW,
         nullptr,
         gameDir.c_str(),
         &si,

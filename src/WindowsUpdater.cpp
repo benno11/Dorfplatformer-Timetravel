@@ -29,6 +29,7 @@ struct Options {
     std::filesystem::path appDir;
     std::filesystem::path statusFile;
     DWORD waitPid = 0;
+    bool silent = false;
 };
 
 bool isCheckLikeMode(const std::string& mode) {
@@ -423,7 +424,9 @@ bool parseArgs(int argc, wchar_t** argv, Options& out) {
             target = utf8;
             return true;
         };
-        if (arg == L"--manifest-url") {
+        if (arg == L"--silent") {
+            out.silent = true;
+        } else if (arg == L"--manifest-url") {
             if (!nextValue(out.manifestUrl)) return false;
         } else if (arg == L"--mode") {
             if (!nextValue(out.mode)) return false;
@@ -528,6 +531,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     const bool argsOk = parseArgs(argc, argv, options);
     LocalFree(argv);
     if (!argsOk) {
+        writeStatus(options.statusFile, "error", "Invalid updater command line arguments.",
+                    options.currentVersion, options.currentVersionId);
         return 1;
     }
     if (options.currentVersionId.empty()) {
@@ -624,6 +629,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     SHELLEXECUTEINFOW sei{};
     sei.cbSize = sizeof(sei);
     sei.fMask = SEE_MASK_NOCLOSEPROCESS;
+    if (options.silent) sei.fMask |= SEE_MASK_FLAG_NO_UI;
     sei.hwnd = nullptr;
     sei.lpVerb = L"open";
     sei.lpFile = installerPath.c_str();
