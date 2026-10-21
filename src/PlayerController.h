@@ -25,8 +25,8 @@ struct MovementConfig {
     float jumpCutSpeed = 220.0f;
     float swimUpSpeed = 380.0f;
     float swimRise = 900.0f;
-    float maxRiseSpeed = 1800.0f;
-    float maxFallSpeed = 1800.0f;
+    float maxRiseSpeed = 3600.0f;
+    float maxFallSpeed = 3600.0f;
     float maxFallSpeedInWater = 420.0f;
 };
 
