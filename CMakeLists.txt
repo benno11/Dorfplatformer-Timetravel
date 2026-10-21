@@ -1073,6 +1073,12 @@ if(BUILD_TESTING AND NOT ANDROID AND NOT IOS)
   target_link_libraries(character_creator_test PRIVATE ${SDL3_LINK_TARGET})
   target_compile_definitions(character_creator_test PRIVATE SDL_ENABLE_OLD_NAMES=1)
   add_test(NAME character_creator COMMAND character_creator_test)
+  add_executable(async_asset_loader_test tests/AsyncAssetLoaderTest.cpp)
+  target_include_directories(async_asset_loader_test PRIVATE src)
+  target_link_libraries(async_asset_loader_test PRIVATE ${SDL3_LINK_TARGET})
+  target_compile_definitions(async_asset_loader_test PRIVATE SDL_ENABLE_OLD_NAMES=1)
+  add_test(NAME async_asset_loader COMMAND async_asset_loader_test)
+  set_tests_properties(async_asset_loader PROPERTIES TIMEOUT 15)
   add_executable(level_format_test
     tests/LevelFormatTest.cpp
     src/LevelLoader.cpp

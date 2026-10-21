@@ -1,5 +1,13 @@
 Platformer Engine
 
+Gameplay-only sprite sheets and frame tables prepare on a worker while the title
+menu is open. Textures upload on the main thread when entering gameplay; if
+preparation is still running, a loading screen keeps pumping window events.
+Only the selected world's background is decoded on demand, also on a worker.
+Native gameplay sound effects decode asynchronously; title music stays available
+immediately. Pending loads join before shutdown, and low-power resume rebuilds
+textures and animation pointers through the same loading path.
+
 The **Character Creator [Experimental]** appears in Settings after enabling
 **General > Experimental Features**. Choose skin, hair style and color, shirt,
 pants, headwear, and accent colors, then turn **Use Custom Character** on. The

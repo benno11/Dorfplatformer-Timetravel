@@ -15,6 +15,8 @@ public:
     bool isReady() const;
 
     void loadGlobalAssets();
+    bool gameplayAssetsReady() const;
+    void finishGameplayAssetLoading();
     void unloadGlobalAssets();
 
     void applyVolumes(bool muteAllAudio, int musicVolume, int sfxVolume);

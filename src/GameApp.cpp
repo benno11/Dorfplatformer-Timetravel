@@ -59,6 +59,7 @@
 #include "LevelWrap.h"
 #include "FrontendMenu.h"
 #include "GameSupport.h"
+#include "AsyncAssetLoader.h"
 #include "ParallaxRenderer.h"
 #include "CrashReporter.h"
 #include "AudioSystem.h"
@@ -800,57 +801,15 @@ int RunGameApp(int argc, char** argv) {
         return fallback;
     };
 
-    std::string pausePlist = texPath("plists", "pause", "assets/Sheets/DF_Pause-uhd.plist");
-    SDL_Texture* pauseTex = loadTextureSafe(ren, texPath("textures", "pause", "assets/Sheets/DF_Pause-uhd.png"), nullptr);
-    if (pauseTex) SDL_SetTextureScaleMode(pauseTex, SDL_SCALEMODE_NEAREST);
-    auto pauseFrames = loadPlistFrames(pausePlist);
+    SDL_Texture* pauseTex = nullptr;
+    std::unordered_map<std::string, Frame> pauseFrames;
 
-    std::string blocksPlist = texPath("plists", "blocks", "assets/Sheets/DF_Blocks-uhd.plist");
-    SDL_Texture* blocksTex = loadTextureWithColorKey(ren, texPath("textures", "blocks", "assets/Sheets/DF_Blocks-uhd.png"), 0x9f, 0x61, 0xff);
-    auto blocksFrameList = loadPlistFrameList(blocksPlist);
+    SDL_Texture* blocksTex = nullptr;
+    std::vector<FrameEntry> blocksFrameList;
     std::unordered_map<std::string, Frame> blocksFrameByName;
-    blocksFrameByName.reserve(blocksFrameList.size());
-    for (const auto& e : blocksFrameList) blocksFrameByName[e.name] = e.frame;
-    std::vector<const Frame*> blocksFrameById(65536, nullptr);
-    for (const auto& e : blocksFrameList) {
-        bool numeric = !e.name.empty();
-        for (char ch : e.name) {
-            if (!std::isdigit((unsigned char)ch)) {
-                numeric = false;
-                break;
-            }
-        }
-        if (!numeric) continue;
-        int id = 0;
-        try { id = std::stoi(e.name); } catch (...) { continue; }
-        if (id < 0 || id >= (int)blocksFrameById.size()) continue;
-        blocksFrameById[id] = &e.frame;
-    }
-    const Frame* cycleFrames[8] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
-    for (int i = 0; i < 8; ++i) {
-        const std::string key = std::string("c") + std::to_string(i + 1);
-        auto it = blocksFrameByName.find(key);
-        if (it != blocksFrameByName.end()) cycleFrames[i] = &it->second;
-    }
-    const Frame* world3PatternFrames[10] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
-    for (int i = 0; i < 10; ++i) {
-        const std::string key = std::string("3.") + std::to_string(i + 1);
-        auto it = blocksFrameByName.find(key);
-        if (it != blocksFrameByName.end()) world3PatternFrames[i] = &it->second;
-        else {
-            auto itPng = blocksFrameByName.find(key + ".png");
-            if (itPng != blocksFrameByName.end()) world3PatternFrames[i] = &itPng->second;
-            else {
-                const std::string fallbackKey = std::string("c") + std::to_string(i + 1);
-                auto itFallback = blocksFrameByName.find(fallbackKey);
-                if (itFallback != blocksFrameByName.end()) world3PatternFrames[i] = &itFallback->second;
-                else {
-                    auto itFallbackPng = blocksFrameByName.find(fallbackKey + ".png");
-                    if (itFallbackPng != blocksFrameByName.end()) world3PatternFrames[i] = &itFallbackPng->second;
-                }
-            }
-        }
-    }
+    std::vector<const Frame*> blocksFrameById;
+    const Frame* cycleFrames[8]{};
+    const Frame* world3PatternFrames[10]{};
 
     SDL_Texture* bgTexWorld1 = nullptr;
     SDL_Texture* bgTexWorld2 = nullptr;
@@ -868,6 +827,90 @@ int RunGameApp(int argc, char** argv) {
     std::vector<Frame> bgFrameListWorld4;
     std::vector<Frame> bgFrameListWorld5;
     std::vector<Frame> bgAnimFramesWorld6;
+    AsyncAssetLoader gameplayAssetLoader;
+    bool gameplayAssetsLoaded = false;
+    bool assetLoadCanceled = false;
+    auto assetRequest = [](const std::string& image, const std::string& plist, bool colorKey = false) {
+        return AssetRequest{ResolveAssetPath(image), ResolveAssetPath(plist), colorKey};
+    };
+    auto decodeAsset = [](const AssetRequest& request) {
+        PreparedAsset asset;
+        asset.surface.reset(IMG_Load(request.imagePath.c_str()));
+        if (asset.surface && request.colorKey) {
+            SDL_SetColorKey(asset.surface.get(), true, SDL_MapSurfaceRGB(asset.surface.get(), 0x9f, 0x61, 0xff));
+        }
+        asset.frames = loadPlistFrameList(request.plistPath);
+        return asset;
+    };
+    auto pumpAssetLoading = [&](float progress) -> bool {
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_EVENT_QUIT || (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && event.window.windowID == SDL_GetWindowID(win))) {
+                assetLoadCanceled = true;
+                SDL_PushEvent(&event);
+                return false;
+            }
+        }
+        CancelNativeTextOverlay(ren);
+        SDL_SetRenderTarget(ren, nullptr);
+        SDL_SetRenderViewport(ren, nullptr);
+        SDL_SetRenderClipRect(ren, nullptr);
+        SDL_SetRenderScale(ren, 1, 1);
+        int width = kBaseScreenW, height = kBaseScreenH;
+        SDL_GetRenderOutputSize(ren, &width, &height);
+        SDL_SetRenderDrawColor(ren, 20, 26, 34, 255);
+        SDL_RenderClear(ren);
+        const std::string label = "Loading game assets...";
+        DrawText(ren, (width - MeasureTextWidth(2, label)) / 2, height / 2 - 30, 2, label);
+        const SDL_FRect track{width * 0.25f, height * 0.5f + 12, width * 0.5f, 10};
+        SDL_SetRenderDrawColor(ren, 45, 65, 84, 255);
+        SDL_RenderFillRect(ren, &track);
+        const SDL_FRect fill{track.x, track.y, track.w * std::clamp(progress, 0.0f, 1.0f), track.h};
+        SDL_SetRenderDrawColor(ren, 110, 200, 245, 255);
+        SDL_RenderFillRect(ren, &fill);
+        SDL_RenderPresent(ren);
+        return true;
+    };
+    auto startAssetPreparation = [&](AsyncAssetLoader& loader, const std::vector<AssetRequest>& requests) {
+        if (loader.pending()) return;
+        try { loader.start(requests, decodeAsset); }
+        catch (const std::exception& error) { SDL_Log("Could not start asset worker: %s", error.what()); }
+    };
+    auto awaitAssets = [&](AsyncAssetLoader& loader, const std::vector<AssetRequest>& requests, std::vector<PreparedAsset>& assets) -> bool {
+        if (assetLoadCanceled) return false;
+        startAssetPreparation(loader, requests);
+        if (loader.pending()) {
+            while (!loader.ready()) {
+                if (!pumpAssetLoading(loader.progress())) { loader.shutdown(); return false; }
+                SDL_Delay(4);
+            }
+            try { assets = loader.take(); return true; }
+            catch (const std::exception& error) { SDL_Log("Asset worker failed: %s", error.what()); }
+        }
+        // Keep the existing missing-asset recovery path available if threads fail.
+        for (const auto& request : requests) assets.push_back(decodeAsset(request));
+        return true;
+    };
+    auto uploadAsset = [&](PreparedAsset& asset, const std::string& path, bool colorKey = false) {
+        SDL_Texture* texture = asset.surface ? SDL_CreateTextureFromSurface(ren, asset.surface.get()) : nullptr;
+        asset.surface.reset();
+        if (!texture) texture = colorKey ? loadTextureWithColorKey(ren, path, 0x9f, 0x61, 0xff) : loadTextureSafe(ren, path, nullptr);
+        if (texture) {
+            SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
+            SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
+        }
+        return texture;
+    };
+    auto gameplayRequests = [&]() {
+        return std::vector<AssetRequest>{
+            assetRequest(texPath("textures", "pause", "assets/Sheets/DF_Pause-uhd.png"), texPath("plists", "pause", "assets/Sheets/DF_Pause-uhd.plist")),
+            assetRequest(texPath("textures", "blocks", "assets/Sheets/DF_Blocks-uhd.png"), texPath("plists", "blocks", "assets/Sheets/DF_Blocks-uhd.plist"), true),
+            assetRequest("assets/Sheets/Introcard-uhd.png", "assets/Sheets/Introcard-uhd.plist"),
+            assetRequest("assets/Sheets/end_sign-uhd.png", "assets/Sheets/end_sign-uhd.plist"),
+            assetRequest("assets/Sheets/DF_Bosses-uhd.png", "assets/Sheets/DF_Bosses-uhd.plist"),
+            assetRequest("assets/Sheets/DF_Enitys-uhd.png", "assets/Sheets/DF_Enitys-uhd.plist"),
+            assetRequest(texPath("textures", "player", "assets/Sheets/DF_Player1-uhd.png"), texPath("plists", "player", "assets/Sheets/DF_Player1-uhd.plist"))};
+    };
     auto loadBgSheet = [&](const std::string& texPathPrimary,
                            const std::string& plistPrimary,
                            SDL_Texture*& outTex,
@@ -875,8 +918,11 @@ int RunGameApp(int argc, char** argv) {
                            std::vector<Frame>* outAnimFrames = nullptr) {
         const std::string resolvedTexPath = ResolveAssetPath(texPathPrimary);
         std::string loadErr;
-        outTex = loadTextureSafe(ren, texPathPrimary, &loadErr);
-        auto bgFrameList = loadPlistFrameList(plistPrimary);
+        AsyncAssetLoader loader;
+        std::vector<PreparedAsset> prepared;
+        if (!awaitAssets(loader, {assetRequest(texPathPrimary, plistPrimary)}, prepared) || prepared.empty()) return;
+        outTex = uploadAsset(prepared[0], texPathPrimary);
+        auto bgFrameList = std::move(prepared[0].frames);
         if (!outTex || bgFrameList.empty()) {
             SDL_Log("Background sheet load incomplete: texture='%s' resolved='%s' loaded=%d plist='%s' frames=%d sdl_error='%s'",
                     texPathPrimary.c_str(),
@@ -896,43 +942,19 @@ int RunGameApp(int argc, char** argv) {
         }
     };
     // Background sheets are loaded lazily via syncWorldBackground() once the level world is known.
-    SDL_Texture* introCardTex = loadTextureSafe(ren, "assets/Sheets/Introcard-uhd.png", nullptr);
-    if (introCardTex) SDL_SetTextureScaleMode(introCardTex, SDL_SCALEMODE_NEAREST);
-    auto introCardFrames = loadPlistFrames("assets/Sheets/Introcard-uhd.plist");
-    SDL_Texture* endSignTex = loadTextureSafe(ren, "assets/Sheets/end_sign-uhd.png", nullptr);
-    if (endSignTex) SDL_SetTextureScaleMode(endSignTex, SDL_SCALEMODE_NEAREST);
-    auto endSignFrames = loadPlistFrames("assets/Sheets/end_sign-uhd.plist");
+    SDL_Texture* introCardTex = nullptr;
+    std::unordered_map<std::string, Frame> introCardFrames;
+    SDL_Texture* endSignTex = nullptr;
+    std::unordered_map<std::string, Frame> endSignFrames;
     const Frame* defaultEndSignFrame = nullptr;
-    {
-        auto it = endSignFrames.find("SignPost9");
-        if (it == endSignFrames.end()) it = endSignFrames.find("SignPost9.png");
-        if (it != endSignFrames.end()) defaultEndSignFrame = &it->second;
-    }
-    SDL_Texture* bossesTex = loadTextureSafe(ren, "assets/Sheets/DF_Bosses-uhd.png", nullptr);
-    if (bossesTex) SDL_SetTextureScaleMode(bossesTex, SDL_SCALEMODE_NEAREST);
-    auto bossesFrames = loadPlistFrames("assets/Sheets/DF_Bosses-uhd.plist");
+    SDL_Texture* bossesTex = nullptr;
+    std::unordered_map<std::string, Frame> bossesFrames;
     const Frame* bossNormalFrame = nullptr;
     const Frame* bossHurtFrame = nullptr;
     const Frame* bossFinalNormalFrame = nullptr;
-    {
-        auto it = bossesFrames.find("Normal-1");
-        if (it == bossesFrames.end()) it = bossesFrames.find("Normal-1.png");
-        if (it != bossesFrames.end()) bossNormalFrame = &it->second;
-        it = bossesFrames.find("Hurt-1");
-        if (it == bossesFrames.end()) it = bossesFrames.find("Hurt-1.png");
-        if (it != bossesFrames.end()) bossHurtFrame = &it->second;
-        it = bossesFrames.find("Final-Normal");
-        if (it == bossesFrames.end()) it = bossesFrames.find("Final-Normal.png");
-        if (it != bossesFrames.end()) bossFinalNormalFrame = &it->second;
-    }
-
-    const std::string entitiesPlist = "assets/Sheets/DF_Enitys-uhd.plist";
-    SDL_Texture* entitiesTex = loadTextureSafe(ren, "assets/Sheets/DF_Enitys-uhd.png", nullptr);
-    if (entitiesTex) SDL_SetTextureScaleMode(entitiesTex, SDL_SCALEMODE_NEAREST);
-    auto entitiesFrameList = loadPlistFrameList(entitiesPlist);
+    SDL_Texture* entitiesTex = nullptr;
+    std::vector<FrameEntry> entitiesFrameList;
     std::unordered_map<std::string, Frame> entitiesFrameByName;
-    entitiesFrameByName.reserve(entitiesFrameList.size());
-    for (const auto& e : entitiesFrameList) entitiesFrameByName[e.name] = e.frame;
     std::unordered_map<std::string, std::string> entityFrameKeyByObjectId;
     entityFrameKeyByObjectId["31"] = "Spring";
     entityFrameKeyByObjectId["46"] = "Bumper";
@@ -957,7 +979,7 @@ int RunGameApp(int argc, char** argv) {
             } catch (...) {}
         }
     }
-    const Frame* defaultEntityFrame = !entitiesFrameList.empty() ? &entitiesFrameList[0].frame : nullptr;
+    const Frame* defaultEntityFrame = nullptr;
     setStartupProgress(0.60f);
 
     std::unordered_map<int, std::string> tileFrameById;
@@ -981,23 +1003,10 @@ int RunGameApp(int argc, char** argv) {
         }
     }
 
-    std::string playerPlist = texPath("plists", "player", "assets/Sheets/DF_Player1-uhd.plist");
-    SDL_Texture* playerTex = loadTextureSafe(ren, texPath("textures", "player", "assets/Sheets/DF_Player1-uhd.png"), nullptr);
-    if (playerTex) SDL_SetTextureScaleMode(playerTex, SDL_SCALEMODE_NEAREST);
-    auto playerFrameList = loadPlistFrameList(playerPlist);
+    SDL_Texture* playerTex = nullptr;
+    std::vector<FrameEntry> playerFrameList;
     std::unordered_map<std::string, Frame> playerFramesByName;
-    playerFramesByName.reserve(playerFrameList.size());
-    for (const auto& e : playerFrameList) playerFramesByName[e.name] = e.frame;
-    if (playerFrameList.empty() && playerTex) {
-        float twf = 0.0f, thf = 0.0f;
-        SDL_GetTextureSize(playerTex, &twf, &thf);
-        Frame f{};
-        f.rect = SDL_Rect{0, 0, std::max(1, (int)std::lround(twf)), std::max(1, (int)std::lround(thf))};
-        f.rotated = false;
-        playerFrameList.push_back(FrameEntry{"fallback", f});
-        playerFramesByName["fallback"] = f;
-    }
-    const Frame* fallbackPlayerFrame = !playerFrameList.empty() ? &playerFrameList[0].frame : nullptr;
+    const Frame* fallbackPlayerFrame = nullptr;
     setStartupProgress(0.76f);
     audio.loadGlobalAssets();
     std::unordered_map<int, std::string> worldNamesById;
@@ -1303,31 +1312,6 @@ int RunGameApp(int argc, char** argv) {
             }
         }
     };
-    if (pauseFrames.empty()) {
-        if (pauseTex) {
-            float twf = 0.0f, thf = 0.0f;
-            SDL_GetTextureSize(pauseTex, &twf, &thf);
-            Frame f{};
-            f.rect = SDL_Rect{0, 0, std::max(1, (int)std::lround(twf)), std::max(1, (int)std::lround(thf))};
-            f.rotated = false;
-            pauseFrames["fallback"] = f;
-        }
-    }
-    ensureTextureAndFrames("blocks", blocksTex, blocksFrameList, &blocksFrameByName);
-    ensureTextureAndFrames("player", playerTex, playerFrameList, &playerFramesByName);
-    if (!pauseTex) {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Asset fallback: missing pause texture, using placeholder");
-        pauseTex = createFallbackTexture(32, 32, 32, 255);
-    }
-    if (pauseFrames.empty()) {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Asset fallback: missing pause plist/frames, using full-texture frame");
-        float twf = 0.0f, thf = 0.0f;
-        if (pauseTex) SDL_GetTextureSize(pauseTex, &twf, &thf);
-        Frame f{};
-        f.rect = SDL_Rect{0, 0, std::max(1, (int)std::lround(twf)), std::max(1, (int)std::lround(thf))};
-        f.rotated = false;
-        pauseFrames["fallback"] = f;
-    }
     auto destroyTextureRef = [&](SDL_Texture*& tex) {
         if (tex) SDL_DestroyTexture(tex);
         tex = nullptr;
@@ -1476,6 +1460,8 @@ int RunGameApp(int argc, char** argv) {
         }
     };
     auto unloadGameplayAssets = [&]() {
+        gameplayAssetsLoaded = false;
+        gameplayAssetLoader.shutdown();
         waterEffects.reset();
         destroyTextureRef(playerTex);
         destroyTextureRef(bgTexWorld1);
@@ -1529,22 +1515,30 @@ int RunGameApp(int argc, char** argv) {
         audio.unloadGlobalAssets();
     };
     auto loadGameplayAssets = [&]() -> bool {
+        if (gameplayAssetsLoaded) return true;
         if (!gameTarget || !worldTarget) {
-            if (!recreateCurrentRenderTargets()) {
-                SDL_Log("Low power recovery: render target recreation failed: %s", SDL_GetError());
-                return false;
-            }
+            if (!recreateCurrentRenderTargets()) return false;
         }
-
-        pausePlist = texPath("plists", "pause", "assets/Sheets/DF_Pause-uhd.plist");
-        pauseTex = loadTextureSafe(ren, texPath("textures", "pause", "assets/Sheets/DF_Pause-uhd.png"), nullptr);
-        if (pauseTex) SDL_SetTextureScaleMode(pauseTex, SDL_SCALEMODE_NEAREST);
-        pauseFrames = loadPlistFrames(pausePlist);
-
-        blocksPlist = texPath("plists", "blocks", "assets/Sheets/DF_Blocks-uhd.plist");
-        blocksTex = loadTextureWithColorKey(ren, texPath("textures", "blocks", "assets/Sheets/DF_Blocks-uhd.png"), 0x9f, 0x61, 0xff);
-        blocksFrameList = loadPlistFrameList(blocksPlist);
-
+        const auto requests = gameplayRequests();
+        std::vector<PreparedAsset> prepared;
+        if (!awaitAssets(gameplayAssetLoader, requests, prepared) || prepared.size() != requests.size()) return false;
+        SDL_Texture** textures[]{&pauseTex, &blocksTex, &introCardTex, &endSignTex, &bossesTex, &entitiesTex, &playerTex};
+        for (size_t i = 0; i < prepared.size(); ++i) {
+            if (!pumpAssetLoading((float)i / prepared.size())) return false;
+            *textures[i] = uploadAsset(prepared[i], requests[i].imagePath, requests[i].colorKey);
+        }
+        auto frameMap = [](const std::vector<FrameEntry>& frames) {
+            std::unordered_map<std::string, Frame> map;
+            for (const auto& frame : frames) map[frame.name] = frame.frame;
+            return map;
+        };
+        pauseFrames = frameMap(prepared[0].frames);
+        blocksFrameList = std::move(prepared[1].frames);
+        introCardFrames = frameMap(prepared[2].frames);
+        endSignFrames = frameMap(prepared[3].frames);
+        bossesFrames = frameMap(prepared[4].frames);
+        entitiesFrameList = std::move(prepared[5].frames);
+        playerFrameList = std::move(prepared[6].frames);
         // Only reload the background for the active world (bgWorldIdForLoad set by caller).
         if (bgWorldIdForLoad == 1) loadBgSheet(texPath("textures", "background_world1", "assets/Sheets/DF_Back_1-uhd.png"), texPath("plists", "background_world1", "assets/Sheets/DF_Back_1-uhd.plist"), bgTexWorld1, bgFrameByNameWorld1, &bgFrameListWorld1);
         if (bgWorldIdForLoad == 2) loadBgSheet(texPath("textures", "background_world2", "assets/Sheets/DF_Back_2-uhd.png"), texPath("plists", "background_world2", "assets/Sheets/DF_Back_2-uhd.plist"), bgTexWorld2, bgFrameByNameWorld2, &bgFrameListWorld2);
@@ -1552,26 +1546,24 @@ int RunGameApp(int argc, char** argv) {
         if (bgWorldIdForLoad == 5) loadBgSheet(texPath("textures", "background_world5", "assets/Sheets/DF_Back_5-uhd.png"), texPath("plists", "background_world5", "assets/Sheets/DF_Back_5-uhd.plist"), bgTexWorld5, bgFrameByNameWorld5, &bgFrameListWorld5);
         if (bgWorldIdForLoad == 6) loadBgSheet(texPath("textures", "background_world6", "assets/Sheets/DF_Back_6-uhd.png"), texPath("plists", "background_world6", "assets/Sheets/DF_Back_6-uhd.plist"), bgTexWorld6, bgFrameByNameWorld6, &bgAnimFramesWorld6);
 
-        introCardTex = loadTextureSafe(ren, "assets/Sheets/Introcard-uhd.png", nullptr);
-        if (introCardTex) SDL_SetTextureScaleMode(introCardTex, SDL_SCALEMODE_NEAREST);
-        introCardFrames = loadPlistFrames("assets/Sheets/Introcard-uhd.plist");
-        endSignTex = loadTextureSafe(ren, "assets/Sheets/end_sign-uhd.png", nullptr);
-        if (endSignTex) SDL_SetTextureScaleMode(endSignTex, SDL_SCALEMODE_NEAREST);
-        endSignFrames = loadPlistFrames("assets/Sheets/end_sign-uhd.plist");
-        bossesTex = loadTextureSafe(ren, "assets/Sheets/DF_Bosses-uhd.png", nullptr);
-        if (bossesTex) SDL_SetTextureScaleMode(bossesTex, SDL_SCALEMODE_NEAREST);
-        bossesFrames = loadPlistFrames("assets/Sheets/DF_Bosses-uhd.plist");
-        entitiesTex = loadTextureSafe(ren, "assets/Sheets/DF_Enitys-uhd.png", nullptr);
-        if (entitiesTex) SDL_SetTextureScaleMode(entitiesTex, SDL_SCALEMODE_NEAREST);
-        entitiesFrameList = loadPlistFrameList(entitiesPlist);
-        playerPlist = texPath("plists", "player", "assets/Sheets/DF_Player1-uhd.plist");
-        playerTex = loadTextureSafe(ren, texPath("textures", "player", "assets/Sheets/DF_Player1-uhd.png"), nullptr);
-        if (playerTex) SDL_SetTextureScaleMode(playerTex, SDL_SCALEMODE_NEAREST);
-        playerFrameList = loadPlistFrameList(playerPlist);
 
         audio.loadGlobalAssets();
+        while (!audio.gameplayAssetsReady()) {
+            if (!pumpAssetLoading(1.0f)) return false;
+            SDL_Delay(4);
+        }
+        audio.finishGameplayAssetLoading();
         refreshGameplayAssetLookups();
-        return true;
+        animIdleFrames = framesFromNames(animCfg.idle);
+        animWalkFrames = framesFromNames(animCfg.walk);
+        animJumpFrames = framesFromNames(animCfg.jump);
+        animFallFrames = framesFromNames(animCfg.fall);
+        animCrouchFrames = framesFromNames(animCfg.crouch);
+        animSkidFrames = framesFromNames(animCfg.skid);
+        animHurtFrames = framesFromNames(animCfg.hurt);
+        animDeathFrames = framesFromNames(animCfg.death);
+        gameplayAssetsLoaded = true;
+        return !assetLoadCanceled;
     };
     if (!gameTarget) {
         reportStartupError("Render Target Error", "Failed to create game render target.", win);
@@ -2823,6 +2815,8 @@ int RunGameApp(int argc, char** argv) {
     }
     std::function<bool()> saveGameToDisk;
     while (running) {
+        if (assetLoadCanceled) break;
+        if (!gameplayAssetsLoaded) startAssetPreparation(gameplayAssetLoader, gameplayRequests());
         recoverAudioIfNeeded(false);
         progression = LoadGameProgression(activeSaveSlotIndex);
         std::string selectedLevelPath;
@@ -2850,6 +2844,11 @@ int RunGameApp(int argc, char** argv) {
         if (selectedLevelPath.empty()) {
             continue;
         }
+        if (!loadGameplayAssets()) {
+            if (!assetLoadCanceled) reportStartupError("Asset Loading Error", "Could not prepare gameplay assets.", win);
+            break;
+        }
+        applyAudioVolumes();
         bool loadSavedGame = false;
         nlohmann::json savedGameRoot;
         const int practiceLevel = HardmodePracticeLevel(selectedLevelPath);
@@ -4715,6 +4714,7 @@ int RunGameApp(int argc, char** argv) {
         };
 
         while (levelRunning) {
+            if (assetLoadCanceled) { running = false; break; }
             if (!debugToolsEnabled() && debugWin && debugWin != win) {
                 showDetailedDebugger = false;
                 SDL_HideWindow(debugWin);
@@ -9498,6 +9498,7 @@ int RunGameApp(int argc, char** argv) {
         }
     }
 
+    gameplayAssetLoader.shutdown();
     waterEffects.reset();
     if (playerTex) SDL_DestroyTexture(playerTex);
     if (blocksTex) SDL_DestroyTexture(blocksTex);

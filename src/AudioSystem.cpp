@@ -5,6 +5,9 @@
 #include <cstring>
 #include <sstream>
 #include <vector>
+#include <array>
+#include <future>
+#include <chrono>
 
 #include <SDL3/SDL.h>
 
@@ -340,8 +343,27 @@ struct AudioSystem::Impl {
     bool loopingEnabled = true;
     bool shuttingDown = false;
     bool usingJavaBackend = false;
+    bool globalAssetsStarted = false;
 
 #if AUDIO_HAS_SDL3_MIXER
+    struct PreparedSounds {
+        std::array<Mix_Chunk*, 5> chunks{};
+        PreparedSounds() = default;
+        PreparedSounds(const PreparedSounds&) = delete;
+        PreparedSounds(PreparedSounds&& other) noexcept : chunks(other.chunks) { other.chunks = {}; }
+        PreparedSounds& operator=(PreparedSounds&& other) noexcept {
+            if (this != &other) {
+                for (auto* chunk : chunks) if (chunk) Mix_FreeChunkCompat(chunk);
+                chunks = other.chunks;
+                other.chunks = {};
+            }
+            return *this;
+        }
+        ~PreparedSounds() { for (auto* chunk : chunks) if (chunk) Mix_FreeChunkCompat(chunk); }
+    };
+    std::future<PreparedSounds> pendingSounds;
+    bool gameplaySoundsLoaded = false;
+    int sfxVolume = 128;
     Mix_Chunk* coinSfx = nullptr;
     Mix_Chunk* loseSfx = nullptr;
     Mix_Chunk* victorySfx = nullptr;
@@ -482,6 +504,8 @@ bool AudioSystem::isLoopingEnabled() const {
 
 void AudioSystem::loadGlobalAssets() {
     if (!isReady() || impl_->shuttingDown) return;
+    if (impl_->globalAssetsStarted) return;
+    impl_->globalAssetsStarted = true;
 #if defined(__ANDROID__)
     if (impl_->usingJavaBackend) {
         AndroidAudioBridge::loadGlobalAssets();
@@ -490,30 +514,63 @@ void AudioSystem::loadGlobalAssets() {
 #endif
 #if AUDIO_HAS_SDL3_MIXER
     const std::string decoders = availableAudioDecoders();
-    auto loadSfx = [](const char* path, const char* label) -> Mix_Chunk* {
-        Mix_Chunk* chunk = Mix_LoadWAVCompat(ResolveAssetPath(path).c_str());
-        if (!chunk) SDL_Log("Could not load %s: %s", label, Mix_GetErrorCompat());
-        return chunk;
-    };
-    impl_->coinSfx = loadSfx("assets/Audio/sfx/Coin.mp3", "coin sfx");
-    impl_->loseSfx = loadSfx("assets/Audio/sfx/Lose.mp3", "lose sfx");
-    impl_->victorySfx = loadSfx("assets/Audio/sfx/Victory.mp3", "victory sfx");
-    impl_->messageSfx = loadSfx("assets/Audio/sfx/Message.mp3", "message sfx");
-    impl_->bumperSfx = loadSfx("assets/Audio/sfx/Bumper.mp3", "bumper sfx");
+    if (!impl_->pendingSounds.valid() && !impl_->gameplaySoundsLoaded) {
+        std::array<std::string, 5> paths{{ResolveAssetPath("assets/Audio/sfx/Coin.mp3"),
+            ResolveAssetPath("assets/Audio/sfx/Lose.mp3"), ResolveAssetPath("assets/Audio/sfx/Victory.mp3"),
+            ResolveAssetPath("assets/Audio/sfx/Message.mp3"), ResolveAssetPath("assets/Audio/sfx/Bumper.mp3")}};
+        auto prepare = [paths] {
+            Impl::PreparedSounds sounds;
+            for (size_t i = 0; i < paths.size(); ++i) {
+                sounds.chunks[i] = Mix_LoadWAVCompat(paths[i].c_str());
+                if (!sounds.chunks[i]) SDL_Log("Could not load sfx '%s': %s", paths[i].c_str(), SDL_GetError());
+            }
+            return sounds;
+        };
+        try { impl_->pendingSounds = std::async(std::launch::async, prepare); }
+        catch (const std::exception&) { impl_->pendingSounds = std::async(std::launch::deferred, prepare); }
+    }
 
-    impl_->menuMusic = Mix_LoadMUSCompat(ResolveAssetPath("assets/Audio/Music/menu.mp3").c_str());
     if (!impl_->menuMusic) {
-        impl_->menuMusic = Mix_LoadMUSCompat(ResolveAssetPath("assets/Audio/Music/Menu.mp3").c_str());
+        impl_->menuMusic = Mix_LoadMUSCompat(ResolveAssetPath("assets/Audio/Music/menu.mp3").c_str());
+        if (!impl_->menuMusic) {
+            impl_->menuMusic = Mix_LoadMUSCompat(ResolveAssetPath("assets/Audio/Music/Menu.mp3").c_str());
+        }
+        if (!impl_->menuMusic) {
+            SDL_Log("Could not load menu music: %s", Mix_GetErrorCompat());
+            if (!decoders.empty()) SDL_Log("Available audio decoders: %s", decoders.c_str());
+        }
     }
-    if (!impl_->menuMusic) {
-        SDL_Log("Could not load menu music: %s", Mix_GetErrorCompat());
-        if (!decoders.empty()) SDL_Log("Available audio decoders: %s", decoders.c_str());
+#endif
+}
+
+bool AudioSystem::gameplayAssetsReady() const {
+#if AUDIO_HAS_SDL3_MIXER
+    if (impl_ && impl_->pendingSounds.valid()) {
+        const auto state = impl_->pendingSounds.wait_for(std::chrono::seconds(0));
+        return state == std::future_status::ready || state == std::future_status::deferred;
     }
+#endif
+    return true;
+}
+
+void AudioSystem::finishGameplayAssetLoading() {
+#if AUDIO_HAS_SDL3_MIXER
+    if (!impl_ || !impl_->pendingSounds.valid()) return;
+    try {
+        auto sounds = impl_->pendingSounds.get();
+        impl_->coinSfx = sounds.chunks[0]; impl_->loseSfx = sounds.chunks[1];
+        impl_->victorySfx = sounds.chunks[2]; impl_->messageSfx = sounds.chunks[3]; impl_->bumperSfx = sounds.chunks[4];
+        for (auto* chunk : sounds.chunks) if (chunk) Mix_VolumeChunkCompat(chunk, impl_->sfxVolume);
+        sounds.chunks = {};
+        impl_->gameplaySoundsLoaded = true;
+    } catch (const std::exception& error) { SDL_Log("SFX asset preparation failed: %s", error.what()); }
 #endif
 }
 
 void AudioSystem::unloadGlobalAssets() {
     if (!impl_) return;
+    finishGameplayAssetLoading(); // Join the worker before freeing audio or destroying its mixer.
+    impl_->globalAssetsStarted = false;
 #if defined(__ANDROID__)
     if (impl_->usingJavaBackend) {
         AndroidAudioBridge::unloadGlobalAssets();
@@ -521,6 +578,7 @@ void AudioSystem::unloadGlobalAssets() {
     }
 #endif
 #if AUDIO_HAS_SDL3_MIXER
+    impl_->gameplaySoundsLoaded = false;
     if (!g_mix_mixer) {
         impl_->coinSfx = nullptr;
         impl_->loseSfx = nullptr;
@@ -555,6 +613,8 @@ void AudioSystem::applyVolumes(bool muteAllAudio, int musicVolume, int sfxVolume
 #if AUDIO_HAS_SDL3_MIXER
     const int appliedMusic = muteAllAudio ? 0 : musicVolume;
     const int appliedSfx = muteAllAudio ? 0 : sfxVolume;
+    impl_->sfxVolume = appliedSfx;
+    if (gameplayAssetsReady()) finishGameplayAssetLoading();
     Mix_VolumeMusicCompat(appliedMusic);
     Mix_VolumeCompat(-1, appliedSfx);
     if (impl_->coinSfx) Mix_VolumeChunkCompat(impl_->coinSfx, appliedSfx);
@@ -632,6 +692,7 @@ void AudioSystem::unloadLevelMusic() {
 }
 
 void AudioSystem::ensureLevelMusic(bool paused, bool deathSequenceActive, bool levelCompleteActive) {
+    if (gameplayAssetsReady()) finishGameplayAssetLoading();
     if (!isReady() || impl_->shuttingDown) return;
 #if defined(__ANDROID__)
     if (impl_->usingJavaBackend) {
