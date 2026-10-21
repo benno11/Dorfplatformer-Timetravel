@@ -1,5 +1,11 @@
 Platformer Engine
 
+Press Down (S, Down Arrow, or the controller/touch Down control) on the ground
+to slide forward in the facing direction. Sliding grants 50 frames of
+invulnerability at 60 FPS (0.83 seconds at any frame rate) and opens boxes in
+the way for their usual coins or shield. Release Down before starting another
+slide.
+
 The editor's **Level Config** button (F2, or the controller's left face button)
 opens per-level settings for world (1–7), area (1–3), time (1–4), and **Bouncy
 tile 12**. Zero/Auto preserves path-derived settings when editing older levels.

@@ -1055,6 +1055,19 @@ if(BUILD_TESTING AND NOT ANDROID AND NOT IOS)
   target_link_libraries(player_controller_test PRIVATE ${SDL3_LINK_TARGET})
   target_compile_definitions(player_controller_test PRIVATE SDL_ENABLE_OLD_NAMES=1)
   add_test(NAME player_controller_collision COMMAND player_controller_test)
+  add_executable(player_slide_test
+    tests/PlayerSlideTest.cpp
+    src/GameProgression.cpp
+    src/PlayerController.cpp
+    src/LevelManager.cpp
+    src/LevelLoader.cpp
+    src/TileMap.cpp
+  )
+  target_include_directories(player_slide_test PRIVATE src third_party)
+  target_link_libraries(player_slide_test PRIVATE ${SDL3_LINK_TARGET})
+  target_compile_definitions(player_slide_test PRIVATE SDL_ENABLE_OLD_NAMES=1)
+  add_test(NAME player_slide COMMAND player_slide_test)
+  set_tests_properties(player_slide PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
   add_executable(level_format_test
     tests/LevelFormatTest.cpp
     src/LevelLoader.cpp

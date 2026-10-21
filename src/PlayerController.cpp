@@ -204,7 +204,8 @@ PlayerUpdateResult UpdatePlayerMovement(
     const KeyboardBindings& keybinds,
     float& inputMove,
     bool& inputDown,
-    const std::vector<SDL_FRect>* dynamicSolids
+    const std::vector<SDL_FRect>* dynamicSolids,
+    const std::function<void(const SDL_FRect&)>& onSlideContact
 ) {
     struct SolidScope {
         const std::vector<SDL_FRect>* previous;
@@ -212,12 +213,16 @@ PlayerUpdateResult UpdatePlayerMovement(
     } solidScope{g_dynamicSolids};
     g_dynamicSolids = dynamicSolids;
     dt = GameplayDeltaTime(dt);
+    player.slideTime = std::max(0.0f, player.slideTime - dt);
+    if (player.slideTime < 0.000001f) player.slideTime = 0.0f;
     const bool* keys = SDL_GetKeyboardState(nullptr);
     bool shiftDown = allowFreeMove && (keys[SDL_SCANCODE_LSHIFT] || keys[SDL_SCANCODE_RSHIFT]);
     shiftDown = shiftDown || gamepadFreeMove;
     player.freeMove = shiftDown;
 
     if (player.freeMove) {
+        player.slideTime = 0.0f;
+        player.slideWasDown = true;
         float freeSpeed = 1200.0f;
         float dx = 0.0f;
         float dy = 0.0f;
@@ -248,12 +253,20 @@ PlayerUpdateResult UpdatePlayerMovement(
     bool downHeld = touchDown || gamepadDown || keyHeld(keys, keybinds.moveDown) || keys[SDL_SCANCODE_DOWN];
     inputMove = move;
     inputDown = downHeld;
+    const bool slidePressed = downHeld && !player.slideWasDown;
+    player.slideWasDown = downHeld;
     if (!EjectPlayerFromSolid(player, map)) {
         return PlayerUpdateResult::Normal;
     }
 
     bool inWater = rectHitsWater(map, player.x, player.y, player.w, player.h);
     player.inWater = inWater;
+    if (slidePressed && player.onGround && !inWater && player.slideTime <= 0.0f) {
+        player.slideTime = Player::kSlideDuration;
+        player.slideDirection = player.facing < 0 ? -1 : 1;
+        player.tilePushDirection = 0;
+    }
+    const bool sliding = player.slideTime > 0.0f;
 
     float accel = inWater ? movement.accelInWater : movement.accelGround;
     float maxSpeed = inWater ? movement.maxSpeedInWater : movement.maxSpeedGround;
@@ -307,6 +320,11 @@ PlayerUpdateResult UpdatePlayerMovement(
         player.vx = (pushDirection * kTilePushSpeed * 4);
         player.tilePushDirection = pushDirection;
     } else if (player.vx * player.tilePushDirection <= 0.0f) {
+        player.tilePushDirection = 0;
+    }
+    if (sliding) {
+        player.vx = player.slideDirection * Player::kSlideSpeed;
+        player.facing = player.slideDirection;
         player.tilePushDirection = 0;
     }
 
@@ -383,6 +401,9 @@ PlayerUpdateResult UpdatePlayerMovement(
     const float xStep = totalX / xSteps;
     for (int step = 0; step < xSteps; ++step) {
         const float newX = player.x + xStep;
+        if (sliding && onSlideContact) {
+            onSlideContact({newX, player.y, (float)player.w, (float)player.h});
+        }
         if (!RectHitsSolid(map, newX, player.y, player.w, player.h)) {
             player.x = newX;
             continue;
@@ -439,7 +460,7 @@ PlayerUpdateResult UpdatePlayerMovement(
         player.tile12BounceActive = false;
     } else if (player.onGround && !inWater && map.bouncyTile12 && standingOnTile12(map, player) && !jumpDown) {
         // v^2 = 2*g*h: start a 1/5-block hop, then use ordinary gravity.
-        const float height = (1200f) // makes the player bounce higher than the tile itself, but not too high
+        const float height = 1200.0f; // makes the player bounce higher than the tile itself, but not too high
         player.vy = -std::sqrt(2.0f * std::max(0.0f, movement.gravityGround) * height);
         player.onGround = player.vy == 0.0f;
         player.tile12BounceActive = player.vy < 0.0f;

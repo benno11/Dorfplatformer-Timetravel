@@ -2,6 +2,7 @@
 
 #include "TileMap.h"
 #include "Player.h"
+#include <functional>
 
 enum class PlayerUpdateResult {
     Normal,
@@ -58,5 +59,6 @@ PlayerUpdateResult UpdatePlayerMovement(
     const KeyboardBindings& keybinds,
     float& inputMove,
     bool& inputDown,
-    const std::vector<SDL_FRect>* dynamicSolids = nullptr
+    const std::vector<SDL_FRect>* dynamicSolids = nullptr,
+    const std::function<void(const SDL_FRect&)>& onSlideContact = {}
 );

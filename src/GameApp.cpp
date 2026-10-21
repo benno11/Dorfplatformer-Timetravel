@@ -2919,6 +2919,33 @@ int RunGameApp(int argc, char** argv) {
             bool splash = false;
         };
         std::vector<WaterParticle> waterParticles;
+        struct BumperImpact {
+            float remaining = 0.0f;
+        };
+        struct BumperSpark {
+            float x, y, vx, vy, life, maxLife;
+        };
+        constexpr float bumperImpactDuration = 0.42f;
+        std::unordered_map<int, BumperImpact> bumperImpacts;
+        std::vector<BumperSpark> bumperSparks;
+        auto triggerBumperImpact = [&](int index, float x, float y, float direction) {
+            bumperImpacts[index] = {bumperImpactDuration};
+            constexpr size_t maxSparks = 192;
+            constexpr int burstSize = 16;
+            if (bumperSparks.size() + burstSize > maxSparks) {
+                bumperSparks.erase(bumperSparks.begin(),
+                    bumperSparks.begin() + (bumperSparks.size() + burstSize - maxSparks));
+            }
+            for (int i = 0; i < burstSize; ++i) {
+                const float angle = (float)i * 6.2831853f / burstSize;
+                const float speed = 65.0f + (i % 4) * 24.0f;
+                const float life = 0.24f + (i % 5) * 0.045f;
+                bumperSparks.push_back({x + std::cos(angle) * 11.0f,
+                    y + direction * 12.0f + std::sin(angle) * 4.0f,
+                    std::cos(angle) * speed,
+                    std::sin(angle) * speed * 0.55f + direction * 95.0f, life, life});
+            }
+        };
         WaterVisuals::InteractionState playerWaterState;
         std::vector<WaterVisuals::InteractionState> objectWaterStates;
         auto parseObjectId = [&](const std::string& idText) -> int {
@@ -3269,6 +3296,7 @@ int RunGameApp(int argc, char** argv) {
         auto setFastTravelActiveDir = [&](int dir, const char* reason) {
             if (dir == fastTravelActiveDir) return;
             fastTravelActiveDir = dir;
+            if (dir >= 0) player.slideTime = 0.0f;
             if (!(reason && std::strcmp(reason, "noop") == 0)) {
                 logFastTravelFlags(reason);
             }
@@ -3280,25 +3308,25 @@ int RunGameApp(int argc, char** argv) {
             ANIM_WALK,
             ANIM_JUMP,
             ANIM_FALL,
-            ANIM_CROUCH,
+            ANIM_SLIDE,
             ANIM_SKID,
             ANIM_HURT,
             ANIM_DEATH
         };
-        auto updatePlayerAnimState = [&](float moveInput, bool downHeld, float stepDt) {
+        auto updatePlayerAnimState = [&](float moveInput, bool /*downHeld*/, float stepDt) {
             int newAnim = ANIM_IDLE;
             const float vxAbs = std::abs(player.vx);
             if (player.freeMove) {
                 newAnim = ANIM_IDLE;
+            } else if (player.slideTime > 0.0f) {
+                newAnim = ANIM_SLIDE;
             } else if (!player.onGround) {
                 newAnim = (player.vy < 0.0f) ? ANIM_JUMP : ANIM_FALL;
-            } else if (downHeld) {
-                newAnim = ANIM_CROUCH;
             } else if (vxAbs > 8.0f) {
                 const bool opposing = (player.vx > 20.0f && moveInput < -0.1f) || (player.vx < -20.0f && moveInput > 0.1f);
                 newAnim = opposing ? ANIM_SKID : ANIM_WALK;
             }
-            if (player.onGround || player.freeMove) {
+            if ((player.onGround || player.freeMove) && player.slideTime <= 0.0f) {
                 if (moveInput < -0.1f) player.facing = -1;
                 if (moveInput > 0.1f) player.facing = 1;
             }
@@ -3356,6 +3384,8 @@ int RunGameApp(int argc, char** argv) {
             movingPlatformStates.clear();
             waterEffects.reset();
             waterParticles.clear();
+            bumperImpacts.clear();
+            bumperSparks.clear();
             playerWaterState = {};
             levelManager.reloadLevel(map, objects, meta, player);
             if (hardmodeRun) {
@@ -3448,6 +3478,7 @@ int RunGameApp(int argc, char** argv) {
         };
         auto startLevelCompleteSequence = [&]() {
             if (levelCompleteActive) return;
+            player.slideTime = 0.0f;
             levelCompleteActive = true;
             if (progression.recordCompletion(levelManager.levelPath(), levelManager.worldId(),
                 levelManager.levelPartId(), levelManager.timeId(), hardmodePractice)) SaveGameProgression(progression, activeSaveSlotIndex);
@@ -3535,6 +3566,9 @@ int RunGameApp(int argc, char** argv) {
                 player.tilePushDirection = std::clamp(pj.value("tilePushDirection", 0), -1, 1);
                 player.tile12BounceActive = pj.value("tile12BounceActive", false);
                 player.hasShield = pj.value("hasShield", false);
+                player.slideTime = std::clamp(pj.value("slideTime", 0.0f), 0.0f, Player::kSlideDuration);
+                player.slideDirection = pj.value("slideDirection", 1) < 0 ? -1 : 1;
+                player.slideWasDown = pj.value("slideWasDown", false);
                 player.vy = pj.value("vy", player.vy);
                 player.w = pj.value("w", player.w);
                 player.h = pj.value("h", player.h);
@@ -3924,7 +3958,6 @@ int RunGameApp(int argc, char** argv) {
         std::vector<SDL_FRect> semiHitboxes;
         std::vector<SDL_FRect> waterHitboxes;
         std::vector<SDL_FRect> airDebugHitboxes;
-        std::unordered_set<int> activeBumperIndices;
         int pauseSelection = 0; // 0 = Resume, 1 = Restart, 2 = Quit
         bool returnToSelect = false;
         std::unordered_map<SDL_FingerID, SDL_FPoint> activeTouches;
@@ -3972,6 +4005,9 @@ int RunGameApp(int argc, char** argv) {
             float jumpHoldTime = 0.0f;
             bool jumpWasDown = false;
             float jumpBufferTime = 0.0f;
+            float slideTime = 0.0f;
+            int slideDirection = 1;
+            bool slideWasDown = false;
             float inputMove = 0.0f;
             bool inputDown = false;
         };
@@ -4075,6 +4111,9 @@ int RunGameApp(int argc, char** argv) {
                 s.jumpHoldTime = p.value("jump_hold_time", 0.0f);
                 s.jumpWasDown = p.value("jump_was_down", false);
                 s.jumpBufferTime = p.value("jump_buffer_time", 0.0f);
+                s.slideTime = std::clamp(p.value("slide_time", 0.0f), 0.0f, Player::kSlideDuration);
+                s.slideDirection = p.value("slide_direction", 1) < 0 ? -1 : 1;
+                s.slideWasDown = p.value("slide_was_down", false);
                 if (j.contains("input_map") && j["input_map"].is_object()) {
                     const auto& im = j["input_map"];
                     s.inputMove = im.value("input_move", 0.0f);
@@ -4105,6 +4144,9 @@ int RunGameApp(int argc, char** argv) {
             j["tilePushDirection"] = p.tilePushDirection;
             j["tile12BounceActive"] = p.tile12BounceActive;
             j["hasShield"] = p.hasShield;
+            j["slideTime"] = p.slideTime;
+            j["slideDirection"] = p.slideDirection;
+            j["slideWasDown"] = p.slideWasDown;
             j["vy"] = p.vy;
             j["w"] = p.w;
             j["h"] = p.h;
@@ -4257,6 +4299,7 @@ int RunGameApp(int argc, char** argv) {
         };
         auto beginDeathSequence = [&]() {
             player.hasShield = false;
+            player.slideTime = 0.0f;
             deathSequenceActive = true;
             deathLifeDeducted = false;
             deathTimer = 0.0f;
@@ -4669,6 +4712,22 @@ int RunGameApp(int argc, char** argv) {
             const double dtPrecise = (double)(nowNs - lastTicksNs) / 1000000000.0;
             const float dt = GameplayDeltaTime(dtPrecise);
             if (!paused) spikeImpact.remaining = std::max(0.0f, spikeImpact.remaining - dt);
+            if (!paused) {
+                for (auto it = bumperImpacts.begin(); it != bumperImpacts.end();) {
+                    it->second.remaining -= dt;
+                    if (it->second.remaining <= 0.0f) it = bumperImpacts.erase(it);
+                    else ++it;
+                }
+                for (auto& spark : bumperSparks) {
+                    spark.life -= dt;
+                    spark.x += spark.vx * dt;
+                    spark.y += spark.vy * dt;
+                    spark.vy += 210.0f * dt;
+                    spark.vx *= std::exp(-2.8f * dt);
+                }
+                bumperSparks.erase(std::remove_if(bumperSparks.begin(), bumperSparks.end(),
+                    [](const BumperSpark& spark) { return spark.life <= 0.0f; }), bumperSparks.end());
+            }
             lastTicksNs = nowNs;
             lastTicks = SDL_GetTicks();
             SetTextScaleMultiplier(UiScale::multiplier(uiScalePercent));
@@ -4710,7 +4769,6 @@ int RunGameApp(int argc, char** argv) {
             const bool gameplayWrapX = levelWrapXEnabled();
             const bool gameplayWrapY = isVerticalWrapEnabledAtX(player.x);
             verticalWrapActive = gameplayWrapY;
-            activeBumperIndices.clear();
             SetHorizontalWrapCollision(gameplayWrapX);
             SetVerticalWrapCollision(gameplayWrapY);
             frameMsHistory[frameMsHistoryHead] = (float)(dtPrecise * 1000.0);
@@ -5335,6 +5393,9 @@ int RunGameApp(int argc, char** argv) {
                     player.jumpHoldTime = s.jumpHoldTime;
                     player.jumpWasDown = s.jumpWasDown;
                     player.jumpBufferTime = s.jumpBufferTime;
+                    player.slideTime = s.slideTime;
+                    player.slideDirection = s.slideDirection;
+                    player.slideWasDown = s.slideWasDown;
                     inputMove = s.inputMove;
                     inputDown = s.inputDown;
                     replayPlaybackDrivingThisFrame = true;
@@ -6280,7 +6341,11 @@ int RunGameApp(int argc, char** argv) {
                         gamepadMove, gamepadDown, gamepadJump, gamepadFreeMove,
                         effectiveDebugModeEnabled(),
                         keybinds,
-                        inputMove, inputDown, &platformSolids
+                        inputMove, inputDown, &platformSolids,
+                        [&](const SDL_FRect& contact) {
+                            if (levelManager.openCoinBoxesInRect(map, contact, objects, player,
+                                gameplayWrapX, gameplayWrapY) > 0) audio.playCoinSfx();
+                        }
                     );
                     if (upd == PlayerUpdateResult::Normal && !player.freeMove) {
                         for (const auto& bounds : platformSolids) {
@@ -6846,7 +6911,7 @@ int RunGameApp(int argc, char** argv) {
                         const float pDx = pCx - ex.x;
                         const float pDy = pCy - ex.y;
                         const bool touchingPlayer = (pDx * pDx + pDy * pDy) <= ex.radius * ex.radius;
-                        if (!ex.hitPlayer && touchingPlayer && playerInvincibleTimer <= 0.0f && levelLoadDeathGraceTimer <= 0.0f) {
+                        if (!ex.hitPlayer && touchingPlayer && playerInvincibleTimer <= 0.0f && player.slideTime <= 0.0f && levelLoadDeathGraceTimer <= 0.0f) {
                             ex.hitPlayer = true;
                             if (applyBossContactDamageToPlayer()) {
                                 playerKilledByExplosion = true;
@@ -6893,7 +6958,7 @@ int RunGameApp(int argc, char** argv) {
                             audio.playBumperSfx();
                         }
                     } else if (!bossCanMoveAndTakeDamage) {
-                        if (playerInvincibleTimer <= 0.0f && levelLoadDeathGraceTimer <= 0.0f) {
+                        if (playerInvincibleTimer <= 0.0f && player.slideTime <= 0.0f && levelLoadDeathGraceTimer <= 0.0f) {
                             if (applyBossContactDamageToPlayer()) continue;
                         }
                     } else {
@@ -6959,7 +7024,7 @@ int RunGameApp(int argc, char** argv) {
                                     (void)ejectBossFromSolid(bossState.x, bossState.y, bossW, bossH);
                                 }
                                 audio.playBumperSfx();
-                            } else if (!stomp && playerInvincibleTimer <= 0.0f && levelLoadDeathGraceTimer <= 0.0f) {
+                            } else if (!stomp && playerInvincibleTimer <= 0.0f && player.slideTime <= 0.0f && levelLoadDeathGraceTimer <= 0.0f) {
                                 if (applyBossContactDamageToPlayer()) continue;
                             }
                         }
@@ -6986,7 +7051,7 @@ int RunGameApp(int argc, char** argv) {
                     if (standingTileId == 20) {
                         levelManager.openCoinBox(map, idx, objects, player, gameplayWrapX, gameplayWrapY);
                         audio.playCoinSfx();
-                    } else if (standingTileId == 13 && playerInvincibleTimer <= 0.0f && levelLoadDeathGraceTimer <= 0.0f) {
+                    } else if (standingTileId == 13 && playerInvincibleTimer <= 0.0f && player.slideTime <= 0.0f && levelLoadDeathGraceTimer <= 0.0f) {
                         const bool hasCoins = levelManager.coinCount() > 0;
                         spikeImpact.x = player.x + player.w * 0.5f;
                         spikeImpact.y = player.y + player.h - 2.0f;
@@ -7061,6 +7126,15 @@ int RunGameApp(int argc, char** argv) {
             };
             auto eraseGameplayObject = [&](int index) {
                 objects.erase(objects.begin() + index);
+                // Object indices shift when enemies or pickups are removed.
+                std::unordered_map<int, BumperImpact> shiftedBumperImpacts;
+                for (const auto& impact : bumperImpacts) {
+                    if (impact.first != index) {
+                        shiftedBumperImpacts.emplace(impact.first > index ? impact.first - 1 : impact.first,
+                            impact.second);
+                    }
+                }
+                bumperImpacts.swap(shiftedBumperImpacts);
                 if (index < (int)objectWaterStates.size()) objectWaterStates.erase(objectWaterStates.begin() + index);
                 if (index < (int)objectIds.size()) objectIds.erase(objectIds.begin() + index);
                 if (index < (int)shellChrakerStates.size()) shellChrakerStates.erase(shellChrakerStates.begin() + index);
@@ -7093,7 +7167,7 @@ int RunGameApp(int argc, char** argv) {
                             continue;
                         }
                         const auto& arm = geometry.exposedArm;
-                        if (arm.w > 0.0f && playerInvincibleTimer <= 0.0f && levelLoadDeathGraceTimer <= 0.0f &&
+                        if (arm.w > 0.0f && playerInvincibleTimer <= 0.0f && player.slideTime <= 0.0f && levelLoadDeathGraceTimer <= 0.0f &&
                             overlapPlayerWithWrappedRect(arm.x, arm.y, arm.w, arm.h, hitX, hitY)) {
                             if (absorbShieldDamage()) {
                                 // Absorbed hits do not interrupt movement or drop coins.
@@ -7194,7 +7268,7 @@ int RunGameApp(int argc, char** argv) {
                 if (playerCY <= bumperCY && player.vy >= 0.0f) {
                     if (applyBumperBounce(testBy - (float)player.h, -1200.0f)) {
                         addMovementReason(MR_BUMPER);
-                        activeBumperIndices.insert(objIdx);
+                        triggerBumperImpact(objIdx, obj.x, obj.y, -1.0f);
                         audio.playBumperSfx();
                     }
                     break;
@@ -7202,7 +7276,7 @@ int RunGameApp(int argc, char** argv) {
                 if (playerCY > bumperCY && player.vy <= 0.0f) {
                     if (applyBumperBounce(testBy + bh, 1200.0f)) {
                         addMovementReason(MR_BUMPER);
-                        activeBumperIndices.insert(objIdx);
+                        triggerBumperImpact(objIdx, obj.x, obj.y, 1.0f);
                         audio.playBumperSfx();
                     }
                     break;
@@ -7574,7 +7648,7 @@ int RunGameApp(int argc, char** argv) {
             case 1: debugAnimName = "WALK"; break;
             case 2: debugAnimName = "JUMP"; break;
             case 3: debugAnimName = "FALL"; break;
-            case 4: debugAnimName = "CROUCH"; break;
+            case 4: debugAnimName = "SLIDE"; break;
             case 5: debugAnimName = "SKID"; break;
             case 6: debugAnimName = "HURT"; break;
             case 7: debugAnimName = "DEATH"; break;
@@ -7785,9 +7859,6 @@ int RunGameApp(int argc, char** argv) {
                 }
             } else {
                 std::string frameKey = obj.id;
-                if (obj.id == "46" && activeBumperIndices.find(objIdx) != activeBumperIndices.end()) {
-                    frameKey = "Bumper";
-                }
                 auto mapIt = entityFrameKeyByObjectId.find(obj.id);
                 if (mapIt != entityFrameKeyByObjectId.end()) frameKey = mapIt->second;
 
@@ -7835,6 +7906,15 @@ int RunGameApp(int argc, char** argv) {
                 int fh = 32;
                 int dstX = (int)std::lround(entityBaseX - camX);
                 int dstY = (int)std::lround(entityBaseY - camY);
+                const auto bumperImpact = bumperImpacts.find(objIdx);
+                if (isBumper && bumperImpact != bumperImpacts.end()) {
+                    const float age = bumperImpactDuration - bumperImpact->second.remaining;
+                    const float spring = std::cos(age * 25.0f) * std::exp(-age * 9.0f);
+                    fw = (int)std::lround(32.0f * (1.0f + 0.28f * spring));
+                    fh = (int)std::lround(32.0f * (1.0f - 0.26f * spring));
+                    dstX += (32 - fw) / 2;
+                    dstY += (32 - fh) / 2;
+                }
                 if (isEndSign) {
                     const int srcW = of->rotated ? of->rect.h : of->rect.w;
                     const int srcH = of->rotated ? of->rect.w : of->rect.h;
@@ -7862,6 +7942,25 @@ int RunGameApp(int argc, char** argv) {
                 auto renderObjFrame = [&](const SDL_Rect& outDst) {
                     if (isEndSign && !isOnscreen(outDst)) return;
                     renderFrame(ren, objectTex, *of, outDst);
+                    if (isBumper && bumperImpact != bumperImpacts.end()) {
+                        const float t = bumperImpact->second.remaining / bumperImpactDuration;
+                        const float radius = 15.0f + (1.0f - t) * 25.0f;
+                        const float cx = outDst.x + outDst.w * 0.5f;
+                        const float cy = outDst.y + outDst.h * 0.5f;
+                        if (cx + radius < 0 || cy + radius < 0 ||
+                            cx - radius > worldViewW || cy - radius > worldViewH) return;
+                        SDL_BlendMode previousBlend;
+                        SDL_GetRenderDrawBlendMode(ren, &previousBlend);
+                        SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_ADD);
+                        SDL_SetRenderDrawColor(ren, 255, 210, 105, (Uint8)(190.0f * t * t));
+                        for (int segment = 0; segment < 24; ++segment) {
+                            const float a = segment * 6.2831853f / 24.0f;
+                            const float b = (segment + 1) * 6.2831853f / 24.0f;
+                            SDL_RenderLine(ren, cx + std::cos(a) * radius, cy + std::sin(a) * radius,
+                                cx + std::cos(b) * radius, cy + std::sin(b) * radius);
+                        }
+                        SDL_SetRenderDrawBlendMode(ren, previousBlend);
+                    }
                 };
                 renderObjFrame(dst);
                 if (renderWrapY && !isEndSign) {
@@ -8172,7 +8271,7 @@ int RunGameApp(int argc, char** argv) {
                 case ANIM_WALK: seq = &animWalkFrames; break;
                 case ANIM_JUMP: seq = &animJumpFrames; break;
                 case ANIM_FALL: seq = &animFallFrames; break;
-                case ANIM_CROUCH: seq = &animCrouchFrames; break;
+                case ANIM_SLIDE: seq = &animCrouchFrames; break;
                 case ANIM_SKID: seq = &animSkidFrames; break;
                 case ANIM_HURT: seq = &animHurtFrames; break;
                 case ANIM_DEATH: seq = &animDeathFrames; break;
@@ -8195,7 +8294,7 @@ int RunGameApp(int argc, char** argv) {
                     renderFrameName = animCfg.jump[idx];
                 } else if (player.anim == ANIM_FALL && idx < (int)animCfg.fall.size()) {
                     renderFrameName = animCfg.fall[idx];
-                } else if (player.anim == ANIM_CROUCH && idx < (int)animCfg.crouch.size()) {
+                } else if (player.anim == ANIM_SLIDE && idx < (int)animCfg.crouch.size()) {
                     renderFrameName = animCfg.crouch[idx];
                 } else if (player.anim == ANIM_SKID && idx < (int)animCfg.skid.size()) {
                     renderFrameName = animCfg.skid[idx];
@@ -8207,7 +8306,7 @@ int RunGameApp(int argc, char** argv) {
             }
 
             if (playerTex && renderFramePtr) {
-                if (playerInvincibleTimer > 0.0f) {
+                if (playerInvincibleTimer > 0.0f || player.slideTime > 0.0f) {
                     const float phase = (float)(SDL_GetTicksNS() / 1000000000.0) * 14.0f;
                     const float wave = 0.5f + 0.5f * std::sin(phase);
                     const Uint8 alpha = (Uint8)std::clamp((int)std::lround(95.0f + 160.0f * wave), 70, 255);
@@ -8221,6 +8320,11 @@ int RunGameApp(int argc, char** argv) {
                     (int)pr.w,
                     (int)pr.h
                 };
+                if (player.slideTime > 0.0f) {
+                    // Reuse the low pose, anchored at the feet, for the slide.
+                    dst.h = std::max(1, (int)std::lround(pr.h * 0.65f));
+                    dst.y += (int)pr.h - dst.h;
+                }
                 SDL_RendererFlip flip = (player.facing < 0) ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
                 renderFrameEx(ren, playerTex, *renderFramePtr, dst, flip);
                 if (renderWrapY) {
@@ -8350,6 +8454,34 @@ int RunGameApp(int argc, char** argv) {
                 SDL_SetTextureAlphaMod(blocksTex, previousAlpha);
                 SDL_SetTextureColorMod(blocksTex, previousRed, previousGreen, previousBlue);
             }
+        }
+
+        if (!bumperSparks.empty()) {
+            SDL_BlendMode previousBlend;
+            SDL_GetRenderDrawBlendMode(ren, &previousBlend);
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_ADD);
+            const float wrapW = (float)(map.w * map.tileSize);
+            const float wrapH = (float)(map.h * map.tileSize);
+            for (const auto& spark : bumperSparks) {
+                float px = spark.x - camX;
+                float py = spark.y - camY;
+                if (renderWrapX) px -= std::floor((px + wrapW * 0.5f) / wrapW) * wrapW;
+                if (renderWrapY) py -= std::floor((py + wrapH * 0.5f) / wrapH) * wrapH;
+                const float fade = std::clamp(spark.life / spark.maxLife, 0.0f, 1.0f);
+                const float size = 1.0f + 2.0f * fade;
+                for (int iy = renderWrapY ? -1 : 0; iy <= (renderWrapY ? 1 : 0); ++iy) {
+                    for (int ix = renderWrapX ? -1 : 0; ix <= (renderWrapX ? 1 : 0); ++ix) {
+                        const float x = px + ix * wrapW, y = py + iy * wrapH;
+                        if (x < -12 || y < -12 || x > worldViewW + 12 || y > worldViewH + 12) continue;
+                        SDL_SetRenderDrawColor(ren, 255, 180, 65, (Uint8)(210.0f * fade));
+                        SDL_RenderLine(ren, x, y, x - spark.vx * 0.025f, y - spark.vy * 0.025f);
+                        SDL_SetRenderDrawColor(ren, 255, 245, 195, (Uint8)(255.0f * fade));
+                        SDL_FRect core{x - size * 0.5f, y - size * 0.5f, size, size};
+                        SDL_RenderFillRectF(ren, &core);
+                    }
+                }
+            }
+            SDL_SetRenderDrawBlendMode(ren, previousBlend);
         }
 
         if (!waterParticles.empty()) {
@@ -8664,7 +8796,10 @@ int RunGameApp(int argc, char** argv) {
                     {"jump_held", player.jumpHeld},
                     {"jump_hold_time", player.jumpHoldTime},
                     {"jump_was_down", player.jumpWasDown},
-                    {"jump_buffer_time", player.jumpBufferTime}
+                    {"jump_buffer_time", player.jumpBufferTime},
+                    {"slide_time", player.slideTime},
+                    {"slide_direction", player.slideDirection},
+                    {"slide_was_down", player.slideWasDown}
                 };
                 frame["input_map"] = {
                     {"touch_move", replayInput.touchMove},

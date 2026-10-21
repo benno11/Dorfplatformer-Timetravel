@@ -10,6 +10,11 @@ struct Player {
     int tilePushDirection = 0; // Direction of momentum remaining from tiles 83/86.
     bool tile12BounceActive = false;
     bool hasShield = false;
+    static constexpr float kSlideDuration = 50.0f / 60.0f;
+    static constexpr float kSlideSpeed = 700.0f;
+    float slideTime = 0.0f;
+    int slideDirection = 1;
+    bool slideWasDown = false;
     int w = 30;
     int h = 56;
     bool onGround = false;

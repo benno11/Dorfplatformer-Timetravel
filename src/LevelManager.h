@@ -22,6 +22,8 @@ public:
     int collectCoinsAtPlayer(TileMap& map, const Player& player, bool wrapX = false, bool wrapY = false);
     bool openCoinBox(TileMap& map, int index, const std::vector<ObjectInstance>& objects, Player& player,
                      bool wrapX = false, bool wrapY = false);
+    int openCoinBoxesInRect(TileMap& map, const SDL_FRect& rect, const std::vector<ObjectInstance>& objects,
+                            Player& player, bool wrapX = false, bool wrapY = false);
     int activateButtonsAtPlayer(TileMap& map, const Player& player, bool wrapX = false, bool wrapY = false);
     void updateTimeWarpIdAtPlayer(const TileMap& map, const Player& player, bool wrapX = false, bool wrapY = false);
     void setTileAt(TileMap& map, int idx, unsigned short tileId) const;

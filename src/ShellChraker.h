@@ -17,7 +17,7 @@ struct State {
 inline void update(State& state, float dt, float playerDx, float playerDy, float tileSize) {
     if (dt <= 0.0f || tileSize <= 0.0f) return;
     if (!state.cycling) {
-        if (playerDx * playerDx + playerDy * playerDy > tileSize * tileSize * 6.25f) return;
+        if (playerDx <= (tileSize * 5.0f)) return;
         state.facing = playerDx < 0.0f ? -1 : 1;
         state.cycling = true;
         state.time = 0.0f;

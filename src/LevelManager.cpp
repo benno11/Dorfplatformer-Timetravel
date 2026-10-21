@@ -270,6 +270,25 @@ bool LevelManager::openCoinBox(TileMap& map, int index, const std::vector<Object
     return true;
 }
 
+int LevelManager::openCoinBoxesInRect(TileMap& map, const SDL_FRect& rect,
+    const std::vector<ObjectInstance>& objects, Player& player, bool wrapX, bool wrapY) {
+    if (map.tileSize <= 0 || map.w <= 0 || map.h <= 0) return 0;
+    const int left = (int)std::floor(rect.x / map.tileSize);
+    const int right = (int)std::floor((rect.x + rect.w - 1) / map.tileSize);
+    const int top = (int)std::floor(rect.y / map.tileSize);
+    const int bottom = (int)std::floor((rect.y + rect.h - 1) / map.tileSize);
+    int opened = 0;
+    for (int y = top; y <= bottom; ++y) {
+        for (int x = left; x <= right; ++x) {
+            const int qx = wrapX ? (x % map.w + map.w) % map.w : x;
+            const int qy = wrapY ? (y % map.h + map.h) % map.h : y;
+            if (qx < 0 || qx >= map.w || qy < 0 || qy >= map.h) continue;
+            if (openCoinBox(map, qy * map.w + qx, objects, player, wrapX, wrapY)) ++opened;
+        }
+    }
+    return opened;
+}
+
 int LevelManager::activateButtonsAtPlayer(TileMap& map, const Player& player, bool wrapX, bool wrapY) {
     const int worldAreaKey = worldId_ * 10 + levelPartId_;
 
