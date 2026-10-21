@@ -28,7 +28,7 @@ struct AppState {
     std::filesystem::path launcherPath;
     std::string currentVersion;
     std::string currentVersionId;
-    std::string windowsUpdateManifestUrl;
+    std::string updateManifestUrl;
     std::string updaterState;
     std::string updaterDetail;
     std::string latestVersion;
@@ -181,7 +181,10 @@ AppState readAppState(const std::filesystem::path& rootDir, const std::filesyste
                 }
             }
             if (json.contains("windows_update_manifest_url") && json["windows_update_manifest_url"].is_string()) {
-                state.windowsUpdateManifestUrl = json["windows_update_manifest_url"].get<std::string>();
+                state.updateManifestUrl = json["windows_update_manifest_url"].get<std::string>();
+            }
+            if (json.contains("update_manifest_url") && json["update_manifest_url"].is_string()) {
+                state.updateManifestUrl = json["update_manifest_url"].get<std::string>();
             }
         } catch (...) {
         }
@@ -338,8 +341,8 @@ void launchUpdater(const AppState& state) {
         MessageBoxW(nullptr, L"df-updater.exe was not found in the installed version folder.", L"Dorfplatformer Tray", MB_OK | MB_ICONERROR);
         return;
     }
-    if (state.windowsUpdateManifestUrl.empty()) {
-        MessageBoxW(nullptr, L"No Windows update manifest URL is configured for the installed version.", L"Dorfplatformer Tray", MB_OK | MB_ICONERROR);
+    if (state.updateManifestUrl.empty()) {
+        MessageBoxW(nullptr, L"No update manifest URL is configured for the installed version.", L"Dorfplatformer Tray", MB_OK | MB_ICONERROR);
         return;
     }
     std::wstring cmdLine = quoteWindowsArg(updaterPath.wstring());
@@ -353,7 +356,7 @@ void launchUpdater(const AppState& state) {
     cmdLine += L" --status-file ";
     cmdLine += quoteWindowsArg(statusFile.wstring());
     cmdLine += L" --manifest-url ";
-    cmdLine += quoteWindowsArg(utf8ToWide(state.windowsUpdateManifestUrl));
+    cmdLine += quoteWindowsArg(utf8ToWide(state.updateManifestUrl));
 
     STARTUPINFOW si{};
     si.cb = sizeof(si);

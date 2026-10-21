@@ -68,7 +68,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             const std::string text = ctx.getUpdaterStatusText();
             if (!text.empty()) return text;
         }
-        return ctx.windowsUpdateManifestUrl.empty() ? "NOT CONFIGURED" : "READY";
+        return ctx.updateManifestUrl.empty() ? "NOT CONFIGURED" : "READY";
     };
     auto updaterStatusDetail = [&]() -> std::string {
         if (ctx.getUpdaterStatusDetail) {
@@ -381,7 +381,6 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     constexpr int IDX_BACK = 18;
     constexpr int kSettingsCount = 19;
 #else
-#if defined(_WIN32)
     constexpr int IDX_FULLSCREEN = 0;
     constexpr int IDX_VSYNC = 0;
     constexpr int IDX_CAM_CLAMP = 2;
@@ -404,29 +403,6 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     constexpr int IDX_ABOUT = 19;
     constexpr int IDX_BACK = 20;
     constexpr int kSettingsCount = 21;
-#else
-    constexpr int IDX_FULLSCREEN = 0;
-    constexpr int IDX_VSYNC = 0;
-    constexpr int IDX_CAM_CLAMP = 2;
-    constexpr int IDX_UI_SCALE = 3;
-    constexpr int IDX_UI_EDGE_PADDING = 4;
-    constexpr int IDX_NATIVE_TEXT_RESOLUTION = 5;
-    constexpr int IDX_DEBUG_MODE = 6;
-    constexpr int IDX_SHOW_FPS = 7;
-    constexpr int IDX_SHOW_DETAILED = 8;
-    constexpr int IDX_SHOW_HITBOXES = 9;
-    constexpr int IDX_SHOW_PLAYER_HITBOX = 10;
-    constexpr int IDX_SHOW_DEBUG_VIEW = 11;
-    constexpr int IDX_POWER_MANAGEMENT = 12;
-    constexpr int IDX_LOW_POWER_MODE = 13;
-    constexpr int IDX_MUSIC = 14;
-    constexpr int IDX_SFX = 15;
-    constexpr int IDX_SHOW_EXPERIMENTAL = 16;
-    constexpr int IDX_LEVEL_SELECT = 17;
-    constexpr int IDX_ABOUT = 18;
-    constexpr int IDX_BACK = 19;
-    constexpr int kSettingsCount = 20;
-#endif
 #endif
     int settingsSel = 0;
     enum class SliderDragTarget { None, Music, Sfx, UiScale, UiEdgePadding };
@@ -1281,10 +1257,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         advanceAboutLine(aboutBodyScale, 8);
         advanceAboutLine(aboutBodyScale, 2);
         advanceAboutLine(aboutBodyScale, 6);
-#if defined(_WIN32)
         advanceAboutLine(aboutBodyScale, 6);
         advanceAboutLine(aboutBodyScale, 6);
-#endif
         const std::string actionText = "OPEN LEVEL SELECT";
         const int textW = MeasureTextWidth(aboutBodyScale, actionText);
         const int textH = 10 * aboutBodyScale;
@@ -1553,11 +1527,9 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         else if (rawGeneralSel == IDX_SFX && dir != 0) sfxVolume = std::clamp(sfxVolume + dir * 8, 0, 128);
         else if (rawGeneralSel == IDX_SHOW_EXPERIMENTAL) showExperimentalFeatures = !showExperimentalFeatures;
         else if (rawGeneralSel == IDX_LEVEL_SELECT) levelSelectEnabled = !levelSelectEnabled;
-#if defined(_WIN32)
         else if (rawGeneralSel == IDX_UPDATE && ctx.launchUpdater) {
             openSettingsTab(IDX_UPDATER_TAB);
         }
-#endif
         else if (rawGeneralSel == IDX_ABOUT) { openSettingsTab(IDX_SETTINGS_ABOUT); }
         else setInSettings(false);
 #endif
@@ -2252,12 +2224,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     if (e.key.key == SDLK_h) defaultShowHitboxes = !defaultShowHitboxes;
                     if (e.key.key == SDLK_p) defaultShowPlayerHitbox = !defaultShowPlayerHitbox;
                     if (e.key.key == SDLK_d) defaultShowDebugView = !defaultShowDebugView;
-#if defined(_WIN32)
                     if (e.key.key == SDLK_u && ctx.launchUpdater) {
                         openSettingsTab(IDX_UPDATER_TAB);
                         continue;
                     }
-#endif
                     if (isBackKey) setInSettings(false);
 
                     if (settingsTab == 1) {
@@ -2616,9 +2586,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_Rect lowPowerBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_LOW_POWER_MODE));
                     SDL_Rect experimentalBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_SHOW_EXPERIMENTAL));
                     SDL_Rect levelSelectBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_LEVEL_SELECT));
-#if defined(_WIN32)
                     SDL_Rect updateBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_UPDATE));
-#endif
                     if (SDL_PointInRect(&pt, &fullBtn)) { (void)applyFullscreen(!fullscreen); }
                     else if (SDL_PointInRect(&pt, &vsyncBtn)) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
                     else if (SDL_PointInRect(&pt, &camBtn)) clampCamX = !clampCamX;
@@ -2635,11 +2603,9 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     else if (SDL_PointInRect(&pt, &lowPowerBtn)) lowPowerModeEnabled = !lowPowerModeEnabled;
                     else if (SDL_PointInRect(&pt, &experimentalBtn)) showExperimentalFeatures = !showExperimentalFeatures;
                     else if (SDL_PointInRect(&pt, &levelSelectBtn)) levelSelectEnabled = !levelSelectEnabled;
-#if defined(_WIN32)
                     else if (SDL_PointInRect(&pt, &updateBtn) && ctx.launchUpdater) {
                         openSettingsTab(IDX_UPDATER_TAB);
                     }
-#endif
                     else if (SDL_PointInRect(&pt, &aboutBtn)) { openSettingsTab(IDX_SETTINGS_ABOUT); }
                     else if (SDL_PointInRect(&pt, &backBtn)) setInSettings(false);
 #endif
@@ -2899,9 +2865,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     SDL_Rect lowPowerBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_LOW_POWER_MODE));
                     SDL_Rect experimentalBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_SHOW_EXPERIMENTAL));
                     SDL_Rect levelSelectBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_LEVEL_SELECT));
-#if defined(_WIN32)
                     SDL_Rect updateBtn = settingsRowBtn(visibleGeneralSettingsRowIndex(IDX_UPDATE));
-#endif
                     if (SDL_PointInRect(&pt, &fullBtn)) { (void)applyFullscreen(!fullscreen); }
                     else if (SDL_PointInRect(&pt, &vsyncBtn)) { vsyncEnabled = !vsyncEnabled; applyRenderVsync(); }
                     else if (SDL_PointInRect(&pt, &camBtn)) clampCamX = !clampCamX;
@@ -2920,12 +2884,9 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     else if (SDL_PointInRect(&pt, &lowPowerBtn)) lowPowerModeEnabled = !lowPowerModeEnabled;
                     else if (SDL_PointInRect(&pt, &experimentalBtn)) showExperimentalFeatures = !showExperimentalFeatures;
                     else if (SDL_PointInRect(&pt, &levelSelectBtn)) levelSelectEnabled = !levelSelectEnabled;
-#if defined(_WIN32)
                     else if (SDL_PointInRect(&pt, &updateBtn) && ctx.launchUpdater) {
-                        if (ctx.saveClientSettings) ctx.saveClientSettings();
-                        (void)ctx.launchUpdater();
+                        openSettingsTab(IDX_UPDATER_TAB);
                     }
-#endif
                     else if (SDL_PointInRect(&pt, &aboutBtn)) { openSettingsTab(IDX_SETTINGS_ABOUT); }
                     else if (SDL_PointInRect(&pt, &backBtn)) setInSettings(false);
 #endif
@@ -3554,12 +3515,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 drawAboutLine(aboutBodyScale, ctx.buildTimestamp.empty() ? "unknown" : ctx.buildTimestamp, 6);
                 drawAboutLine(aboutBodyScale, "BUILD TIMEZONE:", 2);
                 drawAboutLine(aboutBodyScale, ctx.buildTimezone.empty() ? "unknown" : ctx.buildTimezone, 6);
-#if defined(_WIN32)
                 drawAboutLine(aboutBodyScale,
                               std::string("UPDATER: ") + updaterStatusText(),
                               6);
                 drawAboutLine(aboutBodyScale, "PRESS U OR USE SETTINGS > CHECK FOR UPDATES", 6);
-#endif
                 if (showExperimentalFeatures) {
                     const std::string actionText = "OPEN LEVEL SELECT";
                     const int actionTextH = 10 * aboutBodyScale;
@@ -3755,7 +3714,12 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 const std::string notes = updaterNotesText();
                 const float progress01 = updaterProgress01();
                 const std::string actionLabel =
-                    updaterCanStartInstall() ? "START UPDATE" :
+                    updaterCanStartInstall() ?
+#if defined(_WIN32)
+                    "START UPDATE" :
+#else
+                    "OPEN UPDATE DOWNLOAD" :
+#endif
                     (status == "NOT CONFIGURED" ? "UPDATER NOT CONFIGURED" : "CHECK FOR UPDATES");
                 std::vector<std::string> rows = {
                     std::string("STATUS: ") + status,
@@ -3881,9 +3845,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     std::string("SFX: ") + std::to_string((sfxVolume * 100) / 128) + "%",
                     std::string("SHOW EXPERIMENTAL FEATURES: ") + (showExperimentalFeatures ? "ON" : "OFF"),
                     std::string("LEVEL SELECT: ") + (levelSelectEnabled ? "ON" : "OFF"),
-#if defined(_WIN32)
                     std::string("UPDATER: ") + updaterStatusText(),
-#endif
                     "ABOUT",
                     "BACK"
                 };

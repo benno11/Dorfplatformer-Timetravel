@@ -3,15 +3,14 @@
 
 #include <curl/curl.h>
 #include <nlohmann/json.hpp>
+#include "UpdateManifest.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
-#include <cstring>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
-#include <map>
-#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -40,38 +39,7 @@ struct Manifest {
     std::string version;
     std::string versionId;
     std::string installerUrl;
-    std::string installerUrlX86;
-    std::string installerUrlX64;
     std::string notes;
-};
-
-std::string getCurrentWindowsArchKey() {
-#if defined(_M_IX86)
-    return "x86";
-#elif defined(_M_X64) || defined(_WIN64)
-    return "x64";
-#else
-    return "";
-#endif
-}
-
-std::string selectInstallerUrl(const Manifest& manifest) {
-    const std::string arch = getCurrentWindowsArchKey();
-    if (arch == "x86" && !manifest.installerUrlX86.empty()) {
-        return manifest.installerUrlX86;
-    }
-    if (arch == "x64" && !manifest.installerUrlX64.empty()) {
-        return manifest.installerUrlX64;
-    }
-    if (!manifest.installerUrl.empty()) {
-        return manifest.installerUrl;
-    }
-    return {};
-}
-
-struct ParsedVersion {
-    std::vector<int> numbers;
-    int prereleaseRank = 3;
 };
 
 struct DownloadProgressContext {
@@ -359,50 +327,6 @@ int onDownloadProgress(void* clientp,
     return 0;
 }
 
-std::optional<ParsedVersion> parseVersion(const std::string& text) {
-    ParsedVersion out;
-    bool foundNumber = false;
-    int value = -1;
-    std::string lower;
-    lower.reserve(text.size());
-    for (unsigned char ch : text) lower.push_back((char)std::tolower(ch));
-    for (char ch : lower) {
-        if (std::isdigit((unsigned char)ch)) {
-            foundNumber = true;
-            if (value < 0) value = 0;
-            value = value * 10 + (ch - '0');
-        } else if (value >= 0) {
-            out.numbers.push_back(value);
-            value = -1;
-        }
-    }
-    if (value >= 0) out.numbers.push_back(value);
-    if (!foundNumber) return std::nullopt;
-    if (lower.find("alpha") != std::string::npos) out.prereleaseRank = 0;
-    else if (lower.find("beta") != std::string::npos) out.prereleaseRank = 1;
-    else if (lower.find("rc") != std::string::npos) out.prereleaseRank = 2;
-    else out.prereleaseRank = 3;
-    return out;
-}
-
-int compareVersions(const std::string& lhs, const std::string& rhs) {
-    const auto a = parseVersion(lhs);
-    const auto b = parseVersion(rhs);
-    if (!a && !b) return _stricmp(lhs.c_str(), rhs.c_str());
-    if (!a) return -1;
-    if (!b) return 1;
-    const size_t count = std::max(a->numbers.size(), b->numbers.size());
-    for (size_t i = 0; i < count; ++i) {
-        const int av = (i < a->numbers.size()) ? a->numbers[i] : 0;
-        const int bv = (i < b->numbers.size()) ? b->numbers[i] : 0;
-        if (av != bv) return (av < bv) ? -1 : 1;
-    }
-    if (a->prereleaseRank != b->prereleaseRank) {
-        return (a->prereleaseRank < b->prereleaseRank) ? -1 : 1;
-    }
-    return 0;
-}
-
 bool parseArgs(int argc, wchar_t** argv, Options& out) {
     for (int i = 1; i < argc; ++i) {
         const std::wstring arg = argv[i] ? argv[i] : L"";
@@ -476,42 +400,15 @@ bool loadManifest(const std::string& manifestUrl, Manifest& out, std::string& er
         err = "Manifest must contain installer_url or installer_urls";
         return false;
     }
-    auto jsonValueToString = [](const nlohmann::json& value) -> std::string {
-        if (value.is_string()) return value.get<std::string>();
-        if (value.is_number_integer()) return std::to_string(value.get<long long>());
-        if (value.is_number_unsigned()) return std::to_string(value.get<unsigned long long>());
-        if (value.is_number_float()) {
-            std::ostringstream oss;
-            oss << value.get<double>();
-            return oss.str();
-        }
-        return std::string();
-    };
     out.version = json["version"].get<std::string>();
-    if (json.contains("version_id")) {
-        out.versionId = jsonValueToString(json["version_id"]);
-        if (out.versionId.empty()) out.versionId = out.version;
-    } else {
-        out.versionId = out.version;
-    }
-    out.installerUrl = hasInstallerUrl ? json["installer_url"].get<std::string>() : std::string();
-    if (hasInstallerUrls) {
-        const auto& urls = json["installer_urls"];
-        if (urls.contains("x86") && urls["x86"].is_string()) {
-            out.installerUrlX86 = urls["x86"].get<std::string>();
-        }
-        if (urls.contains("x64") && urls["x64"].is_string()) {
-            out.installerUrlX64 = urls["x64"].get<std::string>();
-        }
-    }
     if (json.contains("notes") && json["notes"].is_string()) {
         out.notes = json["notes"].get<std::string>();
     }
-    if (out.installerUrl.empty()) {
-        out.installerUrl = selectInstallerUrl(out);
-    }
-    if (out.installerUrl.empty()) {
-        err = "Manifest does not provide an installer URL for this build architecture.";
+    try {
+        out.versionId = AppUpdate::versionId(json);
+        out.installerUrl = AppUpdate::installerUrl(json);
+    } catch (const std::exception& ex) {
+        err = ex.what();
         return false;
     }
     return true;
@@ -553,13 +450,13 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         Manifest manifest;
         std::string err;
         if (!loadManifest(options.manifestUrl, manifest, err)) {
-            writeStatus(options.statusFile, "error", "Could not load update manifest.",
+            writeStatus(options.statusFile, "error", err,
                         options.currentVersion, options.currentVersionId);
             curl_global_cleanup();
             return 1;
         }
 
-        if (compareVersions(options.currentVersionId, manifest.versionId) >= 0) {
+        if (AppUpdate::compareVersions(options.currentVersionId, manifest.versionId) >= 0) {
             writeStatus(options.statusFile, "up_to_date", "Already on the latest version.",
                         options.currentVersion, options.currentVersionId, manifest);
             curl_global_cleanup();

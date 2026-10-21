@@ -1,0 +1,19 @@
+{
+  "version": "2.3.0",
+  "version_id": 24,
+  "installer_urls": {
+    "windows": {
+      "x64": "https://example.com/downloads/windows-x64.exe",
+      "x86": "https://example.com/downloads/windows-x86.exe",
+      "arm64": "https://example.com/downloads/windows-arm64.exe"
+    },
+    "linux": {
+      "x64": "https://example.com/downloads/linux-x64.tar.gz",
+      "arm64": "https://example.com/downloads/linux-arm64.tar.gz"
+    },
+    "macos": { "default": "https://example.com/downloads/macos-universal.dmg" },
+    "android": "https://example.com/downloads/android.apk",
+    "ios": "https://example.com/ios-install"
+  },
+  "notes": "Bug fixes and improvements."
+}

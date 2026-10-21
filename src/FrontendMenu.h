@@ -28,7 +28,7 @@ struct FrontendMenuContext {
     std::string buildTimezone;
     std::string versionString;
     std::string versionIdString;
-    std::string windowsUpdateManifestUrl;
+    std::string updateManifestUrl;
 
     bool* running = nullptr;
     bool* fullscreen = nullptr;

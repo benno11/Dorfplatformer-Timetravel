@@ -89,6 +89,19 @@ Microsoft Store update helper (Windows):
 - Run: `powershell -ExecutionPolicy Bypass -File build/force-msstore-update.ps1`
 - Note: this script uses `winget` to refresh sources and apply available Microsoft Store package updates.
 
+The in-game Updater tab supports Windows, Linux, macOS, Android, and iOS.
+Set `update_manifest_url` in `assets/config.json` to your hosted JSON manifest;
+the existing `windows_update_manifest_url` remains a fallback. See
+`installer/update-manifest.example.json` for platform and architecture entries.
+Checks run in the background and compare `version_id` (or `version` when absent).
+Windows uses the bundled installer helper. Other platforms open their matching
+download or installation page; finish installation there and restart the game.
+For iOS, point the URL at your App Store or sideloading instructions. Missing
+platform packages produce an error instead of downloading another OS's installer.
+Desktop and iOS update checks require libcurl; Android also supports its Java
+network fallback. Legacy Windows manifests with `installer_url` or flat
+`installer_urls.x64` / `installer_urls.x86` entries remain supported.
+
 Features included:
 - sdl3 C++ 2D platformer
 - sdl3 version required: 3.4.0 or newer

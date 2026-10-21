@@ -65,6 +65,7 @@
 #include "UiScale.h"
 #include "World3PatternBackground.h"
 #include "BuildInfo.h"
+#include "UpdateManifest.h"
 
 namespace {
 static void setEnvCompat(const char* name, const char* value) {
@@ -1126,7 +1127,7 @@ int RunGameApp(int argc, char** argv) {
     std::string levelServerAuthToken;
     std::string levelServerAccountUsername;
     std::string accountManagerUrl = "http://critique-unsmooth.tun.ply.gg:49642/";
-    std::string windowsUpdateManifestUrl;
+    std::string updateManifestUrl;
     const std::string appVersion = PLATFORMER_CLIENT_VERSION;
     const std::string appVersionId = PLATFORMER_CLIENT_VERSION_ID;
     MovementConfig movementCfg{};
@@ -1167,7 +1168,10 @@ int RunGameApp(int argc, char** argv) {
                 accountManagerUrl = cfg["account_manager_url"].get<std::string>();
             }
             if (cfg.contains("windows_update_manifest_url") && cfg["windows_update_manifest_url"].is_string()) {
-                windowsUpdateManifestUrl = cfg["windows_update_manifest_url"].get<std::string>();
+                updateManifestUrl = cfg["windows_update_manifest_url"].get<std::string>();
+            }
+            if (cfg.contains("update_manifest_url") && cfg["update_manifest_url"].is_string()) {
+                updateManifestUrl = cfg["update_manifest_url"].get<std::string>();
             }
             if (cfg.contains("movement") && cfg["movement"].is_object()) {
                 const auto& m = cfg["movement"];
@@ -2337,7 +2341,7 @@ int RunGameApp(int argc, char** argv) {
     frontendCtx.buildTimezone = PLATFORMER_BUILD_TIMEZONE;
     frontendCtx.versionString = appVersion;
     frontendCtx.versionIdString = appVersionId;
-    frontendCtx.windowsUpdateManifestUrl = windowsUpdateManifestUrl;
+    frontendCtx.updateManifestUrl = updateManifestUrl;
     frontendCtx.running = &running;
     frontendCtx.fullscreen = &fullscreen;
     frontendCtx.vsyncEnabled = &vsyncEnabled;
@@ -2414,7 +2418,7 @@ int RunGameApp(int argc, char** argv) {
             out << json.dump(2);
         }
     };
-    auto refreshUpdaterStatus = [updaterStatus, &windowsUpdateManifestUrl]() -> std::string {
+    auto refreshUpdaterStatus = [updaterStatus, &updateManifestUrl]() -> std::string {
         const Uint64 now = SDL_GetTicks();
         if (now - updaterStatus->lastReadTicks < 250 && !updaterStatus->displayText.empty()) {
             return updaterStatus->displayText;
@@ -2422,13 +2426,13 @@ int RunGameApp(int argc, char** argv) {
         updaterStatus->lastReadTicks = now;
         updaterStatus->rawState.clear();
         if (updaterStatus->path.empty() || !std::filesystem::exists(updaterStatus->path)) {
-            updaterStatus->displayText = windowsUpdateManifestUrl.empty() ? "NOT CONFIGURED" : "READY";
+            updaterStatus->displayText = updateManifestUrl.empty() ? "NOT CONFIGURED" : "READY";
             return updaterStatus->displayText;
         }
         try {
             const std::string text = ReadTextFile(updaterStatus->path.string());
             if (text.empty()) {
-                updaterStatus->displayText = windowsUpdateManifestUrl.empty() ? "NOT CONFIGURED" : "READY";
+                updaterStatus->displayText = updateManifestUrl.empty() ? "NOT CONFIGURED" : "READY";
                 return updaterStatus->displayText;
             }
             const auto json = nlohmann::json::parse(text);
@@ -2473,7 +2477,7 @@ int RunGameApp(int argc, char** argv) {
             else if (state == "cancelled") updaterStatus->displayText = "CANCELLED";
             else if (state == "not_configured") updaterStatus->displayText = "NOT CONFIGURED";
             else if (state == "error") updaterStatus->displayText = "ERROR";
-            else updaterStatus->displayText = detail.empty() ? (windowsUpdateManifestUrl.empty() ? "NOT CONFIGURED" : "READY") : detail;
+            else updaterStatus->displayText = detail.empty() ? (updateManifestUrl.empty() ? "NOT CONFIGURED" : "READY") : detail;
             if (!latestVersion.empty() && (state == "downloading" || state == "install_ready")) {
                 updaterStatus->displayText += " -> " + latestVersion;
             }
@@ -2590,10 +2594,10 @@ int RunGameApp(int argc, char** argv) {
                                      "df-updater.exe was not found beside the game executable or in the install root.", win);
             return false;
         }
-        if (windowsUpdateManifestUrl.empty()) {
-            writeUpdaterStatus("not_configured", "No Windows update manifest URL is configured.");
+        if (updateManifestUrl.empty()) {
+            writeUpdaterStatus("not_configured", "No update manifest URL is configured.");
             SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "Updater Not Configured",
-                                     "No Windows update manifest URL is configured in assets/config.json.", win);
+                                     "No update manifest URL is configured in assets/config.json.", win);
             return false;
         }
         (void)refreshUpdaterStatus();
@@ -2637,7 +2641,7 @@ int RunGameApp(int argc, char** argv) {
             writeUpdaterStatus("checking", "Checking for updates...");
             cmdLine += L" --mode check";
             cmdLine += L" --manifest-url ";
-            cmdLine += quoteWindowsArg(utf8ToWide(windowsUpdateManifestUrl));
+            cmdLine += quoteWindowsArg(utf8ToWide(updateManifestUrl));
         }
 
         STARTUPINFOW si{};
@@ -2669,6 +2673,82 @@ int RunGameApp(int argc, char** argv) {
         CloseHandle(pi.hThread);
         CloseHandle(pi.hProcess);
         return true;
+    };
+#else
+    // Keep update checks in memory: app bundles and system installs may be read-only.
+    struct PortableUpdateState {
+        std::future<std::string> pending;
+        std::string status;
+        std::string detail;
+        std::string latestVersion;
+        std::string notes;
+        std::string url;
+    };
+    auto update = std::make_shared<PortableUpdateState>();
+    update->status = updateManifestUrl.empty() ? "NOT CONFIGURED" : "READY";
+    auto pollUpdate = [update, appVersionId]() {
+        if (!update->pending.valid() ||
+            update->pending.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) return;
+        try {
+            const auto body = update->pending.get();
+            if (body.empty()) throw std::runtime_error("Could not load the update manifest. Check your connection and update URL.");
+            const auto manifest = nlohmann::json::parse(body);
+            update->latestVersion = manifest.at("version").get<std::string>();
+            update->notes = manifest.value("notes", std::string());
+            if (AppUpdate::compareVersions(appVersionId, AppUpdate::versionId(manifest)) >= 0) {
+                update->status = "UP TO DATE";
+                update->detail = "Already on the latest version.";
+            } else {
+                update->url = AppUpdate::installerUrl(manifest);
+                update->status = "UPDATE FOUND - PRESS ENTER";
+                update->detail = "Open the update download and follow the installation instructions.";
+            }
+        } catch (const std::exception& ex) {
+            update->status = "ERROR";
+            update->detail = ex.what();
+            update->url.clear();
+        }
+    };
+    frontendCtx.getUpdaterStatusText = [update, pollUpdate]() { pollUpdate(); return update->status; };
+    frontendCtx.getUpdaterStatusDetail = [update, pollUpdate]() { pollUpdate(); return update->detail; };
+    frontendCtx.getUpdaterLatestVersionText = [update]() { return update->latestVersion; };
+    frontendCtx.getUpdaterNotesText = [update]() { return update->notes; };
+    frontendCtx.getUpdaterProgress01 = []() { return 0.0f; };
+    frontendCtx.pollUpdaterAutoRelaunch = pollUpdate;
+    frontendCtx.launchUpdater = [update, pollUpdate, updateManifestUrl]() -> bool {
+        pollUpdate();
+        if (update->pending.valid()) return false;
+        if (!update->url.empty()) {
+            if (!SDL_OpenURL(update->url.c_str())) {
+                update->status = "ERROR";
+                update->detail = std::string("Could not open update download: ") + SDL_GetError();
+                return false;
+            }
+            update->detail = "Update download opened. Finish installation, then restart the game.";
+            return true;
+        }
+        if (updateManifestUrl.empty()) {
+            update->status = "NOT CONFIGURED";
+            update->detail = "Set update_manifest_url in assets/config.json.";
+            return false;
+        }
+        if (!AppUpdate::isWebUrl(updateManifestUrl)) {
+            update->status = "ERROR";
+            update->detail = "The update manifest URL must use HTTP or HTTPS.";
+            return false;
+        }
+        try {
+            update->pending = ReadTextFileAsync(updateManifestUrl);
+            update->status = "CHECKING";
+            update->detail = "Checking for updates...";
+            update->latestVersion.clear();
+            update->notes.clear();
+            return true;
+        } catch (const std::exception& ex) {
+            update->status = "ERROR";
+            update->detail = ex.what();
+            return false;
+        }
     };
 #endif
     auto applyDynamicResolutionFromWindow = [&](bool force) -> bool {
