@@ -460,7 +460,7 @@ PlayerUpdateResult UpdatePlayerMovement(
         player.tile12BounceActive = false;
     } else if (player.onGround && !inWater && map.bouncyTile12 && standingOnTile12(map, player) && !jumpDown) {
         // v^2 = 2*g*h: start a 1/5-block hop, then use ordinary gravity.
-        const float height = 1200.0f; // makes the player bounce higher than the tile itself, but not too high
+        const float height = 2400.0f; // makes the player bounce higher than the tile itself, but not too high
         player.vy = -std::sqrt(2.0f * std::max(0.0f, movement.gravityGround) * height);
         player.onGround = player.vy == 0.0f;
         player.tile12BounceActive = player.vy < 0.0f;
