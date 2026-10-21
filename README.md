@@ -1,5 +1,19 @@
 Platformer Engine
 
+The **Character Creator [Experimental]** appears in Settings after enabling
+**General > Experimental Features**. Choose skin, hair style and color, shirt,
+pants, headwear, and accent colors, then turn **Use Custom Character** on. The
+animated preview updates immediately and changes save automatically in client
+settings. Turn the custom character off to use the original player; Reset also
+clears the design. Disabling Experimental Features uses the original player
+while keeping your design saved. Custom appearance does not change physics.
+Custom parts have cosmetic spring physics: hair trails during acceleration,
+headwear bounces on landing, and arms and legs swing from their joints. These
+effects also appear in the creator preview and pause with gameplay.
+**Placeholder Characters** offers six editable starters: Explorer, Runner,
+Mechanic, Ranger, Royal, and Frost. Selecting one enables it and saves its look;
+the creator preview shows its animated parts immediately.
+
 Press Down (S, Down Arrow, or the controller/touch Down control) on the ground
 to slide forward in the facing direction. Sliding grants 50 frames of
 invulnerability at 60 FPS (0.83 seconds at any frame rate) and opens boxes in

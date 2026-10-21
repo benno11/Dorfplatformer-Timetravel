@@ -44,6 +44,7 @@
 #include "ShellChrakerRenderer.h"
 #include "Shield.h"
 #include "ShieldRenderer.h"
+#include "CharacterRenderer.h"
 #include "MovingPlatform.h"
 #include "Player.h"
 #include "PlayerController.h"
@@ -1607,6 +1608,7 @@ int RunGameApp(int argc, char** argv) {
     bool powerManagementEnabled = true;
     bool lowPowerModeEnabled = false;
     bool showExperimentalFeatures = false;
+    CharacterCreator::Appearance characterAppearance;
     bool levelSelectEnabled = true;
     bool menuMusicEnabled = true;
     bool muteAllAudio = false;
@@ -1644,6 +1646,7 @@ int RunGameApp(int argc, char** argv) {
     bool serverSwapNoticeShown = false;
     auto saveClientSettings = [&]() {
         nlohmann::json j;
+        j["custom_character"] = CharacterCreator::save(characterAppearance);
         j["build_uuid"] = buildUuid;
         const bool savedFullscreen = PLATFORMER_MOBILE ? true : fullscreen;
         nlohmann::json settings;
@@ -1777,6 +1780,7 @@ int RunGameApp(int argc, char** argv) {
     };
     {
         auto applyClientSettingsJson = [&](const nlohmann::json& j) {
+            if (j.contains("custom_character")) characterAppearance = CharacterCreator::load(j["custom_character"]);
             auto parseScancode = [](const nlohmann::json& v, SDL_Scancode fallback) -> SDL_Scancode {
                 if (!v.is_number_integer()) return fallback;
                 const int raw = v.get<int>();
@@ -2356,6 +2360,7 @@ int RunGameApp(int argc, char** argv) {
     frontendCtx.powerManagementEnabled = &powerManagementEnabled;
     frontendCtx.lowPowerModeEnabled = &lowPowerModeEnabled;
     frontendCtx.showExperimentalFeatures = &showExperimentalFeatures;
+    frontendCtx.characterAppearance = &characterAppearance;
     frontendCtx.levelSelectEnabled = &levelSelectEnabled;
     frontendCtx.menuMusicEnabled = &menuMusicEnabled;
     frontendCtx.muteAllAudio = &muteAllAudio;
@@ -2888,6 +2893,7 @@ int RunGameApp(int argc, char** argv) {
         } spikeImpact;
         LevelMeta meta;
         Player player;
+        CharacterCreator::PartPhysics characterParts;
         bool wrapTriggerXActive = false;
         bool wrapTriggerYActive = false;
         auto resetLevelWrapTriggerState = [&]() {
@@ -3380,6 +3386,7 @@ int RunGameApp(int argc, char** argv) {
             currentAreaIdText = buildAreaIdText();
         };
         auto reloadLevel = [&](bool showIntroCard = true) {
+            characterParts = CharacterCreator::PartPhysics{};
             spikeImpact.remaining = 0;
             movingPlatformStates.clear();
             waterEffects.reset();
@@ -7356,6 +7363,12 @@ int RunGameApp(int argc, char** argv) {
         }
 
         RENDER_ONLY:
+        if (!paused) {
+            if (showExperimentalFeatures && characterAppearance.enabled) {
+                characterParts.update(dt, player.vx, player.vy, player.onGround,
+                    player.slideTime > 0.0f, player.facing);
+            } else characterParts = CharacterCreator::PartPhysics{};
+        }
         {
             const int targetPresentIntervalMs =
                 (powerManagementEnabled && mainWindowMinimized) ? 250 :
@@ -8305,15 +8318,35 @@ int RunGameApp(int argc, char** argv) {
                 }
             }
 
-            if (playerTex && renderFramePtr) {
+            const bool useCustomCharacter = showExperimentalFeatures && characterAppearance.enabled;
+            if (useCustomCharacter || (playerTex && renderFramePtr)) {
+                Uint8 playerAlpha = 255;
                 if (playerInvincibleTimer > 0.0f || player.slideTime > 0.0f) {
                     const float phase = (float)(SDL_GetTicksNS() / 1000000000.0) * 14.0f;
                     const float wave = 0.5f + 0.5f * std::sin(phase);
-                    const Uint8 alpha = (Uint8)std::clamp((int)std::lround(95.0f + 160.0f * wave), 70, 255);
-                    SDL_SetTextureAlphaMod(playerTex, alpha);
-                } else {
-                    SDL_SetTextureAlphaMod(playerTex, 255);
+                    playerAlpha = (Uint8)std::clamp((int)std::lround(95.0f + 160.0f * wave), 70, 255);
                 }
+                if (playerTex) SDL_SetTextureAlphaMod(playerTex, playerAlpha);
+                auto drawPlayerFrame = [&](const SDL_Rect& out) {
+                    if (useCustomCharacter) {
+                        auto pose = CharacterCreator::Pose::Idle;
+                        switch (player.anim) {
+                            case ANIM_WALK: case ANIM_SKID: pose = CharacterCreator::Pose::Run; break;
+                            case ANIM_JUMP: pose = CharacterCreator::Pose::Jump; break;
+                            case ANIM_FALL: pose = CharacterCreator::Pose::Fall; break;
+                            case ANIM_SLIDE: pose = CharacterCreator::Pose::Slide; break;
+                            case ANIM_HURT: pose = CharacterCreator::Pose::Hurt; break;
+                            case ANIM_DEATH: pose = CharacterCreator::Pose::Death; break;
+                            default: break;
+                        }
+                        CharacterCreator::render(ren, characterAppearance,
+                            {(float)out.x, (float)out.y, (float)out.w, (float)out.h},
+                            pose, player.animTime, player.facing, playerAlpha, &characterParts);
+                    } else {
+                        renderFrameEx(ren, playerTex, *renderFramePtr, out,
+                            player.facing < 0 ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE);
+                    }
+                };
                 SDL_Rect dst{
                     (int)std::lround(pr.x),
                     (int)std::lround(pr.y),
@@ -8325,16 +8358,15 @@ int RunGameApp(int argc, char** argv) {
                     dst.h = std::max(1, (int)std::lround(pr.h * 0.65f));
                     dst.y += (int)pr.h - dst.h;
                 }
-                SDL_RendererFlip flip = (player.facing < 0) ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
-                renderFrameEx(ren, playerTex, *renderFramePtr, dst, flip);
+                drawPlayerFrame(dst);
                 if (renderWrapY) {
                     const int wrapH = map.h * map.tileSize;
                     SDL_Rect dstTop = dst;
                     SDL_Rect dstBottom = dst;
                     dstTop.y -= wrapH;
                     dstBottom.y += wrapH;
-                    renderFrameEx(ren, playerTex, *renderFramePtr, dstTop, flip);
-                    renderFrameEx(ren, playerTex, *renderFramePtr, dstBottom, flip);
+                    drawPlayerFrame(dstTop);
+                    drawPlayerFrame(dstBottom);
                 }
                 if (renderWrapX) {
                     const int wrapW = map.w * map.tileSize;
@@ -8342,8 +8374,8 @@ int RunGameApp(int argc, char** argv) {
                     SDL_Rect dstRight = dst;
                     dstLeft.x -= wrapW;
                     dstRight.x += wrapW;
-                    renderFrameEx(ren, playerTex, *renderFramePtr, dstLeft, flip);
-                    renderFrameEx(ren, playerTex, *renderFramePtr, dstRight, flip);
+                    drawPlayerFrame(dstLeft);
+                    drawPlayerFrame(dstRight);
                 }
                 if (renderWrapY && renderWrapX) {
                     const int wrapW = map.w * map.tileSize;
@@ -8356,12 +8388,12 @@ int RunGameApp(int argc, char** argv) {
                     dstTR.x += wrapW; dstTR.y -= wrapH;
                     dstBL.x -= wrapW; dstBL.y += wrapH;
                     dstBR.x += wrapW; dstBR.y += wrapH;
-                    renderFrameEx(ren, playerTex, *renderFramePtr, dstTL, flip);
-                    renderFrameEx(ren, playerTex, *renderFramePtr, dstTR, flip);
-                    renderFrameEx(ren, playerTex, *renderFramePtr, dstBL, flip);
-                    renderFrameEx(ren, playerTex, *renderFramePtr, dstBR, flip);
+                    drawPlayerFrame(dstTL);
+                    drawPlayerFrame(dstTR);
+                    drawPlayerFrame(dstBL);
+                    drawPlayerFrame(dstBR);
                 }
-                SDL_SetTextureAlphaMod(playerTex, 255);
+                if (playerTex) SDL_SetTextureAlphaMod(playerTex, 255);
             } else {
                 SDL_SetRenderDrawColor(ren, 200, 200, 230, 255);
                 SDL_RenderFillRectF(ren, &pr);

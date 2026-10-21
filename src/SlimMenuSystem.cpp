@@ -30,6 +30,7 @@
 #include "LevelManager.h"
 #include "GameProgression.h"
 #include "UiScale.h"
+#include "CharacterRenderer.h"
 
 #if defined(DrawText)
 #undef DrawText
@@ -114,6 +115,8 @@ struct SlimRuntime {
     SlimLevelEntry difficultyLevel;
     int difficultyChoice = 0, difficultyFocus = 0;
     std::string difficultyStatus;
+    CharacterCreator::PartPhysics characterParts;
+    Uint64 characterPreviewTicks = 0;
 
     SlimRuntime() = default;
     SlimRuntime(const SlimRuntime&) = delete;
@@ -504,6 +507,42 @@ bool parseMenuAlignment(std::string value, SlimMenuLayout::Align& out) {
 }
 
 SlimMenu loadMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuContext& ctx) {
+    if (name == "charactercreator" || name == "characterpresets") {
+        SlimMenu menu;
+        menu.name = name;
+        menu.title = name == "characterpresets" ? "Placeholder Characters [Experimental]" : "Character Creator [Experimental]";
+        if (ctx.characterAppearance && ctx.showExperimentalFeatures && *ctx.showExperimentalFeatures) {
+            auto a = *ctx.characterAppearance;
+            a.normalize();
+            if (name == "characterpresets") {
+                menu.items.push_back(MenuItem{MenuItem::Type::Text, "Choose a starter character. All parts remain editable.", {}, {}});
+                for (const auto& preset : CharacterCreator::placeholderCharacters) {
+                    const bool selected = CharacterCreator::save(a) == CharacterCreator::save(preset.appearance);
+                    menu.items.push_back(MenuItem{MenuItem::Type::Button,
+                        std::string(preset.name) + (selected ? " [Selected]" : ""),
+                        "character", std::string("preset:") + preset.id});
+                }
+                menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back to Creator", "menu", "charactercreator"});
+                return menu;
+            }
+            auto option = [&](const std::string& label, const char* part) {
+                menu.items.push_back(MenuItem{MenuItem::Type::Button, label, "character", part});
+            };
+            menu.items.push_back(MenuItem{MenuItem::Type::Text, "Changes save automatically. Select a part to cycle.", {}, {}});
+            option(std::string("Use Custom Character: ") + (a.enabled ? "ON" : "OFF"), "enabled");
+            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Placeholder Characters", "menu", "characterpresets"});
+            option(std::string("Skin: ") + CharacterCreator::skinColors[a.skin].name, "skin");
+            option(std::string("Hair Style: ") + CharacterCreator::hairStyles[a.hairStyle], "hair_style");
+            option(std::string("Hair Color: ") + CharacterCreator::colors[a.hairColor].name, "hair_color");
+            option(std::string("Shirt: ") + CharacterCreator::colors[a.shirt].name, "shirt");
+            option(std::string("Pants: ") + CharacterCreator::colors[a.pants].name, "pants");
+            option(std::string("Headwear: ") + CharacterCreator::hats[a.hat], "hat");
+            option(std::string("Accent: ") + CharacterCreator::colors[a.accent].name, "accent");
+            option("Reset to Default Character", "reset");
+        } else menu.items.push_back(MenuItem{MenuItem::Type::Text, "Enable Experimental Features in General Settings.", {}, {}});
+        menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back", "menu", "mainsetting"});
+        return menu;
+    }
     if (name == "locallevels" || name == "onlinelevels" || name == "leveldetail" || name == "worldselect" || name == "saveplay" || name == "hardmodepractice") {
         return buildGeneratedLevelMenu(name, runtime, ctx);
     }
@@ -1663,10 +1702,39 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
     }
 
     const std::string title = expandVars(menu.title, runtime, ctx);
+    const bool characterPreview = (menu.name == "charactercreator" || menu.name == "characterpresets") && ctx.characterAppearance &&
+        ctx.showExperimentalFeatures && *ctx.showExperimentalFeatures;
+    const int previewSpace = characterPreview ? 96 : 0;
     int titleScale = 4;
-    const int titleWidth = std::min(panel.w - 40, (int)(ctx.baseScreenW / layout.scale) - 224);
+    const int titleWidth = std::min(panel.w - 40 - previewSpace, (int)(ctx.baseScreenW / layout.scale) - 224);
     while (titleScale > 1 && MeasureTextWidth(titleScale, title) > titleWidth) --titleScale;
-    DrawText(ctx.ren, panel.x + (panel.w - MeasureTextWidth(titleScale, title)) / 2, panel.y + 22, titleScale, title);
+    DrawText(ctx.ren, panel.x + (panel.w - previewSpace - MeasureTextWidth(titleScale, title)) / 2, panel.y + 22, titleScale, title);
+    if (characterPreview) {
+        const Uint64 ticks = SDL_GetTicksNS();
+        const float time = (float)(ticks / 1000000000.0);
+        const float dt = runtime.characterPreviewTicks ? (float)((ticks - runtime.characterPreviewTicks) / 1000000000.0) : 0.0f;
+        runtime.characterPreviewTicks = ticks;
+        const int scene = (int)std::fmod(time / 2.0f, 4.0f);
+        const CharacterCreator::Pose poses[]{CharacterCreator::Pose::Idle, CharacterCreator::Pose::Run,
+            CharacterCreator::Pose::Jump, CharacterCreator::Pose::Slide};
+        const char* names[]{"IDLE", "RUN", "JUMP", "SLIDE"};
+        const SDL_Rect card{panel.x + panel.w - 88, panel.y + 8, 72, 78};
+        SDL_SetRenderDrawColor(ctx.ren, 25, 36, 50, 255);
+        SDL_RenderFillRect(ctx.ren, &card);
+        SDL_FRect sprite{card.x + 21.0f, card.y + 5.0f, 30, 56};
+        if (scene == 3) { sprite.y += 20; sprite.h -= 20; }
+        const float jumpPhase = std::fmod(time, 2.0f) / 2.0f;
+        const float previewVy = scene == 2 ? -700.0f + jumpPhase * 1400.0f : 0.0f;
+        runtime.characterParts.update(dt, scene == 1 || scene == 3 ? 500.0f : 0.0f,
+            previewVy, scene != 2, scene == 3, 1);
+        CharacterCreator::render(ctx.ren, *ctx.characterAppearance, sprite, poses[scene], time,
+            1, 255, &runtime.characterParts);
+        DrawText(ctx.ren, card.x + (card.w - MeasureTextWidth(1, names[scene])) / 2,
+            card.y + 64, 1, names[scene]);
+    } else {
+        runtime.characterPreviewTicks = 0;
+        runtime.characterParts = CharacterCreator::PartPhysics{};
+    }
     if (!runtime.waitingBind.empty() || !runtime.pendingGets.empty() ||
         runtime.onlineLevelsRequest.valid() || runtime.accountRoleRequest.valid()) {
         const std::string status = runtime.waitingBind.empty()
@@ -1842,6 +1910,14 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
     if (item.type == MenuItem::Type::Slider) return SlimMenuExit::Continue;
     const std::string command = item.command;
     const std::string arg = expandVars(item.arg, runtime, ctx);
+    if (command == "character") {
+        if (ctx.characterAppearance && ctx.showExperimentalFeatures && *ctx.showExperimentalFeatures &&
+            CharacterCreator::change(*ctx.characterAppearance, arg)) {
+            if (ctx.saveClientSettings) ctx.saveClientSettings();
+            runtime.vars["__reload_menu"] = "1";
+        }
+        return SlimMenuExit::Continue;
+    }
     if (command == "back") return menuNetworkBusy(runtime) ? SlimMenuExit::Continue : SlimMenuExit::Back;
     if (command == "quit") {
         if (ctx.running) *ctx.running = false;

@@ -9,5 +9,7 @@ if debugger_attached skip 1
 button "Debug" menu settingsdebug
 button "Controls" menu settingscontrols
 button "Extra Options" menu settingsextras
+if show_experimental_features skip 1
+button "Character Creator [Experimental]" menu charactercreator
 button "About" menu settingsabout
 button "Back" back

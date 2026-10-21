@@ -1068,6 +1068,11 @@ if(BUILD_TESTING AND NOT ANDROID AND NOT IOS)
   target_compile_definitions(player_slide_test PRIVATE SDL_ENABLE_OLD_NAMES=1)
   add_test(NAME player_slide COMMAND player_slide_test)
   set_tests_properties(player_slide PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+  add_executable(character_creator_test tests/CharacterCreatorTest.cpp)
+  target_include_directories(character_creator_test PRIVATE src third_party)
+  target_link_libraries(character_creator_test PRIVATE ${SDL3_LINK_TARGET})
+  target_compile_definitions(character_creator_test PRIVATE SDL_ENABLE_OLD_NAMES=1)
+  add_test(NAME character_creator COMMAND character_creator_test)
   add_executable(level_format_test
     tests/LevelFormatTest.cpp
     src/LevelLoader.cpp
