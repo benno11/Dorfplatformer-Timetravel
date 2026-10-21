@@ -2,6 +2,7 @@
 
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "LevelLoader.h"
@@ -16,6 +17,7 @@ public:
     const std::string& levelPath() const;
 
     void reloadLevel(TileMap& map, std::vector<ObjectInstance>& objects, LevelMeta& meta, Player& player);
+    void resetButtonsForLevelStart(TileMap& map);
     void applyLevelConfig(const LevelMeta& meta);
     std::string nextLevelPath() const;
 
@@ -66,5 +68,6 @@ private:
     int timeId_ = 0;
     std::unordered_set<int> activeButtonWorldAreas_;
     std::unordered_set<int> buttonWorldAreasWithButtons_;
+    std::vector<std::pair<int, unsigned short>> levelStartButtons_;
 };
 

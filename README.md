@@ -6,19 +6,57 @@ pants, headwear, and accent colors, then turn **Use Custom Character** on. The
 animated preview updates immediately and changes save automatically in client
 settings. Turn the custom character off to use the original player; Reset also
 clears the design. Disabling Experimental Features uses the original player
-while keeping your design saved. Custom appearance does not change physics.
+while keeping your design saved. Colors, textures, and visual build keep the
+standard collision box; movement attributes change the enabled custom character.
 Custom parts have cosmetic spring physics: hair trails during acceleration,
 headwear bounces on landing, and arms and legs swing from their joints. These
 effects also appear in the creator preview and pause with gameplay.
 **Placeholder Characters** offers six editable starters: Explorer, Runner,
 Mechanic, Ranger, Royal, and Frost. Selecting one enables it and saves its look;
 the creator preview shows its animated parts immediately.
+**Character Attributes** controls visual build, part springiness, run speed,
+acceleration, jump strength, and gravity. Movement stats range from 75% to 125%
+of the configured defaults and return to normal when the custom character or
+Experimental Features is disabled. Reset Attributes restores 100% values.
+**Part Textures** applies Solid, Stripes, Checks, Dots, Denim, or Metal separately
+to skin, hair, shirt, pants, headwear, and accents. Each part also has an image
+import button (PNG, JPG, BMP, WebP). Images become 8x8 RGBA texture tiles stored
+inside client settings, including transparency, so the source file can move.
+Use Clear All Part Textures to remove patterns and imported tiles.
+
+**Import Character** and **Export Character** in the creator use self-contained
+`.dfcharacter` JSON files. These include attributes, textures, and any sprite
+layers. Invalid imports leave the current character intact; canceled dialogs
+make no changes. Export captures the character when the button is selected.
+**Load Example Characters** includes Original and Companion from the supplied
+Timetravel character pack. To import that ZIP's assets, extract it and select
+`sprites.json`, then choose a character. Keep its PNGs beside the manifest.
+Each character uses eleven 16x28 frames with separate base and bangs layers;
+both layers share the animation frame and mirror together. Export embeds the
+pixels, so the exported file needs no sidecar images. Original sprite art keeps
+its authored colors and hair; part textures and movement attributes still apply.
+**Switch to Editable Procedural Parts** returns to the parts-based appearance.
 
 Press Down (S, Down Arrow, or the controller/touch Down control) on the ground
 to slide forward in the facing direction. Sliding grants 50 frames of
 invulnerability at 60 FPS (0.83 seconds at any frame rate) and opens boxes in
 the way for their usual coins or shield. Release Down before starting another
 slide.
+
+Bumpers have a 0.5-second cooldown after a successful activation before their
+bounce, animation, particles, and sound can trigger again. Each bumper cools
+down independently; the timer freezes while paused and resets on level restart.
+
+On every level start (including retries, time changes, and Continue), button
+tiles reset to the versions authored in that level: 66 stays inactive and 67
+stays activated. The current area's completion flag follows those starting
+buttons, so a previous activation cannot force a fresh button into its alternate
+state. Progress in other areas is retained.
+Pressing any inactive button immediately sets the current area's activation
+flag; other buttons in that level are alternative triggers, so pressing every
+button is not required.
+If a level starts with any button already activated (tile 67), its activation
+flag starts on even when other buttons remain inactive.
 
 The editor's **Level Config** button (F2, or the controller's left face button)
 opens per-level settings for world (1–7), area (1–3), time (1–4), and **Bouncy

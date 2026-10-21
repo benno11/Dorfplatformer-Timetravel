@@ -45,6 +45,7 @@
 #include "Shield.h"
 #include "ShieldRenderer.h"
 #include "CharacterRenderer.h"
+#include "CharacterAttributes.h"
 #include "MovingPlatform.h"
 #include "Player.h"
 #include "PlayerController.h"
@@ -2927,15 +2928,17 @@ int RunGameApp(int argc, char** argv) {
         std::vector<WaterParticle> waterParticles;
         struct BumperImpact {
             float remaining = 0.0f;
+            float cooldownRemaining = 0.0f;
         };
         struct BumperSpark {
             float x, y, vx, vy, life, maxLife;
         };
         constexpr float bumperImpactDuration = 0.42f;
+        constexpr float bumperCooldownDuration = 0.5f;
         std::unordered_map<int, BumperImpact> bumperImpacts;
         std::vector<BumperSpark> bumperSparks;
         auto triggerBumperImpact = [&](int index, float x, float y, float direction) {
-            bumperImpacts[index] = {bumperImpactDuration};
+            bumperImpacts[index] = {bumperImpactDuration, bumperCooldownDuration};
             constexpr size_t maxSparks = 192;
             constexpr int burstSize = 16;
             if (bumperSparks.size() + burstSize > maxSparks) {
@@ -3665,6 +3668,8 @@ int RunGameApp(int argc, char** argv) {
                     levelManager.setButtonAreaActiveForDebug(key / 10, key % 10, true);
                 }
             }
+            // Continuing a save is also a level start: discard saved button presses.
+            levelManager.resetButtonsForLevelStart(map);
             resetBossStateForLoadedLevel();
             if (savedGameRoot.contains("boss") && savedGameRoot["boss"].is_object()) {
                 const auto& bj = savedGameRoot["boss"];
@@ -4718,11 +4723,13 @@ int RunGameApp(int argc, char** argv) {
             const Uint64 nowNs = SDL_GetTicksNS();
             const double dtPrecise = (double)(nowNs - lastTicksNs) / 1000000000.0;
             const float dt = GameplayDeltaTime(dtPrecise);
+            const MovementConfig activeMovement = CharacterCreator::movementFor(characterAppearance, movementCfg, showExperimentalFeatures);
             if (!paused) spikeImpact.remaining = std::max(0.0f, spikeImpact.remaining - dt);
             if (!paused) {
                 for (auto it = bumperImpacts.begin(); it != bumperImpacts.end();) {
                     it->second.remaining -= dt;
-                    if (it->second.remaining <= 0.0f) it = bumperImpacts.erase(it);
+                    it->second.cooldownRemaining -= dt;
+                    if (it->second.remaining <= 0.0f && it->second.cooldownRemaining <= 0.0f) it = bumperImpacts.erase(it);
                     else ++it;
                 }
                 for (auto& spark : bumperSparks) {
@@ -5873,12 +5880,12 @@ int RunGameApp(int argc, char** argv) {
                         const float targetFootX = (toX + 0.5f) * tile;
                         const float targetFootY = (toY + 1.0f) * tile;
                         const float dir = (targetFootX >= startFootX) ? 1.0f : -1.0f;
-                        const float runSpeed = std::max(220.0f, movementCfg.maxSpeedGround * runMul);
+                        const float runSpeed = std::max(220.0f, activeMovement.maxSpeedGround * runMul);
                         float px = startFootX - (float)player.w * 0.5f;
                         float py = startFootY - (float)player.h;
                         float vx = dir * runSpeed;
-                        float vy = -movementCfg.jumpSpeed;
-                        const float g = movementCfg.gravityGround;
+                        float vy = -activeMovement.jumpSpeed;
+                        const float g = activeMovement.gravityGround;
                         const float dtSim = 1.0f / 90.0f;
                         const float maxSimT = 1.35f;
 
@@ -6343,7 +6350,7 @@ int RunGameApp(int argc, char** argv) {
                             (float)map.tileSize, player, gameplayWrapX ? mapWrapW : 0, gameplayWrapY ? mapWrapH : 0));
                     }
                     upd = UpdatePlayerMovement(
-                        player, map, dt, movementCfg,
+                        player, map, dt, activeMovement,
                         touchMove, touchDown, touchJump,
                         gamepadMove, gamepadDown, gamepadJump, gamepadFreeMove,
                         effectiveDebugModeEnabled(),
@@ -7261,6 +7268,8 @@ int RunGameApp(int argc, char** argv) {
             for (int objIdx = 0; objIdx < (int)objects.size(); ++objIdx) {
                 const auto& obj = objects[objIdx];
                 if (obj.id != "46") continue;
+                const auto impact = bumperImpacts.find(objIdx);
+                if (impact != bumperImpacts.end() && impact->second.cooldownRemaining > 0.0f) continue;
                 const float bx = obj.x - 16.0f;
                 const float by = obj.y - 16.0f;
                 const float bw = 32.0f;
@@ -7366,7 +7375,7 @@ int RunGameApp(int argc, char** argv) {
         if (!paused) {
             if (showExperimentalFeatures && characterAppearance.enabled) {
                 characterParts.update(dt, player.vx, player.vy, player.onGround,
-                    player.slideTime > 0.0f, player.facing);
+                    player.slideTime > 0.0f, player.facing, CharacterCreator::attributeMultiplier(characterAppearance.springiness));
             } else characterParts = CharacterCreator::PartPhysics{};
         }
         {
@@ -7920,7 +7929,7 @@ int RunGameApp(int argc, char** argv) {
                 int dstX = (int)std::lround(entityBaseX - camX);
                 int dstY = (int)std::lround(entityBaseY - camY);
                 const auto bumperImpact = bumperImpacts.find(objIdx);
-                if (isBumper && bumperImpact != bumperImpacts.end()) {
+                if (isBumper && bumperImpact != bumperImpacts.end() && bumperImpact->second.remaining > 0.0f) {
                     const float age = bumperImpactDuration - bumperImpact->second.remaining;
                     const float spring = std::cos(age * 25.0f) * std::exp(-age * 9.0f);
                     fw = (int)std::lround(32.0f * (1.0f + 0.28f * spring));
@@ -7955,7 +7964,7 @@ int RunGameApp(int argc, char** argv) {
                 auto renderObjFrame = [&](const SDL_Rect& outDst) {
                     if (isEndSign && !isOnscreen(outDst)) return;
                     renderFrame(ren, objectTex, *of, outDst);
-                    if (isBumper && bumperImpact != bumperImpacts.end()) {
+                    if (isBumper && bumperImpact != bumperImpacts.end() && bumperImpact->second.remaining > 0.0f) {
                         const float t = bumperImpact->second.remaining / bumperImpactDuration;
                         const float radius = 15.0f + (1.0f - t) * 25.0f;
                         const float cx = outDst.x + outDst.w * 0.5f;
@@ -8328,10 +8337,12 @@ int RunGameApp(int argc, char** argv) {
                 }
                 if (playerTex) SDL_SetTextureAlphaMod(playerTex, playerAlpha);
                 auto drawPlayerFrame = [&](const SDL_Rect& out) {
+                    if (out.x + out.w <= 0 || out.y + out.h <= 0 || out.x >= worldViewW || out.y >= worldViewH) return;
                     if (useCustomCharacter) {
                         auto pose = CharacterCreator::Pose::Idle;
                         switch (player.anim) {
-                            case ANIM_WALK: case ANIM_SKID: pose = CharacterCreator::Pose::Run; break;
+                            case ANIM_WALK: pose = CharacterCreator::Pose::Run; break;
+                            case ANIM_SKID: pose = CharacterCreator::Pose::Skid; break;
                             case ANIM_JUMP: pose = CharacterCreator::Pose::Jump; break;
                             case ANIM_FALL: pose = CharacterCreator::Pose::Fall; break;
                             case ANIM_SLIDE: pose = CharacterCreator::Pose::Slide; break;

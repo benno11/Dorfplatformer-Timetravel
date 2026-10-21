@@ -4,6 +4,7 @@
 #include "DifficultySelector.h"
 
 #include <SDL3/SDL.h>
+#include <SDL3_image/SDL_image.h>
 #if defined(__ANDROID__)
 #include <jni.h>
 #include <SDL3/SDL_system.h>
@@ -15,6 +16,8 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <memory>
+#include <mutex>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -31,6 +34,9 @@
 #include "GameProgression.h"
 #include "UiScale.h"
 #include "CharacterRenderer.h"
+#include "CharacterAttributes.h"
+#include "CharacterFile.h"
+#include "CharacterSpriteImport.h"
 
 #if defined(DrawText)
 #undef DrawText
@@ -88,6 +94,26 @@ struct OnlineLevelPage {
     int total = 0;
 };
 
+struct CharacterFileDialog {
+    enum class Operation { TextureImport, CharacterImport, CharacterExport };
+    Operation operation = Operation::TextureImport;
+    std::mutex mutex;
+    bool ready = false, failed = false;
+    std::string path;
+    int part = 0;
+    CharacterCreator::Appearance exportSnapshot;
+};
+
+void SDLCALL characterFileChosen(void* userdata, const char* const* files, int) {
+    std::unique_ptr<std::shared_ptr<CharacterFileDialog>> owner(
+        static_cast<std::shared_ptr<CharacterFileDialog>*>(userdata));
+    const auto request = *owner;
+    std::lock_guard<std::mutex> lock(request->mutex);
+    request->failed = !files;
+    if (files && files[0]) request->path = files[0];
+    request->ready = true;
+}
+
 struct SlimRuntime {
     struct PendingGet {
         std::string variable;
@@ -117,6 +143,8 @@ struct SlimRuntime {
     std::string difficultyStatus;
     CharacterCreator::PartPhysics characterParts;
     Uint64 characterPreviewTicks = 0;
+    std::shared_ptr<CharacterFileDialog> characterFileDialog;
+    std::vector<CharacterCreator::Appearance> importedCharacters;
 
     SlimRuntime() = default;
     SlimRuntime(const SlimRuntime&) = delete;
@@ -507,13 +535,24 @@ bool parseMenuAlignment(std::string value, SlimMenuLayout::Align& out) {
 }
 
 SlimMenu loadMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuContext& ctx) {
-    if (name == "charactercreator" || name == "characterpresets") {
+    if (name == "charactercreator" || name == "characterpresets" || name == "characterattributes" || name == "charactertextures" || name == "characterpack") {
         SlimMenu menu;
         menu.name = name;
         menu.title = name == "characterpresets" ? "Placeholder Characters [Experimental]" : "Character Creator [Experimental]";
+        if (name == "characterattributes") menu.title = "Character Attributes [Experimental]";
+        if (name == "charactertextures") menu.title = "Part Textures [Experimental]";
+        if (name == "characterpack") menu.title = "Import Character [Experimental]";
         if (ctx.characterAppearance && ctx.showExperimentalFeatures && *ctx.showExperimentalFeatures) {
             auto a = *ctx.characterAppearance;
             a.normalize();
+            if (name == "characterpack") {
+                menu.items.push_back(MenuItem{MenuItem::Type::Text, "Choose a character from the imported sprite pack.", {}, {}});
+                for (size_t i = 0; i < runtime.importedCharacters.size(); ++i)
+                    menu.items.push_back(MenuItem{MenuItem::Type::Button, runtime.importedCharacters[i].sprites.name,
+                        "character_pack_select", std::to_string(i)});
+                menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back to Creator", "menu", "charactercreator"});
+                return menu;
+            }
             if (name == "characterpresets") {
                 menu.items.push_back(MenuItem{MenuItem::Type::Text, "Choose a starter character. All parts remain editable.", {}, {}});
                 for (const auto& preset : CharacterCreator::placeholderCharacters) {
@@ -528,9 +567,50 @@ SlimMenu loadMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuC
             auto option = [&](const std::string& label, const char* part) {
                 menu.items.push_back(MenuItem{MenuItem::Type::Button, label, "character", part});
             };
-            menu.items.push_back(MenuItem{MenuItem::Type::Text, "Changes save automatically. Select a part to cycle.", {}, {}});
+            if (name == "characterattributes") {
+                menu.items.push_back(MenuItem{MenuItem::Type::Text, "Movement stats apply while the custom character is enabled.", {}, {}});
+                option(std::string("Visual Build: ") + CharacterCreator::builds[a.build], "build");
+                for (const auto& stat : std::array<std::pair<const char*, int>, 5>{{
+                    {"springiness", a.springiness}, {"speed", a.speed}, {"acceleration", a.acceleration},
+                    {"jump", a.jump}, {"gravity", a.gravity}}}) {
+                    const std::string id = stat.first;
+                    const std::string label = id == "springiness" ? "Part Springiness" :
+                        (id == "speed" ? "Run Speed" : (id == "acceleration" ? "Acceleration" : (id == "jump" ? "Jump Strength" : "Gravity")));
+                    option(label + ": " + std::to_string(CharacterCreator::statPercent[stat.second]) + "%", stat.first);
+                }
+                option("Reset Attributes", "reset_attributes");
+                menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back to Creator", "menu", "charactercreator"});
+                return menu;
+            }
+            if (name == "charactertextures") {
+                const std::string status = runtime.vars["character_texture_status"];
+                menu.items.push_back(MenuItem{MenuItem::Type::Text,
+                    status.empty() ? "Cycle a pattern or import an image as an 8x8 tile." : status, {}, {}});
+                for (int i = 0; i < 6; ++i) {
+                    menu.items.push_back(MenuItem{MenuItem::Type::Button,
+                        std::string(CharacterCreator::partNames[i]) + ": " + CharacterCreator::textureNames[a.textures[i]],
+                        "character", std::string("texture:") + CharacterCreator::partIds[i]});
+                    menu.items.push_back(MenuItem{MenuItem::Type::Button,
+                        std::string("Import ") + CharacterCreator::partNames[i] + " Image...", "character_import", CharacterCreator::partIds[i]});
+                }
+                option("Clear All Part Textures", "clear_textures");
+                menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back to Creator", "menu", "charactercreator"});
+                return menu;
+            }
+            const std::string fileStatus = runtime.vars["character_file_status"];
+            menu.items.push_back(MenuItem{MenuItem::Type::Text,
+                fileStatus.empty() ? "Changes save automatically. Select a part to cycle." : fileStatus, {}, {}});
             option(std::string("Use Custom Character: ") + (a.enabled ? "ON" : "OFF"), "enabled");
+            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Import Character...", "character_file", "import"});
+            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Export Character...", "character_file", "export"});
+            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Load Example Characters", "character_examples", {}});
+            if (!a.sprites.base.empty()) {
+                menu.items.push_back(MenuItem{MenuItem::Type::Text, "Sprite layers: " + a.sprites.name + " (original colors and hair)", {}, {}});
+                option("Switch to Editable Procedural Parts", "procedural_parts");
+            }
             menu.items.push_back(MenuItem{MenuItem::Type::Button, "Placeholder Characters", "menu", "characterpresets"});
+            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Character Attributes", "menu", "characterattributes"});
+            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Part Textures", "menu", "charactertextures"});
             option(std::string("Skin: ") + CharacterCreator::skinColors[a.skin].name, "skin");
             option(std::string("Hair Style: ") + CharacterCreator::hairStyles[a.hairStyle], "hair_style");
             option(std::string("Hair Color: ") + CharacterCreator::colors[a.hairColor].name, "hair_color");
@@ -1702,7 +1782,8 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
     }
 
     const std::string title = expandVars(menu.title, runtime, ctx);
-    const bool characterPreview = (menu.name == "charactercreator" || menu.name == "characterpresets") && ctx.characterAppearance &&
+    const bool characterPreview = (menu.name == "charactercreator" || menu.name == "characterpresets" ||
+        menu.name == "characterattributes" || menu.name == "charactertextures" || menu.name == "characterpack") && ctx.characterAppearance &&
         ctx.showExperimentalFeatures && *ctx.showExperimentalFeatures;
     const int previewSpace = characterPreview ? 96 : 0;
     int titleScale = 4;
@@ -1725,8 +1806,9 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
         if (scene == 3) { sprite.y += 20; sprite.h -= 20; }
         const float jumpPhase = std::fmod(time, 2.0f) / 2.0f;
         const float previewVy = scene == 2 ? -700.0f + jumpPhase * 1400.0f : 0.0f;
-        runtime.characterParts.update(dt, scene == 1 || scene == 3 ? 500.0f : 0.0f,
-            previewVy, scene != 2, scene == 3, 1);
+        runtime.characterParts.update(dt, scene == 1 || scene == 3 ? 500.0f * CharacterCreator::attributeMultiplier(ctx.characterAppearance->speed) : 0.0f,
+            previewVy * CharacterCreator::attributeMultiplier(ctx.characterAppearance->jump), scene != 2, scene == 3, 1,
+            CharacterCreator::attributeMultiplier(ctx.characterAppearance->springiness));
         CharacterCreator::render(ctx.ren, *ctx.characterAppearance, sprite, poses[scene], time,
             1, 255, &runtime.characterParts);
         DrawText(ctx.ren, card.x + (card.w - MeasureTextWidth(1, names[scene])) / 2,
@@ -1910,6 +1992,58 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
     if (item.type == MenuItem::Type::Slider) return SlimMenuExit::Continue;
     const std::string command = item.command;
     const std::string arg = expandVars(item.arg, runtime, ctx);
+    if (command == "character_examples" || command == "character_pack_select") {
+        if (ctx.characterAppearance && ctx.showExperimentalFeatures && *ctx.showExperimentalFeatures) {
+            if (command == "character_examples") {
+                if (CharacterCreator::readSpritePack(ResolveAssetPath("assets/characters/timetravel_examples/sprites.json"), runtime.importedCharacters, IMG_Load))
+                    currentMenu = "characterpack";
+                else runtime.vars["character_file_status"] = "Could not load the bundled example characters.";
+            } else {
+                const int index = std::atoi(arg.c_str());
+                if (index >= 0 && index < (int)runtime.importedCharacters.size()) {
+                    *ctx.characterAppearance = runtime.importedCharacters[index];
+                    runtime.characterParts = CharacterCreator::PartPhysics{};
+                    if (ctx.saveClientSettings) ctx.saveClientSettings();
+                    runtime.vars["character_file_status"] = "Sprite character imported and saved.";
+                    currentMenu = "charactercreator";
+                }
+            }
+            runtime.vars["__reload_menu"] = "1";
+        }
+        return SlimMenuExit::Continue;
+    }
+    if (command == "character_file") {
+        if (ctx.characterAppearance && ctx.showExperimentalFeatures && *ctx.showExperimentalFeatures &&
+            !runtime.characterFileDialog && (arg == "import" || arg == "export")) {
+            auto request = std::make_shared<CharacterFileDialog>();
+            request->operation = arg == "export" ? CharacterFileDialog::Operation::CharacterExport :
+                CharacterFileDialog::Operation::CharacterImport;
+            request->exportSnapshot = *ctx.characterAppearance;
+            runtime.characterFileDialog = request;
+            static const SDL_DialogFileFilter filters[]{{"DF Character", "dfcharacter;json"}};
+            auto* userdata = new std::shared_ptr<CharacterFileDialog>(request);
+            if (arg == "export") {
+                SDL_ShowSaveFileDialog(characterFileChosen, userdata, ctx.win, filters, 1, "character.dfcharacter");
+            } else SDL_ShowOpenFileDialog(characterFileChosen, userdata, ctx.win, filters, 1, nullptr, false);
+            runtime.vars["character_file_status"] = arg == "export" ? "Choose where to export your character." : "Choose a character file to import.";
+            runtime.vars["__reload_menu"] = "1";
+        }
+        return SlimMenuExit::Continue;
+    }
+    if (command == "character_import") {
+        const int part = CharacterCreator::partIndex(arg);
+        if (part >= 0 && ctx.characterAppearance && ctx.showExperimentalFeatures && *ctx.showExperimentalFeatures &&
+            !runtime.characterFileDialog) {
+            runtime.characterFileDialog = std::make_shared<CharacterFileDialog>();
+            runtime.characterFileDialog->part = part;
+            static const SDL_DialogFileFilter filters[]{{"Images", "png;jpg;jpeg;bmp;webp"}};
+            SDL_ShowOpenFileDialog(characterFileChosen,
+                new std::shared_ptr<CharacterFileDialog>(runtime.characterFileDialog), ctx.win, filters, 1, nullptr, false);
+            runtime.vars["character_texture_status"] = "Choose an image in the file picker.";
+            runtime.vars["__reload_menu"] = "1";
+        }
+        return SlimMenuExit::Continue;
+    }
     if (command == "character") {
         if (ctx.characterAppearance && ctx.showExperimentalFeatures && *ctx.showExperimentalFeatures &&
             CharacterCreator::change(*ctx.characterAppearance, arg)) {
@@ -2337,6 +2471,58 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
         presentMenuFrame(menu, runtime, ctx, selected);
         SDL_Event e;
         while (ctx.running && *ctx.running) {
+            if (runtime.characterFileDialog) {
+                auto request = runtime.characterFileDialog;
+                bool ready, failed;
+                std::string path;
+                {
+                    std::lock_guard<std::mutex> lock(request->mutex);
+                    ready = request->ready;
+                    failed = request->failed;
+                    if (ready) path = request->path;
+                }
+                if (ready) {
+                    if (request->operation != CharacterFileDialog::Operation::TextureImport) {
+                        std::string status = failed ? "The file picker is unavailable on this device." : "Character file selection canceled.";
+                        if (!path.empty()) {
+                            if (request->operation == CharacterFileDialog::Operation::CharacterExport) {
+                                status = CharacterCreator::writeCharacterFile(path, request->exportSnapshot) ?
+                                    "Character exported with attributes and textures." : "Could not write the character file.";
+                            } else if (ctx.characterAppearance) {
+                                CharacterCreator::Appearance imported;
+                                if (CharacterCreator::readCharacterFile(path, imported)) {
+                                    *ctx.characterAppearance = std::move(imported);
+                                    runtime.characterParts = CharacterCreator::PartPhysics{};
+                                    if (ctx.saveClientSettings) ctx.saveClientSettings();
+                                    status = ctx.characterAppearance->enabled ? "Character imported and saved." :
+                                        "Character imported. Turn Use Custom Character on to play.";
+                                } else if (CharacterCreator::readSpritePack(path, runtime.importedCharacters, IMG_Load)) {
+                                    currentMenu = "characterpack";
+                                    status = "Choose a character from the imported sprite pack.";
+                                } else status = "Could not import. Choose a character file or extracted sprites.json.";
+                            }
+                        }
+                        runtime.vars["character_file_status"] = status;
+                        runtime.characterFileDialog.reset();
+                        goto next_menu;
+                    }
+                    std::string status = failed ? "The file picker is unavailable on this device." : "Image import canceled.";
+                    if (!path.empty() && ctx.characterAppearance) {
+                        SDL_Surface* surface = IMG_Load(path.c_str());
+                        const std::string pixels = CharacterCreator::textureFromSurface(surface);
+                        if (surface) SDL_DestroySurface(surface);
+                        if (!pixels.empty()) {
+                            ctx.characterAppearance->texturePixels[request->part] = pixels;
+                            ctx.characterAppearance->textures[request->part] = 6;
+                            if (ctx.saveClientSettings) ctx.saveClientSettings();
+                            status = std::string(CharacterCreator::partNames[request->part]) + " texture imported and saved.";
+                        } else status = "Could not load that image. Try a PNG, JPG, BMP, or WebP.";
+                    }
+                    runtime.vars["character_texture_status"] = status;
+                    runtime.characterFileDialog.reset();
+                    goto next_menu;
+                }
+            }
             bool reloadOnline = false;
             if (runtime.onlineLevelsRequest.valid() &&
                 runtime.onlineLevelsRequest.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {

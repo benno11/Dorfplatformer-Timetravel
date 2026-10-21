@@ -63,29 +63,14 @@ void LevelManager::reloadLevel(TileMap& map, std::vector<ObjectInstance>& object
         }
     }
 
-    const int worldAreaKey = worldId_ * 10 + levelPartId_;
-    bool hasButtonsInArea = false;
-    bool hasInactiveButtonsInArea = false;
+    levelStartButtons_.clear();
     for (int idx = 0; idx < (int)map.tileIds.size(); ++idx) {
         const unsigned short id = map.tileIds[idx];
         if (id == 66 || id == 67) {
-            hasButtonsInArea = true;
-            if (id == 66) hasInactiveButtonsInArea = true;
+            levelStartButtons_.emplace_back(idx, id);
         }
     }
-    if (hasButtonsInArea && worldId_ > 0 && levelPartId_ > 0) {
-        buttonWorldAreasWithButtons_.insert(worldAreaKey);
-        if (!hasInactiveButtonsInArea) {
-            activeButtonWorldAreas_.insert(worldAreaKey);
-        }
-    }
-    if (activeButtonWorldAreas_.find(worldAreaKey) != activeButtonWorldAreas_.end()) {
-        for (int idx = 0; idx < (int)map.tileIds.size(); ++idx) {
-            if (map.tileIds[idx] != 66) continue;
-            map.tileIds[idx] = 67;
-            applyBlockDefAt(map, idx, 67);
-        }
-    }
+    resetButtonsForLevelStart(map);
 
     const bool shield = player.hasShield;
     player = Player{};
@@ -159,6 +144,20 @@ void LevelManager::reloadLevel(TileMap& map, std::vector<ObjectInstance>& object
     }
 
     // Metadata already updated at reload start.
+}
+
+void LevelManager::resetButtonsForLevelStart(TileMap& map) {
+    // Each level/time variant owns its authored inactive and alternate states.
+    bool hasActivatedButton = false;
+    for (const auto& button : levelStartButtons_) {
+        setTileAt(map, button.first, button.second);
+        if (button.second == 67) hasActivatedButton = true;
+    }
+    if (levelStartButtons_.empty() || worldId_ <= 0 || levelPartId_ <= 0) return;
+    const int key = worldId_ * 10 + levelPartId_;
+    buttonWorldAreasWithButtons_.insert(key);
+    if (hasActivatedButton) activeButtonWorldAreas_.insert(key);
+    else activeButtonWorldAreas_.erase(key);
 }
 
 std::string LevelManager::nextLevelPath() const {
@@ -324,16 +323,8 @@ int LevelManager::activateButtonsAtPlayer(TileMap& map, const Player& player, bo
     }
     if (activated > 0 && worldId_ > 0 && levelPartId_ > 0) {
         buttonWorldAreasWithButtons_.insert(worldAreaKey);
-        bool hasRemainingInactiveButton = false;
-        for (int i = 0; i < (int)map.tileIds.size(); ++i) {
-            if (map.tileIds[i] == 66) {
-                hasRemainingInactiveButton = true;
-                break;
-            }
-        }
-        if (!hasRemainingInactiveButton) {
-            activeButtonWorldAreas_.insert(worldAreaKey);
-        }
+        // Buttons are alternative triggers for the same flag, not a collection.
+        activeButtonWorldAreas_.insert(worldAreaKey);
     }
     return activated;
 }

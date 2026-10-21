@@ -1,10 +1,15 @@
 #include "CharacterRenderer.h"
+#include "CharacterAttributes.h"
+#include "CharacterFile.h"
+#include "CharacterSpriteImport.h"
 #ifdef NDEBUG
 #undef NDEBUG
 #endif
 #include <cassert>
 #include <cstdint>
 #include <limits>
+#include <filesystem>
+#include <fstream>
 
 int main(int argc, char** argv) {
     using namespace CharacterCreator;
@@ -38,6 +43,32 @@ int main(int argc, char** argv) {
     }
     const auto beforeUnknownPreset = save(a);
     assert(!change(a, "preset:missing") && save(a) == beforeUnknownPreset);
+    a = Appearance{};
+    a.enabled = true;
+    a.speed = 4;
+    a.acceleration = 0;
+    a.jump = 3;
+    a.gravity = 1;
+    a.springiness = 4;
+    a.build = 2;
+    const MovementConfig base;
+    const auto customMovement = movementFor(a, base, true);
+    assert(std::fabs(customMovement.maxSpeedGround - base.maxSpeedGround * 1.25f) < 0.001f);
+    assert(std::fabs(customMovement.accelGround - base.accelGround * 0.75f) < 0.001f);
+    assert(std::fabs(customMovement.jumpSpeed - base.jumpSpeed * 1.1f) < 0.001f);
+    assert(std::fabs(customMovement.gravityGround - base.gravityGround * 0.9f) < 0.001f);
+    assert(movementFor(a, base, false).maxSpeedGround == base.maxSpeedGround);
+    a.enabled = false;
+    assert(movementFor(a, base, true).jumpSpeed == base.jumpSpeed);
+    assert(save(load(save(a))) == save(a));
+    assert(change(a, "reset_attributes") && a.build == 1 && a.speed == 2 && a.springiness == 2);
+    assert(!change(a, "texture:missing"));
+    for (const char* part : partIds) assert(change(a, std::string("texture:") + part));
+    assert(save(load(save(a))) == save(a));
+    const auto invalidTexture = load({{"textures", {6, -1, 100, "bad"}},
+        {"texture_pixels", {"invalid", nullptr}}, {"speed", 9999}, {"gravity", -1}});
+    assert(invalidTexture.textures[0] == 0 && invalidTexture.textures[1] == 0 &&
+        invalidTexture.textures[2] == 0 && invalidTexture.speed == 4 && invalidTexture.gravity == 0);
 
     PartPhysics parts;
     parts.update(1.0f / 60, 0, 0, true, false, 1);
@@ -76,6 +107,78 @@ int main(int argc, char** argv) {
     assert(!parts.initialized && parts.hair.position == 0);
 
     assert(SDL_Init(0));
+    SDL_Surface* tile = SDL_CreateSurface(16, 16, SDL_PIXELFORMAT_RGBA8888);
+    assert(tile);
+    assert(SDL_FillSurfaceRect(tile, nullptr, SDL_MapSurfaceRGBA(tile, 200, 50, 100, 128)));
+    const std::string imported = textureFromSurface(tile);
+    assert(validTexturePixels(imported));
+    a.texturePixels[(int)Part::Hat] = imported;
+    a.textures[(int)Part::Hat] = 6;
+    const auto hatPixel = texturePixel(a, Part::Hat, colors[0], 0, 0);
+    assert(hatPixel.r == 200 && hatPixel.g == 50 && hatPixel.b == 100 && hatPixel.a == 128);
+    assert(a.textures[(int)Part::Shirt] == 1); // Importing a hat leaves the shirt alone.
+    assert(save(load(save(a))) == save(a));
+    assert(textureFromSurface(nullptr).empty());
+    a.speed = 4;
+    a.jump = 0;
+    Appearance transferred;
+    assert(importCharacter(exportCharacter(a), transferred) && save(transferred) == save(a));
+    const auto beforeBadImport = save(transferred);
+    for (const std::string& bad : {std::string("not json"), std::string("{}"),
+        std::string(262145, 'x'), std::string("{\"format\":\"df-character\",\"version\":2}")}) {
+        assert(!importCharacter(bad, transferred) && save(transferred) == beforeBadImport);
+    }
+    auto corrupted = nlohmann::json::parse(exportCharacter(a));
+    corrupted["character"]["texture_pixels"][4] = "broken pixels";
+    assert(!importCharacter(corrupted.dump(), transferred) && save(transferred) == beforeBadImport);
+    const auto filePath = std::filesystem::temp_directory_path() /
+        ("df-character-test-" + std::to_string(SDL_GetTicksNS()) + ".dfcharacter");
+    assert(writeCharacterFile(filePath.u8string(), a));
+    assert(readCharacterFile(filePath.u8string(), transferred) && save(transferred) == save(a));
+    assert(std::filesystem::remove(filePath));
+    assert(!readCharacterFile(filePath.u8string(), transferred) && save(transferred) == save(a));
+    const auto packPath = filePath.string() + ".pack.json";
+    const auto layerPath = filePath.string() + ".bmp";
+    SDL_Surface* atlas = SDL_CreateSurface(176, 28, SDL_PIXELFORMAT_RGBA8888);
+    assert(atlas);
+    for (int frame = 0; frame < 11; ++frame) {
+        const SDL_Rect rect{frame * 16, 0, 16, 28};
+        assert(SDL_FillSurfaceRect(atlas, &rect, SDL_MapSurfaceRGBA(atlas, (Uint8)(frame * 20), 80, 120, 255)));
+    }
+    assert(SDL_SaveBMP(atlas, layerPath.c_str()));
+    SDL_DestroySurface(atlas);
+    std::vector<std::string> order;
+    for (auto name : spriteFrameNames) order.push_back(name);
+    std::swap(order[0], order[1]);
+    const std::string layerName = std::filesystem::path(layerPath).filename().u8string();
+    nlohmann::json pack{{"characters", {{"example", {{"frame_width", 16}, {"frame_height", 28},
+        {"order", order}, {"hair_base", layerName}, {"bangs_overlay", layerName}}}}}};
+    auto writePack = [&]() { std::ofstream out(packPath); out << pack.dump(); };
+    writePack();
+    std::vector<Appearance> packCharacters;
+    const auto bitmapLoader = [](const char* path) { return SDL_LoadBMP(path); };
+    assert(readSpritePack(packPath, packCharacters, bitmapLoader) && packCharacters.size() == 1);
+    assert(packCharacters[0].sprites.valid() && packCharacters[0].enabled);
+    // Non-canonical manifest ordering must map back to the correct animation frames.
+    assert(rgbaPixel(packCharacters[0].sprites.base, 0).r == 20);
+    assert(rgbaPixel(packCharacters[0].sprites.base, 16).r == 0);
+    const auto beforeBadPack = save(packCharacters[0]);
+    pack["characters"]["example"]["hair_base"] = "../outside.png";
+    writePack();
+    assert(!readSpritePack(packPath, packCharacters, bitmapLoader));
+    assert(packCharacters.size() == 1 && save(packCharacters[0]) == beforeBadPack);
+    pack["characters"]["example"]["hair_base"] = layerName;
+    pack["characters"]["example"]["order"][1] = pack["characters"]["example"]["order"][0];
+    writePack();
+    assert(!readSpritePack(packPath, packCharacters, bitmapLoader));
+    assert(std::filesystem::remove(packPath) && std::filesystem::remove(layerPath));
+    Appearance spriteExample;
+    if (argc > 2) {
+        assert(readCharacterFile(argv[2], spriteExample) && spriteExample.sprites.valid());
+        assert(importCharacter(exportCharacter(spriteExample), transferred));
+        assert(save(spriteExample) == save(transferred));
+    }
+    SDL_DestroySurface(tile);
     SDL_Surface* surface = SDL_CreateSurface(640, 224, SDL_PIXELFORMAT_RGBA8888);
     assert(surface);
     SDL_Renderer* renderer = SDL_CreateSoftwareRenderer(surface);
@@ -91,6 +194,11 @@ int main(int argc, char** argv) {
         a.pants = i % colors.size();
         a.accent = (i + 4) % colors.size();
         a.hat = (i / 4) % hats.size();
+        a.build = i % 3;
+        for (int part = 0; part < 6; ++part) a.textures[part] = (i + part) % 6;
+        if (i % 3 == 0) { a.textures[(int)Part::Hat] = 6; a.texturePixels[(int)Part::Hat] = imported; }
+        if (argc > 2 && i < 8) a = spriteExample;
+        else a.sprites = {};
         SDL_FRect dst{(float)((i % 8) * 80 + 8), (float)((i / 8) * 112 + 4), 64, 104};
         if (poses[i % 7] == Pose::Slide) { dst.y += 36; dst.h -= 36; }
         SDL_SetRenderDrawColor(renderer, 11, 22, 33, 44);

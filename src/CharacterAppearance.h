@@ -22,6 +22,30 @@ inline constexpr std::array<Color, 10> colors{{
 }};
 inline constexpr std::array<const char*, 4> hairStyles{{"Short", "Spiky", "Long", "Shaved"}};
 inline constexpr std::array<const char*, 4> hats{{"None", "Cap", "Beanie", "Crown"}};
+enum class Part { Skin, Hair, Shirt, Pants, Hat, Accent, None };
+inline constexpr std::array<const char*, 6> partIds{{"skin", "hair", "shirt", "pants", "hat", "accent"}};
+inline constexpr std::array<const char*, 6> partNames{{"Skin", "Hair", "Shirt", "Pants", "Headwear", "Accent"}};
+inline constexpr std::array<const char*, 7> textureNames{{"Solid", "Stripes", "Checks", "Dots", "Denim", "Metal", "Imported Image"}};
+inline constexpr std::array<int, 5> statPercent{{75, 90, 100, 110, 125}};
+inline constexpr std::array<const char*, 3> builds{{"Slim", "Standard", "Broad"}};
+
+inline int partIndex(const std::string& id) {
+    for (int i = 0; i < (int)partIds.size(); ++i) if (id == partIds[i]) return i;
+    return -1;
+}
+inline bool validPixelData(const std::string& pixels, size_t bytes) {
+    if (pixels.size() != bytes * 2) return false;
+    return std::all_of(pixels.begin(), pixels.end(), [](char c) {
+        return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+    });
+}
+inline bool validTexturePixels(const std::string& pixels) { return validPixelData(pixels, 8 * 8 * 4); }
+inline constexpr std::array<const char*, 11> spriteFrameNames{{"idle", "Walk-1", "Walk-2", "Walk-3", "Walk-4",
+    "Jump", "Falling", "Crouched(unused)", "Skiding", "Hurt", "Death"}};
+struct SpriteLayers {
+    std::string base, bangs, name;
+    bool valid() const { return validPixelData(base, 176 * 28 * 4) && validPixelData(bangs, 176 * 28 * 4); }
+};
 
 struct Appearance {
     bool enabled = false;
@@ -32,8 +56,19 @@ struct Appearance {
     int pants = 0;
     int hat = 0;
     int accent = 4;
+    std::array<int, 6> textures{};
+    std::array<std::string, 6> texturePixels{};
+    int build = 1;
+    int springiness = 2;
+    int speed = 2;
+    int acceleration = 2;
+    int jump = 2;
+    int gravity = 2;
+    SpriteLayers sprites;
 
     void normalize() {
+        if (!sprites.valid()) sprites = {};
+        if (sprites.name.size() > 80) sprites.name.resize(80);
         skin = std::clamp(skin, 0, (int)skinColors.size() - 1);
         hairColor = std::clamp(hairColor, 0, (int)colors.size() - 1);
         hairStyle = std::clamp(hairStyle, 0, (int)hairStyles.size() - 1);
@@ -41,6 +76,13 @@ struct Appearance {
         pants = std::clamp(pants, 0, (int)colors.size() - 1);
         hat = std::clamp(hat, 0, (int)hats.size() - 1);
         accent = std::clamp(accent, 0, (int)colors.size() - 1);
+        build = std::clamp(build, 0, 2);
+        for (int* stat : {&springiness, &speed, &acceleration, &jump, &gravity}) *stat = std::clamp(*stat, 0, 4);
+        for (int i = 0; i < 6; ++i) {
+            if (!validTexturePixels(texturePixels[i])) texturePixels[i].clear();
+            textures[i] = std::clamp(textures[i], 0, 6);
+            if (textures[i] == 6 && texturePixels[i].empty()) textures[i] = 0;
+        }
     }
 };
 
@@ -63,7 +105,11 @@ inline nlohmann::json save(const Appearance& appearance) {
     a.normalize();
     return {{"version", 1}, {"experimental", true}, {"enabled", a.enabled},
         {"skin", a.skin}, {"hair_color", a.hairColor}, {"hair_style", a.hairStyle},
-        {"shirt", a.shirt}, {"pants", a.pants}, {"hat", a.hat}, {"accent", a.accent}};
+        {"shirt", a.shirt}, {"pants", a.pants}, {"hat", a.hat}, {"accent", a.accent},
+        {"textures", a.textures}, {"texture_pixels", a.texturePixels}, {"build", a.build},
+        {"springiness", a.springiness}, {"speed", a.speed}, {"acceleration", a.acceleration},
+        {"jump", a.jump}, {"gravity", a.gravity},
+        {"sprite_layers", {{"base", a.sprites.base}, {"bangs", a.sprites.bangs}, {"name", a.sprites.name}}}};
 }
 
 inline Appearance load(const nlohmann::json& json) {
@@ -86,6 +132,34 @@ inline Appearance load(const nlohmann::json& json) {
     a.pants = index("pants", a.pants);
     a.hat = index("hat", a.hat);
     a.accent = index("accent", a.accent);
+    a.build = index("build", a.build);
+    a.springiness = index("springiness", a.springiness);
+    a.speed = index("speed", a.speed);
+    a.acceleration = index("acceleration", a.acceleration);
+    a.jump = index("jump", a.jump);
+    a.gravity = index("gravity", a.gravity);
+    if (json.contains("sprite_layers") && json["sprite_layers"].is_object()) {
+        const auto& layers = json["sprite_layers"];
+        if (layers.contains("base") && layers["base"].is_string() && layers.contains("bangs") && layers["bangs"].is_string()) {
+            const auto& base = layers["base"].get_ref<const std::string&>();
+            const auto& bangs = layers["bangs"].get_ref<const std::string&>();
+            if (validPixelData(base, 176 * 28 * 4) && validPixelData(bangs, 176 * 28 * 4)) {
+                a.sprites.base = base;
+                a.sprites.bangs = bangs;
+                if (layers.contains("name") && layers["name"].is_string()) a.sprites.name = layers["name"].get<std::string>().substr(0, 80);
+            }
+        }
+    }
+    for (int i = 0; i < 6; ++i) {
+        if (json.contains("textures") && json["textures"].is_array() && i < (int)json["textures"].size() &&
+            json["textures"][i].is_number_integer())
+            a.textures[i] = (int)std::clamp(json["textures"][i].get<double>(), 0.0, 6.0);
+        if (json.contains("texture_pixels") && json["texture_pixels"].is_array() && i < (int)json["texture_pixels"].size() &&
+            json["texture_pixels"][i].is_string()) {
+            const auto& pixels = json["texture_pixels"][i].get_ref<const std::string&>();
+            if (validTexturePixels(pixels)) a.texturePixels[i] = pixels;
+        }
+    }
     a.normalize();
     return a;
 }
@@ -101,6 +175,12 @@ inline bool change(Appearance& a, const std::string& part) {
         return false;
     }
     a.normalize();
+    if (part.rfind("texture:", 0) == 0) {
+        const int i = partIndex(part.substr(8));
+        if (i < 0) return false;
+        a.textures[i] = (a.textures[i] + 1) % (a.texturePixels[i].empty() ? 6 : 7);
+        return true;
+    }
     if (part == "enabled") a.enabled = !a.enabled;
     else if (part == "reset") a = Appearance{};
     else if (part == "skin") a.skin = (a.skin + 1) % skinColors.size();
@@ -110,6 +190,15 @@ inline bool change(Appearance& a, const std::string& part) {
     else if (part == "pants") a.pants = (a.pants + 1) % colors.size();
     else if (part == "hat") a.hat = (a.hat + 1) % hats.size();
     else if (part == "accent") a.accent = (a.accent + 1) % colors.size();
+    else if (part == "build") a.build = (a.build + 1) % builds.size();
+    else if (part == "springiness") a.springiness = (a.springiness + 1) % statPercent.size();
+    else if (part == "speed") a.speed = (a.speed + 1) % statPercent.size();
+    else if (part == "acceleration") a.acceleration = (a.acceleration + 1) % statPercent.size();
+    else if (part == "jump") a.jump = (a.jump + 1) % statPercent.size();
+    else if (part == "gravity") a.gravity = (a.gravity + 1) % statPercent.size();
+    else if (part == "reset_attributes") { a.build = 1; a.springiness = a.speed = a.acceleration = a.jump = a.gravity = 2; }
+    else if (part == "clear_textures") { a.textures = {}; a.texturePixels = {}; }
+    else if (part == "procedural_parts") a.sprites = {};
     else return false;
     return true;
 }

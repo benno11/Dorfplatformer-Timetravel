@@ -5,7 +5,8 @@
 inline void RenderShellChraker(SDL_Renderer* ren, SDL_Texture* texture, const Frame* bodyFrame,
                                const Frame* armFrame, const ShellChraker::Geometry& geometry) {
     const auto& body = geometry.body;
-    const auto& arm = geometry.arm;
+    auto arm = geometry.arm;
+    arm.y -= 4.0f;
     const SDL_Rect bodyDst{(int)std::lround(body.x), (int)std::lround(body.y),
         std::max(1, (int)std::lround(body.w)), std::max(1, (int)std::lround(body.h))};
     if (texture && armFrame) {

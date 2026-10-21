@@ -61,6 +61,62 @@ int main() {
     assert(manager.worldId() == 6 && manager.levelPartId() == 2 && manager.timeId() == 4);
     assert(manager.musicPath() == "assets/Audio/Music/6.2.mp3");
 
+    LevelMeta buttonMeta;
+    buttonMeta.world = 2;
+    buttonMeta.area = 1;
+    buttonMeta.time = 1;
+    files["button_start.bin"] = SerializeLevelMetaHeader(buttonMeta) +
+        "DFLVL4 4 4\n2 2 2 2\n2 66 66 2\n2 66 2 2\n2 2 2 2\nOBJ 0\n";
+    auto areaActive = [&](int key) {
+        const auto active = manager.activeButtonWorldAreas();
+        return std::find(active.begin(), active.end(), key) != active.end();
+    };
+    manager.setButtonAreaActiveForDebug(2, 1, true);
+    manager.setButtonAreaActiveForDebug(2, 2, true);
+    manager.setLevelPath("button_start.bin");
+    manager.reloadLevel(map, objects, loaded, player);
+    assert(map.tileIds[5] == 66 && map.tileIds[6] == 66 && map.tileIds[9] == 66);
+    assert(!areaActive(21) && areaActive(22));
+    player.x = 32; player.y = 32; player.w = player.h = 30;
+    assert(manager.activateButtonsAtPlayer(map, player) == 1 && areaActive(21));
+    assert(map.tileIds[9] == 66); // The first press sets the flag with another button untouched.
+    player.y = 64;
+    assert(manager.activateButtonsAtPlayer(map, player) == 1 && areaActive(21));
+    manager.reloadLevel(map, objects, loaded, player);
+    assert(map.tileIds[5] == 66 && map.tileIds[6] == 66 && map.tileIds[9] == 66 && !areaActive(21));
+    for (int button : {5, 6, 9}) {
+        manager.reloadLevel(map, objects, loaded, player);
+        player.x = (button % map.w) * map.tileSize;
+        player.y = (button / map.w) * map.tileSize;
+        player.w = player.h = 30;
+        assert(manager.activateButtonsAtPlayer(map, player) == 1 && areaActive(21));
+        assert(map.tileIds[button == 5 ? 9 : 5] == 66);
+        assert(manager.activateButtonsAtPlayer(map, player) == 0 && areaActive(21));
+        assert(areaActive(22));
+    }
+    // A mixed authored state also sets the flag from just one active button.
+    files["button_mixed.bin"] = SerializeLevelMetaHeader(buttonMeta) +
+        "DFLVL4 4 4\n2 2 2 2\n2 66 67 2\n2 66 2 2\n2 2 2 2\nOBJ 0\n";
+    manager.setLevelPath("button_mixed.bin");
+    manager.reloadLevel(map, objects, loaded, player);
+    assert(map.tileIds[5] == 66 && map.tileIds[6] == 67 && map.tileIds[9] == 66 && areaActive(21));
+    buttonMeta.time = 4;
+    files["button_alternate.bin"] = SerializeLevelMetaHeader(buttonMeta) +
+        "DFLVL4 4 4\n2 2 2 2\n2 67 67 2\n2 67 2 2\n2 2 2 2\nOBJ 0\n";
+    manager.setLevelPath("button_alternate.bin");
+    manager.reloadLevel(map, objects, loaded, player);
+    assert(map.tileIds[5] == 67 && map.tileIds[6] == 67 && map.tileIds[9] == 67 && areaActive(21));
+    manager.setLevelPath("button_start.bin");
+    manager.reloadLevel(map, objects, loaded, player);
+    // Saved maps and saved area flags cannot override authored states on Continue.
+    manager.setTileAt(map, 5, 2);
+    manager.setTileAt(map, 6, 67);
+    manager.setTileAt(map, 9, 67);
+    manager.setButtonAreaActiveForDebug(2, 1, true);
+    manager.resetButtonsForLevelStart(map);
+    assert(map.tileIds[5] == 66 && map.tileIds[6] == 66 && map.tileIds[9] == 66);
+    assert(!areaActive(21) && areaActive(22));
+
     for (int version : {2, 3}) {
         files["legacy.bin"] = "DFLVL" + std::to_string(version) + " " + tiles;
         assert(loadLevelBNNLVL("legacy.bin", map, objects, loaded));
