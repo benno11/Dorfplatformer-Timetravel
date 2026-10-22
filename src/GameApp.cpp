@@ -46,6 +46,7 @@
 #include "ShieldRenderer.h"
 #include "CharacterRenderer.h"
 #include "CharacterAttributes.h"
+#include "CharacterHairCollision.h"
 #include "MovingPlatform.h"
 #include "Player.h"
 #include "PlayerController.h"
@@ -7283,7 +7284,9 @@ int RunGameApp(int argc, char** argv) {
                 const float bumperCY = testBy + bh * 0.5f;
                 if (playerCY <= bumperCY && player.vy >= 0.0f) {
                     if (applyBumperBounce(testBy - (float)player.h, -1200.0f)) {
-                        if (impact->second.cooldownRemaining > 0.0f) break;
+                        if (impact->second.cooldownRemaining > 0.0f){
+                            break;
+                        }
                         addMovementReason(MR_BUMPER);
                         triggerBumperImpact(objIdx, obj.x, obj.y, -1.0f);
                         audio.playBumperSfx();
@@ -7292,7 +7295,9 @@ int RunGameApp(int argc, char** argv) {
                 }
                 if (playerCY > bumperCY && player.vy <= 0.0f) {
                     if (applyBumperBounce(testBy + bh, 1200.0f)) {
-                        if (impact->second.cooldownRemaining > 0.0f) break;
+                        if (impact->second.cooldownRemaining > 0.0f) {
+                            break;
+                        }
                         addMovementReason(MR_BUMPER);
                         triggerBumperImpact(objIdx, obj.x, obj.y, 1.0f);
                         audio.playBumperSfx();
@@ -7376,8 +7381,19 @@ int RunGameApp(int argc, char** argv) {
         RENDER_ONLY:
         if (!paused) {
             if (showExperimentalFeatures && characterAppearance.enabled) {
+                const bool hairSliding = player.slideTime > 0.0f;
+                const float hairHeight = hairSliding ? std::max(1.0f, std::round(player.h * 0.65f)) : (float)player.h;
+                const CharacterCreator::HairPhysics::Box hairPlayer{player.x, player.y + player.h - hairHeight, (float)player.w, hairHeight};
+                auto hairScene = CharacterCreator::hairBodyCollisions(characterAppearance, player.facing, hairSliding);
+                CharacterCreator::addHairTileCollisions(hairScene, map, hairPlayer, (float)kGameplayViewH, gameplayWrapX, gameplayWrapY);
+                for (int index = 0; index < (int)objects.size(); ++index) {
+                    if (objectIds[index] != ObjectIds::MovingPlatform) continue;
+                    const auto bounds = MovingPlatform::nearPlayer(objects[index].x, objects[index].y, (float)map.tileSize,
+                        player, gameplayWrapX ? (float)(map.w * map.tileSize) : 0, gameplayWrapY ? (float)(map.h * map.tileSize) : 0);
+                    CharacterCreator::addHairWorldBox(hairScene, {bounds.x, bounds.y, bounds.w, bounds.h}, hairPlayer);
+                }
                 characterParts.update(dt, player.vx, player.vy, player.onGround,
-                    player.slideTime > 0.0f, player.facing, CharacterCreator::attributeMultiplier(characterAppearance.springiness));
+                    hairSliding, player.facing, CharacterCreator::attributeMultiplier(characterAppearance.springiness), &hairScene);
             } else characterParts = CharacterCreator::PartPhysics{};
         }
         {
@@ -8339,7 +8355,6 @@ int RunGameApp(int argc, char** argv) {
                 }
                 if (playerTex) SDL_SetTextureAlphaMod(playerTex, playerAlpha);
                 auto drawPlayerFrame = [&](const SDL_Rect& out) {
-                    if (out.x + out.w <= 0 || out.y + out.h <= 0 || out.x >= worldViewW || out.y >= worldViewH) return;
                     if (useCustomCharacter) {
                         auto pose = CharacterCreator::Pose::Idle;
                         switch (player.anim) {
@@ -8352,10 +8367,13 @@ int RunGameApp(int argc, char** argv) {
                             case ANIM_DEATH: pose = CharacterCreator::Pose::Death; break;
                             default: break;
                         }
-                        CharacterCreator::render(ren, characterAppearance,
-                            {(float)out.x, (float)out.y, (float)out.w, (float)out.h},
+                        const SDL_FRect destination{(float)out.x, (float)out.y, (float)out.w, (float)out.h};
+                        const auto bounds = CharacterCreator::visualBounds(characterAppearance, destination, pose, player.animTime, &characterParts);
+                        if (bounds.x + bounds.w <= 0 || bounds.y + bounds.h <= 0 || bounds.x >= worldViewW || bounds.y >= worldViewH) return;
+                        CharacterCreator::render(ren, characterAppearance, destination,
                             pose, player.animTime, player.facing, playerAlpha, &characterParts);
                     } else {
+                        if (out.x + out.w <= 0 || out.y + out.h <= 0 || out.x >= worldViewW || out.y >= worldViewH) return;
                         renderFrameEx(ren, playerTex, *renderFramePtr, out,
                             player.facing < 0 ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE);
                     }

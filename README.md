@@ -28,6 +28,8 @@ values increase without wrapping and have Shorten buttons; their minimum remains
 0 (hidden). Width stays at least 1. Longer hair can extend below the sprite;
 rendering only processes visible rows. Turning the toggle off clamps lengths to
 their normal limits (fringe 6, back 10). Reset Hair Shape also turns it off.
+Off-screen culling includes the full uncapped hair length and vertical physics
+motion, so visible hair stays drawn when the body moves above the viewport.
 **Import Custom Hairstyle** accepts PNG, JPG, BMP, or WebP hair art and selects
 the Imported Image hair style. Use a transparent 16x16 PNG: the head occupies columns
 3–12 and rows 3–12, with room above and below for spikes and locks. Other sizes
@@ -45,6 +47,12 @@ along their length and settle after stops, jumps, and landings. Turning preserve
 their world-space momentum. Short, Spiky, Long, and Custom Parts share this
 simulation; imported image hair keeps its existing spring behavior. The simulation
 uses fixed storage even for uncapped hair and follows Part Springiness.
+Vertical elasticity lets hair stretch, compress, and bounce during jumps and
+landings. Its joints collide with the face and torso, solid level tiles, platform
+tops, and moving platforms. Contacts stop inward motion and add a small rebound;
+hair can slide along surfaces. Extended tails stop at level surfaces instead of
+passing through floors. Wrapped levels use the neighboring wrapped tiles. These
+collisions are cosmetic and never push the player or activate gameplay objects.
 **Placeholder Characters** offers six editable starters: Explorer, Runner,
 Mechanic, Ranger, Royal, and Frost. Selecting one enables it and saves its look;
 the creator preview shows its animated parts immediately.

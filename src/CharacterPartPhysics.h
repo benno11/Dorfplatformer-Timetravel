@@ -26,12 +26,14 @@ struct PartSpring {
 struct PartPhysics {
     PartSpring headX, headY, hair, hatX, hatY, arms, legs;
     HairPhysics builtInHair;
+    HairPhysics::CollisionScene hairCollisions;
     float gait = 0.0f;
     float previousVx = 0.0f, previousVy = 0.0f;
     bool wasGrounded = false;
     bool initialized = false;
 
-    void update(float elapsed, float vx, float vy, bool grounded, bool sliding, int facing, float springiness = 1.0f) {
+    void update(float elapsed, float vx, float vy, bool grounded, bool sliding, int facing, float springiness = 1.0f,
+        const HairPhysics::CollisionScene* collisions = nullptr) {
         if (!std::isfinite(elapsed) || !std::isfinite(vx) || !std::isfinite(vy)) {
             *this = PartPhysics{};
             return;
@@ -39,7 +41,6 @@ struct PartPhysics {
         const float dt = std::clamp(elapsed, 0.0f, 1.0f / 30.0f);
         springiness = std::isfinite(springiness) ? std::clamp(springiness, 0.75f, 1.25f) : 1.0f;
         if (dt <= 0.0f) return;
-        builtInHair.update(dt, vx, vy, springiness);
         vx = std::clamp(vx, -2000.0f, 2000.0f);
         vy = std::clamp(vy, -2000.0f, 2000.0f);
         if (!initialized) {
@@ -77,6 +78,10 @@ struct PartPhysics {
             arms.step(stride * 0.6f + inertia * 0.24f, 95, 10 / springiness, 0.85f, h);
             legs.step(-stride * 0.48f, 160, 15 / springiness, 0.6f, h);
         }
+        hairCollisions = collisions ? *collisions : HairPhysics::CollisionScene{};
+        hairCollisions.root.x += headX.position * direction;
+        hairCollisions.root.y += headY.position * 1.3f;
+        builtInHair.update(dt, vx, vy, springiness, &hairCollisions);
         previousVx = vx;
         previousVy = vy;
         wasGrounded = grounded;

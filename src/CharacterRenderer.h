@@ -8,6 +8,27 @@
 
 namespace CharacterCreator {
 
+// Match the renderer's sprite clipping, extending only for uncapped procedural hair.
+// Use floating-point bounds so very large saved lengths cannot overflow an SDL_Rect.
+inline SDL_FRect visualBounds(Appearance a, const SDL_FRect& dst, Pose pose = Pose::Idle,
+    float time = 0.0f, const PartPhysics* physics = nullptr) {
+    a.normalize();
+    if (dst.w <= 0 || dst.h <= 0 || !a.sprites.base.empty() || pose == Pose::Death ||
+        !a.uncapHairLength || a.hairStyle != customPartsHairStyle) return dst;
+    const float headY = 3 + (physics ? physics->headY.position * 1.3f :
+        (pose == Pose::Run ? ((int)(time * 24.0f) % 2) : 0));
+    double bottom = 28;
+    if (a.hairShape[1] > 0) bottom = std::max(bottom, (double)headY + a.hairShape[0] + a.hairShape[1]);
+    if (a.hairShape[2] > 0) bottom = std::max(bottom, (double)headY + 3 + a.hairShape[2]);
+    float verticalMotion = 0;
+    if (physics) {
+        for (int i = 0; i < HairPhysics::jointCount; ++i)
+            verticalMotion = std::max(verticalMotion, physics->builtInHair.joints[i].y - i * HairPhysics::spacing);
+    }
+    if (a.hairShape[1] > 0 || a.hairShape[2] > 0) bottom += verticalMotion + 1;
+    return {dst.x, dst.y, dst.w, (float)std::ceil(bottom * dst.h / 28.0)};
+}
+
 // Draw parts on a 16 x 28 pixel grid; gameplay continues to use the normal physics.
 inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& dst,
     Pose pose = Pose::Idle, float time = 0.0f, int facing = 1, Uint8 alpha = 255,
@@ -89,11 +110,14 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& dst,
         if (w <= 0 || h <= 0) return;
         SDL_FRect rect{dst.x + x * dst.w / 16.0f, dst.y + y * dst.h / 28.0f,
             w * dst.w / 16.0f, h * dst.h / 28.0f};
-        if (part == Part::None || a.textures[(int)part] == 0) {
+        const bool clipHair = physics && part == Part::Hair && a.hairStyle != customHairStyle &&
+            physics->hairCollisions.blocksWorld(x, y, w, h);
+        if (!clipHair && (part == Part::None || a.textures[(int)part] == 0)) {
             SDL_SetRenderDrawColor(ren, color.r, color.g, color.b, alpha);
             SDL_RenderFillRect(ren, &rect);
         } else {
             for (float py = y; py < bottom; py += 1.0f) for (float px = x; px < right; px += 1.0f) {
+                if (clipHair && physics->hairCollisions.blocksWorld(px, py, std::min(1.0f, right - px), std::min(1.0f, bottom - py))) continue;
                 int u = (int)std::floor((px - textureOriginX) / buildScale);
                 if (facing < 0) u = (int)std::ceil(w / buildScale) - 1 - u;
                 const auto pixel = texturePixel(a, part, color, u, (int)std::floor(py - textureOriginY) + textureY);
@@ -130,6 +154,13 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& dst,
             for (int row = first; row < rows; ++row) {
                 const auto offset = hairOffset(rootDistance + row);
                 const auto next = hairOffset(rootDistance + row + 1.0f);
+                if (physics) {
+                    const float scale = a.build == 0 ? 0.88f : (a.build == 2 ? 1.08f : 1.0f);
+                    float worldX = 8 + (x + offset.x - 8) * scale;
+                    if (facing < 0) worldX = 16 - worldX - width * scale;
+                    // Stop extended tails at a surface instead of reappearing below a floor.
+                    if (physics->hairCollisions.blocksWorld(worldX, y + row + offset.y, width * scale, 1)) break;
+                }
                 block(x + offset.x, y + row + offset.y, (float)width,
                     std::max(1.0f, 1.0f + next.y - offset.y), hair, Part::Hair, row);
             }
@@ -153,8 +184,8 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& dst,
             hairStrand(3 + lean, headY + 3, a.hairShape[3], a.hairShape[2]);
             if (a.hairShape[4]) {
                 const auto offset = hairOffset((float)a.hairShape[4]);
-                block(4 + lean + offset.x, headY - a.hairShape[4] - offset.y * 0.3f, 2, a.hairShape[4] + 1, hair, Part::Hair);
-                block(8 + lean + offset.x * 0.7f, headY - a.hairShape[4] + 1 - offset.y * 0.2f, 2, a.hairShape[4], hair, Part::Hair);
+                block(4 + lean + offset.x, headY - a.hairShape[4] + offset.y, 2, a.hairShape[4] + 1, hair, Part::Hair);
+                block(8 + lean + offset.x * 0.7f, headY - a.hairShape[4] + 1 + offset.y * 0.7f, 2, a.hairShape[4], hair, Part::Hair);
             }
         } else if (a.hairStyle != 3) {
             block(3 + lean, headY, 10, a.hairStyle == 2 ? 4 : 3, hair, Part::Hair);
@@ -164,8 +195,8 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& dst,
             }
             if (a.hairStyle == 1) {
                 const auto offset = hairOffset(2);
-                block(4 + lean + offset.x, headY - 2 - offset.y * 0.3f, 2, 3, hair, Part::Hair);
-                block(8 + lean + offset.x * 0.7f, headY - 1 - offset.y * 0.2f, 2, 2, hair, Part::Hair);
+                block(4 + lean + offset.x, headY - 2 + offset.y, 2, 3, hair, Part::Hair);
+                block(8 + lean + offset.x * 0.7f, headY - 1 + offset.y * 0.7f, 2, 2, hair, Part::Hair);
             }
         }
         block(9 + lean, headY + 4, 3, 3, white);

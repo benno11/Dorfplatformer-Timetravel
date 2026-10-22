@@ -35,6 +35,7 @@
 #include "UiScale.h"
 #include "CharacterRenderer.h"
 #include "CharacterAttributes.h"
+#include "CharacterHairCollision.h"
 #include "CharacterFile.h"
 #include "CharacterSpriteImport.h"
 
@@ -1832,9 +1833,10 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
         if (scene == 3) { sprite.y += 20; sprite.h -= 20; }
         const float jumpPhase = std::fmod(time, 2.0f) / 2.0f;
         const float previewVy = scene == 2 ? -700.0f + jumpPhase * 1400.0f : 0.0f;
+        const auto hairScene = CharacterCreator::hairBodyCollisions(*ctx.characterAppearance, 1, scene == 3);
         runtime.characterParts.update(dt, scene == 1 || scene == 3 ? 500.0f * CharacterCreator::attributeMultiplier(ctx.characterAppearance->speed) : 0.0f,
             previewVy * CharacterCreator::attributeMultiplier(ctx.characterAppearance->jump), scene != 2, scene == 3, 1,
-            CharacterCreator::attributeMultiplier(ctx.characterAppearance->springiness));
+            CharacterCreator::attributeMultiplier(ctx.characterAppearance->springiness), &hairScene);
         CharacterCreator::render(ctx.ren, *ctx.characterAppearance, sprite, poses[scene], time,
             1, 255, &runtime.characterParts);
         DrawText(ctx.ren, card.x + (card.w - MeasureTextWidth(1, names[scene])) / 2,

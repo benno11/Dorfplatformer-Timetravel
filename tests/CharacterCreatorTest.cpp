@@ -2,6 +2,7 @@
 #include "CharacterAttributes.h"
 #include "CharacterFile.h"
 #include "CharacterSpriteImport.h"
+#include "CharacterHairCollision.h"
 #ifdef NDEBUG
 #undef NDEBUG
 #endif
@@ -151,11 +152,101 @@ int main(int argc, char** argv) {
             frame % 3 ? 100000 : -100000);
         for (const auto& joint : strand.joints) {
             assert(std::isfinite(joint.x) && std::fabs(joint.x) <= 2.8f);
-            assert(std::isfinite(joint.y) && std::fabs(joint.y) <= HairPhysics::reach + 0.25f);
+            assert(std::isfinite(joint.y) && std::fabs(joint.y) <= HairPhysics::reach + 3.75f);
         }
     }
     strand.update(std::numeric_limits<float>::quiet_NaN(), 0, 0);
     assert(!strand.initialized && strand.offset(10).x == 0);
+    // Purely vertical movement stretches and compresses a straight strand.
+    strand.update(1.0f / 60, 0, 0);
+    for (int frame = 0; frame < 20; ++frame) strand.update(1.0f / 60, 0, -900);
+    const float risingHeight = strand.offset(10).y;
+    for (int frame = 0; frame < 20; ++frame) strand.update(1.0f / 60, 0, 900);
+    assert(std::fabs(strand.offset(10).y - risingHeight) > 0.1f);
+
+    HairPhysics::CollisionScene floorScene;
+    floorScene.radius = 0.5f;
+    floorScene.boxes.push_back({-100, 10, 200, 4});
+    assert(floorScene.resolve({0, 0}, {0, 30}).y < 9.5f);
+    HairPhysics::CollisionScene wallScene;
+    wallScene.radius = 0.5f;
+    wallScene.boxes.push_back({2, -100, 4, 200});
+    const auto slide = wallScene.resolve({0, 0}, {10, 5});
+    assert(slide.x < 1.5f && std::fabs(slide.y - 5) < 0.01f);
+    wallScene.boxes.push_back({-100, 3, 200, 4});
+    const auto corner = wallScene.resolve({0, 0}, {10, 10});
+    assert(corner.x < 1.5f && corner.y < 2.5f);
+    HairPhysics::CollisionScene ceilingScene;
+    ceilingScene.radius = 0.5f;
+    ceilingScene.boxes.push_back({-100, -5, 200, 1});
+    assert(ceilingScene.resolve({0, 0}, {0, -20}).y > -3.5f);
+    HairPhysics::CollisionScene platformScene;
+    platformScene.radius = 0.5f;
+    platformScene.boxes.push_back({-100, 5, 200, 0.5f, false, true});
+    assert(platformScene.resolve({0, 0}, {0, 10}).y < 4.5f);
+    assert(platformScene.resolve({0, 10}, {0, 0}).y == 0);
+    HairPhysics::CollisionScene embeddedScene;
+    embeddedScene.radius = 0.5f;
+    embeddedScene.boxes.push_back({0, 0, 10, 10});
+    const auto ejected = embeddedScene.resolve({3, 3}, {3, 3});
+    assert(ejected.x < -0.5f || ejected.y < -0.5f);
+    HairPhysics collidingStrand;
+    for (int frame = 0; frame < 120; ++frame) collidingStrand.update(1.0f / 60, 0, 0, 1, &floorScene);
+    for (const auto& joint : collidingStrand.joints) assert(joint.y <= 9.5f && std::isfinite(joint.x));
+    const auto bodyScene = hairBodyCollisions(Appearance{}, 1, false);
+    assert(!bodyScene.boxes.empty() && !bodyScene.blocksWorld(6, 15, 1, 1));
+    assert(bodyScene.resolve({0, 0}, {3, 12}).x != 3);
+
+    struct HairTestMap {
+        int tileSize = 32, w = 3, h = 3;
+        std::vector<unsigned char> solid = std::vector<unsigned char>(9, 0);
+        std::vector<unsigned char> semisolid = std::vector<unsigned char>(9, 0);
+    } hairMap;
+    hairMap.solid[4] = 1;
+    HairPhysics::CollisionScene tileScene;
+    addHairTileCollisions(tileScene, hairMap, {32, 0, 16, 28}, 64, false, false);
+    assert(tileScene.blocksWorld(1, 33, 1, 1));
+    hairMap.solid[4] = 0;
+    tileScene = {};
+    addHairTileCollisions(tileScene, hairMap, {32, 0, 16, 28}, 64, false, false);
+    assert(!tileScene.blocksWorld(1, 33, 1, 1));
+    tileScene = {};
+    addHairTileCollisions(tileScene, hairMap, {-16, 0, 16, 28}, 64, true, false);
+    assert(!tileScene.blocksWorld(1, 1, 1, 1));
+    hairMap.solid[2] = 1;
+    tileScene = {};
+    addHairTileCollisions(tileScene, hairMap, {-16, 0, 16, 28}, 64, true, false);
+    assert(tileScene.blocksWorld(1, 1, 1, 1));
+
+    Appearance extentHair;
+    extentHair.hairStyle = customPartsHairStyle;
+    extentHair.uncapHairLength = true;
+    extentHair.hairShape = {{3, 0, 100, 2, 0}};
+    const SDL_FRect viewport{0, 0, 640, 224};
+    const SDL_FRect bodyAbove{8, -60, 16, 28};
+    assert(!SDL_HasRectIntersectionFloat(&bodyAbove, &viewport));
+    auto hairBounds = visualBounds(extentHair, bodyAbove);
+    assert(SDL_HasRectIntersectionFloat(&hairBounds, &viewport));
+    PartPhysics stretchedHair;
+    stretchedHair.builtInHair.joints.back().y += 3;
+    assert(visualBounds(extentHair, bodyAbove, Pose::Idle, 0, &stretchedHair).h > hairBounds.h);
+    for (const SDL_FRect outside : {SDL_FRect{-17, -60, 16, 28}, SDL_FRect{641, -60, 16, 28},
+        SDL_FRect{8, 225, 16, 28}, SDL_FRect{8, -200, 16, 28}}) {
+        hairBounds = visualBounds(extentHair, outside);
+        assert(!SDL_HasRectIntersectionFloat(&hairBounds, &viewport));
+    }
+    hairBounds = visualBounds(extentHair, bodyAbove, Pose::Death);
+    assert(hairBounds.h == bodyAbove.h);
+    extentHair.uncapHairLength = false;
+    assert(visualBounds(extentHair, bodyAbove).h == bodyAbove.h);
+    extentHair.uncapHairLength = true;
+    extentHair.hairShape[1] = std::numeric_limits<int>::max();
+    hairBounds = visualBounds(extentHair, bodyAbove);
+    assert(std::isfinite(hairBounds.h) && hairBounds.h > 1.0e9f && hairBounds.y + hairBounds.h > viewport.y);
+    extentHair.hairShape[1] = 100;
+    extentHair.hairShape[2] = 0; // Fringe alone also extends the visible bounds.
+    hairBounds = visualBounds(extentHair, bodyAbove);
+    assert(SDL_HasRectIntersectionFloat(&hairBounds, &viewport));
 
     assert(SDL_Init(0));
     SDL_Surface* tile = SDL_CreateSurface(16, 16, SDL_PIXELFORMAT_RGBA8888);
@@ -353,6 +444,44 @@ int main(int argc, char** argv) {
         assert(SDL_ReadSurfacePixel(hairOutput, facing == 1 ? 3 : 12, 100, &r, &g, &b, &alpha));
         assert(r > 0 && g > 0 && b > 0);
         SDL_DestroySurface(hairOutput);
+    }
+    for (int facing : {1, -1}) {
+        PartPhysics floorContact;
+        floorContact.hairCollisions.boxes.push_back({0, 40, 16, 10});
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+        render(renderer, hairTest, SDL_FRect{0, 0, 16, 28}, Pose::Idle, 0, facing, 255, &floorContact);
+        SDL_Surface* hairOutput = SDL_RenderReadPixels(renderer, nullptr);
+        assert(hairOutput);
+        Uint8 r, g, b, alpha;
+        const int x = facing == 1 ? 3 : 12;
+        assert(SDL_ReadSurfacePixel(hairOutput, x, 35, &r, &g, &b, &alpha));
+        assert(r > 0);
+        for (int y : {45, 75}) {
+            assert(SDL_ReadSurfacePixel(hairOutput, x, y, &r, &g, &b, &alpha));
+            assert(r == 0 && g == 0 && b == 0);
+        }
+        SDL_DestroySurface(hairOutput);
+    }
+    // Exercise the same bounds check as gameplay with the entire body above the screen.
+    for (int facing : {1, -1}) for (Pose pose : {Pose::Idle, Pose::Slide}) {
+        const SDL_FRect destination{8, -60, 16, pose == Pose::Slide ? 18.0f : 28.0f};
+        const auto bounds = visualBounds(extentHair, destination, pose);
+        assert(!SDL_HasRectIntersectionFloat(&destination, &viewport));
+        assert(SDL_HasRectIntersectionFloat(&bounds, &viewport));
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+        if (SDL_HasRectIntersectionFloat(&bounds, &viewport)) render(renderer, extentHair, destination, pose, 0, facing);
+        SDL_Surface* visibleHair = SDL_RenderReadPixels(renderer, nullptr);
+        assert(visibleHair);
+        int visiblePixels = 0;
+        for (int y = 0; y < 10; ++y) for (int x = 8; x < 24; ++x) {
+            Uint8 r, g, b, alpha;
+            assert(SDL_ReadSurfacePixel(visibleHair, x, y, &r, &g, &b, &alpha));
+            if (r || g || b) ++visiblePixels;
+        }
+        assert(visiblePixels > 0);
+        SDL_DestroySurface(visibleHair);
     }
     SDL_SetRenderDrawColor(renderer, 17, 25, 38, 255);
     SDL_RenderClear(renderer);
