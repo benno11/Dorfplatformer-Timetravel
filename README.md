@@ -16,9 +16,35 @@ settings. Turn the custom character off to use the original player; Reset also
 clears the design. Disabling Experimental Features uses the original player
 while keeping your design saved. Colors, textures, and visual build keep the
 standard collision box; movement attributes change the enabled custom character.
+**Customize Built-in Hair** opens controls for top thickness, fringe length,
+back length, back width, and spike height. Select a value to cycle it; editing
+selects Custom Parts and activates editable procedural parts. Hair Color and
+Hair Texture apply to this hairstyle, including its spring motion. Use Custom
+Hair Parts reapplies the saved shape; Reset Hair Shape restores its defaults.
+The animated preview updates immediately, and the shape saves in client settings
+and exported `.dfcharacter` files.
+**Uncap Hair Length** removes the normal fringe and back length limits. These
+values increase without wrapping and have Shorten buttons; their minimum remains
+0 (hidden). Width stays at least 1. Longer hair can extend below the sprite;
+rendering only processes visible rows. Turning the toggle off clamps lengths to
+their normal limits (fringe 6, back 10). Reset Hair Shape also turns it off.
+**Import Custom Hairstyle** accepts PNG, JPG, BMP, or WebP hair art and selects
+the Imported Image hair style. Use a transparent 16x16 PNG: the head occupies columns
+3–12 and rows 3–12, with room above and below for spikes and locks. Other sizes
+are scaled to 16x16. Imported hair keeps its image colors and transparency,
+mirrors with the character, and sways with hair physics. Importing activates
+editable procedural parts. Cycle Hair Style to return to a built-in style, or
+choose Remove Imported Hairstyle to delete the saved image. Custom hair is embedded
+in settings and exported `.dfcharacter` files.
 Custom parts have cosmetic spring physics: hair trails during acceleration,
 headwear bounces on landing, and arms and legs swing from their joints. These
 effects also appear in the creator preview and pause with gameplay.
+Built-in hair uses its own head-anchored chain of physics joints. Inertia, air
+resistance, gravity, and joint constraints let fringe and locks bend independently
+along their length and settle after stops, jumps, and landings. Turning preserves
+their world-space momentum. Short, Spiky, Long, and Custom Parts share this
+simulation; imported image hair keeps its existing spring behavior. The simulation
+uses fixed storage even for uncapped hair and follows Part Springiness.
 **Placeholder Characters** offers six editable starters: Explorer, Runner,
 Mechanic, Ranger, Royal, and Frost. Selecting one enables it and saves its look;
 the creator preview shows its animated parts immediately.

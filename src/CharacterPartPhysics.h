@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include "CharacterHairPhysics.h"
 
 namespace CharacterCreator {
 enum class Pose { Idle, Run, Jump, Fall, Slide, Hurt, Death, Skid };
@@ -24,6 +25,7 @@ struct PartSpring {
 // Cosmetic joints live outside Player so they cannot affect collision or movement.
 struct PartPhysics {
     PartSpring headX, headY, hair, hatX, hatY, arms, legs;
+    HairPhysics builtInHair;
     float gait = 0.0f;
     float previousVx = 0.0f, previousVy = 0.0f;
     bool wasGrounded = false;
@@ -37,6 +39,7 @@ struct PartPhysics {
         const float dt = std::clamp(elapsed, 0.0f, 1.0f / 30.0f);
         springiness = std::isfinite(springiness) ? std::clamp(springiness, 0.75f, 1.25f) : 1.0f;
         if (dt <= 0.0f) return;
+        builtInHair.update(dt, vx, vy, springiness);
         vx = std::clamp(vx, -2000.0f, 2000.0f);
         vy = std::clamp(vy, -2000.0f, 2000.0f);
         if (!initialized) {

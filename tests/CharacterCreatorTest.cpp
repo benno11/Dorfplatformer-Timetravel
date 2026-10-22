@@ -105,6 +105,57 @@ int main(int argc, char** argv) {
     }
     parts.update(std::numeric_limits<float>::quiet_NaN(), 0, 0, true, false, 1);
     assert(!parts.initialized && parts.hair.position == 0);
+    assert(!parts.builtInHair.initialized);
+
+    HairPhysics strand;
+    strand.update(1.0f / 60, 0, 0);
+    for (int frame = 0; frame < 30; ++frame) strand.update(1.0f / 60, 700, 0);
+    assert(strand.joints[0].x == 0 && strand.joints[0].y == 0);
+    assert(strand.offset(10).x < -0.1f);
+    assert(std::fabs(strand.offset(2).x - strand.offset(10).x) > 0.1f);
+    const auto pausedStrand = strand;
+    strand.update(0, -700, -1000);
+    for (int i = 0; i < HairPhysics::jointCount; ++i) {
+        assert(strand.joints[i].x == pausedStrand.joints[i].x && strand.joints[i].y == pausedStrand.joints[i].y);
+    }
+    // Facing changes must not reverse the strand's world-space inertia.
+    PartPhysics facingRight, facingLeft;
+    for (int frame = 0; frame < 60; ++frame) {
+        facingRight.update(1.0f / 60, 500, 0, true, false, 1);
+        facingLeft.update(1.0f / 60, 500, 0, true, false, -1);
+    }
+    assert(facingRight.builtInHair.offset(10).x == facingLeft.builtInHair.offset(10).x);
+    // Sudden stops retain momentum before the strand settles under gravity.
+    const float movingTip = strand.offset(10).x;
+    strand.update(1.0f / 60, 0, 0);
+    assert(std::fabs(strand.offset(10).x) > 0.01f && strand.offset(10).x != movingTip);
+    for (int frame = 0; frame < 1200; ++frame) strand.update(1.0f / 60, 0, 0);
+    assert(std::fabs(strand.offset(10).x) < 0.01f);
+    HairPhysics jumpingStrand = pausedStrand, groundedStrand = pausedStrand;
+    for (int frame = 0; frame < 30; ++frame) {
+        jumpingStrand.update(1.0f / 60, 700, -900);
+        groundedStrand.update(1.0f / 60, 700, 0);
+    }
+    assert(std::fabs(jumpingStrand.offset(10).y - groundedStrand.offset(10).y) > 0.001f);
+    HairPhysics strandReference;
+    for (int fps : {30, 60, 120, 240}) {
+        HairPhysics simulation;
+        simulation.update(1.0f / fps, 0, 0);
+        for (int frame = 1; frame <= fps * 2; ++frame)
+            simulation.update(1.0f / fps, std::min(500.0f, frame * 1000.0f / fps), 0);
+        if (fps == 30) strandReference = simulation;
+        assert(std::fabs(simulation.offset(10).x - strandReference.offset(10).x) < 0.15f);
+    }
+    for (int frame = 0; frame < 1000; ++frame) {
+        strand.update(frame % 3 ? 1.0f / 240 : 5, frame % 2 ? 100000 : -100000,
+            frame % 3 ? 100000 : -100000);
+        for (const auto& joint : strand.joints) {
+            assert(std::isfinite(joint.x) && std::fabs(joint.x) <= 2.8f);
+            assert(std::isfinite(joint.y) && std::fabs(joint.y) <= HairPhysics::reach + 0.25f);
+        }
+    }
+    strand.update(std::numeric_limits<float>::quiet_NaN(), 0, 0);
+    assert(!strand.initialized && strand.offset(10).x == 0);
 
     assert(SDL_Init(0));
     SDL_Surface* tile = SDL_CreateSurface(16, 16, SDL_PIXELFORMAT_RGBA8888);
@@ -119,11 +170,80 @@ int main(int argc, char** argv) {
     assert(a.textures[(int)Part::Shirt] == 1); // Importing a hat leaves the shirt alone.
     assert(save(load(save(a))) == save(a));
     assert(textureFromSurface(nullptr).empty());
+    // Hair carries a silhouette and alpha independently of tiled part textures.
+    a.hairPixels = pixelsFromSurface(tile, 16, 16);
+    assert(validHairPixels(a.hairPixels));
+    a.hairStyle = customHairStyle;
+    assert(save(load(save(a))) == save(a));
+    auto hairCopy = a;
+    assert(change(hairCopy, "hair_style") && hairCopy.hairStyle == customPartsHairStyle);
+    assert(change(hairCopy, "hair_style") && hairCopy.hairStyle == 0);
+    for (int i = 0; i < customHairStyle; ++i) assert(change(hairCopy, "hair_style"));
+    assert(hairCopy.hairStyle == customHairStyle);
+    assert(change(hairCopy, "clear_hair") && hairCopy.hairPixels.empty() && hairCopy.hairStyle == 0);
+    for (int i = 0; i < customHairStyle; ++i) assert(change(hairCopy, "hair_style"));
+    assert(hairCopy.hairStyle == customPartsHairStyle);
+    assert(change(hairCopy, "hair_style") && hairCopy.hairStyle == 0);
+    assert(load({{"hair_style", customHairStyle}, {"hair_pixels", "invalid"}}).hairStyle == 0);
+    auto legacyHair = save(hairCopy);
+    legacyHair.erase("hair_pixels");
+    assert(save(load(legacyHair)) == save(hairCopy));
+    legacyHair.erase("hair_shape");
+    assert(load(legacyHair).hairShape == defaultHairShape);
+    assert(change(hairCopy, "use_hair_parts") && hairCopy.hairStyle == customPartsHairStyle);
+    for (int i = 0; i < (int)hairShapeIds.size(); ++i) {
+        const int start = hairCopy.hairShape[i];
+        const int count = hairShapeMaximum[i] + (i == 3 ? 0 : 1);
+        for (int step = 0; step < count; ++step)
+            assert(change(hairCopy, std::string("hair_shape:") + hairShapeIds[i]));
+        assert(hairCopy.hairShape[i] == start);
+    }
+    assert(!change(hairCopy, "hair_shape:missing"));
+    hairCopy.hairShape = {{5, 6, 10, 4, 3}};
+    Appearance partsTransferred;
+    assert(importCharacter(exportCharacter(hairCopy), partsTransferred) && save(partsTransferred) == save(hairCopy));
+    const auto beforeInvalidShape = save(partsTransferred);
+    for (const auto& invalid : {nlohmann::json(42), nlohmann::json::array({1, 2}),
+        nlohmann::json::array({3, 3, 0, 0, 0}), nlohmann::json::array({3, 3, 11, 2, 0})}) {
+        auto badShape = nlohmann::json::parse(exportCharacter(hairCopy));
+        badShape["character"]["hair_shape"] = invalid;
+        assert(!importCharacter(badShape.dump(), partsTransferred) && save(partsTransferred) == beforeInvalidShape);
+    }
+    assert((load({{"hair_shape", {-10, 99, 99, 0, 99}}}).hairShape == std::array<int, 5>{{0, 6, 10, 1, 3}}));
+    assert(change(hairCopy, "reset_hair_parts") && hairCopy.hairShape == defaultHairShape);
+    assert(change(hairCopy, "uncap_hair_length") && hairCopy.uncapHairLength);
+    hairCopy.hairShape[1] = 6;
+    hairCopy.hairShape[2] = 10;
+    assert(change(hairCopy, "hair_shape:fringe") && hairCopy.hairShape[1] == 7);
+    assert(change(hairCopy, "hair_shape:length") && hairCopy.hairShape[2] == 11);
+    hairCopy.hairShape[1] = 500;
+    hairCopy.hairShape[2] = std::numeric_limits<int>::max();
+    assert(change(hairCopy, "hair_shape:length") && hairCopy.hairShape[2] == std::numeric_limits<int>::max());
+    assert(importCharacter(exportCharacter(hairCopy), partsTransferred) && save(partsTransferred) == save(hairCopy));
+    assert(change(hairCopy, "hair_shorten:length") && hairCopy.hairShape[2] == std::numeric_limits<int>::max() - 1);
+    hairCopy.hairShape[1] = 0;
+    assert(change(hairCopy, "hair_shorten:fringe") && hairCopy.hairShape[1] == 0);
+    hairCopy.hairShape[1] = 500;
+    assert(change(hairCopy, "uncap_hair_length") && !hairCopy.uncapHairLength);
+    assert(hairCopy.hairShape[1] == 6 && hairCopy.hairShape[2] == 10);
+    assert(change(hairCopy, "uncap_hair_length"));
+    assert(change(hairCopy, "reset_hair_parts") && !hairCopy.uncapHairLength && hairCopy.hairShape == defaultHairShape);
+    auto invalidUncap = nlohmann::json::parse(exportCharacter(hairCopy));
+    invalidUncap["character"]["uncap_hair_length"] = "true";
+    const auto beforeInvalidUncap = save(partsTransferred);
+    assert(!importCharacter(invalidUncap.dump(), partsTransferred) && save(partsTransferred) == beforeInvalidUncap);
+    legacyHair.erase("uncap_hair_length");
+    assert(!load(legacyHair).uncapHairLength);
     a.speed = 4;
     a.jump = 0;
     Appearance transferred;
     assert(importCharacter(exportCharacter(a), transferred) && save(transferred) == save(a));
     const auto beforeBadImport = save(transferred);
+    for (const auto& invalid : {nlohmann::json("bad"), nlohmann::json(42), nlohmann::json("")}) {
+        auto badHair = nlohmann::json::parse(exportCharacter(a));
+        badHair["character"]["hair_pixels"] = invalid;
+        assert(!importCharacter(badHair.dump(), transferred) && save(transferred) == beforeBadImport);
+    }
     for (const std::string& bad : {std::string("not json"), std::string("{}"),
         std::string(262145, 'x'), std::string("{\"format\":\"df-character\",\"version\":2}")}) {
         assert(!importCharacter(bad, transferred) && save(transferred) == beforeBadImport);
@@ -183,6 +303,57 @@ int main(int argc, char** argv) {
     assert(surface);
     SDL_Renderer* renderer = SDL_CreateSoftwareRenderer(surface);
     assert(renderer);
+    Appearance hairTest;
+    hairTest.hairPixels = std::string(16 * 16 * 8, '0');
+    hairTest.hairPixels.replace((1 * 16 + 1) * 8, 8, "c8326480");
+    hairTest.hairStyle = customHairStyle;
+    for (int facing : {1, -1}) {
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+        render(renderer, hairTest, SDL_FRect{0, 0, 16, 28}, Pose::Idle, 0, facing);
+        SDL_Surface* hairOutput = SDL_RenderReadPixels(renderer, nullptr);
+        assert(hairOutput);
+        Uint8 r, g, b, alpha;
+        assert(SDL_ReadSurfacePixel(hairOutput, facing == 1 ? 1 : 14, 1, &r, &g, &b, &alpha));
+        assert(r >= 99 && r <= 101 && g >= 24 && g <= 26 && b >= 49 && b <= 51);
+        assert(SDL_ReadSurfacePixel(hairOutput, facing == 1 ? 0 : 15, 1, &r, &g, &b, &alpha));
+        assert(r == 0 && g == 0 && b == 0);
+        SDL_DestroySurface(hairOutput);
+    }
+    // Built-in custom spikes use the selected hair color and part texture.
+    hairTest = Appearance{};
+    hairTest.hairStyle = customPartsHairStyle;
+    hairTest.hairShape = {{3, 3, 8, 3, 2}};
+    hairTest.hairColor = 2;
+    for (int texture : {0, 1}) for (int facing : {1, -1}) {
+        hairTest.textures[(int)Part::Hair] = texture;
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+        render(renderer, hairTest, SDL_FRect{0, 0, 16, 28}, Pose::Idle, 0, facing);
+        SDL_Surface* hairOutput = SDL_RenderReadPixels(renderer, nullptr);
+        assert(hairOutput);
+        Uint8 r, g, b, alpha;
+        assert(SDL_ReadSurfacePixel(hairOutput, facing == 1 ? 4 : 11, 1, &r, &g, &b, &alpha));
+        const auto expected = texturePixel(hairTest, Part::Hair, colors[2], facing == 1 ? 0 : 1, 0);
+        assert(r == expected.r && g == expected.g && b == expected.b);
+        SDL_DestroySurface(hairOutput);
+    }
+    // Very large uncapped lengths render beyond the sprite without iterating the saved length.
+    hairTest.uncapHairLength = true;
+    hairTest.hairShape[1] = std::numeric_limits<int>::max();
+    hairTest.hairShape[2] = std::numeric_limits<int>::max();
+    for (int texture : {0, 1}) for (int facing : {1, -1}) {
+        hairTest.textures[(int)Part::Hair] = texture;
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+        render(renderer, hairTest, SDL_FRect{0, 0, 16, 28}, Pose::Idle, 0, facing);
+        SDL_Surface* hairOutput = SDL_RenderReadPixels(renderer, nullptr);
+        assert(hairOutput);
+        Uint8 r, g, b, alpha;
+        assert(SDL_ReadSurfacePixel(hairOutput, facing == 1 ? 3 : 12, 100, &r, &g, &b, &alpha));
+        assert(r > 0 && g > 0 && b > 0);
+        SDL_DestroySurface(hairOutput);
+    }
     SDL_SetRenderDrawColor(renderer, 17, 25, 38, 255);
     SDL_RenderClear(renderer);
     const Pose poses[]{Pose::Idle, Pose::Run, Pose::Jump, Pose::Slide, Pose::Fall, Pose::Hurt, Pose::Death};

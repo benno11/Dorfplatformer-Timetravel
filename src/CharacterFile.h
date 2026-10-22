@@ -22,6 +22,21 @@ inline bool importCharacter(const std::string& text, Appearance& appearance) {
         if (!character.contains(key) || !character[key].is_number_integer()) return false;
     for (const char* key : {"build", "springiness", "speed", "acceleration", "jump", "gravity"})
         if (character.contains(key) && !character[key].is_number_integer()) return false;
+    if (character.contains("hair_pixels")) {
+        if (!character["hair_pixels"].is_string()) return false;
+        const auto& pixels = character["hair_pixels"].get_ref<const std::string&>();
+        if (!pixels.empty() && !validHairPixels(pixels)) return false;
+    }
+    if (character.contains("uncap_hair_length") && !character["uncap_hair_length"].is_boolean()) return false;
+    const bool uncappedHair = character.value("uncap_hair_length", false);
+    if (character.contains("hair_shape")) {
+        const auto& shape = character["hair_shape"];
+        if (!shape.is_array() || shape.size() != hairShapeIds.size()) return false;
+        for (int i = 0; i < (int)shape.size(); ++i)
+            if (!shape[i].is_number_integer() || shape[i] < (i == 3 ? 1 : 0) || shape[i] > hairShapeLimit(i, uncappedHair)) return false;
+    }
+    if (character["hair_style"] == customHairStyle &&
+        (!character.contains("hair_pixels") || !validHairPixels(character["hair_pixels"].get_ref<const std::string&>()))) return false;
     if (character.contains("sprite_layers")) {
         const auto& layers = character["sprite_layers"];
         if (!layers.is_object() || !layers.contains("base") || !layers["base"].is_string() ||

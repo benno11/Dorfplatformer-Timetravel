@@ -95,7 +95,7 @@ struct OnlineLevelPage {
 };
 
 struct CharacterFileDialog {
-    enum class Operation { TextureImport, CharacterImport, CharacterExport };
+    enum class Operation { TextureImport, HairImport, CharacterImport, CharacterExport };
     Operation operation = Operation::TextureImport;
     std::mutex mutex;
     bool ready = false, failed = false;
@@ -535,12 +535,13 @@ bool parseMenuAlignment(std::string value, SlimMenuLayout::Align& out) {
 }
 
 SlimMenu loadMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuContext& ctx) {
-    if (name == "charactercreator" || name == "characterpresets" || name == "characterattributes" || name == "charactertextures" || name == "characterpack") {
+    if (name == "charactercreator" || name == "characterpresets" || name == "characterattributes" || name == "charactertextures" || name == "characterhair" || name == "characterpack") {
         SlimMenu menu;
         menu.name = name;
         menu.title = name == "characterpresets" ? "Placeholder Characters [Experimental]" : "Character Creator [Experimental]";
         if (name == "characterattributes") menu.title = "Character Attributes [Experimental]";
         if (name == "charactertextures") menu.title = "Part Textures [Experimental]";
+        if (name == "characterhair") menu.title = "Custom Hairstyle [Experimental]";
         if (name == "characterpack") menu.title = "Import Character [Experimental]";
         if (ctx.characterAppearance && ctx.showExperimentalFeatures && *ctx.showExperimentalFeatures) {
             auto a = *ctx.characterAppearance;
@@ -567,6 +568,28 @@ SlimMenu loadMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuC
             auto option = [&](const std::string& label, const char* part) {
                 menu.items.push_back(MenuItem{MenuItem::Type::Button, label, "character", part});
             };
+            if (name == "characterhair") {
+                menu.items.push_back(MenuItem{MenuItem::Type::Text, "Shape the built-in hair parts. Select a value to cycle; changes save automatically.", {}, {}});
+                option(a.hairStyle == CharacterCreator::customPartsHairStyle && a.sprites.base.empty() ?
+                    "Custom Hair Parts [Selected]" : "Use Custom Hair Parts", "use_hair_parts");
+                option(std::string("Uncap Hair Length: ") + (a.uncapHairLength ? "ON" : "OFF"), "uncap_hair_length");
+                if (a.uncapHairLength) menu.items.push_back(MenuItem{MenuItem::Type::Text,
+                    "Fringe and back lengths grow without wrapping. Minimum: 0 (hidden).", {}, {}});
+                for (int i = 0; i < (int)a.hairShape.size(); ++i) {
+                    menu.items.push_back(MenuItem{MenuItem::Type::Button,
+                        std::string(CharacterCreator::hairShapeNames[i]) + ": " + std::to_string(a.hairShape[i]),
+                        "character", std::string("hair_shape:") + CharacterCreator::hairShapeIds[i]});
+                    if (a.uncapHairLength && CharacterCreator::isHairLength(i))
+                        menu.items.push_back(MenuItem{MenuItem::Type::Button,
+                            std::string("Shorten ") + CharacterCreator::hairShapeNames[i] + " (-1)",
+                            "character", std::string("hair_shorten:") + CharacterCreator::hairShapeIds[i]});
+                }
+                option(std::string("Hair Color: ") + CharacterCreator::colors[a.hairColor].name, "hair_color");
+                option(std::string("Hair Texture: ") + CharacterCreator::textureNames[a.textures[(int)CharacterCreator::Part::Hair]], "texture:hair");
+                option("Reset Hair Shape", "reset_hair_parts");
+                menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back to Creator", "menu", "charactercreator"});
+                return menu;
+            }
             if (name == "characterattributes") {
                 menu.items.push_back(MenuItem{MenuItem::Type::Text, "Movement stats apply while the custom character is enabled.", {}, {}});
                 option(std::string("Visual Build: ") + CharacterCreator::builds[a.build], "build");
@@ -613,6 +636,9 @@ SlimMenu loadMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuC
             menu.items.push_back(MenuItem{MenuItem::Type::Button, "Part Textures", "menu", "charactertextures"});
             option(std::string("Skin: ") + CharacterCreator::skinColors[a.skin].name, "skin");
             option(std::string("Hair Style: ") + CharacterCreator::hairStyles[a.hairStyle], "hair_style");
+            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Customize Built-in Hair...", "menu", "characterhair"});
+            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Import Custom Hairstyle...", "character_import", "custom_hair"});
+            if (!a.hairPixels.empty()) option("Remove Imported Hairstyle", "clear_hair");
             option(std::string("Hair Color: ") + CharacterCreator::colors[a.hairColor].name, "hair_color");
             option(std::string("Shirt: ") + CharacterCreator::colors[a.shirt].name, "shirt");
             option(std::string("Pants: ") + CharacterCreator::colors[a.pants].name, "pants");
@@ -1783,7 +1809,7 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
 
     const std::string title = expandVars(menu.title, runtime, ctx);
     const bool characterPreview = (menu.name == "charactercreator" || menu.name == "characterpresets" ||
-        menu.name == "characterattributes" || menu.name == "charactertextures" || menu.name == "characterpack") && ctx.characterAppearance &&
+        menu.name == "characterattributes" || menu.name == "charactertextures" || menu.name == "characterhair" || menu.name == "characterpack") && ctx.characterAppearance &&
         ctx.showExperimentalFeatures && *ctx.showExperimentalFeatures;
     const int previewSpace = characterPreview ? 96 : 0;
     int titleScale = 4;
@@ -2032,14 +2058,17 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
     }
     if (command == "character_import") {
         const int part = CharacterCreator::partIndex(arg);
-        if (part >= 0 && ctx.characterAppearance && ctx.showExperimentalFeatures && *ctx.showExperimentalFeatures &&
+        const bool hair = arg == "custom_hair";
+        if ((part >= 0 || hair) && ctx.characterAppearance && ctx.showExperimentalFeatures && *ctx.showExperimentalFeatures &&
             !runtime.characterFileDialog) {
             runtime.characterFileDialog = std::make_shared<CharacterFileDialog>();
             runtime.characterFileDialog->part = part;
+            if (hair) runtime.characterFileDialog->operation = CharacterFileDialog::Operation::HairImport;
             static const SDL_DialogFileFilter filters[]{{"Images", "png;jpg;jpeg;bmp;webp"}};
             SDL_ShowOpenFileDialog(characterFileChosen,
                 new std::shared_ptr<CharacterFileDialog>(runtime.characterFileDialog), ctx.win, filters, 1, nullptr, false);
             runtime.vars["character_texture_status"] = "Choose an image in the file picker.";
+            if (hair) runtime.vars["character_file_status"] = "Choose transparent hair art. It becomes a 16x16 head layer.";
             runtime.vars["__reload_menu"] = "1";
         }
         return SlimMenuExit::Continue;
@@ -2482,7 +2511,8 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                     if (ready) path = request->path;
                 }
                 if (ready) {
-                    if (request->operation != CharacterFileDialog::Operation::TextureImport) {
+                    const bool hair = request->operation == CharacterFileDialog::Operation::HairImport;
+                    if (request->operation != CharacterFileDialog::Operation::TextureImport && !hair) {
                         std::string status = failed ? "The file picker is unavailable on this device." : "Character file selection canceled.";
                         if (!path.empty()) {
                             if (request->operation == CharacterFileDialog::Operation::CharacterExport) {
@@ -2509,16 +2539,25 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                     std::string status = failed ? "The file picker is unavailable on this device." : "Image import canceled.";
                     if (!path.empty() && ctx.characterAppearance) {
                         SDL_Surface* surface = IMG_Load(path.c_str());
-                        const std::string pixels = CharacterCreator::textureFromSurface(surface);
+                        const std::string pixels = hair ? CharacterCreator::pixelsFromSurface(surface, 16, 16) :
+                            CharacterCreator::textureFromSurface(surface);
                         if (surface) SDL_DestroySurface(surface);
                         if (!pixels.empty()) {
-                            ctx.characterAppearance->texturePixels[request->part] = pixels;
-                            ctx.characterAppearance->textures[request->part] = 6;
+                            if (hair) {
+                                ctx.characterAppearance->hairPixels = pixels;
+                                ctx.characterAppearance->hairStyle = CharacterCreator::customHairStyle;
+                                ctx.characterAppearance->sprites = {};
+                                runtime.characterParts = CharacterCreator::PartPhysics{};
+                            } else {
+                                ctx.characterAppearance->texturePixels[request->part] = pixels;
+                                ctx.characterAppearance->textures[request->part] = 6;
+                            }
                             if (ctx.saveClientSettings) ctx.saveClientSettings();
-                            status = std::string(CharacterCreator::partNames[request->part]) + " texture imported and saved.";
+                            status = hair ? "Custom hairstyle saved. Procedural parts active; original image colors are used." :
+                                std::string(CharacterCreator::partNames[request->part]) + " texture imported and saved.";
                         } else status = "Could not load that image. Try a PNG, JPG, BMP, or WebP.";
                     }
-                    runtime.vars["character_texture_status"] = status;
+                    runtime.vars[hair ? "character_file_status" : "character_texture_status"] = status;
                     runtime.characterFileDialog.reset();
                     goto next_menu;
                 }

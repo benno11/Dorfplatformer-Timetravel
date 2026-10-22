@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <string>
+#include <limits>
 #include <nlohmann/json.hpp>
 
 namespace CharacterCreator {
@@ -20,7 +21,17 @@ inline constexpr std::array<Color, 10> colors{{
     {76, 190, 201, "Teal"}, {81, 127, 218, "Blue"}, {161, 111, 210, "Violet"},
     {230, 139, 182, "Pink"}
 }};
-inline constexpr std::array<const char*, 4> hairStyles{{"Short", "Spiky", "Long", "Shaved"}};
+inline constexpr std::array<const char*, 6> hairStyles{{"Short", "Spiky", "Long", "Shaved", "Imported Image", "Custom Parts"}};
+inline constexpr int customHairStyle = 4;
+inline constexpr int customPartsHairStyle = 5;
+inline constexpr std::array<const char*, 5> hairShapeIds{{"top", "fringe", "length", "width", "spikes"}};
+inline constexpr std::array<const char*, 5> hairShapeNames{{"Top Thickness", "Fringe Length", "Back Length", "Back Width", "Spike Height"}};
+inline constexpr std::array<int, 5> hairShapeMaximum{{5, 6, 10, 4, 3}};
+inline constexpr std::array<int, 5> defaultHairShape{{3, 3, 0, 2, 0}};
+inline bool isHairLength(int i) { return i == 1 || i == 2; }
+inline int hairShapeLimit(int i, bool uncapped) {
+    return uncapped && isHairLength(i) ? std::numeric_limits<int>::max() : hairShapeMaximum[i];
+}
 inline constexpr std::array<const char*, 4> hats{{"None", "Cap", "Beanie", "Crown"}};
 enum class Part { Skin, Hair, Shirt, Pants, Hat, Accent, None };
 inline constexpr std::array<const char*, 6> partIds{{"skin", "hair", "shirt", "pants", "hat", "accent"}};
@@ -40,6 +51,7 @@ inline bool validPixelData(const std::string& pixels, size_t bytes) {
     });
 }
 inline bool validTexturePixels(const std::string& pixels) { return validPixelData(pixels, 8 * 8 * 4); }
+inline bool validHairPixels(const std::string& pixels) { return validPixelData(pixels, 16 * 16 * 4); }
 inline constexpr std::array<const char*, 11> spriteFrameNames{{"idle", "Walk-1", "Walk-2", "Walk-3", "Walk-4",
     "Jump", "Falling", "Crouched(unused)", "Skiding", "Hurt", "Death"}};
 struct SpriteLayers {
@@ -65,6 +77,9 @@ struct Appearance {
     int jump = 2;
     int gravity = 2;
     SpriteLayers sprites;
+    std::string hairPixels;
+    std::array<int, 5> hairShape = defaultHairShape;
+    bool uncapHairLength = false;
 
     void normalize() {
         if (!sprites.valid()) sprites = {};
@@ -72,6 +87,10 @@ struct Appearance {
         skin = std::clamp(skin, 0, (int)skinColors.size() - 1);
         hairColor = std::clamp(hairColor, 0, (int)colors.size() - 1);
         hairStyle = std::clamp(hairStyle, 0, (int)hairStyles.size() - 1);
+        if (!validHairPixels(hairPixels)) hairPixels.clear();
+        if (hairStyle == customHairStyle && hairPixels.empty()) hairStyle = 0;
+        for (int i = 0; i < (int)hairShape.size(); ++i)
+            hairShape[i] = std::clamp(hairShape[i], i == 3 ? 1 : 0, hairShapeLimit(i, uncapHairLength));
         shirt = std::clamp(shirt, 0, (int)colors.size() - 1);
         pants = std::clamp(pants, 0, (int)colors.size() - 1);
         hat = std::clamp(hat, 0, (int)hats.size() - 1);
@@ -105,6 +124,9 @@ inline nlohmann::json save(const Appearance& appearance) {
     a.normalize();
     return {{"version", 1}, {"experimental", true}, {"enabled", a.enabled},
         {"skin", a.skin}, {"hair_color", a.hairColor}, {"hair_style", a.hairStyle},
+        {"hair_pixels", a.hairPixels},
+        {"hair_shape", a.hairShape},
+        {"uncap_hair_length", a.uncapHairLength},
         {"shirt", a.shirt}, {"pants", a.pants}, {"hat", a.hat}, {"accent", a.accent},
         {"textures", a.textures}, {"texture_pixels", a.texturePixels}, {"build", a.build},
         {"springiness", a.springiness}, {"speed", a.speed}, {"acceleration", a.acceleration},
@@ -128,6 +150,17 @@ inline Appearance load(const nlohmann::json& json) {
     a.skin = index("skin", a.skin);
     a.hairColor = index("hair_color", a.hairColor);
     a.hairStyle = index("hair_style", a.hairStyle);
+    if (json.contains("uncap_hair_length") && json["uncap_hair_length"].is_boolean())
+        a.uncapHairLength = json["uncap_hair_length"].get<bool>();
+    if (json.contains("hair_shape") && json["hair_shape"].is_array()) {
+        for (int i = 0; i < (int)a.hairShape.size() && i < (int)json["hair_shape"].size(); ++i)
+            if (json["hair_shape"][i].is_number_integer())
+                a.hairShape[i] = (int)std::clamp(json["hair_shape"][i].get<double>(), 0.0, (double)hairShapeLimit(i, a.uncapHairLength));
+    }
+    if (json.contains("hair_pixels") && json["hair_pixels"].is_string()) {
+        const auto& pixels = json["hair_pixels"].get_ref<const std::string&>();
+        if (validHairPixels(pixels)) a.hairPixels = pixels;
+    }
     a.shirt = index("shirt", a.shirt);
     a.pants = index("pants", a.pants);
     a.hat = index("hat", a.hat);
@@ -175,6 +208,22 @@ inline bool change(Appearance& a, const std::string& part) {
         return false;
     }
     a.normalize();
+    if (part.rfind("hair_shape:", 0) == 0 || part.rfind("hair_shorten:", 0) == 0) {
+        const bool shorten = part.rfind("hair_shorten:", 0) == 0;
+        for (int i = 0; i < (int)hairShapeIds.size(); ++i) {
+            if (part != std::string(shorten ? "hair_shorten:" : "hair_shape:") + hairShapeIds[i]) continue;
+            const int minimum = i == 3 ? 1 : 0;
+            const int maximum = hairShapeLimit(i, a.uncapHairLength);
+            if (shorten) a.hairShape[i] = std::max(minimum, a.hairShape[i] - 1);
+            else if (a.uncapHairLength && isHairLength(i)) {
+                if (a.hairShape[i] < maximum) ++a.hairShape[i];
+            } else a.hairShape[i] = a.hairShape[i] == maximum ? minimum : a.hairShape[i] + 1;
+            a.hairStyle = customPartsHairStyle;
+            a.sprites = {};
+            return true;
+        }
+        return false;
+    }
     if (part.rfind("texture:", 0) == 0) {
         const int i = partIndex(part.substr(8));
         if (i < 0) return false;
@@ -182,10 +231,26 @@ inline bool change(Appearance& a, const std::string& part) {
         return true;
     }
     if (part == "enabled") a.enabled = !a.enabled;
+    else if (part == "uncap_hair_length") {
+        a.uncapHairLength = !a.uncapHairLength;
+        a.normalize();
+    }
     else if (part == "reset") a = Appearance{};
     else if (part == "skin") a.skin = (a.skin + 1) % skinColors.size();
     else if (part == "hair_color") a.hairColor = (a.hairColor + 1) % colors.size();
-    else if (part == "hair_style") a.hairStyle = (a.hairStyle + 1) % hairStyles.size();
+    else if (part == "hair_style") {
+        a.hairStyle = (a.hairStyle + 1) % hairStyles.size();
+        if (a.hairStyle == customHairStyle && a.hairPixels.empty()) a.hairStyle = customPartsHairStyle;
+    }
+    else if (part == "use_hair_parts" || part == "reset_hair_parts") {
+        if (part == "reset_hair_parts") { a.hairShape = defaultHairShape; a.uncapHairLength = false; }
+        a.hairStyle = customPartsHairStyle;
+        a.sprites = {};
+    }
+    else if (part == "clear_hair") {
+        a.hairPixels.clear();
+        if (a.hairStyle == customHairStyle) a.hairStyle = 0;
+    }
     else if (part == "shirt") a.shirt = (a.shirt + 1) % colors.size();
     else if (part == "pants") a.pants = (a.pants + 1) % colors.size();
     else if (part == "hat") a.hat = (a.hat + 1) % hats.size();

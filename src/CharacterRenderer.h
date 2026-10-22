@@ -69,16 +69,21 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& dst,
     const int stride = !physics && pose == Pose::Run ? ((int)(time * 12.0f) % 2 ? 1 : -1) : 0;
     const float bob = physics ? physics->headY.position * 0.3f :
         (pose == Pose::Run ? ((int)(time * 24.0f) % 2) : 0);
-    auto block = [&](float x, float y, float w, float h, Color color, Part part = Part::None) {
+    int outputHeight = 0;
+    SDL_GetRenderOutputSize(ren, nullptr, &outputHeight);
+    const float hairTop = dst.h > 0 ? std::max(0.0f, -dst.y * 28.0f / dst.h) : 0.0f;
+    const float hairBottom = dst.h > 0 ? std::max(28.0f, (outputHeight - dst.y) * 28.0f / dst.h) : 28.0f;
+    auto block = [&](float x, float y, float w, float h, Color color, Part part = Part::None, int textureY = 0) {
         const float buildScale = a.build == 0 ? 0.88f : (a.build == 2 ? 1.08f : 1.0f);
         x = 8.0f + (x - 8.0f) * buildScale;
         w *= buildScale;
         if (facing < 0) x = 16.0f - x - w;
         const float textureOriginX = x, textureOriginY = y;
-        // Keep secondary motion inside the sprite, including narrow slide poses.
-        const float right = std::min(16.0f, x + w), bottom = std::min(28.0f, y + h);
+        // Keep ordinary parts inside the sprite; uncapped hair may reach the screen edge.
+        const bool extendedHair = a.uncapHairLength && a.hairStyle == customPartsHairStyle && part == Part::Hair;
+        const float right = std::min(16.0f, x + w), bottom = std::min(extendedHair ? hairBottom : 28.0f, y + h);
         x = std::max(0.0f, x);
-        y = std::max(0.0f, y);
+        y = std::max(extendedHair ? hairTop : 0.0f, y);
         w = right - x;
         h = bottom - y;
         if (w <= 0 || h <= 0) return;
@@ -91,7 +96,7 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& dst,
             for (float py = y; py < bottom; py += 1.0f) for (float px = x; px < right; px += 1.0f) {
                 int u = (int)std::floor((px - textureOriginX) / buildScale);
                 if (facing < 0) u = (int)std::ceil(w / buildScale) - 1 - u;
-                const auto pixel = texturePixel(a, part, color, u, (int)std::floor(py - textureOriginY));
+                const auto pixel = texturePixel(a, part, color, u, (int)std::floor(py - textureOriginY) + textureY);
                 SDL_SetRenderDrawColor(ren, pixel.r, pixel.g, pixel.b, (Uint8)(alpha * pixel.a / 255));
                 const float x1 = std::round(dst.x + px * dst.w / 16), y1 = std::round(dst.y + py * dst.h / 28);
                 SDL_FRect cell{x1, y1, std::round(dst.x + std::min(px + 1, right) * dst.w / 16) - x1,
@@ -110,22 +115,57 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& dst,
         // A slide leans forward; its destination is shortened and foot-anchored by the caller.
         const float lean = (pose == Pose::Slide ? 2.0f : 0.0f) + (physics ? physics->headX.position : 0.0f);
         const float headY = 3 + bob + (physics ? physics->headY.position : 0.0f);
+        auto hairOffset = [&](float distance) {
+            auto offset = physics ? physics->builtInHair.offset(distance) : HairPhysics::Point{};
+            offset.x *= facing < 0 ? -1.0f : 1.0f;
+            return offset;
+        };
+        auto hairStrand = [&](float x, float y, int width, int length, float rootDistance = 0.0f) {
+            // Account for joint displacement when culling very long or off-screen strands.
+            const float margin = HairPhysics::reach * 2 + 2;
+            const double bottom = a.uncapHairLength ? hairBottom : 28.0f;
+            const int rows = (int)std::min((double)length, std::max(0.0, std::ceil(bottom - y + margin)));
+            const int first = a.uncapHairLength ? (int)std::min((double)rows,
+                std::max(0.0, std::floor((double)hairTop - y - margin))) : 0;
+            for (int row = first; row < rows; ++row) {
+                const auto offset = hairOffset(rootDistance + row);
+                const auto next = hairOffset(rootDistance + row + 1.0f);
+                block(x + offset.x, y + row + offset.y, (float)width,
+                    std::max(1.0f, 1.0f + next.y - offset.y), hair, Part::Hair, row);
+            }
+        };
         block(3 + lean, headY, 10, 10, outline);
         block(4 + lean, headY + 1, 8, 8, skin, Part::Skin);
-        if (a.hairStyle != 3) {
+        if (a.hairStyle == customHairStyle) {
+            // A 16x16 transparent image covers the head and trailing locks.
+            for (int y = 0; y < 16; ++y) for (int x = 0; x < 16; ++x) {
+                const auto pixel = rgbaPixel(a.hairPixels, y * 16 + x);
+                if (!pixel.a) continue;
+                const float sway = physics ? physics->hair.position * std::max(0, y - 5) / 10.0f : 0;
+                const Uint8 savedAlpha = alpha;
+                alpha = (Uint8)(alpha * pixel.a / 255);
+                block(x + lean + sway, headY - 3 + y, 1, 1, {pixel.r, pixel.g, pixel.b, ""});
+                alpha = savedAlpha;
+            }
+        } else if (a.hairStyle == customPartsHairStyle) {
+            block(3 + lean, headY, 10, a.hairShape[0], hair, Part::Hair);
+            hairStrand(3 + lean, headY + a.hairShape[0], a.hairShape[3], a.hairShape[1]);
+            hairStrand(3 + lean, headY + 3, a.hairShape[3], a.hairShape[2]);
+            if (a.hairShape[4]) {
+                const auto offset = hairOffset((float)a.hairShape[4]);
+                block(4 + lean + offset.x, headY - a.hairShape[4] - offset.y * 0.3f, 2, a.hairShape[4] + 1, hair, Part::Hair);
+                block(8 + lean + offset.x * 0.7f, headY - a.hairShape[4] + 1 - offset.y * 0.2f, 2, a.hairShape[4], hair, Part::Hair);
+            }
+        } else if (a.hairStyle != 3) {
             block(3 + lean, headY, 10, a.hairStyle == 2 ? 4 : 3, hair, Part::Hair);
-            block(3 + lean, headY + 3, a.hairStyle == 2 ? 3 : 2, 3, hair, Part::Hair);
+            hairStrand(3 + lean, headY + 3, a.hairStyle == 2 ? 3 : 2, 3);
             if (a.hairStyle == 2) {
-                // Overlapping locks keep long hair attached while its tips lag behind.
-                for (int lock = 0; lock < 3; ++lock) {
-                    const float sway = physics ? physics->hair.position * (lock + 1) / 3.0f : 0.0f;
-                    block(3 + lean + sway, headY + 5 + lock * 2, 3, 3, hair, Part::Hair);
-                }
+                hairStrand(3 + lean, headY + 5, 3, 7, 2);
             }
             if (a.hairStyle == 1) {
-                const float sway = physics ? physics->hair.position * 0.3f : 0.0f;
-                block(4 + lean + sway, headY - 2, 2, 3, hair, Part::Hair);
-                block(8 + lean + sway, headY - 1, 2, 2, hair, Part::Hair);
+                const auto offset = hairOffset(2);
+                block(4 + lean + offset.x, headY - 2 - offset.y * 0.3f, 2, 3, hair, Part::Hair);
+                block(8 + lean + offset.x * 0.7f, headY - 1 - offset.y * 0.2f, 2, 2, hair, Part::Hair);
             }
         }
         block(9 + lean, headY + 4, 3, 3, white);

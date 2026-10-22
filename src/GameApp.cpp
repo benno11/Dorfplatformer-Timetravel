@@ -2933,7 +2933,7 @@ int RunGameApp(int argc, char** argv) {
             float x, y, vx, vy, life, maxLife;
         };
         constexpr float bumperImpactDuration = 0.42f;
-        constexpr float bumperCooldownDuration = 0.5f;
+        constexpr float bumperCooldownDuration = 0.25f;
         std::unordered_map<int, BumperImpact> bumperImpacts;
         std::vector<BumperSpark> bumperSparks;
         auto triggerBumperImpact = [&](int index, float x, float y, float direction) {
@@ -7269,7 +7269,7 @@ int RunGameApp(int argc, char** argv) {
                 const auto& obj = objects[objIdx];
                 if (obj.id != "46") continue;
                 const auto impact = bumperImpacts.find(objIdx);
-                if (impact != bumperImpacts.end() && impact->second.cooldownRemaining > 0.0f) continue;
+                if (impact != bumperImpacts.end()) continue;
                 const float bx = obj.x - 16.0f;
                 const float by = obj.y - 16.0f;
                 const float bw = 32.0f;
@@ -7283,6 +7283,7 @@ int RunGameApp(int argc, char** argv) {
                 const float bumperCY = testBy + bh * 0.5f;
                 if (playerCY <= bumperCY && player.vy >= 0.0f) {
                     if (applyBumperBounce(testBy - (float)player.h, -1200.0f)) {
+                        if (impact->second.cooldownRemaining > 0.0f) break;
                         addMovementReason(MR_BUMPER);
                         triggerBumperImpact(objIdx, obj.x, obj.y, -1.0f);
                         audio.playBumperSfx();
@@ -7291,6 +7292,7 @@ int RunGameApp(int argc, char** argv) {
                 }
                 if (playerCY > bumperCY && player.vy <= 0.0f) {
                     if (applyBumperBounce(testBy + bh, 1200.0f)) {
+                        if (impact->second.cooldownRemaining > 0.0f) break;
                         addMovementReason(MR_BUMPER);
                         triggerBumperImpact(objIdx, obj.x, obj.y, 1.0f);
                         audio.playBumperSfx();
