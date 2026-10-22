@@ -20,6 +20,7 @@ struct HairPhysics {
         std::vector<Box> boxes;
         Point root{0, 0};
         float radius = 0.75f;
+        int bodySide = 0;
 
         bool blocksWorld(float x, float y, float w, float h) const {
             for (const auto& box : boxes)
@@ -28,15 +29,28 @@ struct HairPhysics {
             return false;
         }
 
-        Point resolve(Point from, Point target) const {
+        Point resolve(Point from, Point target, bool worldOnly = false) const {
             from.x += root.x; from.y += root.y;
             target.x += root.x; target.y += root.y;
+            if (!worldOnly) {
+                for (const auto& box : boxes) {
+                    if (!box.body) continue;
+                    const float left = box.x - radius, right = box.x + box.w + radius;
+                    if (target.y <= box.y - radius || target.y >= box.y + box.h + radius ||
+                        target.x <= left || target.x >= right) continue;
+                    // The strand attaches beside the head. Escape toward that side rather
+                    // than its nearest top face, which can pin every joint above the head.
+                    const int side = bodySide ? bodySide : (root.x < box.x + box.w * 0.5f ? -1 : 1);
+                    target.x = side < 0 ? left - 0.001f : right + 0.001f;
+                }
+            }
             // Sweep against expanded boxes, then slide along the contacted surface.
             for (int pass = 0; pass < 3; ++pass) {
                 float earliest = 1;
                 Point normal{};
                 bool embedded = false;
                 for (const auto& box : boxes) {
+                    if (box.body) continue;
                     const float left = box.x - radius, right = box.x + box.w + radius;
                     const float top = box.y - radius, bottom = box.y + box.h + radius;
                     if (box.oneWay && (from.y > top + 0.01f || target.y < from.y)) continue;
@@ -118,6 +132,15 @@ struct HairPhysics {
         const int steps = std::max(1, (int)std::ceil(dt * 240));
         const float h = dt / steps;
         const float drag = std::exp(-6.0f * h / springiness);
+        float lateralLimit = 2.8f;
+        if (collisions && collisions->bodySide) {
+            for (const auto& box : collisions->boxes) {
+                if (!box.body) continue;
+                const float clearance = collisions->bodySide < 0 ? collisions->root.x - box.x + collisions->radius :
+                    box.x + box.w + collisions->radius - collisions->root.x;
+                lateralLimit = std::max(lateralLimit, clearance + 0.01f);
+            }
+        }
         for (int step = 0; step < steps; ++step) {
             const float stretchTarget = std::clamp(-ay * 0.0002f - vy * 0.0008f, -2.5f, 2.5f) * springiness;
             stretchVelocity += ((stretchTarget - stretch) * 110 - stretchVelocity * 9 / springiness) * h;
@@ -127,7 +150,7 @@ struct HairPhysics {
                 const Point current = joints[i];
                 // Inertia and air resistance bend the strand; gravity restores its hanging shape.
                 const float fx = (-ax * 0.008f - vx * 0.035f) * springiness - current.x * 4;
-                const float fy = 65 - ay * 0.008f - vy * 0.012f;
+                const float fy = 65 - ay * 0.008f - vy * 0.012f + (i * elasticSpacing - current.y) * 18;
                 joints[i].x += (current.x - previous[i].x) * drag + fx * h * h;
                 joints[i].y += (current.y - previous[i].y) * drag + fy * h * h;
                 previous[i] = current;
@@ -148,16 +171,33 @@ struct HairPhysics {
                         joints[i - 1].y += dy * correction * weight;
                     }
                 }
+                // Resist folds that leave neighboring links doubled back on the head.
+                // This is a soft bend constraint; contacts still get the final say.
+                for (int i = 2; i < jointCount; ++i) {
+                    float dx = joints[i].x - joints[i - 2].x;
+                    float dy = joints[i].y - joints[i - 2].y;
+                    float distance = std::sqrt(dx * dx + dy * dy);
+                    const float minimum = elasticSpacing * 1.4f;
+                    if (distance >= minimum) continue;
+                    if (distance < 0.00001f) { dx = 0; dy = 1; distance = 1; }
+                    const float correction = (minimum - distance) / distance * 0.4f;
+                    joints[i].x += dx * correction;
+                    joints[i].y += dy * correction;
+                    if (i > 2) {
+                        joints[i - 2].x -= dx * correction;
+                        joints[i - 2].y -= dy * correction;
+                    }
+                }
             }
             // Bound cosmetic displacement without changing the player's collision box.
             for (int i = 1; i < jointCount; ++i) {
-                joints[i].x = std::clamp(joints[i].x, -2.8f, 2.8f);
+                joints[i].x = std::clamp(joints[i].x, -lateralLimit, lateralLimit);
                 joints[i].y = std::clamp(joints[i].y, -reach, i * spacing + 3.75f);
                 if (collisions && !collisions->boxes.empty()) {
                     const Point target = joints[i];
                     // Sweep from the parent as well so spawning or moving a surface cannot
                     // leave the strand threaded through it with its tip on the far side.
-                    const Point resolved = collisions->resolve(joints[i - 1], collisions->resolve(previous[i], target));
+                    const Point resolved = collisions->resolve(joints[i - 1], collisions->resolve(previous[i], target), true);
                     if (std::fabs(resolved.x - target.x) > 0.00001f) {
                         previous[i].x = resolved.x + (target.x - previous[i].x) * 0.15f;
                     }

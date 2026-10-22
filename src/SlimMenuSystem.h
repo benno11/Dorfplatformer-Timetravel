@@ -77,7 +77,14 @@ struct SlimMenuContext {
     std::function<void()> applyRenderVsync;
     std::function<void()> updateDynamicResolution;
     std::function<void()> saveClientSettings;
+    std::function<bool(const std::string&, const std::string&, std::string&)> signIn;
     std::function<std::string()> getUpdaterStatusText;
+    std::function<bool()> launchUpdater;
+    std::function<std::string()> getUpdaterStatusDetail;
+    std::function<std::string()> getUpdaterLatestVersionText;
+    std::function<std::string()> getUpdaterNotesText;
+    std::function<float()> getUpdaterProgress01;
+    std::function<void()> pollUpdaterAutoRelaunch;
 };
 
 enum class SlimMenuExit {

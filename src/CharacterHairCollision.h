@@ -10,6 +10,7 @@ inline HairPhysics::CollisionScene hairBodyCollisions(const Appearance& appearan
     HairPhysics::CollisionScene scene;
     const float scale = a.build == 0 ? 0.88f : (a.build == 2 ? 1.08f : 1.0f);
     const float direction = facing < 0 ? -1.0f : 1.0f;
+    scene.bodySide = facing < 0 ? 1 : -1;
     const float width = a.hairStyle == customPartsHairStyle ? (float)a.hairShape[3] : (a.hairStyle == 2 ? 3.0f : 2.0f);
     const float center = 8 + (3 + width * 0.5f - 8) * scale;
     scene.root = {(facing < 0 ? 16 - center : center) + (sliding ? 2 * direction * scale : 0), 6};

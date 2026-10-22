@@ -33,6 +33,8 @@
 #include "LevelManager.h"
 #include "GameProgression.h"
 #include "UiScale.h"
+#include "UpdaterMenuState.h"
+#include "AccountMenuForm.h"
 #include "CharacterRenderer.h"
 #include "CharacterAttributes.h"
 #include "CharacterHairCollision.h"
@@ -116,6 +118,11 @@ void SDLCALL characterFileChosen(void* userdata, const char* const* files, int) 
 }
 
 struct SlimRuntime {
+    AccountMenu::Form accountForm;
+    SDL_Window* accountInputWindow = nullptr;
+    bool accountComposing = false;
+    UpdaterMenu::State updater;
+    std::string updaterNotice;
     struct PendingGet {
         std::string variable;
         std::future<std::string> response;
@@ -151,6 +158,7 @@ struct SlimRuntime {
     SlimRuntime(const SlimRuntime&) = delete;
     SlimRuntime& operator=(const SlimRuntime&) = delete;
     ~SlimRuntime() {
+        if (accountInputWindow) SDL_StopTextInput(accountInputWindow);
         if (menuTexture && ownsMenuTexture) SDL_DestroyTexture(menuTexture);
         if (difficultyTexture) SDL_DestroyTexture(difficultyTexture);
     }
@@ -345,6 +353,15 @@ std::string aboutVarValue(const std::string& var, const SlimMenuContext& ctx) {
 }
 
 std::string contextVarValue(const std::string& name, const SlimRuntime& runtime, const SlimMenuContext& ctx) {
+    if (name == "account_email") return runtime.accountForm.display(AccountMenu::Field::Email);
+    if (name == "account_password") return runtime.accountForm.display(AccountMenu::Field::Password);
+    if (name == "account_signed_out" || name == "account_signed_in" || name == "account_needs_repair") {
+        const bool user = ctx.levelServerAccountUsername && !ctx.levelServerAccountUsername->empty();
+        const bool token = ctx.levelServerAuthToken && !ctx.levelServerAuthToken->empty();
+        const bool value = name == "account_signed_in" ? user && token :
+            (name == "account_signed_out" ? !(user && token) : user && !token);
+        return value ? "true" : "false";
+    }
     const std::string var = normalizeVarName(name);
     auto it = runtime.vars.find(var);
     if (it != runtime.vars.end()) return it->second;
@@ -393,6 +410,8 @@ bool varIsTruthy(const std::string& name, const SlimRuntime& runtime, const Slim
 
 std::string expandVars(std::string text, const SlimRuntime& runtime, const SlimMenuContext& ctx) {
     if (text.find("${") == std::string::npos) return text;
+    for (const char* name : {"account_email", "account_password"})
+        text = replaceAll(text, "${" + std::string(name) + "}", contextVarValue(name, runtime, ctx));
     for (const char* var : {"world_select_unlocked", "hardmode_unlocked", "hardmode_complete", "hardmode_furthest_level", "hardmode_save_exists"}) {
         const std::string placeholder = "${" + std::string(var) + "}";
         if (text.find(placeholder) != std::string::npos)
@@ -535,7 +554,62 @@ bool parseMenuAlignment(std::string value, SlimMenuLayout::Align& out) {
     return true;
 }
 
+UpdaterMenu::State readUpdaterState(const SlimMenuContext& ctx) {
+    UpdaterMenu::State state;
+    state.available = (bool)ctx.launchUpdater;
+    state.status = ctx.getUpdaterStatusText ? ctx.getUpdaterStatusText() : "";
+    if (state.status.empty()) state.status = state.available ? "READY" : "UNAVAILABLE";
+    if (ctx.getUpdaterStatusDetail) state.detail = ctx.getUpdaterStatusDetail();
+    if (ctx.getUpdaterLatestVersionText) state.latestVersion = ctx.getUpdaterLatestVersionText();
+    if (ctx.getUpdaterNotesText) state.notes = ctx.getUpdaterNotesText();
+    if (ctx.getUpdaterProgress01) state.percent = UpdaterMenu::progressPercent(ctx.getUpdaterProgress01());
+    return state;
+}
+
 SlimMenu loadMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuContext& ctx) {
+    if (name == "settingsupdater") {
+        SlimMenu menu;
+        menu.name = name;
+        menu.title = "Updater";
+        runtime.updater = readUpdaterState(ctx);
+        const auto& state = runtime.updater;
+        auto text = [&](const std::string& value) {
+            // Wrap details and release notes into scrollable rows, including long URLs.
+            const int maxWidth = std::max(1, ctx.baseScreenW - 100);
+            std::istringstream paragraphs(value);
+            std::string paragraph;
+            while (std::getline(paragraphs, paragraph)) {
+                while (!paragraph.empty()) {
+                    size_t end = 1, high = paragraph.size();
+                    while (end < high) {
+                        const size_t middle = end + (high - end + 1) / 2;
+                        if (MeasureTextWidth(2, paragraph.substr(0, middle)) <= maxWidth) end = middle;
+                        else high = middle - 1;
+                    }
+                    if (end < paragraph.size()) {
+                        const auto space = paragraph.rfind(' ', end);
+                        if (space != std::string::npos && space > 0) end = space;
+                    }
+                    menu.items.push_back(MenuItem{MenuItem::Type::Text, paragraph.substr(0, end), {}, {}});
+                    paragraph.erase(0, end);
+                    while (!paragraph.empty() && paragraph.front() == ' ') paragraph.erase(0, 1);
+                }
+            }
+        };
+        text("Current Version: " + fallbackText(ctx.versionString, "dev") + " (" + fallbackText(ctx.versionIdString, "dev") + ")");
+        text("Status: " + state.status);
+        menu.items.push_back(MenuItem{MenuItem::Type::Button, state.actionLabel(), "updater", {}});
+        menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back", "menu", "mainsetting"});
+        if (!state.latestVersion.empty()) text("Latest Version: " + state.latestVersion);
+        if (!state.detail.empty()) text(state.detail);
+        if (!runtime.updaterNotice.empty()) text(runtime.updaterNotice);
+        if (!state.available) text("Updates are unavailable in this build.");
+        else if (state.status == "NOT CONFIGURED") text("Set update_manifest_url in assets/config.json to enable updates.");
+        if (state.status.rfind("DOWNLOADING", 0) == 0 || state.percent > 0)
+            menu.items.push_back(MenuItem{MenuItem::Type::Text, "Download: " + std::to_string(state.percent) + "%", "updater_progress", {}});
+        if (!state.notes.empty()) { text("Release Notes:"); text(state.notes); }
+        return menu;
+    }
     if (name == "charactercreator" || name == "characterpresets" || name == "characterattributes" || name == "charactertextures" || name == "characterhair" || name == "characterpack") {
         SlimMenu menu;
         menu.name = name;
@@ -996,7 +1070,7 @@ std::vector<SlimLevelEntry> loadSlimLevelsFromJson(const std::string& jsonPath, 
             const std::string txtPath = path.substr(0, path.size() - bnn.size()) + ".txt";
             if (FileExists(txtPath)) path = txtPath;
         }
-        addUniqueLevel(out, SlimLevelEntry{label, path, 0});
+        if (FileExists(path)) addUniqueLevel(out, SlimLevelEntry{label, path, 0});
     }
     return out;
 }
@@ -1551,6 +1625,8 @@ SlimMenu buildGeneratedLevelMenu(const std::string& name, SlimRuntime& runtime, 
             menu.items.push_back(MenuItem{MenuItem::Type::Text, "${level_detail_status}", {}, {}});
             menu.items.push_back(MenuItem{MenuItem::Type::Button, "Play", "start", level.path});
             menu.items.push_back(MenuItem{MenuItem::Type::Button, "Edit", "edit_level", std::to_string(index)});
+            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Rename", "rename_level", std::to_string(index)});
+            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Resize", "resize_level", std::to_string(index)});
             menu.items.push_back(MenuItem{MenuItem::Type::Button, "Upload", "upload_level", std::to_string(index)});
             menu.items.push_back(MenuItem{MenuItem::Type::Button, "Delete", "delete_level", std::to_string(index)});
             menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back", "menu", "locallevels"});
@@ -1622,6 +1698,10 @@ SlimMenuLayout::Layout layoutFor(const SlimMenu& menu, const SlimRuntime& runtim
         const bool button = item.type != MenuItem::Type::Text;
         if (item.command == "difficulty_badge") {
             items.push_back({64, 64, item.horizontal, item.vertical});
+            continue;
+        }
+        if (item.command == "updater_progress") {
+            items.push_back({buttonWidth, 44, item.horizontal, item.vertical});
             continue;
         }
         items.push_back({button ? buttonWidth : MeasureTextWidth(2, expandVars(item.label, runtime, ctx)),
@@ -1862,6 +1942,16 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
         const bool isSelected = item.type != MenuItem::Type::Text && buttonIndex++ == selected;
         if (r.y + r.h <= layout.body.y || r.y >= layout.body.y + layout.body.h) continue;
         if (item.type == MenuItem::Type::Text) {
+            if (item.command == "updater_progress") {
+                DrawText(ctx.ren, r.x + (r.w - MeasureTextWidth(2, label)) / 2, r.y, 2, label);
+                const SDL_Rect track{r.x, r.y + 28, r.w, 12};
+                SDL_SetRenderDrawColor(ctx.ren, 35, 48, 62, 255);
+                SDL_RenderFillRect(ctx.ren, &track);
+                const SDL_Rect fill{track.x, track.y, track.w * runtime.updater.percent / 100, track.h};
+                SDL_SetRenderDrawColor(ctx.ren, 110, 200, 245, 255);
+                SDL_RenderFillRect(ctx.ren, &fill);
+                continue;
+            }
             if (item.command == "difficulty_badge") {
                 if (!drawDifficultyBadge(runtime, ctx.ren, r, label)) {
                     const std::string fallback = "Difficulty: " + runtime.vars["detail_difficulty"];
@@ -1925,6 +2015,12 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
         const int textInset = hasIcon ? iconSize + 16 : 8;
         DrawText(ctx.ren, r.x + textInset + SlimMenuLayout::offset(labelWidth - MeasureTextWidth(labelScale, label), item.labelHorizontal),
                  r.y + 4 + SlimMenuLayout::offset(r.h - 8 - labelScale * 10, item.labelVertical), labelScale, label);
+        if (item.command == "updater" && !runtime.updater.canAct()) {
+            SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_BLEND);
+            SDL_SetRenderDrawColor(ctx.ren, 0, 0, 0, 130);
+            SDL_RenderFillRect(ctx.ren, &r);
+            SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_NONE);
+        }
     }
     SDL_SetRenderClipRect(ctx.ren, &panel);
     if (layout.maxScroll > 0) {
@@ -2016,10 +2112,56 @@ bool adjustInt(const std::string& name, int delta, SlimMenuContext& ctx) {
     return true;
 }
 
+void stopAccountInput(SlimRuntime& runtime) {
+    if (runtime.accountInputWindow) SDL_StopTextInput(runtime.accountInputWindow);
+    runtime.accountInputWindow = nullptr;
+    runtime.accountForm.editing = AccountMenu::Field::None;
+    runtime.accountComposing = false;
+}
+
+void startAccountInput(SlimRuntime& runtime, const SlimMenuContext& ctx, AccountMenu::Field field) {
+    stopAccountInput(runtime);
+    runtime.accountForm.editing = field;
+    runtime.accountForm.active().cursor = runtime.accountForm.active().value.size();
+    runtime.accountForm.active().selected = false;
+    if (!ctx.win) return;
+    const auto props = SDL_CreateProperties();
+    SDL_SetNumberProperty(props, SDL_PROP_TEXTINPUT_TYPE_NUMBER, field == AccountMenu::Field::Password ?
+        SDL_TEXTINPUT_TYPE_TEXT_PASSWORD_HIDDEN : SDL_TEXTINPUT_TYPE_TEXT_EMAIL);
+    SDL_SetBooleanProperty(props, SDL_PROP_TEXTINPUT_AUTOCORRECT_BOOLEAN, false);
+    SDL_SetBooleanProperty(props, SDL_PROP_TEXTINPUT_MULTILINE_BOOLEAN, false);
+    if (SDL_StartTextInputWithProperties(ctx.win, props)) runtime.accountInputWindow = ctx.win;
+    SDL_DestroyProperties(props);
+}
+
 SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx, std::string& currentMenu) {
     if (item.type == MenuItem::Type::Slider) return SlimMenuExit::Continue;
     const std::string command = item.command;
     const std::string arg = expandVars(item.arg, runtime, ctx);
+    if (command == "account_edit") {
+        if (arg == "email" || arg == "password")
+            startAccountInput(runtime, ctx, arg == "password" ? AccountMenu::Field::Password : AccountMenu::Field::Email);
+        return SlimMenuExit::Continue;
+    }
+    if (command == "account_login") {
+        stopAccountInput(runtime);
+        std::string error;
+        const bool success = runtime.accountForm.submit(ctx.signIn, error);
+        runtime.vars["account_action_status"] = success ? "Signed in as " +
+            (ctx.levelServerAccountUsername ? *ctx.levelServerAccountUsername : std::string("your account")) : error;
+        runtime.vars["__reload_menu"] = "1";
+        return SlimMenuExit::Continue;
+    }
+    if (command == "account_open" || command == "account_logout" || command == "account_repair" || command == "back" || command == "quit" || command == "menu")
+        stopAccountInput(runtime);
+    if (command == "updater") {
+        const auto state = readUpdaterState(ctx);
+        if (state.canAct()) {
+            runtime.updaterNotice = ctx.launchUpdater() ? "" : "Could not start the updater. See the status details above.";
+            runtime.vars["__reload_menu"] = "1";
+        }
+        return SlimMenuExit::Continue;
+    }
     if (command == "character_examples" || command == "character_pack_select") {
         if (ctx.characterAppearance && ctx.showExperimentalFeatures && *ctx.showExperimentalFeatures) {
             if (command == "character_examples") {
@@ -2202,6 +2344,38 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
         runtime.vars["__reload_menu"] = "1";
         return SlimMenuExit::Continue;
     }
+    if (command == "rename_level" || command == "resize_level") {
+        const int index = std::atoi(arg.c_str());
+        const auto levels = filteredGeneratedLevels("local", runtime, ctx);
+        if (index < 0 || index >= (int)levels.size()) {
+            runtime.vars["level_detail_status"] = "Level no longer available.";
+        } else {
+            const auto level = levels[index];
+            std::string status;
+            std::string path = level.path;
+            if (command == "rename_level") {
+                const auto renamed = RenameLocalLevelForMenu(ctx.win, ctx.ren, path, status);
+                if (!renamed.empty()) path = renamed;
+                if (ctx.selectedLevelPath && *ctx.selectedLevelPath == level.path) {
+                    *ctx.selectedLevelPath = path;
+                    if (ctx.selectedLevelName && path != level.path) *ctx.selectedLevelName = std::filesystem::path(path).stem().string();
+                }
+            } else ResizeLocalLevelForMenu(ctx.win, ctx.ren, path, status);
+            runtime.localLevelsLoaded = false;
+            const auto refreshed = filteredGeneratedLevels("local", runtime, ctx);
+            for (size_t i = 0; i < refreshed.size(); ++i) {
+                std::error_code ec;
+                if (refreshed[i].path == path || std::filesystem::equivalent(refreshed[i].path, path, ec)) {
+                    runtime.vars["detail_index"] = std::to_string(i);
+                    runtime.vars["local_level_page"] = std::to_string(i / 10);
+                    break;
+                }
+            }
+            runtime.vars["level_detail_status"] = status;
+        }
+        runtime.vars["__reload_menu"] = "1";
+        return SlimMenuExit::Continue;
+    }
     if (command == "upload_level") {
         const int index = std::atoi(arg.c_str());
         std::vector<SlimLevelEntry> levels = filteredGeneratedLevels("local", runtime, ctx);
@@ -2345,6 +2519,7 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
         return SlimMenuExit::Continue;
     }
     if (command == "account_logout") {
+        runtime.accountForm.password.clear();
         RevokeLevelServerSession();
         if (ctx.levelServerAuthToken) ctx.levelServerAuthToken->clear();
         if (ctx.levelServerAccountUsername) ctx.levelServerAccountUsername->clear();
@@ -2356,6 +2531,7 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
         return SlimMenuExit::Continue;
     }
     if (command == "account_repair") {
+        runtime.accountForm.password.clear();
         if (ctx.levelServerAuthToken) ctx.levelServerAuthToken->clear();
         if (ctx.levelServerAccountUsername) ctx.levelServerAccountUsername->clear();
         SetLevelServerAuthToken(ctx.levelServerAuthToken ? *ctx.levelServerAuthToken : std::string());
@@ -2468,6 +2644,10 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
         ctx.session->menu.clear();
     }
     while (ctx.running && *ctx.running) {
+        if (currentMenu != "settingsaccount") {
+            stopAccountInput(runtime);
+            runtime.accountForm.password.clear();
+        }
         SlimMenu menu = loadMenu(currentMenu, runtime, ctx);
         if (restoreSelection) {
             selected = 0;
@@ -2502,6 +2682,9 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
         presentMenuFrame(menu, runtime, ctx, selected);
         SDL_Event e;
         while (ctx.running && *ctx.running) {
+            if (ctx.pollUpdaterAutoRelaunch) ctx.pollUpdaterAutoRelaunch();
+            if (!*ctx.running) return SlimMenuExit::Quit;
+            if (currentMenu == "settingsupdater" && readUpdaterState(ctx) != runtime.updater) goto next_menu;
             if (runtime.characterFileDialog) {
                 auto request = runtime.characterFileDialog;
                 bool ready, failed;
@@ -2708,6 +2891,66 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                      e.type == SDL_EVENT_MOUSE_WHEEL || e.type == SDL_EVENT_FINGER_DOWN ||
                      e.type == SDL_EVENT_FINGER_UP || e.type == SDL_EVENT_FINGER_MOTION ||
                      e.type == SDL_EVENT_FINGER_CANCELED)) continue;
+                if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST) stopAccountInput(runtime);
+                if (runtime.accountForm.editing != AccountMenu::Field::None) {
+                    if (e.type == SDL_EVENT_TEXT_INPUT) {
+                        runtime.accountForm.insert(e.text.text ? e.text.text : "");
+                        runtime.accountComposing = false;
+                        continue;
+                    }
+                    if (e.type == SDL_EVENT_TEXT_EDITING) {
+                        runtime.accountComposing = e.edit.text && *e.edit.text;
+                        continue;
+                    }
+                    const bool keyboard = e.type == SDL_EVENT_KEY_DOWN;
+                    const bool controller = e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN;
+                    const bool accept = (keyboard && (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER)) ||
+                        (controller && e.gbutton.button == SDL_GAMEPAD_BUTTON_SOUTH);
+                    const bool cancel = (keyboard && (e.key.key == SDLK_ESCAPE || e.key.key == SDLK_AC_BACK)) ||
+                        (controller && (e.gbutton.button == SDL_GAMEPAD_BUTTON_EAST || e.gbutton.button == SDL_GAMEPAD_BUTTON_BACK));
+                    if (cancel) { stopAccountInput(runtime); continue; }
+                    if (accept) {
+                        if ((keyboard && e.key.repeat) || runtime.accountComposing) continue;
+                        if (runtime.accountForm.editing == AccountMenu::Field::Email) {
+                            startAccountInput(runtime, ctx, AccountMenu::Field::Password);
+                            selected = 1;
+                            runtime.scrollY = SlimMenuLayout::reveal(layout, buttonItemIndex(menu, selected), runtime.scrollY);
+                        } else {
+                            MenuItem login{MenuItem::Type::Button, "Sign In", "account_login", {}};
+                            execute(login, runtime, ctx, currentMenu);
+                            selected = varIsTruthy("account_signed_in", runtime, ctx) ? 0 : 2;
+                            inputBlockUntilTicks = SDL_GetTicks() + 250;
+                            runtime.vars.erase("__reload_menu");
+                            goto next_menu;
+                        }
+                        continue;
+                    }
+                    if (keyboard) {
+                        auto& entry = runtime.accountForm.active();
+                        const bool shortcut = (e.key.mod & (SDL_KMOD_CTRL | SDL_KMOD_GUI)) != 0;
+                        if (shortcut && e.key.key == SDLK_v) {
+                            char* clipboard = SDL_GetClipboardText();
+                            if (clipboard) { runtime.accountForm.insert(clipboard); SDL_free(clipboard); }
+                        } else if (shortcut && e.key.key == SDLK_a) entry.selected = true;
+                        else if (e.key.key == SDLK_BACKSPACE) entry.backspace();
+                        else if (e.key.key == SDLK_DELETE) entry.eraseForward();
+                        else if (e.key.key == SDLK_LEFT) entry.move(-1);
+                        else if (e.key.key == SDLK_RIGHT) entry.move(1);
+                        else if (e.key.key == SDLK_HOME) { entry.cursor = 0; entry.selected = false; }
+                        else if (e.key.key == SDLK_END) { entry.cursor = entry.value.size(); entry.selected = false; }
+                        else if (e.key.key == SDLK_TAB) {
+                            if ((e.key.mod & SDL_KMOD_SHIFT) || runtime.accountForm.editing == AccountMenu::Field::Email) {
+                                const auto field = runtime.accountForm.editing == AccountMenu::Field::Email ? AccountMenu::Field::Password : AccountMenu::Field::Email;
+                                startAccountInput(runtime, ctx, field);
+                                selected = field == AccountMenu::Field::Email ? 0 : 1;
+                            } else { stopAccountInput(runtime); selected = 2; }
+                            runtime.scrollY = SlimMenuLayout::reveal(layout, buttonItemIndex(menu, selected), runtime.scrollY);
+                        } else if (e.key.key == SDLK_UP || e.key.key == SDLK_DOWN) stopAccountInput(runtime);
+                        else continue;
+                        if (e.key.key != SDLK_UP && e.key.key != SDLK_DOWN) continue;
+                    }
+                    if (controller) stopAccountInput(runtime);
+                }
                 if (runtime.difficultyPopupOpen) {
                     const auto popupLayout = DifficultySelector::build(ctx.baseScreenW, ctx.baseScreenH);
                     auto hitPopup = [&](float x, float y) {
@@ -2929,16 +3172,23 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                     }
                     if (MenuItem* item = buttonAt(menu, selected)) {
                         const std::string before = currentMenu;
-                        const bool opensEditor = item->command == "create_level" || item->command == "edit_level";
+                        const bool opensEditor = item->command == "create_level" || item->command == "edit_level" ||
+                            item->command == "rename_level" || item->command == "resize_level";
                         if (opensEditor) {
                             restoreCommand = item->command;
                             restoreArgument = item->arg;
                             restoreLabel = item->label;
                         }
                         const SlimMenuExit exit = execute(*item, runtime, ctx, currentMenu);
+                        if (item->command == "account_login") {
+                            selected = varIsTruthy("account_signed_in", runtime, ctx) ? 0 : 2;
+                            inputBlockUntilTicks = SDL_GetTicks() + 250;
+                        }
                         if (opensEditor) {
                             // Return to the menu and focused action that opened the editor,
                             // regardless of whether it saved or was cancelled.
+                            if (item->command == "rename_level" || item->command == "resize_level")
+                                restoreArgument = runtime.vars["detail_index"];
                             currentMenu = before;
                             restoreSelection = true;
                             inputBlockUntilTicks = SDL_GetTicks() + 250;

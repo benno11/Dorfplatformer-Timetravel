@@ -2,8 +2,15 @@
 title "Account"
 text "Status: ${account_status}"
 text "${account_action_status}"
+if account_signed_out skip 4
+text "Select a field to type. Enter moves to Password or signs in."
+button "Email: ${account_email}" account_edit email
+button "Password: ${account_password}" account_edit password
+button "Sign In" account_login
 button "Open Account Manager" account_open
 button "Update Server" server_update
+if account_signed_in skip 1
 button "Log Out" account_logout
+if account_needs_repair skip 1
 button "Repair Login" account_repair
 button "Back" menu mainsetting

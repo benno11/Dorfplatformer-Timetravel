@@ -34,6 +34,7 @@ Commands:
 - `text_align left center` aligns labels within subsequent objects on both axes (default `center center`).
 - `text "Text"` draws static text. Variables use `${name}`.
 - `button "Label" menu othermenu` opens another `.menu`.
+- `button "Updater" menu settingsupdater` opens the generated updater screen with live status, versions, release notes, progress, and the check/install action. It uses the existing platform updater and disables its action while busy or unavailable.
 - `button "Label" campaign` opens campaign level select.
 - `button "Label" levels` opens the combined level select.
 - `button "Label" custom` opens custom/editor levels.
@@ -60,6 +61,14 @@ Commands:
 - `if var false skip 2` is the same, written more explicitly.
 
 Supported built-in variables include `${username}`, `${api}`, `${active_save_slot}`, `${save_slot_1_status}`, `${save_slot_2_status}`, `${save_slot_3_status}`, `${save_slot_1_exists}`, `${save_slot_2_exists}`, and `${save_slot_3_exists}`. Data fetched with `get` is saved as a variable for the current menu session.
+
+The Account menu uses `account_edit email`, `account_edit password`, and
+`account_login` for the built-in sign-in form. `${account_email}` and
+`${account_password}` show field labels (passwords are always masked).
+`account_signed_in`, `account_signed_out`, and `account_needs_repair` control
+the appropriate actions with `if`. Credentials remain outside menu variables
+and saved menu sessions. `account_logout`, `account_repair`, and `account_open`
+use the existing session and browser account tools.
 
 ## Scrolling, scale, and alignment
 
@@ -124,7 +133,9 @@ Generated local and online level menus:
 
 Level detail pages:
 
-- Local level details show name, difficulty, verification state, and actions for Play, Edit, Upload, Delete, and Back.
+- Local level details show name, difficulty, verification state, and actions for Play, Edit, Rename, Resize, Upload, Delete, and Back.
+- Rename keeps the level in the same folder and adds a numeric suffix if the name is already taken.
+- Resize accepts 5–400 tiles per dimension, keeps the top-left area, and fills new space with empty tiles. Cropping tiles or objects at the right/bottom edges requires confirmation. Saving a resize clears verification.
 - Online level details show name, difficulty, and actions for Play, Update Download, and Back.
 - Moderator accounts also see Set Difficulty on online level details. It opens a popup with ratings `1`–`9`, Unrated (clear the rating), Apply, and Cancel. Mouse/touch selects an option; arrow keys or the controller D-pad navigate, Enter/Accept selects, and Escape/Back cancels. Number keys select ratings directly. Apply saves the selected rating; Cancel leaves the previous rating unchanged.
 - `Update Download` refreshes the downloaded/cached copy of that online level from the server.

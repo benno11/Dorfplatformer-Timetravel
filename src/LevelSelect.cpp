@@ -27,6 +27,7 @@
 #include "TextRenderer.h"
 #include "GameSupport.h"
 #include "LevelLoader.h"
+#include "LocalLevelEdits.h"
 #include "ObjectIds.h"
 #include "InputSystem.h"
 #include "Platform.h"
@@ -229,7 +230,7 @@ struct GrowLevelPromptResult {
     int width = 30;
     int height = 17;
 };
-GrowLevelPromptResult RunGrowLevelPrompt(SDL_Window* win, SDL_Renderer* ren, int currentW, int currentH);
+GrowLevelPromptResult RunGrowLevelPrompt(SDL_Window* win, SDL_Renderer* ren, int currentW, int currentH, bool allowShrink = false);
 
 OnlineLevelsMenuLabels loadOnlineLevelsMenuLabels() {
     OnlineLevelsMenuLabels labels;
@@ -371,14 +372,7 @@ std::string writeLocalLevelFile(const std::vector<unsigned short>& rowMajorGrid,
         if (!out.good()) return {};
     }
 
-    std::error_code ec;
-    std::filesystem::rename(tmpPath, outPath, ec);
-    if (ec) {
-        std::filesystem::remove(outPath, ec);
-        ec.clear();
-        std::filesystem::rename(tmpPath, outPath, ec);
-        if (ec) return {};
-    }
+    if (!LocalLevelEdits::replaceFile(tmpPath.string(), outPath.string())) return {};
     ClearLocalLevelVerification(outPath.string());
     return outPath.string();
 }
@@ -2979,6 +2973,58 @@ std::string OpenLocalLevelEditorForMenu(SDL_Window* win, SDL_Renderer* ren, cons
     return RunLocalLevelEditor(win, ren, initialPath);
 }
 
+std::string RenameLocalLevelForMenu(SDL_Window* win, SDL_Renderer* ren, const std::string& path, std::string& status) {
+    CancelNativeTextOverlay(ren);
+    std::string initial = std::filesystem::path(path).stem().string();
+    std::replace(initial.begin(), initial.end(), '_', ' ');
+    const auto name = RunLocalLevelRenamePrompt(win, ren, initial);
+    if (name.empty()) { status = "Rename cancelled."; return {}; }
+    std::string renamed;
+    if (!LocalLevelEdits::renameFile(path, name, renamed, status)) return {};
+    if (renamed == path) { status = "Name unchanged."; return renamed; }
+    ClearLocalLevelVerification(path);
+    ClearLocalLevelVerification(renamed);
+    status = "Local level renamed.";
+    return renamed;
+}
+
+bool ResizeLocalLevelForMenu(SDL_Window* win, SDL_Renderer* ren, const std::string& path, std::string& status) {
+    CancelNativeTextOverlay(ren);
+    TileMap map;
+    std::vector<ObjectInstance> objects;
+    LevelMeta meta;
+    if (!loadLevelBNNLVL(path, map, objects, meta)) { status = "Could not open this local level."; return false; }
+    const auto draft = RunGrowLevelPrompt(win, ren, map.w, map.h, true);
+    if (!draft.accepted) { status = "Resize cancelled."; return false; }
+    LocalLevelEdits::ResizePlan plan;
+    if (!LocalLevelEdits::planResize(map, objects, draft.width, draft.height, plan)) {
+        status = "Could not resize this level. Dimensions must be 5-400 tiles.";
+        return false;
+    }
+    if (plan.croppedTiles || plan.croppedObjects) {
+        const std::string message = "Resize to " + std::to_string(draft.width) + " x " + std::to_string(draft.height) +
+            " tiles? This removes " + std::to_string(plan.croppedTiles) + " tiles and " + std::to_string(plan.croppedObjects) +
+            " objects beyond the new right and bottom edges.";
+        const SDL_MessageBoxButtonData buttons[]{{SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, 0, "Cancel"},
+            {SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, 1, "Resize"}};
+        SDL_MessageBoxData dialog{};
+        dialog.flags = SDL_MESSAGEBOX_WARNING;
+        dialog.window = win;
+        dialog.title = "Crop Local Level";
+        dialog.message = message.c_str();
+        dialog.numbuttons = 2;
+        dialog.buttons = buttons;
+        int choice = 0;
+        if (!SDL_ShowMessageBox(&dialog, &choice) || choice != 1) { status = "Resize cancelled."; return false; }
+    }
+    if (writeLocalLevelFile(plan.tiles, draft.width, draft.height, path, plan.objects, meta).empty()) {
+        status = "Could not save the resized level. The original file was kept.";
+        return false;
+    }
+    status = "Resized to " + std::to_string(draft.width) + " x " + std::to_string(draft.height) + " tiles. Verification cleared.";
+    return true;
+}
+
 namespace {
 
 std::string RunLocalLevelRenamePrompt(SDL_Window* win, SDL_Renderer* ren, const std::string& initialName) {
@@ -2986,6 +3032,7 @@ std::string RunLocalLevelRenamePrompt(SDL_Window* win, SDL_Renderer* ren, const 
     bool accepted = false;
     bool running = true;
     bool textInputActive = false;
+    bool replaceName = true;
     auto trimSpaces = [](std::string s) {
         while (!s.empty() && std::isspace((unsigned char)s.front())) s.erase(s.begin());
         while (!s.empty() && std::isspace((unsigned char)s.back())) s.pop_back();
@@ -3010,22 +3057,36 @@ std::string RunLocalLevelRenamePrompt(SDL_Window* win, SDL_Renderer* ren, const 
         SDL_Rect rowName{panel.x + 20, panel.y + 66, panel.w - 40, 40};
         SDL_Rect okBtn{panel.x + 80, panel.y + 148, 150, 42};
         SDL_Rect cancelBtn{panel.x + 290, panel.y + 148, 150, 42};
+        auto activateRename = [&]() {
+            name = trimSpaces(name);
+            accepted = !name.empty();
+            running = false;
+        };
         setTextInput(true, &rowName);
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
-            if (e.type == SDL_QUIT) { running = false; break; }
+            if (e.type == SDL_QUIT) { SDL_PushEvent(&e); running = false; break; }
             if (e.type == SDL_TEXTINPUT
 #if defined(SDL_EVENT_TEXT_INPUT)
                 || e.type == SDL_EVENT_TEXT_INPUT
 #endif
             ) {
-                if (name.size() < 64) name += e.text.text;
+                if (replaceName) { name.clear(); replaceName = false; }
+                if (name.size() < 64) name += std::string(e.text.text).substr(0, 64 - name.size());
                 continue;
             }
             if (e.type == SDL_KEYDOWN && e.key.repeat == 0) {
                 if (e.key.key == SDLK_ESCAPE || e.key.key == SDLK_AC_BACK) { running = false; break; }
+                if ((e.key.mod & (SDL_KMOD_CTRL | SDL_KMOD_GUI)) && e.key.key == SDLK_a) { replaceName = true; continue; }
+                if (e.key.key == SDLK_END || e.key.key == SDLK_RIGHT) { replaceName = false; continue; }
                 if (e.key.key == SDLK_BACKSPACE || e.key.key == SDLK_DELETE) {
-                    if (!name.empty()) name.pop_back();
+                    if (replaceName) name.clear();
+                    else if (!name.empty()) {
+                        size_t pos = name.size() - 1;
+                        while (pos && ((unsigned char)name[pos] & 0xc0) == 0x80) --pos;
+                        name.erase(pos);
+                    }
+                    replaceName = false;
                     continue;
                 }
                 if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) {
@@ -3035,7 +3096,16 @@ std::string RunLocalLevelRenamePrompt(SDL_Window* win, SDL_Renderer* ren, const 
                     break;
                 }
             }
-            if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
+            if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
+                if (e.gbutton.button == SDL_GAMEPAD_BUTTON_EAST || e.gbutton.button == SDL_GAMEPAD_BUTTON_BACK) { running = false; break; }
+                if (e.gbutton.button == SDL_GAMEPAD_BUTTON_SOUTH || e.gbutton.button == SDL_GAMEPAD_BUTTON_START) { activateRename(); break; }
+            }
+            if (e.type == SDL_EVENT_FINGER_DOWN) {
+                SDL_Point point{(int)(e.tfinger.x * winW), (int)(e.tfinger.y * winH)};
+                if (SDL_PointInRect(&point, &okBtn)) { activateRename(); break; }
+                if (SDL_PointInRect(&point, &cancelBtn)) { running = false; break; }
+            }
+            if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT && e.button.which != SDL_TOUCH_MOUSEID) {
                 SDL_Point pt{(int)e.button.x, (int)e.button.y};
                 if (SDL_PointInRect(&pt, &okBtn)) {
                     name = trimSpaces(name);
@@ -3078,14 +3148,14 @@ std::string RunLocalLevelRenamePrompt(SDL_Window* win, SDL_Renderer* ren, const 
     return accepted ? name : std::string();
 }
 
-GrowLevelPromptResult RunGrowLevelPrompt(SDL_Window* win, SDL_Renderer* ren, int currentW, int currentH) {
+GrowLevelPromptResult RunGrowLevelPrompt(SDL_Window* win, SDL_Renderer* ren, int currentW, int currentH, bool allowShrink) {
     GrowLevelPromptResult out;
-    out.width = currentW;
-    out.height = currentH;
+    out.width = allowShrink ? std::clamp(currentW, 5, 400) : currentW;
+    out.height = allowShrink ? std::clamp(currentH, 5, 400) : currentH;
     bool running = true;
     int selectedRow = 0;
-    auto clampW = [&](int v) { return std::clamp(v, currentW, 400); };
-    auto clampH = [&](int v) { return std::clamp(v, currentH, 400); };
+    auto clampW = [&](int v) { return std::clamp(v, allowShrink ? 5 : currentW, allowShrink ? 400 : std::max(400, currentW)); };
+    auto clampH = [&](int v) { return std::clamp(v, allowShrink ? 5 : currentH, allowShrink ? 400 : std::max(400, currentH)); };
     while (running) {
         int winW = 0, winH = 0;
         getWindowSizeInPixelsCompat(win, winW, winH);
@@ -3099,7 +3169,7 @@ GrowLevelPromptResult RunGrowLevelPrompt(SDL_Window* win, SDL_Renderer* ren, int
         SDL_Rect growBtn{panel.x + 80, panel.y + 202, 150, 42};
         SDL_Rect cancelBtn{panel.x + 290, panel.y + 202, 150, 42};
         auto acceptGrow = [&]() {
-            out.accepted = (out.width > currentW || out.height > currentH);
+            out.accepted = (out.width != currentW || out.height != currentH);
             running = false;
         };
         auto handlePoint = [&](int px, int py) {
@@ -3115,7 +3185,7 @@ GrowLevelPromptResult RunGrowLevelPrompt(SDL_Window* win, SDL_Renderer* ren, int
         };
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
-            if (e.type == SDL_QUIT) { running = false; break; }
+            if (e.type == SDL_QUIT) { SDL_PushEvent(&e); running = false; break; }
             if (e.type == SDL_KEYDOWN && e.key.repeat == 0) {
                 if (e.key.key == SDLK_ESCAPE || e.key.key == SDLK_AC_BACK) { running = false; break; }
                 if (e.key.key == SDLK_UP || e.key.key == SDLK_DOWN || e.key.key == SDLK_TAB) { selectedRow = 1 - selectedRow; continue; }
@@ -3126,7 +3196,19 @@ GrowLevelPromptResult RunGrowLevelPrompt(SDL_Window* win, SDL_Renderer* ren, int
                 if (e.key.key == SDLK_RIGHT || e.key.key == SDLK_EQUALS || e.key.key == SDLK_PLUS || e.key.key == SDLK_KP_PLUS || e.key.key == SDLK_PAGEUP) { v = clampSelected(v + step); continue; }
                 if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) { acceptGrow(); break; }
             }
-            if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) handlePoint((int)e.button.x, (int)e.button.y);
+            if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
+                const auto button = e.gbutton.button;
+                if (button == SDL_GAMEPAD_BUTTON_EAST || button == SDL_GAMEPAD_BUTTON_BACK) { running = false; break; }
+                if (button == SDL_GAMEPAD_BUTTON_DPAD_UP || button == SDL_GAMEPAD_BUTTON_DPAD_DOWN) selectedRow = 1 - selectedRow;
+                if (button == SDL_GAMEPAD_BUTTON_DPAD_LEFT || button == SDL_GAMEPAD_BUTTON_DPAD_RIGHT) {
+                    const int step = button == SDL_GAMEPAD_BUTTON_DPAD_LEFT ? -1 : 1;
+                    if (selectedRow == 0) out.width = clampW(out.width + step);
+                    else out.height = clampH(out.height + step);
+                }
+                if (button == SDL_GAMEPAD_BUTTON_SOUTH || button == SDL_GAMEPAD_BUTTON_START) { acceptGrow(); break; }
+            }
+            if (e.type == SDL_EVENT_FINGER_DOWN) handlePoint((int)(e.tfinger.x * winW), (int)(e.tfinger.y * winH));
+            if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT && e.button.which != SDL_TOUCH_MOUSEID) handlePoint((int)e.button.x, (int)e.button.y);
             if (e.type == SDL_MOUSEWHEEL) {
                 if (selectedRow == 0) out.width = clampW(out.width + e.wheel.y);
                 else out.height = clampH(out.height + e.wheel.y);
@@ -3138,7 +3220,7 @@ GrowLevelPromptResult RunGrowLevelPrompt(SDL_Window* win, SDL_Renderer* ren, int
         SDL_RenderFillRect(ren, &panel);
         SDL_SetRenderDrawColor(ren, 200, 210, 230, 255);
         SDL_RenderDrawRect(ren, &panel);
-        DrawText(ren, panel.x + 20, panel.y + 20, 3, "GROW LOCAL LEVEL");
+        DrawText(ren, panel.x + 20, panel.y + 20, 3, allowShrink ? "RESIZE LOCAL LEVEL" : "GROW LOCAL LEVEL");
         auto drawRow = [&](const SDL_Rect& r, bool selected, const std::string& text) {
             SDL_SetRenderDrawColor(ren, selected ? 68 : 50, selected ? 98 : 72, selected ? 158 : 108, 255);
             SDL_RenderFillRect(ren, &r);
@@ -3159,11 +3241,12 @@ GrowLevelPromptResult RunGrowLevelPrompt(SDL_Window* win, SDL_Renderer* ren, int
         drawAdjust(rowWPlus, "+");
         drawAdjust(rowHMinus, "-");
         drawAdjust(rowHPlus, "+");
+        if (allowShrink) DrawText(ren, panel.x + 20, panel.y + 174, 2, "5-400 TILES; KEEPS TOP-LEFT AREA");
         SDL_SetRenderDrawColor(ren, 55, 95, 70, 255);
         SDL_RenderFillRect(ren, &growBtn);
         SDL_SetRenderDrawColor(ren, 205, 235, 210, 255);
         SDL_RenderDrawRect(ren, &growBtn);
-        DrawText(ren, growBtn.x + 42, growBtn.y + 12, 2, "GROW");
+        DrawText(ren, growBtn.x + 42, growBtn.y + 12, 2, allowShrink ? "APPLY" : "GROW");
         SDL_SetRenderDrawColor(ren, 80, 55, 70, 255);
         SDL_RenderFillRect(ren, &cancelBtn);
         SDL_SetRenderDrawColor(ren, 235, 205, 210, 255);

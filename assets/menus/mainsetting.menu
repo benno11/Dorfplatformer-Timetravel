@@ -12,4 +12,5 @@ button "Extra Options" menu settingsextras
 if show_experimental_features skip 1
 button "Character Creator [Experimental]" menu charactercreator
 button "About" menu settingsabout
+button "Updater" menu settingsupdater
 button "Back" back

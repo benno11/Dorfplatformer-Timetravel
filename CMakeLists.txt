@@ -181,6 +181,7 @@ set(PLATFORMER_GAME_SOURCES
   src/LevelLoader.cpp
   src/TextRenderer.cpp
   src/LevelSelect.cpp
+  src/LocalLevelEdits.cpp
   src/LevelVerification.cpp
   src/GameProgression.cpp
   src/PlayerController.cpp
@@ -1012,6 +1013,12 @@ if(BUILD_TESTING AND NOT ANDROID AND NOT IOS)
   target_include_directories(update_manifest_test PRIVATE src)
   target_link_libraries(update_manifest_test PRIVATE nlohmann_json::nlohmann_json)
   add_test(NAME update_manifest COMMAND update_manifest_test)
+  add_executable(updater_menu_state_test tests/UpdaterMenuStateTest.cpp)
+  target_include_directories(updater_menu_state_test PRIVATE src)
+  add_test(NAME updater_menu_state COMMAND updater_menu_state_test)
+  add_executable(account_menu_form_test tests/AccountMenuFormTest.cpp)
+  target_include_directories(account_menu_form_test PRIVATE src)
+  add_test(NAME account_menu_form COMMAND account_menu_form_test)
   add_executable(slim_menu_layout_test tests/SlimMenuLayoutTest.cpp)
   target_include_directories(slim_menu_layout_test PRIVATE src)
   target_link_libraries(slim_menu_layout_test PRIVATE ${SDL3_LINK_TARGET})
@@ -1035,6 +1042,11 @@ if(BUILD_TESTING AND NOT ANDROID AND NOT IOS)
   target_link_libraries(moving_platform_test PRIVATE ${SDL3_LINK_TARGET})
   target_compile_definitions(moving_platform_test PRIVATE SDL_ENABLE_OLD_NAMES=1)
   add_test(NAME moving_platform COMMAND moving_platform_test)
+  add_executable(bumper_test tests/BumperTest.cpp src/PlayerController.cpp src/TileMap.cpp)
+  target_include_directories(bumper_test PRIVATE src)
+  target_link_libraries(bumper_test PRIVATE ${SDL3_LINK_TARGET})
+  target_compile_definitions(bumper_test PRIVATE SDL_ENABLE_OLD_NAMES=1)
+  add_test(NAME bumper COMMAND bumper_test)
   add_executable(level_verification_test tests/LevelVerificationTest.cpp src/LevelVerification.cpp)
   target_include_directories(level_verification_test PRIVATE src third_party)
   add_test(NAME level_verification COMMAND level_verification_test)
@@ -1079,6 +1091,11 @@ if(BUILD_TESTING AND NOT ANDROID AND NOT IOS)
   target_compile_definitions(async_asset_loader_test PRIVATE SDL_ENABLE_OLD_NAMES=1)
   add_test(NAME async_asset_loader COMMAND async_asset_loader_test)
   set_tests_properties(async_asset_loader PROPERTIES TIMEOUT 15)
+  add_executable(local_level_edits_test tests/LocalLevelEditsTest.cpp src/LocalLevelEdits.cpp src/TileMap.cpp)
+  target_include_directories(local_level_edits_test PRIVATE src)
+  target_link_libraries(local_level_edits_test PRIVATE ${SDL3_LINK_TARGET})
+  target_compile_definitions(local_level_edits_test PRIVATE SDL_ENABLE_OLD_NAMES=1)
+  add_test(NAME local_level_edits COMMAND local_level_edits_test)
   add_executable(level_format_test
     tests/LevelFormatTest.cpp
     src/LevelLoader.cpp

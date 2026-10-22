@@ -73,6 +73,13 @@ inline bool touchingTop(const Player& player, const SDL_FRect& platform) {
     return player.x + player.w > platform.x && player.x < platform.x + platform.w &&
         std::fabs(player.y + player.h - platform.y) <= 1.5f;
 }
+inline bool touching(const Player& player, const SDL_FRect& platform) {
+    // Match the subpixel contact tolerance used for riders, on all four faces.
+    const bool overlapX = player.x + player.w > platform.x && player.x < platform.x + platform.w;
+    const bool overlapY = player.y + player.h > platform.y && player.y < platform.y + platform.h;
+    return (overlapX && player.y + player.h >= platform.y - 1.5f && player.y <= platform.y + platform.h + 1.5f) ||
+        (overlapY && player.x + player.w >= platform.x - 1.5f && player.x <= platform.x + platform.w + 1.5f);
+}
 inline bool standingOn(const Player& player, const SDL_FRect& platform) {
     return !player.freeMove && player.vy >= 0 && touchingTop(player, platform);
 }

@@ -48,6 +48,7 @@
 #include "CharacterAttributes.h"
 #include "CharacterHairCollision.h"
 #include "MovingPlatform.h"
+#include "Bumper.h"
 #include "Player.h"
 #include "PlayerController.h"
 #include "SimulationTiming.h"
@@ -2416,6 +2417,8 @@ int RunGameApp(int argc, char** argv) {
         if (out.is_open()) {
             out << json.dump(2);
         }
+        updaterStatus->displayText.clear();
+        updaterStatus->lastReadTicks = 0;
     };
     auto refreshUpdaterStatus = [updaterStatus, &updateManifestUrl]() -> std::string {
         const Uint64 now = SDL_GetTicks();
@@ -2926,19 +2929,15 @@ int RunGameApp(int argc, char** argv) {
             bool splash = false;
         };
         std::vector<WaterParticle> waterParticles;
-        struct BumperImpact {
-            float remaining = 0.0f;
-            float cooldownRemaining = 0.0f;
-        };
+        using BumperImpact = Bumper::Impact;
         struct BumperSpark {
             float x, y, vx, vy, life, maxLife;
         };
-        constexpr float bumperImpactDuration = 0.42f;
-        constexpr float bumperCooldownDuration = 0.25f;
+        constexpr float bumperImpactDuration = Bumper::kImpactDuration;
         std::unordered_map<int, BumperImpact> bumperImpacts;
         std::vector<BumperSpark> bumperSparks;
         auto triggerBumperImpact = [&](int index, float x, float y, float direction) {
-            bumperImpacts[index] = {bumperImpactDuration, bumperCooldownDuration};
+            if (!bumperImpacts[index].trigger()) return;
             constexpr size_t maxSparks = 192;
             constexpr int burstSize = 16;
             if (bumperSparks.size() + burstSize > maxSparks) {
@@ -2954,6 +2953,7 @@ int RunGameApp(int argc, char** argv) {
                     std::cos(angle) * speed,
                     std::sin(angle) * speed * 0.55f + direction * 95.0f, life, life});
             }
+            audio.playBumperSfx();
         };
         WaterVisuals::InteractionState playerWaterState;
         std::vector<WaterVisuals::InteractionState> objectWaterStates;
@@ -4728,8 +4728,7 @@ int RunGameApp(int argc, char** argv) {
             if (!paused) spikeImpact.remaining = std::max(0.0f, spikeImpact.remaining - dt);
             if (!paused) {
                 for (auto it = bumperImpacts.begin(); it != bumperImpacts.end();) {
-                    it->second.remaining -= dt;
-                    it->second.cooldownRemaining -= dt;
+                    it->second.update(dt);
                     if (it->second.remaining <= 0.0f && it->second.cooldownRemaining <= 0.0f) it = bumperImpacts.erase(it);
                     else ++it;
                 }
@@ -6319,15 +6318,17 @@ int RunGameApp(int argc, char** argv) {
             }
             PlayerUpdateResult upd = PlayerUpdateResult::RenderOnly;
             int platformRider = -1;
+            bool platformContact = false;
             if (!fastTravelEnabled && !player.freeMove && playerSpawnLockFrames <= 0) {
                 for (int index = 0; index < (int)objects.size(); ++index) {
                     if (objectIds[index] != ObjectIds::MovingPlatform) continue;
                     const auto bounds = MovingPlatform::nearPlayer(objects[index].x, objects[index].y, (float)map.tileSize,
                         player, gameplayWrapX ? mapWrapW : 0, gameplayWrapY ? mapWrapH : 0);
-                    if (MovingPlatform::standingOn(player, bounds)) { platformRider = index; break; }
+                    if (MovingPlatform::touching(player, bounds)) platformContact = true;
+                    if (platformRider < 0 && MovingPlatform::standingOn(player, bounds)) platformRider = index;
                 }
             }
-            MovingPlatform::synchronize(movingPlatformStates, objectIds, platformRider >= 0);
+            MovingPlatform::synchronize(movingPlatformStates, objectIds, platformContact);
             const auto platformDeltas = MovingPlatform::advanceObjects(objects, movingPlatformStates, objectIds,
                 dt, (float)map.tileSize, gameplayWrapX ? mapWrapW : 0, gameplayWrapY ? mapWrapH : 0);
             for (int index = 0; index < (int)objects.size(); ++index) {
@@ -6363,12 +6364,16 @@ int RunGameApp(int argc, char** argv) {
                         }
                     );
                     if (upd == PlayerUpdateResult::Normal && !player.freeMove) {
+                        bool touchedPlatform = false;
                         for (const auto& bounds : platformSolids) {
-                            if (!MovingPlatform::touchingTop(player, bounds) || beforeNormalY + player.h > bounds.y + 1.5f) continue;
-                            MovingPlatform::settleRider(player, map, bounds);
+                            if (!MovingPlatform::touching(player, bounds)) continue;
+                            touchedPlatform = true;
+                            if (MovingPlatform::touchingTop(player, bounds) && beforeNormalY + player.h <= bounds.y + 1.5f)
+                                MovingPlatform::settleRider(player, map, bounds);
+                        }
+                        if (touchedPlatform) {
                             MovingPlatform::synchronize(movingPlatformStates, objectIds, true);
                             addMovementReason(MR_PLATFORM);
-                            break;
                         }
                     }
                     if (std::fabs(player.x - beforeNormalX) > 0.01f || std::fabs(player.y - beforeNormalY) > 0.01f) {
@@ -7238,39 +7243,9 @@ int RunGameApp(int argc, char** argv) {
                 }
             }
             // Bumper objects (id 46): vertical bounce, up/down depending approach.
-            auto applyBumperBounce = [&](float targetY, float launchVy) -> bool {
-                const float oldY = player.y;
-                player.y = targetY;
-
-                // Keep player out of solids near bumpers placed against floor/ceiling.
-                const float nudgeDir = (launchVy < 0.0f) ? 1.0f : -1.0f;
-                int nudgeSteps = 0;
-                while (RectHitsSolid(map, player.x, player.y, player.w, player.h) && nudgeSteps < 64) {
-                    player.y += nudgeDir;
-                    ++nudgeSteps;
-                }
-                if (RectHitsSolid(map, player.x, player.y, player.w, player.h)) {
-                    player.y = oldY;
-                    return false;
-                }
-
-                // If launch direction is immediately blocked, don't force into ceiling/floor.
-                const float probeY = player.y + ((launchVy < 0.0f) ? -2.0f : 2.0f);
-                if (RectHitsSolid(map, player.x, probeY, player.w, player.h)) {
-                    player.vy = 0.0f;
-                    player.onGround = (launchVy > 0.0f);
-                    return false;
-                }
-
-                player.vy = launchVy;
-                player.onGround = false;
-                return true;
-            };
             for (int objIdx = 0; objIdx < (int)objects.size(); ++objIdx) {
                 const auto& obj = objects[objIdx];
                 if (obj.id != "46") continue;
-                const auto impact = bumperImpacts.find(objIdx);
-                if (impact != bumperImpacts.end()) continue;
                 const float bx = obj.x - 16.0f;
                 const float by = obj.y - 16.0f;
                 const float bw = 32.0f;
@@ -7283,24 +7258,16 @@ int RunGameApp(int argc, char** argv) {
                 const float playerCY = player.y + player.h * 0.5f;
                 const float bumperCY = testBy + bh * 0.5f;
                 if (playerCY <= bumperCY && player.vy >= 0.0f) {
-                    if (applyBumperBounce(testBy - (float)player.h, -1200.0f)) {
-                        if (impact->second.cooldownRemaining > 0.0f){
-                            break;
-                        }
+                    if (Bumper::bounce(player, map, testBy - (float)player.h, -1200.0f)) {
                         addMovementReason(MR_BUMPER);
                         triggerBumperImpact(objIdx, obj.x, obj.y, -1.0f);
-                        audio.playBumperSfx();
                     }
                     break;
                 }
                 if (playerCY > bumperCY && player.vy <= 0.0f) {
-                    if (applyBumperBounce(testBy + bh, 1200.0f)) {
-                        if (impact->second.cooldownRemaining > 0.0f) {
-                            break;
-                        }
+                    if (Bumper::bounce(player, map, testBy + bh, 1200.0f)) {
                         addMovementReason(MR_BUMPER);
                         triggerBumperImpact(objIdx, obj.x, obj.y, 1.0f);
-                        audio.playBumperSfx();
                     }
                     break;
                 }

@@ -13,5 +13,6 @@ text "CPU: ${about_cpu_cores}  RAM: ${about_system_ram}"
 text "Build: ${about_build_uuid}"
 text "Time: ${about_build_time} ${about_build_timezone}"
 text "Updater: ${about_updater_status}"
+button "Open Updater" menu settingsupdater
 button "SDL Revision" menu settingsaboutrevision
 button "Back" menu mainsetting

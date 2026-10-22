@@ -17,7 +17,27 @@ int main() {
         MovingPlatform::synchronize(group, ids, false);
         require(!group[0].started && !group[2].started, "Platform groups must wait for player contact");
         MovingPlatform::synchronize(group, ids, true);
-        require(group[0].started && group[2].started && !group[1].started, "Standing on one platform must activate every platform");
+        require(group[0].started && group[2].started && !group[1].started, "Touching one platform must activate every platform");
+        const SDL_FRect contactPlatform{100, 100, 32, 32};
+        Player contact;
+        for (const SDL_FPoint position : {SDL_FPoint{101, 100.0f - contact.h}, SDL_FPoint{101, 132},
+            SDL_FPoint{100.0f - contact.w, 101}, SDL_FPoint{132, 101}}) {
+            contact.x = position.x;
+            contact.y = position.y;
+            require(MovingPlatform::touching(contact, contactPlatform), "Every platform face must register contact");
+            std::vector<MovingPlatform::State> contactedGroup(3);
+            MovingPlatform::synchronize(contactedGroup, ids, MovingPlatform::touching(contact, contactPlatform));
+            require(contactedGroup[0].started && contactedGroup[2].started && !contactedGroup[1].started,
+                "Contact from any side must start the synchronized platform group");
+            if (position.y >= 100)
+                require(!MovingPlatform::standingOn(contact, contactPlatform), "Side and underside contact must not make the player a rider");
+        }
+        for (const SDL_FPoint position : {SDL_FPoint{101, 98.0f - contact.h}, SDL_FPoint{101, 134},
+            SDL_FPoint{98.0f - contact.w, 101}, SDL_FPoint{134, 101}, SDL_FPoint{100.0f - contact.w, 100.0f - contact.h}}) {
+            contact.x = position.x;
+            contact.y = position.y;
+            require(!MovingPlatform::touching(contact, contactPlatform), "Gaps and diagonal corner proximity must not activate platforms");
+        }
         for (int frame = 0; frame < 420; ++frame) {
             const auto first = MovingPlatform::advance(group[0], 1.0f / 60, 32);
             const auto second = MovingPlatform::advance(group[2], 1.0f / 60, 32);
@@ -144,6 +164,7 @@ int main() {
             0, false, false, false, false, keys, inputMove, inputDown, &solids);
         require(player.y >= 672 && player.vy == 0,
             "Solid platforms must stop rising players at their underside");
+        require(MovingPlatform::touching(player, solids[0]), "Underside collision must activate the platform");
         player = Player{};
         player.x = 590;
         player.y = 644;
@@ -151,6 +172,7 @@ int main() {
         UpdatePlayerMovement(player, map, 1.0f / 30, movement, 1, false, false,
             0, false, false, false, false, keys, inputMove, inputDown, &solids);
         require(player.x + player.w <= 624 && player.vx == 0, "Platforms must block their left side");
+        require(MovingPlatform::touching(player, solids[0]), "Left-side collision must activate the platform");
         player = Player{};
         player.x = 660;
         player.y = 644;
@@ -158,6 +180,7 @@ int main() {
         UpdatePlayerMovement(player, map, 1.0f / 30, movement, -1, false, false,
             0, false, false, false, false, keys, inputMove, inputDown, &solids);
         require(player.x >= 656 && player.vx == 0, "Platforms must block their right side");
+        require(MovingPlatform::touching(player, solids[0]), "Right-side collision must activate the platform");
         require(!RectHitsSolid(map, 630, 650, 10, 10), "Dynamic colliders must not leak outside the player update");
         // A platform must occupy exactly the same collision pixels as a solid tile,
         // including fractional positions just inside each edge.

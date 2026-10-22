@@ -8,6 +8,15 @@ Native gameplay sound effects decode asynchronously; title music stays available
 immediately. Pending loads join before shutdown, and low-power resume rebuilds
 textures and animation pointers through the same loading path.
 
+**Settings > Account** in the new menu supports signing in with email and password,
+showing the current username, logging out, and repairing an incomplete saved login.
+Select a field to type; Enter moves from email to password and submits from the
+password field. Tab moves between fields and Sign In. Arrow keys, Home/End,
+Backspace/Delete, select-all, and paste are supported. Passwords stay masked and
+are cleared after successful sign-in or leaving the account page; only the session
+token and username are saved. Open Account Manager handles account creation and
+account changes in the browser.
+
 The **Character Creator [Experimental]** appears in Settings after enabling
 **General > Experimental Features**. Choose skin, hair style and color, shirt,
 pants, headwear, and accent colors, then turn **Use Custom Character** on. The
@@ -85,9 +94,9 @@ invulnerability at 60 FPS (0.83 seconds at any frame rate) and opens boxes in
 the way for their usual coins or shield. Release Down before starting another
 slide.
 
-Bumpers have a 0.5-second cooldown after a successful activation before their
-bounce, animation, particles, and sound can trigger again. Each bumper cools
-down independently; the timer freezes while paused and resets on level restart.
+Bumpers bounce on every valid contact, even while their impact effect is active.
+A 0.25-second cooldown limits animation, particles, and sound independently for
+each bumper; the timer freezes while paused and resets on level restart.
 
 On every level start (including retries, time changes, and Continue), button
 tiles reset to the versions authored in that level: 66 stays inactive and 67
@@ -125,7 +134,7 @@ replace that box's five coins with a one-hit shield and visible force field.
 The object alone does not grant a shield. The shield takes damage before coins,
 knockback, or death; actual deaths clear it, while restarts and level transitions
 preserve it. Shield state is included in saves and replays.
-**96 = solid moving platform**, using `moving_block.png`. Standing on any one
+**96 = solid moving platform**, using `moving_block.png`. Touching any side of one
 starts all platforms together on a diagonal trip of 11 blocks left and 11 blocks
 down over 6.7 seconds. They block the player on every side and carry the player
 and any objects resting on top,
@@ -189,7 +198,12 @@ Microsoft Store update helper (Windows):
 - Run: `powershell -ExecutionPolicy Bypass -File build/force-msstore-update.ps1`
 - Note: this script uses `winget` to refresh sources and apply available Microsoft Store package updates.
 
-The in-game Updater tab supports Windows, Linux, macOS, Android, and iOS.
+**Settings > Updater** in the new menu UI supports Windows, Linux, macOS,
+Android, and iOS. It shows live status, current/latest versions, release notes,
+and download progress. Check for Updates finds a release; Install Update (Windows)
+or Open Update Download (other platforms) starts the existing update flow. The
+action is disabled during an update, and automatic Windows relaunch continues
+while the new menus are open. About also links to the updater.
 Set `update_manifest_url` in `assets/config.json` to your hosted JSON manifest;
 the existing `windows_update_manifest_url` remains a fallback. See
 `installer/update-manifest.example.json` for platform and architecture entries.
@@ -227,6 +241,8 @@ In-game networking:
 - `ReadTextFileAsync` returns a future for callers that can poll results in their normal update loop. Worker tasks must own their inputs; update game state and render on the main thread.
 
 Custom levels:
+- In the new menu, open a local level's details and choose `Rename` or `Resize`.
+- Resize supports 5–400 tiles in each dimension. It keeps the top-left area and confirms before cropping tiles or objects. Renaming and resizing clear local verification.
 - Main menu `Play` opens campaign levels; `Editor` opens custom levels.
 - Desktop local files: `custom_levels/` or `assets/custom_levels/`.
 - Mobile assets: `assets/custom_levels/levels.json`.

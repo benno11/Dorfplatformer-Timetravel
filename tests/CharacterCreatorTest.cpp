@@ -196,6 +196,34 @@ int main(int argc, char** argv) {
     const auto bodyScene = hairBodyCollisions(Appearance{}, 1, false);
     assert(!bodyScene.boxes.empty() && !bodyScene.blocksWorld(6, 15, 1, 1));
     assert(bodyScene.resolve({0, 0}, {3, 12}).x != 3);
+    // A root just above the inflated head must escape sideways, not catch on its top.
+    Appearance snagHair;
+    snagHair.hairStyle = customPartsHairStyle;
+    snagHair.hairShape[3] = 4;
+    for (int facing : {1, -1}) {
+        auto snagScene = hairBodyCollisions(snagHair, facing, true);
+        snagScene.root.y = 4.5f;
+        const auto released = snagScene.resolve({0, 0}, {0, 2});
+        assert(std::fabs(released.y - 2) < 0.001f);
+        assert(facing == 1 ? released.x < 0 : released.x > 0);
+    }
+    // Recovery must work across builds, hair widths, turns, and slide/jump transitions.
+    for (int build = 0; build < 3; ++build) for (int width = 1; width <= 4; ++width)
+        for (int facing : {1, -1}) for (bool sliding : {false, true}) {
+            snagHair.build = build;
+            snagHair.hairShape[3] = width;
+            PartPhysics recovery;
+            for (int frame = 0; frame < 240; ++frame) {
+                const bool airborne = frame >= 30 && frame < 90;
+                const float vy = airborne ? (frame < 60 ? -900.0f : 900.0f) : 0;
+                const int direction = frame < 120 ? facing : -facing;
+                const auto scene = hairBodyCollisions(snagHair, direction, sliding && frame < 120);
+                recovery.update(1.0f / 60, 0, vy, !airborne, sliding && frame < 120, direction, 1, &scene);
+            }
+            assert(recovery.builtInHair.joints[0].x == 0 && recovery.builtInHair.joints[0].y == 0);
+            assert(recovery.builtInHair.joints.back().y > HairPhysics::reach * 0.65f);
+            assert(std::isfinite(recovery.builtInHair.joints.back().x));
+        }
 
     struct HairTestMap {
         int tileSize = 32, w = 3, h = 3;

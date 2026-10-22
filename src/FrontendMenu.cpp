@@ -1735,7 +1735,27 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         slim.applyRenderVsync = [&]() { applyRenderVsync(); };
         slim.updateDynamicResolution = ctx.updateDynamicResolution;
         slim.saveClientSettings = ctx.saveClientSettings;
+        slim.signIn = [&](const std::string& email, const std::string& password, std::string& error) {
+            networkLoginEmail = email;
+            networkLoginPassword = password;
+            bool success = false;
+            try { success = loginWithGameServer(error); }
+            catch (...) { error = "Sign-in was interrupted. Please try again."; }
+            networkLoginPassword.clear();
+            networkLoginPasswordCursor = 0;
+            if (success) {
+                syncNetworkSessionState();
+                if (ctx.saveClientSettings) ctx.saveClientSettings();
+            }
+            return success;
+        };
         slim.getUpdaterStatusText = ctx.getUpdaterStatusText;
+        slim.launchUpdater = ctx.launchUpdater;
+        slim.getUpdaterStatusDetail = ctx.getUpdaterStatusDetail;
+        slim.getUpdaterLatestVersionText = ctx.getUpdaterLatestVersionText;
+        slim.getUpdaterNotesText = ctx.getUpdaterNotesText;
+        slim.getUpdaterProgress01 = ctx.getUpdaterProgress01;
+        slim.pollUpdaterAutoRelaunch = ctx.pollUpdaterAutoRelaunch;
         const SlimMenuExit result = RunSlimMenu(slim, menuName);
         if (result == SlimMenuExit::Quit) {
             cleanupMenuAssets();
