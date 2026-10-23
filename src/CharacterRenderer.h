@@ -48,10 +48,24 @@ inline SDL_FRect visualBounds(Appearance a, const SDL_FRect& dst, Pose pose = Po
 }
 
 // Draw parts on a 16 x 28 pixel grid; gameplay continues to use the normal physics.
-inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& dst,
+inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& destination,
     Pose pose = Pose::Idle, float time = 0.0f, int facing = 1, Uint8 alpha = 255,
     const PartPhysics* physics = nullptr) {
     a.normalize();
+    float pixelScaleX = 1.0f, pixelScaleY = 1.0f;
+    SDL_GetRenderScale(ren, &pixelScaleX, &pixelScaleY);
+    if (!std::isfinite(pixelScaleX) || pixelScaleX <= 0) pixelScaleX = 1.0f;
+    if (!std::isfinite(pixelScaleY) || pixelScaleY <= 0) pixelScaleY = 1.0f;
+    // Rasterize in output pixels. Rounding before zoom erases small details,
+    // and dividing snapped edges back into world units can leave rounding gaps.
+    struct RestoreScale {
+        SDL_Renderer* renderer;
+        float x, y;
+        ~RestoreScale() { SDL_SetRenderScale(renderer, x, y); }
+    } restoreScale{ren, pixelScaleX, pixelScaleY};
+    SDL_SetRenderScale(ren, 1.0f, 1.0f);
+    const SDL_FRect dst{destination.x * pixelScaleX, destination.y * pixelScaleY,
+        destination.w * pixelScaleX, destination.h * pixelScaleY};
     SDL_BlendMode oldBlend;
     Uint8 oldR, oldG, oldB, oldA;
     SDL_GetRenderDrawBlendMode(ren, &oldBlend);
@@ -130,11 +144,9 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& dst,
         if (w <= 0 || h <= 0) return;
         SDL_FRect rect{dst.x + x * dst.w / 16.0f, dst.y + y * dst.h / 28.0f,
             w * dst.w / 16.0f, h * dst.h / 28.0f};
-        if (part == Part::Hair) {
-            const float right = std::round(rect.x + rect.w), bottom = std::round(rect.y + rect.h);
-            rect.x = std::round(rect.x); rect.y = std::round(rect.y);
-            rect.w = right - rect.x; rect.h = bottom - rect.y;
-        }
+        const float pixelRight = std::round(rect.x + rect.w), pixelBottom = std::round(rect.y + rect.h);
+        rect.x = std::round(rect.x); rect.y = std::round(rect.y);
+        rect.w = pixelRight - rect.x; rect.h = pixelBottom - rect.y;
         const bool clipHair = physics && part == Part::Hair && a.hairStyle != customHairStyle &&
             physics->hairCollisions.blocksWorld(x, y, w, h);
         if (!clipHair && (part == Part::None || a.textures[(int)part] == 0)) {

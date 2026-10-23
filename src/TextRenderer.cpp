@@ -1,5 +1,6 @@
 #include "TextRenderer.h"
 #include "AssetPath.h"
+#include "TextSmoothing.h"
 
 #include <SDL3_ttf/SDL_ttf.h>
 #include <algorithm>
@@ -16,6 +17,8 @@ std::unordered_map<std::string, int> gDebugLabelWidthCache;
 // Render text well above logical UI size, then downsample with linear filtering
 // so menu and HUD text stays sharp without the chunky low-res edges.
 constexpr int kFontRenderScale = 10;
+// Keep two filtered samples per logical/native pixel for fractional placement.
+constexpr int kTextDownsampleFactor = kFontRenderScale / 2;
 float gTextScaleMultiplier = 1.0f;
 bool gNativeTextResolutionEnabled = true;
 constexpr SDL_ScaleMode kTextTextureScaleMode = SDL_SCALEMODE_LINEAR;
@@ -132,7 +135,10 @@ void DrawTextColoredImmediate(SDL_Renderer* ren, float x, float y, float scaleX,
         SDL_Rect fd{outlinePx, outlinePx, fillSurf->w, fillSurf->h};
         SDL_BlitSurface(fillSurf, nullptr, composed, &fd);
 
-        SDL_Texture* tex = SDL_CreateTextureFromSurface(ren, composed);
+        const int rasterWidth = composed->w, rasterHeight = composed->h;
+        SDL_Surface* smoothed = DownsampleTextSurface(composed, kTextDownsampleFactor);
+        SDL_Texture* tex = smoothed ? SDL_CreateTextureFromSurface(ren, smoothed) : nullptr;
+        if (smoothed) SDL_FreeSurface(smoothed);
         SDL_FreeSurface(fillSurf);
         SDL_FreeSurface(outlineSurf);
         SDL_FreeSurface(composed);
@@ -142,10 +148,9 @@ void DrawTextColoredImmediate(SDL_Renderer* ren, float x, float y, float scaleX,
 
         TextCacheEntry entry;
         entry.tex = tex;
-        float tw = 0.0f, th = 0.0f;
-        SDL_GetTextureSize(tex, &tw, &th);
-        entry.w = (int)tw;
-        entry.h = (int)th;
+        // Preserve layout dimensions independently of the filtered texture size.
+        entry.w = rasterWidth;
+        entry.h = rasterHeight;
         entry.lastUsedTicks = SDL_GetTicks();
         rendererCache.entries[key] = entry;
         rendererCache.order.push_back(key);
@@ -389,7 +394,10 @@ void DrawTextColored(SDL_Renderer* ren, int x, int y, int scale, const std::stri
         return;
     }
 
-    DrawTextColoredImmediate(ren, (float)x, (float)y, 1.0f, 1.0f, scale, text, color);
+    float sx = 1.0f, sy = 1.0f;
+    SDL_GetRenderScale(ren, &sx, &sy);
+    const float rasterScale = gNativeTextResolutionEnabled ? std::max(std::abs(sx), std::abs(sy)) : 1.0f;
+    DrawTextColoredImmediate(ren, (float)x, (float)y, 1.0f, 1.0f, scale, text, color, rasterScale);
 }
 
 int MeasureTextWidth(int scale, const std::string& text) {

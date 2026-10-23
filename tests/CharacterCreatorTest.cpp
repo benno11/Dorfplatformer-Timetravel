@@ -442,10 +442,52 @@ int main(int argc, char** argv) {
     assert(surface);
     SDL_Renderer* renderer = SDL_CreateSoftwareRenderer(surface);
     assert(renderer);
+    // Every source pixel is visible at 1.5 output pixels, even though the
+    // character is only half-size in world coordinates before gameplay zoom.
+    Appearance fineSprite;
+    fineSprite.build = 1;
+    fineSprite.sprites.bangs = std::string(176 * 28 * 8, '0');
+    for (int y = 0; y < 28; ++y) for (int x = 0; x < 176; ++x)
+        fineSprite.sprites.base += (x + y) % 2 ? "ff0000ff" : "00ff00ff";
+    for (int facing : {1, -1}) {
+        assert(SDL_SetRenderScale(renderer, 3, 3));
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        assert(SDL_RenderClear(renderer));
+        render(renderer, fineSprite, SDL_FRect{0, 0, 8, 14}, Pose::Idle, 0, facing);
+        float scaleX, scaleY;
+        assert(SDL_GetRenderScale(renderer, &scaleX, &scaleY) && scaleX == 3 && scaleY == 3);
+        SDL_Surface* detail = SDL_RenderReadPixels(renderer, nullptr);
+        assert(detail);
+        for (int y = 0; y < 28; ++y) for (int x = 0; x < 16; ++x) {
+            Uint8 r, g, b, alpha;
+            const int screenX = facing > 0 ? x : 15 - x;
+            assert(SDL_ReadSurfacePixel(detail, (int)((screenX + 0.5f) * 1.5f),
+                (int)((y + 0.5f) * 1.5f), &r, &g, &b, &alpha));
+            assert(r == ((x + y) % 2 ? 255 : 0));
+            assert(g == ((x + y) % 2 ? 0 : 255) && b == 0 && alpha == 255);
+        }
+        SDL_DestroySurface(detail);
+    }
+    assert(SDL_SetRenderScale(renderer, 1, 1));
     Appearance hairTest;
     hairTest.hairPixels = std::string(16 * 16 * 8, '0');
     hairTest.hairPixels.replace((1 * 16 + 1) * 8, 8, "c8326480");
     hairTest.hairStyle = customHairStyle;
+    for (int facing : {1, -1}) {
+        assert(SDL_SetRenderScale(renderer, 3, 3));
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        assert(SDL_RenderClear(renderer));
+        render(renderer, hairTest, SDL_FRect{0, 0, 8, 14}, Pose::Idle, 0, facing);
+        float scaleX, scaleY;
+        assert(SDL_GetRenderScale(renderer, &scaleX, &scaleY) && scaleX == 3 && scaleY == 3);
+        SDL_Surface* detail = SDL_RenderReadPixels(renderer, nullptr);
+        assert(detail);
+        Uint8 r, g, b, alpha;
+        assert(SDL_ReadSurfacePixel(detail, facing == 1 ? 2 : 21, 2, &r, &g, &b, &alpha));
+        assert(r >= 99 && r <= 101 && g >= 24 && g <= 26 && b >= 49 && b <= 51);
+        SDL_DestroySurface(detail);
+    }
+    assert(SDL_SetRenderScale(renderer, 1, 1));
     for (int facing : {1, -1}) {
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
