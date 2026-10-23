@@ -56,7 +56,7 @@ private:
     bool areButtonsActiveUpToArea(int worldId, int areaId) const;
 
     void applyBlockDefAt(TileMap& map, int idx, unsigned short tileId) const;
-    void updateLevelMetadata(const TileMap& map);
+    void updateLevelMetadata();
 
     std::string levelPath_;
     std::vector<int> levelNumberList_;

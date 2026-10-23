@@ -95,6 +95,36 @@ int main() {
     assert(manager.worldId() == 6 && manager.levelPartId() == 2 && manager.timeId() == 4);
     assert(manager.musicPath() == "assets/Audio/Music/6.2.mp3");
 
+    // Auto must resolve to playable defaults for custom and renamed levels.
+    for (const std::string path : {"custom.bin", "custom_99999.bin"}) {
+        files[path] = SerializeLevelMetaHeader({}) + "DFLVL4 " + tiles;
+        manager.setLevelPath(path);
+        manager.reloadLevel(map, objects, loaded, player);
+        assert(manager.worldId() == 1 && manager.levelPartId() == 1 && manager.timeId() == 1);
+        assert(loaded.world == 0 && loaded.area == 0 && loaded.time == 0);
+        assert(manager.musicPath() == "assets/Audio/Music/1.1.mp3");
+        manager.applyLevelConfig(original);
+        manager.applyLevelConfig({});
+        assert(manager.worldId() == 1 && manager.levelPartId() == 1 && manager.timeId() == 1);
+    }
+    // Switching individual overrides back to Auto restores the path-derived value.
+    manager.setLevelPath("assets/levels/level_052.txt");
+    manager.applyLevelConfig(original);
+    LevelMeta partial;
+    partial.area = 3;
+    manager.applyLevelConfig(partial);
+    assert(manager.worldId() == 6 && manager.levelPartId() == 3 && manager.timeId() == 4);
+    manager.applyLevelConfig({});
+    assert(manager.worldId() == 6 && manager.levelPartId() == 1 && manager.timeId() == 4);
+
+    // Invalid automatic source fields fall back independently.
+    files["assets/Level Numer List.txt"] = "809\n";
+    LevelManager invalidAuto;
+    invalidAuto.setLevelPath("level_001.txt");
+    invalidAuto.applyLevelConfig({});
+    assert(invalidAuto.worldId() == 1 && invalidAuto.levelPartId() == 1 && invalidAuto.timeId() == 1);
+    files.erase("assets/Level Numer List.txt");
+
     LevelMeta buttonMeta;
     buttonMeta.world = 2;
     buttonMeta.area = 1;

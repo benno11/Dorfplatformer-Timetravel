@@ -29,7 +29,6 @@ const std::string& LevelManager::levelPath() const {
 
 void LevelManager::reloadLevel(TileMap& map, std::vector<ObjectInstance>& objects, LevelMeta& meta, Player& player) {
     loadLevelBNNLVL(levelPath_, map, objects, meta);
-    updateLevelMetadata(map);
     applyLevelConfig(meta);
     coinCount_ = 0;
     timeWarpId_ = 'N';
@@ -563,22 +562,23 @@ void LevelManager::applyBlockDefAt(TileMap& map, int idx, unsigned short tileId)
 }
 
 void LevelManager::applyLevelConfig(const LevelMeta& meta) {
-    if (meta.world > 0) worldId_ = meta.world;
-    if (meta.area > 0) levelPartId_ = meta.area;
-    if (meta.time > 0) timeId_ = meta.time;
+    // Recompute Auto fields even when applying settings without reloading.
+    updateLevelMetadata();
+    if (meta.world >= 1 && meta.world <= 7) worldId_ = meta.world;
+    if (meta.area >= 1 && meta.area <= 3) levelPartId_ = meta.area;
+    if (meta.time >= 1 && meta.time <= 4) timeId_ = meta.time;
 }
 
-void LevelManager::updateLevelMetadata(const TileMap& map) {
+void LevelManager::updateLevelMetadata() {
+    // Custom/renamed levels may have no entry in the campaign number list.
+    worldId_ = levelPartId_ = timeId_ = 1;
     int levelIndex = parseLevelIndexFromPath(levelPath_);
     if (levelIndex > 0 && levelIndex <= (int)levelNumberList_.size()) {
         int code = levelNumberList_[levelIndex - 1];
-        worldId_ = code / 100;
-        levelPartId_ = (code / 10) % 10;
-        timeId_ = code % 10;
-    } else {
-        worldId_ = 0;
-        levelPartId_ = 0;
-        timeId_ = 0;
+        const int world = code / 100, area = (code / 10) % 10, time = code % 10;
+        if (world >= 1 && world <= 7) worldId_ = world;
+        if (area >= 1 && area <= 3) levelPartId_ = area;
+        if (time >= 1 && time <= 4) timeId_ = time;
     }
 }
 
