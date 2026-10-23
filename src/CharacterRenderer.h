@@ -22,8 +22,10 @@ inline SDL_FRect visualBounds(Appearance a, const SDL_FRect& dst, Pose pose = Po
     if (a.hairShape[2] > 0) bottom = std::max(bottom, (double)headY + 3 + a.hairShape[2]);
     float verticalMotion = 0;
     if (physics) {
-        for (int i = 0; i < HairPhysics::jointCount; ++i)
-            verticalMotion = std::max(verticalMotion, physics->builtInHair.joints[i].y - i * HairPhysics::spacing);
+        for (int i = 0; i < HairPhysics::jointCount; ++i) {
+            verticalMotion = std::max(verticalMotion, physics->builtInHair.joints[i].y - i * physics->builtInHair.restSpacing);
+            verticalMotion = std::max(verticalMotion, physics->fringeHair.joints[i].y - i * physics->fringeHair.restSpacing);
+        }
     }
     if (a.hairShape[1] > 0 || a.hairShape[2] > 0) bottom += verticalMotion + 1;
     float spread = 0;
@@ -31,7 +33,18 @@ inline SDL_FRect visualBounds(Appearance a, const SDL_FRect& dst, Pose pose = Po
         const float scale = a.build == 0 ? 0.88f : (a.build == 2 ? 1.08f : 1.0f);
         spread = (float)((double)std::max(a.hairShape[1], a.hairShape[2]) + HairPhysics::reach) * scale * dst.w / 16;
     }
-    return {dst.x - spread, dst.y, dst.w + spread * 2, (float)std::ceil(bottom * dst.h / 28.0)};
+    float left = dst.x - spread, right = dst.x + dst.w + spread;
+    float top = 0;
+    if (physics) for (const auto& strand : physics->floorHair) {
+        if (!strand.initialized) continue;
+        for (int i = 0; i < strand.count; ++i) {
+            left = std::min(left, dst.x + (strand.points[i].x - strand.width * 0.5f - 1) * dst.w / 16);
+            right = std::max(right, dst.x + (strand.points[i].x + strand.width * 0.5f + 1) * dst.w / 16);
+            top = std::min(top, strand.points[i].y - 1);
+            bottom = std::max(bottom, (double)strand.points[i].y + 1);
+        }
+    }
+    return {left, dst.y + top * dst.h / 28, right - left, (float)std::ceil((bottom - top) * dst.h / 28.0)};
 }
 
 // Draw parts on a 16 x 28 pixel grid; gameplay continues to use the normal physics.
@@ -99,7 +112,7 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& dst,
     SDL_GetRenderOutputSize(ren, &outputWidth, &outputHeight);
     const float hairLeft = dst.w > 0 ? -dst.x * 16.0f / dst.w : 0;
     const float hairRight = dst.w > 0 ? (outputWidth - dst.x) * 16.0f / dst.w : 16;
-    const float hairTop = dst.h > 0 ? std::max(0.0f, -dst.y * 28.0f / dst.h) : 0.0f;
+    const float hairTop = dst.h > 0 ? -dst.y * 28.0f / dst.h : 0.0f;
     const float hairBottom = dst.h > 0 ? std::max(28.0f, (outputHeight - dst.y) * 28.0f / dst.h) : 28.0f;
     auto block = [&](float x, float y, float w, float h, Color color, Part part = Part::None, int textureY = 0) {
         const float buildScale = a.build == 0 ? 0.88f : (a.build == 2 ? 1.08f : 1.0f);
@@ -156,7 +169,13 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& dst,
             offset.x *= facing < 0 ? -1.0f : 1.0f;
             return offset;
         };
-        auto hairStrand = [&](float x, float y, int width, int length, float rootDistance = 0.0f) {
+        auto hairStrand = [&](float x, float y, int width, int length, float rootDistance = 0.0f, int strandIndex = -1) {
+            auto strandOffset = [&](float distance) {
+                if (!physics || strandIndex != 0) return hairOffset(distance);
+                auto offset = physics->fringeHair.offset(distance);
+                offset.x *= facing < 0 ? -1.0f : 1.0f;
+                return offset;
+            };
             // Account for joint displacement when culling very long or off-screen strands.
             const float margin = HairPhysics::reach * 2 + 2;
             const double bottom = a.uncapHairLength ? hairBottom : 28.0f;
@@ -167,32 +186,45 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& dst,
             const float scale = a.build == 0 ? 0.88f : (a.build == 2 ? 1.08f : 1.0f);
             const float worldWidth = width * scale;
             auto naturalPoint = [&](int row) {
-                const auto offset = hairOffset(rootDistance + row);
+                const auto offset = strandOffset(rootDistance + row);
                 float left = 8 + (x + offset.x - 8) * scale;
                 if (facing < 0) left = 16 - left - worldWidth;
                 return HairPhysics::Point{left + worldWidth * 0.5f, y + row + offset.y + 0.5f};
             };
-            const float trailDirection = physics && std::fabs(physics->previousVx) > 1 ?
+            const auto* simulated = physics && strandIndex >= 0 && physics->floorHair[strandIndex].initialized ?
+                &physics->floorHair[strandIndex] : nullptr;
+            float trailDirection = physics && std::fabs(physics->previousVx) > 1 ?
                 (physics->previousVx > 0 ? -1.0f : 1.0f) : (facing < 0 ? 1.0f : -1.0f);
+            if (simulated) {
+                const auto tip = simulated->at(simulated->length), before = simulated->at(std::max(0.0f, simulated->length - 2));
+                trailDirection = std::fabs(tip.x - before.x) > 0.01f ? (tip.x < before.x ? -1.0f : 1.0f) : physics->floorTrailDirection;
+            }
             auto current = naturalPoint(first);
-            if (physics) current = physics->hairCollisions.drape(naturalPoint(0), current, worldWidth, trailDirection);
+            if (simulated) {
+                current = simulated->at((float)first);
+                if (first > simulated->length) current = physics->hairCollisions.drape(current,
+                    {current.x, current.y + first - simulated->length}, worldWidth, trailDirection);
+            } else if (physics) current = physics->hairCollisions.drape(naturalPoint(0), current, worldWidth, trailDirection);
             for (int row = first; row < rows; ++row) {
-                const auto offset = hairOffset(rootDistance + row);
-                const auto next = hairOffset(rootDistance + row + 1.0f);
+                const auto offset = strandOffset(rootDistance + row);
+                const auto next = strandOffset(rootDistance + row + 1.0f);
                 if (physics) {
                     const auto natural = naturalPoint(row), following = naturalPoint(row + 1);
                     HairPhysics::Point delta{following.x - natural.x, following.y - natural.y};
                     const float distance = std::sqrt(delta.x * delta.x + delta.y * delta.y);
-                    // Preserve visible length when the simulated joints bunch at a floor.
-                    if (distance < 0.0001f) delta = {0, 1};
-                    else if (distance < 1) { delta.x /= distance; delta.y /= distance; }
-                    const auto end = physics->hairCollisions.drape(current,
-                        {current.x + delta.x, current.y + delta.y}, worldWidth, trailDirection);
+                    // Only the extra draped tail needs length reconstruction. Ordinary
+                    // locks retain their simulated compression and stretch when airborne.
+                    if (a.uncapHairLength && !simulated) {
+                        if (distance < 0.0001f) delta = {0, 1};
+                        else if (distance < 1) { delta.x /= distance; delta.y /= distance; }
+                    }
+                    const auto end = simulated && row + 1 <= simulated->length ? simulated->at(row + 1.0f) :
+                        physics->hairCollisions.drape(current, {current.x + delta.x, current.y + delta.y}, worldWidth, trailDirection);
                     float left = std::min(current.x, end.x) - worldWidth * 0.5f;
                     const float drawWidth = worldWidth + std::fabs(end.x - current.x);
                     if (facing < 0) left = 16 - left - drawWidth;
-                    block(8 + (left - 8) / scale, current.y - 0.5f, drawWidth / scale,
-                        std::max(1.0f, 1.0f + end.y - current.y), hair, Part::Hair, row);
+                    block(8 + (left - 8) / scale, std::min(current.y, end.y) - 0.5f, drawWidth / scale,
+                        1.0f + std::fabs(end.y - current.y), hair, Part::Hair, row);
                     if (std::fabs(end.x - current.x) + std::fabs(end.y - current.y) < 0.0001f) break;
                     current = end;
                     continue;
@@ -208,16 +240,16 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& dst,
             for (int y = 0; y < 16; ++y) for (int x = 0; x < 16; ++x) {
                 const auto pixel = rgbaPixel(a.hairPixels, y * 16 + x);
                 if (!pixel.a) continue;
-                const float sway = physics ? physics->hair.position * std::max(0, y - 5) / 10.0f : 0;
+                const auto bend = hairOffset((float)std::max(0, y - 5));
                 const Uint8 savedAlpha = alpha;
                 alpha = (Uint8)(alpha * pixel.a / 255);
-                block(x + lean + sway, headY - 3 + y, 1, 1, {pixel.r, pixel.g, pixel.b, ""});
+                block(x + lean + bend.x, headY - 3 + y + bend.y, 1, 1, {pixel.r, pixel.g, pixel.b, ""});
                 alpha = savedAlpha;
             }
         } else if (a.hairStyle == customPartsHairStyle) {
             block(3 + lean, headY, 10, a.hairShape[0], hair, Part::Hair);
-            hairStrand(3 + lean, headY + a.hairShape[0], a.hairShape[3], a.hairShape[1]);
-            hairStrand(3 + lean, headY + 3, a.hairShape[3], a.hairShape[2]);
+            hairStrand(3 + lean, headY + a.hairShape[0], a.hairShape[3], a.hairShape[1], 0, 0);
+            hairStrand(3 + lean, headY + 3, a.hairShape[3], a.hairShape[2], 0, 1);
             if (a.hairShape[4]) {
                 const auto offset = hairOffset((float)a.hairShape[4]);
                 block(4 + lean + offset.x, headY - a.hairShape[4] + offset.y, 2, a.hairShape[4] + 1, hair, Part::Hair);
@@ -225,7 +257,7 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& dst,
             }
         } else if (a.hairStyle != 3) {
             block(3 + lean, headY, 10, a.hairStyle == 2 ? 4 : 3, hair, Part::Hair);
-            hairStrand(3 + lean, headY + 3, a.hairStyle == 2 ? 3 : 2, 3);
+            hairStrand(3 + lean, headY + 3, a.hairStyle == 2 ? 3 : 2, 3, 0, 0);
             if (a.hairStyle == 2) {
                 hairStrand(3 + lean, headY + 5, 3, 7, 2);
             }

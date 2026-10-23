@@ -50,18 +50,26 @@ in settings and exported `.dfcharacter` files.
 Custom parts have cosmetic spring physics: hair trails during acceleration,
 headwear bounces on landing, and arms and legs swing from their joints. These
 effects also appear in the creator preview and pause with gameplay.
-Built-in hair uses its own head-anchored chain of physics joints. Inertia, air
-resistance, gravity, and joint constraints let fringe and locks bend independently
-along their length and settle after stops, jumps, and landings. Turning preserves
-their world-space momentum. Short, Spiky, Long, and Custom Parts share this
-simulation; imported image hair keeps its existing spring behavior. The simulation
-uses fixed storage even for uncapped hair and follows Part Springiness.
+Built-in hair uses separate head-anchored chains for fringe and back locks. Firmer
+roots, flexible tips, bend resistance, and speed-dependent air resistance let waves
+travel along the hair and settle after stops, jumps, and landings. Length, width,
+and hairstyle affect stiffness and wind response; spiky hair resists bending while
+long locks are softer. Head bounce feeds into strand inertia. Turning preserves
+world-space momentum. Imported hair images bend along the same simulation instead
+of swaying as a single piece. The simulation uses fixed storage even for uncapped
+hair and follows Part Springiness.
 Vertical elasticity lets hair stretch, compress, and bounce during jumps and
-landings. Its joints collide with the face and torso, solid level tiles, platform
+landings. Hair trails downward during ascent, lifts during falls, and rebounds
+when vertical motion stops. This response scales with lock length and stiffness
+and also drives long floor-length strands. Its joints collide with the face and torso, solid level tiles, platform
 tops, and moving platforms. Contacts stop inward motion and add a small rebound;
 hair can slide along surfaces. Long procedural tails bend along floors and platform
 tops, trail opposite movement, stop at walls, and fall over ledges. Their floor contact
-uses the strand's width and stays cosmetic. Wrapped levels use the neighboring wrapped tiles. These
+uses persistent strands with gravity, friction, and folds that bunch against obstacles.
+Turning preserves the resting tail instead of flipping it, and walking toward it builds
+slack. Removing support releases the hair; respawns reset it locally. Simulation storage
+stays bounded for uncapped lengths, with extra length continuing as a draped tail.
+Wrapped levels use the neighboring wrapped tiles. These
 collisions are cosmetic and never push the player or activate gameplay objects.
 **Placeholder Characters** offers six editable starters: Explorer, Runner,
 Mechanic, Ranger, Royal, and Frost. Selecting one enables it and saves its look;

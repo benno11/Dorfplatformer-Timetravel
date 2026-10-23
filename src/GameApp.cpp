@@ -7362,7 +7362,7 @@ int RunGameApp(int argc, char** argv) {
                     CharacterCreator::addHairWorldBox(hairScene, {bounds.x, bounds.y, bounds.w, bounds.h}, hairPlayer);
                 }
                 characterParts.update(dt, player.vx, player.vy, player.onGround,
-                    hairSliding, player.facing, CharacterCreator::attributeMultiplier(characterAppearance.springiness), &hairScene);
+                    hairSliding, player.facing, CharacterCreator::attributeMultiplier(characterAppearance.springiness), &hairScene, &characterAppearance);
             } else characterParts = CharacterCreator::PartPhysics{};
         }
         {

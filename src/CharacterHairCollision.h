@@ -24,6 +24,9 @@ inline HairPhysics::CollisionScene hairBodyCollisions(const Appearance& appearan
 inline void addHairWorldBox(HairPhysics::CollisionScene& scene, const HairPhysics::Box& box,
     const HairPhysics::Box& player, bool oneWay = false) {
     if (player.w <= 0 || player.h <= 0) return;
+    scene.worldOrigin = {player.x, player.y};
+    scene.worldScale = {player.w / 16, player.h / 28};
+    scene.hasWorldTransform = true;
     scene.boxes.push_back({(box.x - player.x) * 16 / player.w, (box.y - player.y) * 28 / player.h,
         box.w * 16 / player.w, box.h * 28 / player.h, false, oneWay});
 }
@@ -33,6 +36,9 @@ template<class Map>
 inline void addHairTileCollisions(HairPhysics::CollisionScene& scene, const Map& map,
     const HairPhysics::Box& player, float visibleHeight, bool wrapX, bool wrapY, float visibleWidth = 0) {
     if (map.tileSize <= 0 || map.w <= 0 || map.h <= 0 || player.w <= 0 || player.h <= 0) return;
+    scene.worldOrigin = {player.x, player.y};
+    scene.worldScale = {player.w / 16, player.h / 28};
+    scene.hasWorldTransform = true;
     const float tile = (float)map.tileSize;
     const float horizontalReach = std::max(player.w, visibleWidth);
     const int left = (int)std::floor((player.x - horizontalReach) / tile);

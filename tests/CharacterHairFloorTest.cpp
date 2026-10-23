@@ -51,6 +51,59 @@ int main() {
     addHairTileCollisions(nearby, map, {96, 0, 16, 28}, 96, false, false, 160);
     assert(nearby.blocksWorld(-96, 16, 16, 1)); // Include walls beside a floor tail.
 
+    HairPhysics::CollisionScene restingFloor;
+    restingFloor.boxes.push_back({-200, 28, 400, 16});
+    restingFloor.hasWorldTransform = true;
+    HairFloorPhysics resting;
+    for (int frame = 0; frame < 120; ++frame)
+        resting.update(1.0f / 60, {5, 6.5f}, 80, 2, -1, restingFloor);
+    const auto restingTip = resting.at(80);
+    assert(restingTip.x < -20 && restingTip.y <= 27.5f);
+    // Merely turning cannot mirror the grounded tail to the other side.
+    resting.update(1.0f / 60, {5, 6.5f}, 80, 2, 1, restingFloor);
+    assert(std::fabs(resting.at(80).x - restingTip.x) < 2);
+    // Walk toward the resting tail: its world position sticks while slack builds.
+    for (int frame = 1; frame <= 20; ++frame) {
+        restingFloor.worldOrigin.x = -frame * 0.5f;
+        resting.update(1.0f / 60, {5, 6.5f}, 80, 2, 1, restingFloor);
+    }
+    assert(std::fabs(resting.at(80).x + restingFloor.worldOrigin.x - restingTip.x) < 8);
+    for (int i = 1; i < resting.count; ++i) {
+        assert(std::isfinite(resting.points[i].x) && std::isfinite(resting.points[i].y));
+        assert(!restingFloor.blocksWorld(resting.points[i].x - 1, resting.points[i].y - 0.5f, 2, 1));
+    }
+    const auto pausedTip = resting.at(80);
+    resting.update(0, {100, 0}, 80, 2, -1, restingFloor);
+    assert(resting.at(80).x == pausedTip.x && resting.at(80).y == pausedTip.y);
+    // A respawn resets locally instead of pulling the old tail across the map.
+    restingFloor.worldOrigin.x = 10000;
+    resting.update(1.0f / 60, {5, 6.5f}, 80, 2, -1, restingFloor);
+    assert(std::fabs(resting.at(80).x) < 100);
+    restingFloor.boxes.clear();
+    const float supportedY = resting.at(80).y;
+    for (int frame = 0; frame < 30; ++frame)
+        resting.update(1.0f / 60, {5, 6.5f}, 80, 2, -1, restingFloor);
+    assert(resting.at(80).y > supportedY + 2);
+
+    HairPhysics::CollisionScene cornerFloor;
+    cornerFloor.boxes = {{-100, 28, 200, 16}, {-14, -30, 2, 58}};
+    HairFloorPhysics bunched;
+    for (int frame = 0; frame < 120; ++frame)
+        bunched.update(1.0f / 60, {5, 6.5f}, 80, 2, -1, cornerFloor);
+    float minY = 28, maxY = -100;
+    for (int i = 10; i < bunched.count; ++i) {
+        const auto p = bunched.points[i];
+        assert(std::isfinite(p.x) && std::isfinite(p.y));
+        assert(!cornerFloor.blocksWorld(p.x - 1, p.y - 0.5f, 2, 1));
+        minY = std::min(minY, p.y); maxY = std::max(maxY, p.y);
+    }
+    assert(maxY - minY > 2); // Surplus forms folds rather than overlapping at the wall.
+    HairFloorPhysics enormous;
+    enormous.update(1.0f / 60, {5, 6.5f}, std::numeric_limits<int>::max(), 4, -1, cornerFloor);
+    assert(enormous.count <= HairFloorPhysics::capacity && enormous.length == HairFloorPhysics::maxLength);
+    enormous.update(1.0f / 60, {5, 6.5f}, 0, 4, -1, cornerFloor);
+    assert(!enormous.initialized);
+
     assert(SDL_Init(0));
     SDL_Surface* surface = SDL_CreateSurface(160, 96, SDL_PIXELFORMAT_RGBA8888);
     assert(surface);
@@ -60,11 +113,16 @@ int main() {
     hair.hairStyle = customPartsHairStyle;
     hair.uncapHairLength = true;
     hair.hairShape = {{3, 0, 100, 2, 0}};
-    for (int facing : {1, -1}) for (int build : {0, 1, 2}) for (int texture : {0, 1}) {
+    for (int facing : {1, -1}) for (int build : {0, 1, 2}) for (int texture : {0, 1}) for (bool persistent : {false, true}) {
         hair.build = build;
         hair.textures[(int)Part::Hair] = texture;
         PartPhysics physics;
         physics.hairCollisions.boxes.push_back({-200, 28, 400, 16});
+        if (persistent) {
+            const auto scene = physics.hairCollisions;
+            for (int frame = 0; frame < 60; ++frame)
+                physics.update(1.0f / 60, 0, 0, true, false, facing, 1, &scene, &hair);
+        }
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
         render(renderer, hair, {64, 0, 16, 28}, Pose::Idle, 0, facing, 255, &physics);
@@ -86,6 +144,8 @@ int main() {
     hair.hairShape[2] = std::numeric_limits<int>::max();
     PartPhysics longHair;
     longHair.hairCollisions.boxes.push_back({-200, 28, 400, 16});
+    const auto longScene = longHair.hairCollisions;
+    longHair.update(1.0f / 60, 0, 0, true, false, 1, 1, &longScene, &hair);
     render(renderer, hair, {64, 0, 16, 28}, Pose::Idle, 0, 1, 255, &longHair);
     SDL_DestroyRenderer(renderer);
     SDL_DestroySurface(surface);

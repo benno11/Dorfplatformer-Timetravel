@@ -21,6 +21,8 @@ struct HairPhysics {
         Point root{0, 0};
         float radius = 0.75f;
         int bodySide = 0;
+        Point worldOrigin{}, worldScale{1, 1};
+        bool hasWorldTransform = false;
 
         bool blocksWorld(float x, float y, float w, float h) const {
             for (const auto& box : boxes)
@@ -134,7 +136,16 @@ struct HairPhysics {
     static constexpr int jointCount = 12;
     static constexpr float spacing = 2.0f;
     static constexpr float reach = (jointCount - 1) * spacing;
+    struct Profile {
+        float length = reach;
+        float stiffness = 1;
+        float mass = 1;
+    };
+    static float airDrag(float speed, float exposure, float mass) {
+        return -speed * (0.025f + std::fabs(speed) * 0.00002f) * exposure / mass;
+    }
     std::array<Point, jointCount> joints{}, previous{};
+    float restSpacing = spacing;
     float previousVx = 0, previousVy = 0;
     float stretch = 0, stretchVelocity = 0;
     bool initialized = false;
@@ -143,11 +154,13 @@ struct HairPhysics {
         for (int i = 0; i < jointCount; ++i) joints[i] = previous[i] = {0, i * spacing};
         initialized = false;
         stretch = stretchVelocity = 0;
+        restSpacing = spacing;
     }
 
     HairPhysics() { reset(); }
 
-    void update(float dt, float vx, float vy, float springiness = 1.0f, const CollisionScene* collisions = nullptr) {
+    void update(float dt, float vx, float vy, float springiness = 1.0f, const CollisionScene* collisions = nullptr,
+        const Profile* profile = nullptr) {
         if (!std::isfinite(dt) || !std::isfinite(vx) || !std::isfinite(vy)) {
             reset();
             return;
@@ -157,6 +170,22 @@ struct HairPhysics {
         vx = std::clamp(vx, -2000.0f, 2000.0f);
         vy = std::clamp(vy, -2000.0f, 2000.0f);
         springiness = std::isfinite(springiness) ? std::clamp(springiness, 0.75f, 1.25f) : 1.0f;
+        const auto finiteValue = [](float value, float low, float high, float fallback) {
+            return std::isfinite(value) ? std::clamp(value, low, high) : fallback;
+        };
+        const float length = profile ? finiteValue(profile->length, 2, reach, reach) : reach;
+        const float stiffness = profile ? finiteValue(profile->stiffness, 0.5f, 2, 1) : 1;
+        const float mass = profile ? finiteValue(profile->mass, 0.5f, 2, 1) : 1;
+        const float newSpacing = length / (jointCount - 1);
+        if (std::fabs(newSpacing - restSpacing) > 0.0001f) {
+            const float ratio = newSpacing / restSpacing;
+            for (int i = 1; i < jointCount; ++i) {
+                joints[i].x *= ratio; joints[i].y *= ratio;
+                previous[i].x *= ratio; previous[i].y *= ratio;
+            }
+            restSpacing = newSpacing;
+            stretch = stretchVelocity = 0;
+        }
         if (!initialized) {
             previousVx = vx;
             previousVy = vy;
@@ -166,7 +195,6 @@ struct HairPhysics {
         const float ay = std::clamp((vy - previousVy) / dt, -12000.0f, 12000.0f);
         const int steps = std::max(1, (int)std::ceil(dt * 240));
         const float h = dt / steps;
-        const float drag = std::exp(-6.0f * h / springiness);
         float lateralLimit = 2.8f;
         if (collisions && collisions->bodySide) {
             for (const auto& box : collisions->boxes) {
@@ -177,21 +205,41 @@ struct HairPhysics {
             }
         }
         for (int step = 0; step < steps; ++step) {
-            const float stretchTarget = std::clamp(-ay * 0.0002f - vy * 0.0008f, -2.5f, 2.5f) * springiness;
+            // Upward acceleration pulls the locks behind the head; falling airflow
+            // lifts them. Express the response as strain so short locks show it too.
+            const float verticalStrain = std::clamp((-ay * 0.00003f - vy * 0.00028f) * springiness / stiffness, -0.32f, 0.22f);
+            const float stretchTarget = verticalStrain * length;
             stretchVelocity += ((stretchTarget - stretch) * 110 - stretchVelocity * 9 / springiness) * h;
-            stretch = std::clamp(stretch + stretchVelocity * h, -3.5f, 3.5f);
-            const float elasticSpacing = spacing + stretch / (jointCount - 1);
+            stretch = std::clamp(stretch + stretchVelocity * h, -std::min(6.0f, length * 0.35f), std::min(3.5f, length * 0.25f));
+            const float elasticSpacing = restSpacing + stretch / (jointCount - 1);
             for (int i = 1; i < jointCount; ++i) {
                 const Point current = joints[i];
-                // Inertia and air resistance bend the strand; gravity restores its hanging shape.
-                const float fx = (-ax * 0.008f - vx * 0.035f) * springiness - current.x * 4;
-                const float fy = 65 - ay * 0.008f - vy * 0.012f + (i * elasticSpacing - current.y) * 18;
+                // Roots resist bending; exposed tips react more strongly to airflow.
+                // Width adds mass, reducing wind response without increasing gravity.
+                const float along = (float)i / (jointCount - 1);
+                const float exposure = 0.3f + along * 0.7f;
+                const float drag = std::exp(-(7 - along * 2) * h / (springiness * std::sqrt(mass)));
+                const float airflow = airDrag(vx, exposure, mass);
+                const float fx = (-ax * 0.008f + airflow) * springiness - current.x * (4 + (1 - along) * 8 * stiffness);
+                const float fy = 65 - ay * 0.012f * exposure + airDrag(vy, exposure, mass) * springiness +
+                    (i * elasticSpacing - current.y) * 18;
                 joints[i].x += (current.x - previous[i].x) * drag + fx * h * h;
                 joints[i].y += (current.y - previous[i].y) * drag + fy * h * h;
                 previous[i] = current;
             }
             for (int iteration = 0; iteration < 8; ++iteration) {
                 joints[0] = {};
+                // Bend resistance distributes a disturbance along the strand instead
+                // of letting individual links kink. Flexible tips retain follow-through.
+                for (int i = 1; i < jointCount - 1; ++i) {
+                    const float along = (float)i / (jointCount - 1);
+                    const float bend = (0.08f - along * 0.05f) * stiffness / springiness;
+                    const Point correction{((joints[i - 1].x + joints[i + 1].x) * 0.5f - joints[i].x) * bend,
+                        ((joints[i - 1].y + joints[i + 1].y) * 0.5f - joints[i].y) * bend};
+                    joints[i].x += correction.x; joints[i].y += correction.y;
+                    if (i > 1) { joints[i - 1].x -= correction.x * 0.5f; joints[i - 1].y -= correction.y * 0.5f; }
+                    joints[i + 1].x -= correction.x * 0.5f; joints[i + 1].y -= correction.y * 0.5f;
+                }
                 for (int i = 1; i < jointCount; ++i) {
                     const float dx = joints[i].x - joints[i - 1].x;
                     const float dy = joints[i].y - joints[i - 1].y;
@@ -238,6 +286,7 @@ struct HairPhysics {
                     }
                     if (std::fabs(resolved.y - target.y) > 0.00001f) {
                         previous[i].y = resolved.y + (target.y - previous[i].y) * 0.15f;
+                        previous[i].x = resolved.x - (resolved.x - previous[i].x) * std::exp(-12 * h);
                     }
                     joints[i] = resolved;
                 }
@@ -248,11 +297,11 @@ struct HairPhysics {
     }
 
     Point offset(float distance) const {
-        const float t = std::clamp(distance / spacing, 0.0f, (float)(jointCount - 1));
+        const float t = std::clamp(distance / restSpacing, 0.0f, (float)(jointCount - 1));
         const int i = std::min((int)t, jointCount - 2);
         const float blend = t - i;
         return {joints[i].x + (joints[i + 1].x - joints[i].x) * blend,
-            joints[i].y + (joints[i + 1].y - joints[i].y) * blend - t * spacing};
+            joints[i].y + (joints[i + 1].y - joints[i].y) * blend - t * restSpacing};
     }
 };
 } // namespace CharacterCreator
