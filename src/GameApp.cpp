@@ -780,7 +780,7 @@ int RunGameApp(int argc, char** argv) {
     setStartupProgress(0.40f);
     WaterEffects waterEffects;
     SDL_SetTextureScaleMode(worldTarget, SDL_SCALEMODE_NEAREST);
-    SDL_SetTextureScaleMode(gameTarget, SDL_SCALEMODE_NEAREST);
+    SDL_SetTextureScaleMode(gameTarget, SDL_SCALEMODE_LINEAR);
     SDL_Window* debugWin = nullptr;
     SDL_Renderer* debugRen = nullptr;
     bool showDetailedDebugger = false;
@@ -1337,7 +1337,7 @@ int RunGameApp(int argc, char** argv) {
             return false;
         }
         SDL_SetTextureScaleMode(newWorldTarget, SDL_SCALEMODE_NEAREST);
-        SDL_SetTextureScaleMode(newGameTarget, SDL_SCALEMODE_NEAREST);
+        SDL_SetTextureScaleMode(newGameTarget, SDL_SCALEMODE_LINEAR);
         destroyTextureRef(worldTarget);
         destroyTextureRef(gameTarget);
         worldTarget = newWorldTarget;
@@ -2783,7 +2783,7 @@ int RunGameApp(int argc, char** argv) {
             return false;
         }
         SDL_SetTextureScaleMode(newWorldTarget, SDL_SCALEMODE_NEAREST);
-        SDL_SetTextureScaleMode(newGameTarget, SDL_SCALEMODE_NEAREST);
+        SDL_SetTextureScaleMode(newGameTarget, SDL_SCALEMODE_LINEAR);
         SDL_DestroyTexture(worldTarget);
         SDL_DestroyTexture(gameTarget);
         worldTarget = newWorldTarget;
@@ -7352,7 +7352,9 @@ int RunGameApp(int argc, char** argv) {
                 const float hairHeight = hairSliding ? std::max(1.0f, std::round(player.h * 0.65f)) : (float)player.h;
                 const CharacterCreator::HairPhysics::Box hairPlayer{player.x, player.y + player.h - hairHeight, (float)player.w, hairHeight};
                 auto hairScene = CharacterCreator::hairBodyCollisions(characterAppearance, player.facing, hairSliding);
-                CharacterCreator::addHairTileCollisions(hairScene, map, hairPlayer, (float)kGameplayViewH, gameplayWrapX, gameplayWrapY);
+                const float floorHairReach = characterAppearance.uncapHairLength && characterAppearance.hairStyle == CharacterCreator::customPartsHairStyle ?
+                    std::min((float)kGameplayViewW, (float)std::max(characterAppearance.hairShape[1], characterAppearance.hairShape[2]) * player.w / 16) : 0;
+                CharacterCreator::addHairTileCollisions(hairScene, map, hairPlayer, (float)kGameplayViewH, gameplayWrapX, gameplayWrapY, floorHairReach);
                 for (int index = 0; index < (int)objects.size(); ++index) {
                     if (objectIds[index] != ObjectIds::MovingPlatform) continue;
                     const auto bounds = MovingPlatform::nearPlayer(objects[index].x, objects[index].y, (float)map.tileSize,

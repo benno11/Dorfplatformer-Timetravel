@@ -59,8 +59,9 @@ uses fixed storage even for uncapped hair and follows Part Springiness.
 Vertical elasticity lets hair stretch, compress, and bounce during jumps and
 landings. Its joints collide with the face and torso, solid level tiles, platform
 tops, and moving platforms. Contacts stop inward motion and add a small rebound;
-hair can slide along surfaces. Extended tails stop at level surfaces instead of
-passing through floors. Wrapped levels use the neighboring wrapped tiles. These
+hair can slide along surfaces. Long procedural tails bend along floors and platform
+tops, trail opposite movement, stop at walls, and fall over ledges. Their floor contact
+uses the strand's width and stays cosmetic. Wrapped levels use the neighboring wrapped tiles. These
 collisions are cosmetic and never push the player or activate gameplay objects.
 **Placeholder Characters** offers six editable starters: Explorer, Runner,
 Mechanic, Ranger, Royal, and Frost. Selecting one enables it and saves its look;

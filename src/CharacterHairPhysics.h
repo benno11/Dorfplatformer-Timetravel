@@ -29,14 +29,29 @@ struct HairPhysics {
             return false;
         }
 
-        Point resolve(Point from, Point target, bool worldOnly = false) const {
+        // Rendered strand rows use their actual width and one-pixel height. Turn
+        // unused downward length along a support; subsequent rows fall off ledges.
+        Point drape(Point from, Point target, float width, float direction) const {
+            const Point localFrom{from.x - root.x, from.y - root.y};
+            const Point localTarget{target.x - root.x, target.y - root.y};
+            Point contact = resolve(localFrom, localTarget, true, width * 0.5f, 0.5f);
+            if (target.y > from.y && contact.y < localTarget.y - 0.0001f) {
+                const float remaining = localTarget.y - contact.y;
+                contact = resolve(contact, {contact.x + direction * remaining, contact.y}, true, width * 0.5f, 0.5f);
+            }
+            return {contact.x + root.x, contact.y + root.y};
+        }
+
+        Point resolve(Point from, Point target, bool worldOnly = false, float halfWidth = -1, float halfHeight = -1) const {
+            const float rx = halfWidth >= 0 ? halfWidth : radius;
+            const float ry = halfHeight >= 0 ? halfHeight : radius;
             from.x += root.x; from.y += root.y;
             target.x += root.x; target.y += root.y;
             if (!worldOnly) {
                 for (const auto& box : boxes) {
                     if (!box.body) continue;
-                    const float left = box.x - radius, right = box.x + box.w + radius;
-                    if (target.y <= box.y - radius || target.y >= box.y + box.h + radius ||
+                    const float left = box.x - rx, right = box.x + box.w + rx;
+                    if (target.y <= box.y - ry || target.y >= box.y + box.h + ry ||
                         target.x <= left || target.x >= right) continue;
                     // The strand attaches beside the head. Escape toward that side rather
                     // than its nearest top face, which can pin every joint above the head.
@@ -51,17 +66,37 @@ struct HairPhysics {
                 bool embedded = false;
                 for (const auto& box : boxes) {
                     if (box.body) continue;
-                    const float left = box.x - radius, right = box.x + box.w + radius;
-                    const float top = box.y - radius, bottom = box.y + box.h + radius;
+                    const float left = box.x - rx, right = box.x + box.w + rx;
+                    const float top = box.y - ry, bottom = box.y + box.h + ry;
                     if (box.oneWay && (from.y > top + 0.01f || target.y < from.y)) continue;
                     if (from.x > left && from.x < right && from.y > top && from.y < bottom) {
                         if (target.x <= left || target.x >= right || target.y <= top || target.y >= bottom) continue;
-                        const float distances[]{target.x - left, right - target.x, target.y - top, bottom - target.y};
-                        const int side = (int)(std::min_element(distances, distances + 4) - distances);
-                        if (side == 0) target.x = left - 0.001f;
-                        else if (side == 1) target.x = right + 0.001f;
-                        else if (side == 2) target.y = top - 0.001f;
-                        else target.y = bottom + 0.001f;
+                        // Recover against the whole surface. An individual tile's nearest
+                        // face can be inside its neighbor, making hair climb wall seams.
+                        Point best = target;
+                        float bestDistance = INFINITY;
+                        for (int side = 0; side < 4; ++side) {
+                            Point candidate = target;
+                            bool moved;
+                            do {
+                                moved = false;
+                                for (const auto& obstacle : boxes) {
+                                    if (obstacle.body) continue;
+                                    const float l = obstacle.x - rx, r = obstacle.x + obstacle.w + rx;
+                                    const float t = obstacle.y - ry, b = obstacle.y + obstacle.h + ry;
+                                    if (obstacle.oneWay && (from.y > t + 0.01f || target.y < from.y)) continue;
+                                    if (candidate.x <= l || candidate.x >= r || candidate.y <= t || candidate.y >= b) continue;
+                                    if (side == 0) candidate.x = l - 0.001f;
+                                    else if (side == 1) candidate.x = r + 0.001f;
+                                    else if (side == 2) candidate.y = t - 0.001f;
+                                    else candidate.y = b + 0.001f;
+                                    moved = true;
+                                }
+                            } while (moved);
+                            const float distance = std::fabs(candidate.x - target.x) + std::fabs(candidate.y - target.y);
+                            if (distance < bestDistance) { bestDistance = distance; best = candidate; }
+                        }
+                        target = best;
                         from = target;
                         embedded = true;
                         break;

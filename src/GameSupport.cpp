@@ -1,4 +1,5 @@
 #include "GameSupport.h"
+#include "TextureSampling.h"
 
 #include <SDL3_image/SDL_image.h>
 
@@ -520,6 +521,8 @@ bool renderRotatedAtlasFrame(SDL_Renderer* ren, SDL_Texture* tex, const Frame& f
 
 void renderFrame(SDL_Renderer* ren, SDL_Texture* tex, const Frame& f, const SDL_Rect& dst) {
     if (!tex) return;
+    const ScopedDownsampleFilter sampling(ren, tex, (float)(f.rotated ? f.rect.h : f.rect.w),
+        (float)(f.rotated ? f.rect.w : f.rect.h), (float)dst.w, (float)dst.h);
     if (!f.rotated) {
         SDL_RenderCopy(ren, tex, &f.rect, &dst);
         return;
@@ -531,6 +534,8 @@ void renderFrame(SDL_Renderer* ren, SDL_Texture* tex, const Frame& f, const SDL_
 
 void renderFrameEx(SDL_Renderer* ren, SDL_Texture* tex, const Frame& f, const SDL_Rect& dst, SDL_RendererFlip flip) {
     if (!tex) return;
+    const ScopedDownsampleFilter sampling(ren, tex, (float)(f.rotated ? f.rect.h : f.rect.w),
+        (float)(f.rotated ? f.rect.w : f.rect.h), (float)dst.w, (float)dst.h);
     if (!f.rotated) {
         SDL_RenderCopyEx(ren, tex, &f.rect, &dst, 0.0, nullptr, flip);
         return;

@@ -190,6 +190,20 @@ int main(int argc, char** argv) {
     embeddedScene.boxes.push_back({0, 0, 10, 10});
     const auto ejected = embeddedScene.resolve({3, 3}, {3, 3});
     assert(ejected.x < -0.5f || ejected.y < -0.5f);
+    // Overlapping expanded tiles must eject sideways from a wall, never up a seam.
+    for (int facing : {1, -1}) for (bool reverse : {false, true}) {
+        HairPhysics::CollisionScene tiledWall;
+        tiledWall.radius = 1;
+        for (int row = -4; row <= 4; ++row)
+            tiledWall.boxes.push_back({facing == 1 ? 2.0f : -6.0f, row * 4.0f, 4, 4});
+        if (reverse) std::reverse(tiledWall.boxes.begin(), tiledWall.boxes.end());
+        for (float y : {0.0f, 0.25f, 3.75f, 4.0f, 4.25f}) {
+            const HairPhysics::Point inside{facing * 2.5f, y};
+            const auto recovered = tiledWall.resolve(inside, inside);
+            assert(recovered.x * facing < 1.0f);
+            assert(std::fabs(recovered.y - y) < 0.001f);
+        }
+    }
     HairPhysics collidingStrand;
     for (int frame = 0; frame < 120; ++frame) collidingStrand.update(1.0f / 60, 0, 0, 1, &floorScene);
     for (const auto& joint : collidingStrand.joints) assert(joint.y <= 9.5f && std::isfinite(joint.x));

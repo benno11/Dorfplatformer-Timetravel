@@ -31,11 +31,12 @@ inline void addHairWorldBox(HairPhysics::CollisionScene& scene, const HairPhysic
 // Read the current tile flags, including wrapped neighbors, rather than caching level geometry.
 template<class Map>
 inline void addHairTileCollisions(HairPhysics::CollisionScene& scene, const Map& map,
-    const HairPhysics::Box& player, float visibleHeight, bool wrapX, bool wrapY) {
+    const HairPhysics::Box& player, float visibleHeight, bool wrapX, bool wrapY, float visibleWidth = 0) {
     if (map.tileSize <= 0 || map.w <= 0 || map.h <= 0 || player.w <= 0 || player.h <= 0) return;
     const float tile = (float)map.tileSize;
-    const int left = (int)std::floor((player.x - player.w) / tile);
-    const int right = (int)std::floor((player.x + player.w * 2) / tile);
+    const float horizontalReach = std::max(player.w, visibleWidth);
+    const int left = (int)std::floor((player.x - horizontalReach) / tile);
+    const int right = (int)std::floor((player.x + player.w + horizontalReach) / tile);
     const int top = (int)std::floor((player.y - player.h) / tile);
     const int bottom = (int)std::floor((player.y + std::max(player.h * 3, visibleHeight + player.h)) / tile);
     auto wrap = [](int value, int size) { return (value % size + size) % size; };
