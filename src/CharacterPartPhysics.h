@@ -100,11 +100,11 @@ struct PartPhysics {
         // The attachment's bounce contributes to inertia in world directions.
         const float hairVx = vx + (appearance ? headX.velocity * direction * 8 : 0);
         const float hairVy = vy + (appearance ? headY.velocity * 10 : 0);
-        builtInHair.update(dt, hairVx, hairVy, springiness, &hairCollisions, appearance ? &backProfile : nullptr);
+        builtInHair.update(dt, hairVx, hairVy, springiness, &hairCollisions, appearance ? &backProfile : nullptr, vy);
         auto fringeCollisions = hairCollisions;
         if (appearance && appearance->hairStyle == customPartsHairStyle)
             fringeCollisions.root.y += appearance->hairShape[0] - 3;
-        fringeHair.update(dt, hairVx, hairVy, springiness, &fringeCollisions, appearance ? &fringeProfile : nullptr);
+        fringeHair.update(dt, hairVx, hairVy, springiness, &fringeCollisions, appearance ? &fringeProfile : nullptr, vy);
         if (floorTrailDirection == 0) floorTrailDirection = -direction;
         if (std::fabs(vx) > 20) floorTrailDirection = vx > 0 ? -1.0f : 1.0f;
         if (appearance && appearance->hairStyle == customPartsHairStyle && appearance->uncapHairLength) {
@@ -115,7 +115,7 @@ struct PartPhysics {
             if (facing < 0) rootX = 16 - rootX;
             const float head = 3 + headY.position * 1.3f;
             const HairPhysics::Point airflow{hairVx / (hairCollisions.hasWorldTransform ? hairCollisions.worldScale.x : 16),
-                hairVy / (hairCollisions.hasWorldTransform ? hairCollisions.worldScale.y : 28)};
+                vy / (hairCollisions.hasWorldTransform ? hairCollisions.worldScale.y : 28)};
             for (int strand = 0; strand < 2; ++strand) {
                 const float startY = head + (strand == 0 ? appearance->hairShape[0] : 3) + 0.5f;
                 const auto& source = strand == 0 ? fringeHair : builtInHair;

@@ -104,6 +104,43 @@ int main() {
     enormous.update(1.0f / 60, {5, 6.5f}, 0, 4, -1, cornerFloor);
     assert(!enormous.initialized);
 
+    // A real jump moves the collision scene relative to world-space resting hair.
+    // Include an airborne turn: body ejection must not tear neighboring links apart.
+    for (int fps : {30, 60, 120, 240}) for (int width : {2, 4}) {
+        Appearance jumper;
+        jumper.hairStyle = customPartsHairStyle;
+        jumper.uncapHairLength = true;
+        jumper.hairShape = {{3, 4, 80, width, 0}};
+        jumper.build = width == 4 ? 0 : 1;
+        PartPhysics motion;
+        const float dt = 1.0f / fps;
+        float y = 300, vy = 0;
+        for (int frame = 0; frame < fps * 4; ++frame) {
+            bool grounded = frame < fps;
+            if (frame == fps) vy = -900;
+            if (frame >= fps) {
+                vy += 1800 * dt;
+                y += vy * dt;
+                if (y >= 300) { y = 300; vy = 0; grounded = true; }
+            }
+            const int facing = frame < fps * 3 / 2 ? 1 : -1;
+            auto scene = hairBodyCollisions(jumper, facing, false);
+            addHairWorldBox(scene, {-500, 356, 1000, 64}, {0, y, 32, 56});
+            motion.update(dt, 0, vy, grounded, false, facing, 1, &scene, &jumper);
+            for (const auto& strand : motion.floorHair) {
+                assert(strand.initialized);
+                for (int i = 1; i < strand.count; ++i) {
+                    const float dx = strand.points[i].x - strand.points[i - 1].x;
+                    const float dy = strand.points[i].y - strand.points[i - 1].y;
+                    assert(std::isfinite(dx) && std::isfinite(dy));
+                    assert(std::sqrt(dx * dx + dy * dy) <= strand.linkLength * 1.25f);
+                    assert(!scene.blocksWorld(strand.points[i].x - strand.width * 0.5f,
+                        strand.points[i].y - 0.5f, strand.width, 1));
+                }
+            }
+        }
+    }
+
     assert(SDL_Init(0));
     SDL_Surface* surface = SDL_CreateSurface(160, 96, SDL_PIXELFORMAT_RGBA8888);
     assert(surface);
@@ -140,6 +177,24 @@ int main() {
         const auto bounds = visualBounds(hair, {64, 0, 16, 28}, Pose::Idle, 0, &physics);
         assert(bounds.x < 50 && bounds.x + bounds.w > 94);
     }
+    // Contact compression can create a zero-length link inside a valid strand.
+    hair.build = 1;
+    hair.textures[(int)Part::Hair] = 0;
+    hair.hairShape = {{3, 0, 40, 2, 0}};
+    PartPhysics folded;
+    auto& foldedStrand = folded.floorHair[1];
+    foldedStrand.update(1.0f / 60, {4, 6.5f}, 40, 2, -1, folded.hairCollisions);
+    for (int i = 0; i < foldedStrand.count; ++i)
+        foldedStrand.points[i] = {4, 6.5f + std::max(0, i - 1) * foldedStrand.linkLength};
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderClear(renderer);
+    render(renderer, hair, {64, 0, 16, 28}, Pose::Idle, 0, 1, 255, &folded);
+    SDL_Surface* foldedPixels = SDL_RenderReadPixels(renderer, nullptr);
+    assert(foldedPixels);
+    Uint8 red, green, blue, alpha;
+    assert(SDL_ReadSurfacePixel(foldedPixels, 68, 32, &red, &green, &blue, &alpha));
+    assert(red || green || blue); // A collapsed first link cannot hide the remaining tail.
+    SDL_DestroySurface(foldedPixels);
     // Saved lengths may be enormous; rendering work remains bounded by the view.
     hair.hairShape[2] = std::numeric_limits<int>::max();
     PartPhysics longHair;

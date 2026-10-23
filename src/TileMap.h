@@ -21,6 +21,7 @@ struct TileMap {
     void setSolid(int x, int y, unsigned char v);
     void setSemiSolid(int x, int y, unsigned char v);
     void setWater(int x, int y, unsigned char v);
+    void setBlockDefinition(int index, char definition);
 
     void renderBgDebug(SDL_Renderer* r, float camX, float camY) const;
     void renderSolid(SDL_Renderer* r, float camX, float camY) const;

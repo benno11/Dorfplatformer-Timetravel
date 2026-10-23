@@ -168,12 +168,7 @@ static void applyBlockDefsToMaps(TileMap& map,
     for (int i = 0; i < total; i++) {
         unsigned short id = tileIds[i];
         char d = (id < defs.size()) ? defs[id] : 0;
-        // Rules:
-        // '=' => semisolid, '^' => water, '#' => air. Anything else => solid fallback.
-        map.semisolid[i] = (d == '=') ? 1 : 0;
-        map.water[i]     = (d == '^') ? 1 : 0;
-        // Solid is "not air", excluding semisolid and water.
-        map.solid[i]     = (d == '#' && d != '=' && d != '^') ? 1 : 0;
+        map.setBlockDefinition(i, d);
     }
 }
 

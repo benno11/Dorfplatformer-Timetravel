@@ -7,6 +7,11 @@
 
 int main() {
     using namespace CharacterCreator;
+    HairPhysics::CollisionScene torso;
+    torso.bodySide = -1;
+    torso.boxes.push_back({0, 0, 10, 20, true});
+    assert(torso.resolve({12, 10}, {9, 10}).x > 10); // A swinging lock stays on its incoming side.
+    assert(torso.resolve({-2, 10}, {1, 10}).x < 0);
     HairPhysics light, heavy, flexible, stiff;
     HairPhysics::Profile lightProfile{12, 1, 0.5f}, heavyProfile{12, 1, 2};
     HairPhysics::Profile flexibleProfile{12, 0.5f, 1}, stiffProfile{12, 2, 1};
@@ -29,6 +34,17 @@ int main() {
     Appearance appearance;
     appearance.hairStyle = customPartsHairStyle;
     appearance.hairShape = {{3, 4, 10, 3, 0}};
+    for (bool overrideLength : {false, true}) {
+        appearance.uncapHairLength = overrideLength;
+        PartPhysics ascending;
+        ascending.update(1.0f / 60, 0, 0, true, false, 1, 1, nullptr, &appearance);
+        ascending.headY.velocity = 30; // A downward head bounce while the body still rises.
+        ascending.update(1.0f / 60, 0, -20, false, false, 1, 1, nullptr, &appearance);
+        assert(ascending.builtInHair.stretch >= 0 && ascending.fringeHair.stretch >= 0);
+        ascending.update(1.0f / 60, 0, -1, false, false, 1, 1, nullptr, &appearance);
+        assert(ascending.builtInHair.stretch >= 0 && ascending.fringeHair.stretch >= 0);
+    }
+    appearance.uncapHairLength = false;
     PartPhysics parts;
     for (int frame = 0; frame < 120; ++frame)
         parts.update(1.0f / 60, 300, 0, true, false, 1, 1, nullptr, &appearance);
@@ -46,6 +62,10 @@ int main() {
     assert(flexible.joints[0].x == 0 && flexible.joints[0].y == 0);
     HairPhysics rising, falling, stationary;
     HairPhysics::Profile verticalProfile{10, 1, 1};
+    HairPhysics slowingAscent;
+    slowingAscent.update(1.0f / 60, 0, -100, 1, nullptr, &verticalProfile);
+    slowingAscent.update(1.0f / 60, 0, -1, 1, nullptr, &verticalProfile);
+    assert(slowingAscent.stretch >= 0); // Slowing upward motion is not a fall.
     for (int frame = 0; frame < 30; ++frame) {
         rising.update(1.0f / 60, 0, -900, 1, nullptr, &verticalProfile);
         falling.update(1.0f / 60, 0, 900, 1, nullptr, &verticalProfile);

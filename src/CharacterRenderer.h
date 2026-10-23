@@ -225,7 +225,8 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& dst,
                     if (facing < 0) left = 16 - left - drawWidth;
                     block(8 + (left - 8) / scale, std::min(current.y, end.y) - 0.5f, drawWidth / scale,
                         1.0f + std::fabs(end.y - current.y), hair, Part::Hair, row);
-                    if (std::fabs(end.x - current.x) + std::fabs(end.y - current.y) < 0.0001f) break;
+                    if (std::fabs(end.x - current.x) + std::fabs(end.y - current.y) < 0.0001f &&
+                        (!simulated || row >= simulated->length)) break;
                     current = end;
                     continue;
                 }

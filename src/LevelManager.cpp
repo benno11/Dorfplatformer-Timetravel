@@ -559,9 +559,7 @@ std::vector<char> LevelManager::loadBlockDefs(const std::string& path) {
 
 void LevelManager::applyBlockDefAt(TileMap& map, int idx, unsigned short tileId) const {
     char d = (tileId < blockDefs_.size()) ? blockDefs_[tileId] : 0;
-    map.semisolid[idx] = (d == '=') ? 1 : 0;
-    map.water[idx]     = (d == '^') ? 1 : 0;
-    map.solid[idx]     = (d != '=' && d != '^' && d != '#') ? 0 : 1;
+    map.setBlockDefinition(idx, d);
 }
 
 void LevelManager::applyLevelConfig(const LevelMeta& meta) {

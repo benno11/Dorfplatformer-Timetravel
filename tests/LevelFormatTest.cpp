@@ -30,6 +30,40 @@ bool FileExists(const std::string& path) {
 }
 
 int main() {
+    // Attribute decoding must agree when loading and changing a tile at runtime.
+    // Blank/unknown definitions are air; #, =, and ^ mean solid, platform, water.
+    files["assets/blockdefined.txt"] = std::string(100, '\n') + "\n#\n=\n^\n?\n";
+    LevelMeta savedWorld;
+    savedWorld.world = savedWorld.area = savedWorld.time = 1;
+    files["attributes.bin"] = SerializeLevelMetaHeader(savedWorld) + "DFLVL4 6 1\n100 101 102 103 104 65535\nOBJ 0\n";
+    {
+        TileMap attributes;
+        LevelMeta metadata;
+        std::vector<ObjectInstance> entities;
+        assert(loadLevelBNNLVL("attributes.bin", attributes, entities, metadata));
+        assert(metadata.world == 1 && metadata.area == 1 && metadata.time == 1);
+        const unsigned short ids[]{100, 101, 102, 103, 104, 65535};
+        auto check = [&](int index, unsigned short id) {
+            assert(attributes.solid[index] == (id == 101));
+            assert(attributes.semisolid[index] == (id == 102));
+            assert(attributes.water[index] == (id == 103));
+        };
+        for (int i = 0; i < 6; ++i) check(i, ids[i]);
+        LevelManager edits;
+        const auto savedTiles = attributes.tileIds;
+        const auto solid = attributes.solid, semi = attributes.semisolid, water = attributes.water;
+        // Continue restores all saved tile IDs through setTileAt, unlike Restart.
+        for (int i = 0; i < 6; ++i) edits.setTileAt(attributes, i, savedTiles[i]);
+        assert(attributes.solid == solid && attributes.semisolid == semi && attributes.water == water);
+        for (auto from : ids) for (auto to : ids) {
+            edits.setTileAt(attributes, 0, from);
+            edits.setTileAt(attributes, 0, to);
+            check(0, to);
+            for (int i = 1; i < 6; ++i) check(i, ids[i]);
+        }
+    }
+    files.erase("assets/blockdefined.txt");
+    files.erase("attributes.bin");
     LevelMeta original;
     original.levelId = 71;
     original.themeOverride = 5;

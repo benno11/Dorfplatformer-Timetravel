@@ -84,6 +84,16 @@ void TileMap::setWater(int x,int y,unsigned char v){
     water[y*w+x]=v;
 }
 
+void TileMap::setBlockDefinition(int index, char definition) {
+    if (index < 0 || (size_t)index >= solid.size() || (size_t)index >= semisolid.size() ||
+        (size_t)index >= water.size()) return;
+    // blockdefined.txt: # is solid, = is a one-way platform, ^ is water.
+    // Empty or unrecognized definitions are air. Always clear the other flags.
+    solid[index] = definition == '#';
+    semisolid[index] = definition == '=';
+    water[index] = definition == '^';
+}
+
 void TileMap::renderBgDebug(SDL_Renderer* r,float camX,float camY) const{
     int viewW = 0, viewH = 0;
     SDL_GetRendererOutputSize(r, &viewW, &viewH);

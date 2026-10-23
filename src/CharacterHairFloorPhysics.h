@@ -67,11 +67,18 @@ struct HairFloorPhysics {
             return box.x > right + margin || box.x + box.w < left - margin ||
                 box.y > bottom + margin || box.y + box.h < top - margin;
         }), contacts.boxes.end());
+        auto stretchContacts = contacts;
+        for (auto& box : stretchContacts.boxes) box.body = false;
         springiness = std::isfinite(springiness) ? std::clamp(springiness, 0.75f, 1.25f) : 1;
         const float dt = std::min(elapsed, 1.0f / 30);
         const int steps = std::max(1, (int)std::ceil(dt * 120));
         const float h = dt / steps;
         const float elasticLink = linkLength * (1 + (std::isfinite(verticalStrain) ? std::clamp(verticalStrain, -0.04f, 0.025f) : 0));
+        auto resolve = [&](Point from, Point to, bool worldOnly) {
+            const auto result = contacts.resolve({from.x - scene.root.x, from.y - scene.root.y},
+                {to.x - scene.root.x, to.y - scene.root.y}, worldOnly, width * 0.5f, 0.5f);
+            return Point{result.x + scene.root.x, result.y + scene.root.y};
+        };
         for (int step = 0; step < steps; ++step) {
             for (int i = 1; i < count; ++i) {
                 const Point current = points[i];
@@ -116,11 +123,6 @@ struct HairFloorPhysics {
                 }
                 for (int i = 1; i < count; ++i) {
                     const Point target = points[i];
-                    auto resolve = [&](Point from, Point to, bool worldOnly) {
-                        const auto result = contacts.resolve({from.x - scene.root.x, from.y - scene.root.y},
-                            {to.x - scene.root.x, to.y - scene.root.y}, worldOnly, width * 0.5f, 0.5f);
-                        return Point{result.x + scene.root.x, result.y + scene.root.y};
-                    };
                     const Point resolved = resolve(points[i - 1], resolve(previous[i], target, false), true);
                     if (resolved.y < target.y - 0.0001f) {
                         // Inelastic floor contact with tangential friction; a turn cannot
@@ -131,6 +133,32 @@ struct HairFloorPhysics {
                     if (std::fabs(resolved.x - target.x) > 0.0001f) previous[i].x = resolved.x;
                     points[i] = resolved;
                 }
+            }
+            // Collision ejection runs after the soft length constraints and can
+            // separate adjacent links, particularly as falling locks cross the
+            // torso. Finish from the attachment outward with a hard stretch cap.
+            points[0] = root;
+            for (int i = 1; i < count; ++i) {
+                const Point parent = points[i - 1];
+                const float dx = points[i].x - parent.x, dy = points[i].y - parent.y;
+                const float distance = std::sqrt(dx * dx + dy * dy);
+                const float limit = elasticLink * 1.15f;
+                if (distance <= limit) continue;
+                const Point target{parent.x + dx * limit / distance, parent.y + dy * limit / distance};
+                // Sweep against the body as well here. Sideways body ejection can
+                // exceed the cap at a shoulder; sliding on its top stays connected.
+                const auto result = stretchContacts.resolve({parent.x - scene.root.x, parent.y - scene.root.y},
+                    {target.x - scene.root.x, target.y - scene.root.y}, true, width * 0.5f, 0.5f);
+                points[i] = {result.x + scene.root.x, result.y + scene.root.y};
+                const float resolvedX = points[i].x - parent.x, resolvedY = points[i].y - parent.y;
+                if (resolvedX * resolvedX + resolvedY * resolvedY > (limit + 0.002f) * (limit + 0.002f)) {
+                    // A wide attachment may begin inside its cosmetic head collider.
+                    // Let these links leave the head without tearing; world contacts
+                    // still take precedence so the strand cannot cross a wall/floor.
+                    points[i] = resolve(parent, target, true);
+                }
+                // Do not turn a large positional repair into next-frame velocity.
+                previous[i] = points[i];
             }
         }
         points[0] = root;

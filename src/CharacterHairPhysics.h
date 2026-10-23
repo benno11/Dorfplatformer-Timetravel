@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <vector>
 
 namespace CharacterCreator {
@@ -57,7 +58,11 @@ struct HairPhysics {
                         target.x <= left || target.x >= right) continue;
                     // The strand attaches beside the head. Escape toward that side rather
                     // than its nearest top face, which can pin every joint above the head.
-                    const int side = bodySide ? bodySide : (root.x < box.x + box.w * 0.5f ? -1 : 1);
+                    int side = bodySide ? bodySide : (root.x < box.x + box.w * 0.5f ? -1 : 1);
+                    // A loose lock can swing around the body during a jump. Keep
+                    // contacts on their incoming side instead of ejecting across it.
+                    if (from.x <= left) side = -1;
+                    else if (from.x >= right) side = 1;
                     target.x = side < 0 ? left - 0.001f : right + 0.001f;
                 }
             }
@@ -160,7 +165,7 @@ struct HairPhysics {
     HairPhysics() { reset(); }
 
     void update(float dt, float vx, float vy, float springiness = 1.0f, const CollisionScene* collisions = nullptr,
-        const Profile* profile = nullptr) {
+        const Profile* profile = nullptr, float movementVy = std::numeric_limits<float>::quiet_NaN()) {
         if (!std::isfinite(dt) || !std::isfinite(vx) || !std::isfinite(vy)) {
             reset();
             return;
@@ -169,6 +174,7 @@ struct HairPhysics {
         dt = std::min(dt, 1.0f / 30);
         vx = std::clamp(vx, -2000.0f, 2000.0f);
         vy = std::clamp(vy, -2000.0f, 2000.0f);
+        movementVy = std::isfinite(movementVy) ? std::clamp(movementVy, -2000.0f, 2000.0f) : vy;
         springiness = std::isfinite(springiness) ? std::clamp(springiness, 0.75f, 1.25f) : 1.0f;
         const auto finiteValue = [](float value, float low, float high, float fallback) {
             return std::isfinite(value) ? std::clamp(value, low, high) : fallback;
@@ -193,6 +199,9 @@ struct HairPhysics {
         }
         const float ax = std::clamp((vx - previousVx) / dt, -12000.0f, 12000.0f);
         const float ay = std::clamp((vy - previousVy) / dt, -12000.0f, 12000.0f);
+        // Head bounce and gravity slowing an ascent must not masquerade as a
+        // falling character. Keep lift tied to actual downward player movement.
+        const float verticalAy = movementVy <= 0 ? std::min(ay, 0.0f) : ay;
         const int steps = std::max(1, (int)std::ceil(dt * 240));
         const float h = dt / steps;
         float lateralLimit = 1.8f;
@@ -208,7 +217,7 @@ struct HairPhysics {
             // Upward acceleration pulls the locks behind the head; falling airflow
             // lifts them. Keep apparent length changes small: hair mainly bends,
             // rather than stretching like a spring, even during a hard landing.
-            const float verticalStrain = std::clamp((-ay * 0.000004f - vy * 0.000035f) * springiness / stiffness, -0.04f, 0.025f);
+            const float verticalStrain = std::clamp((-verticalAy * 0.000004f - movementVy * 0.000035f) * springiness / stiffness, -0.04f, 0.025f);
             const float stretchTarget = verticalStrain * length;
             stretchVelocity += ((stretchTarget - stretch) * 110 - stretchVelocity * 21 / springiness) * h;
             stretch = std::clamp(stretch + stretchVelocity * h, -std::min(1.0f, length * 0.045f), std::min(0.7f, length * 0.03f));
@@ -222,7 +231,7 @@ struct HairPhysics {
                 const float drag = std::exp(-(10 - along * 2) * h / (springiness * std::sqrt(mass)));
                 const float airflow = airDrag(vx, exposure, mass);
                 const float fx = (-ax * 0.004f + airflow) * springiness - current.x * (4 + (1 - along) * 8 * stiffness);
-                const float fy = 65 - ay * 0.006f * exposure + airDrag(vy, exposure, mass) * springiness +
+                const float fy = 65 - verticalAy * 0.006f * exposure + airDrag(movementVy, exposure, mass) * springiness +
                     (i * elasticSpacing - current.y) * 18;
                 joints[i].x += (current.x - previous[i].x) * drag + fx * h * h;
                 joints[i].y += (current.y - previous[i].y) * drag + fy * h * h;
