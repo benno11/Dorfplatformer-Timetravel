@@ -647,9 +647,11 @@ SlimMenu loadMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuC
                 menu.items.push_back(MenuItem{MenuItem::Type::Text, "Shape the built-in hair parts. Select a value to cycle; changes save automatically.", {}, {}});
                 option(a.hairStyle == CharacterCreator::customPartsHairStyle && a.sprites.base.empty() ?
                     "Custom Hair Parts [Selected]" : "Use Custom Hair Parts", "use_hair_parts");
-                option(std::string("Uncap Hair Length: ") + (a.uncapHairLength ? "ON" : "OFF"), "uncap_hair_length");
+                option(std::string("Override Hair Length Limit: ") + (a.uncapHairLength ? "ON" : "OFF"), "uncap_hair_length");
                 if (a.uncapHairLength) menu.items.push_back(MenuItem{MenuItem::Type::Text,
-                    "Fringe and back lengths grow without wrapping. Minimum: 0 (hidden).", {}, {}});
+                    "Fringe and back lengths grow without wrapping up to " + std::to_string(CharacterCreator::overrideHairLengthLimit) + ". Minimum: 0 (hidden).", {}, {}});
+                else menu.items.push_back(MenuItem{MenuItem::Type::Text,
+                    "Fringe and back length limit: " + std::to_string(CharacterCreator::normalHairLengthLimit) + ".", {}, {}});
                 for (int i = 0; i < (int)a.hairShape.size(); ++i) {
                     menu.items.push_back(MenuItem{MenuItem::Type::Button,
                         std::string(CharacterCreator::hairShapeNames[i]) + ": " + std::to_string(a.hairShape[i]),

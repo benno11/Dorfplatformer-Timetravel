@@ -26,11 +26,13 @@ inline constexpr int customHairStyle = 4;
 inline constexpr int customPartsHairStyle = 5;
 inline constexpr std::array<const char*, 5> hairShapeIds{{"top", "fringe", "length", "width", "spikes"}};
 inline constexpr std::array<const char*, 5> hairShapeNames{{"Top Thickness", "Fringe Length", "Back Length", "Back Width", "Spike Height"}};
-inline constexpr std::array<int, 5> hairShapeMaximum{{5, 6, 10, 4, 3}};
+inline constexpr int normalHairLengthLimit = 20;
+inline constexpr int overrideHairLengthLimit = 10000;
+inline constexpr std::array<int, 5> hairShapeMaximum{{5, normalHairLengthLimit, normalHairLengthLimit, 4, 3}};
 inline constexpr std::array<int, 5> defaultHairShape{{3, 3, 0, 2, 0}};
 inline bool isHairLength(int i) { return i == 1 || i == 2; }
 inline int hairShapeLimit(int i, bool uncapped) {
-    return uncapped && isHairLength(i) ? std::numeric_limits<int>::max() : hairShapeMaximum[i];
+    return uncapped && isHairLength(i) ? overrideHairLengthLimit : hairShapeMaximum[i];
 }
 inline constexpr std::array<const char*, 4> hats{{"None", "Cap", "Beanie", "Crown"}};
 enum class Part { Skin, Hair, Shirt, Pants, Hat, Accent, None };

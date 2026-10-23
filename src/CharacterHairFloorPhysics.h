@@ -71,11 +71,11 @@ struct HairFloorPhysics {
         const float dt = std::min(elapsed, 1.0f / 30);
         const int steps = std::max(1, (int)std::ceil(dt * 120));
         const float h = dt / steps;
-        const float elasticLink = linkLength * (1 + (std::isfinite(verticalStrain) ? std::clamp(verticalStrain, -0.25f, 0.18f) : 0));
+        const float elasticLink = linkLength * (1 + (std::isfinite(verticalStrain) ? std::clamp(verticalStrain, -0.04f, 0.025f) : 0));
         for (int step = 0; step < steps; ++step) {
             for (int i = 1; i < count; ++i) {
                 const Point current = points[i];
-                const float drag = std::exp(-2.5f * h / springiness);
+                const float drag = std::exp(-4.5f * h / springiness);
                 const float exposure = 0.3f + 0.7f * i / (count - 1);
                 const float mass = std::clamp(0.7f + width * 0.15f, 0.5f, 2.0f);
                 const float windX = HairPhysics::airDrag(airflow.x, exposure, mass) * springiness;

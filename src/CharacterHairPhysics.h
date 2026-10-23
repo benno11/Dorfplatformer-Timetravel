@@ -142,7 +142,7 @@ struct HairPhysics {
         float mass = 1;
     };
     static float airDrag(float speed, float exposure, float mass) {
-        return -speed * (0.025f + std::fabs(speed) * 0.00002f) * exposure / mass;
+        return -speed * (0.015f + std::fabs(speed) * 0.000008f) * exposure / mass;
     }
     std::array<Point, jointCount> joints{}, previous{};
     float restSpacing = spacing;
@@ -195,7 +195,7 @@ struct HairPhysics {
         const float ay = std::clamp((vy - previousVy) / dt, -12000.0f, 12000.0f);
         const int steps = std::max(1, (int)std::ceil(dt * 240));
         const float h = dt / steps;
-        float lateralLimit = 2.8f;
+        float lateralLimit = 1.8f;
         if (collisions && collisions->bodySide) {
             for (const auto& box : collisions->boxes) {
                 if (!box.body) continue;
@@ -206,11 +206,12 @@ struct HairPhysics {
         }
         for (int step = 0; step < steps; ++step) {
             // Upward acceleration pulls the locks behind the head; falling airflow
-            // lifts them. Express the response as strain so short locks show it too.
-            const float verticalStrain = std::clamp((-ay * 0.00003f - vy * 0.00028f) * springiness / stiffness, -0.32f, 0.22f);
+            // lifts them. Keep apparent length changes small: hair mainly bends,
+            // rather than stretching like a spring, even during a hard landing.
+            const float verticalStrain = std::clamp((-ay * 0.000004f - vy * 0.000035f) * springiness / stiffness, -0.04f, 0.025f);
             const float stretchTarget = verticalStrain * length;
-            stretchVelocity += ((stretchTarget - stretch) * 110 - stretchVelocity * 9 / springiness) * h;
-            stretch = std::clamp(stretch + stretchVelocity * h, -std::min(6.0f, length * 0.35f), std::min(3.5f, length * 0.25f));
+            stretchVelocity += ((stretchTarget - stretch) * 110 - stretchVelocity * 21 / springiness) * h;
+            stretch = std::clamp(stretch + stretchVelocity * h, -std::min(1.0f, length * 0.045f), std::min(0.7f, length * 0.03f));
             const float elasticSpacing = restSpacing + stretch / (jointCount - 1);
             for (int i = 1; i < jointCount; ++i) {
                 const Point current = joints[i];
@@ -218,10 +219,10 @@ struct HairPhysics {
                 // Width adds mass, reducing wind response without increasing gravity.
                 const float along = (float)i / (jointCount - 1);
                 const float exposure = 0.3f + along * 0.7f;
-                const float drag = std::exp(-(7 - along * 2) * h / (springiness * std::sqrt(mass)));
+                const float drag = std::exp(-(10 - along * 2) * h / (springiness * std::sqrt(mass)));
                 const float airflow = airDrag(vx, exposure, mass);
-                const float fx = (-ax * 0.008f + airflow) * springiness - current.x * (4 + (1 - along) * 8 * stiffness);
-                const float fy = 65 - ay * 0.012f * exposure + airDrag(vy, exposure, mass) * springiness +
+                const float fx = (-ax * 0.004f + airflow) * springiness - current.x * (4 + (1 - along) * 8 * stiffness);
+                const float fy = 65 - ay * 0.006f * exposure + airDrag(vy, exposure, mass) * springiness +
                     (i * elasticSpacing - current.y) * 18;
                 joints[i].x += (current.x - previous[i].x) * drag + fx * h * h;
                 joints[i].y += (current.y - previous[i].y) * drag + fy * h * h;

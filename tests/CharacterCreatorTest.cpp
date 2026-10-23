@@ -284,7 +284,7 @@ int main(int argc, char** argv) {
     extentHair.uncapHairLength = true;
     extentHair.hairShape[1] = std::numeric_limits<int>::max();
     hairBounds = visualBounds(extentHair, bodyAbove);
-    assert(std::isfinite(hairBounds.h) && hairBounds.h > 1.0e9f && hairBounds.y + hairBounds.h > viewport.y);
+    assert(std::isfinite(hairBounds.h) && hairBounds.h > 10000 && hairBounds.h < 10100 && hairBounds.y + hairBounds.h > viewport.y);
     extentHair.hairShape[1] = 100;
     extentHair.hairShape[2] = 0; // Fringe alone also extends the visible bounds.
     hairBounds = visualBounds(extentHair, bodyAbove);
@@ -337,28 +337,34 @@ int main(int argc, char** argv) {
     assert(importCharacter(exportCharacter(hairCopy), partsTransferred) && save(partsTransferred) == save(hairCopy));
     const auto beforeInvalidShape = save(partsTransferred);
     for (const auto& invalid : {nlohmann::json(42), nlohmann::json::array({1, 2}),
-        nlohmann::json::array({3, 3, 0, 0, 0}), nlohmann::json::array({3, 3, 11, 2, 0})}) {
+        nlohmann::json::array({3, 3, 0, 0, 0}), nlohmann::json::array({3, 3, 21, 2, 0})}) {
         auto badShape = nlohmann::json::parse(exportCharacter(hairCopy));
         badShape["character"]["hair_shape"] = invalid;
         assert(!importCharacter(badShape.dump(), partsTransferred) && save(partsTransferred) == beforeInvalidShape);
     }
-    assert((load({{"hair_shape", {-10, 99, 99, 0, 99}}}).hairShape == std::array<int, 5>{{0, 6, 10, 1, 3}}));
+    assert((load({{"hair_shape", {-10, 99, 99, 0, 99}}}).hairShape == std::array<int, 5>{{0, 20, 20, 1, 3}}));
     assert(change(hairCopy, "reset_hair_parts") && hairCopy.hairShape == defaultHairShape);
     assert(change(hairCopy, "uncap_hair_length") && hairCopy.uncapHairLength);
-    hairCopy.hairShape[1] = 6;
-    hairCopy.hairShape[2] = 10;
-    assert(change(hairCopy, "hair_shape:fringe") && hairCopy.hairShape[1] == 7);
-    assert(change(hairCopy, "hair_shape:length") && hairCopy.hairShape[2] == 11);
+    hairCopy.hairShape[1] = 20;
+    hairCopy.hairShape[2] = 20;
+    assert(change(hairCopy, "hair_shape:fringe") && hairCopy.hairShape[1] == 21);
+    assert(change(hairCopy, "hair_shape:length") && hairCopy.hairShape[2] == 21);
     hairCopy.hairShape[1] = 500;
     hairCopy.hairShape[2] = std::numeric_limits<int>::max();
-    assert(change(hairCopy, "hair_shape:length") && hairCopy.hairShape[2] == std::numeric_limits<int>::max());
+    assert(change(hairCopy, "hair_shape:length") && hairCopy.hairShape[2] == 10000);
     assert(importCharacter(exportCharacter(hairCopy), partsTransferred) && save(partsTransferred) == save(hairCopy));
-    assert(change(hairCopy, "hair_shorten:length") && hairCopy.hairShape[2] == std::numeric_limits<int>::max() - 1);
+    assert(change(hairCopy, "hair_shorten:length") && hairCopy.hairShape[2] == 9999);
+    auto oversizedHair = nlohmann::json::parse(exportCharacter(hairCopy));
+    oversizedHair["character"]["hair_shape"][2] = 10001;
+    const auto beforeOversizedHair = save(partsTransferred);
+    assert(!importCharacter(oversizedHair.dump(), partsTransferred) && save(partsTransferred) == beforeOversizedHair);
+    const auto clampedHair = load({{"uncap_hair_length", true}, {"hair_shape", {3, 10001, 999999, 2, 0}}});
+    assert(clampedHair.hairShape[1] == 10000 && clampedHair.hairShape[2] == 10000);
     hairCopy.hairShape[1] = 0;
     assert(change(hairCopy, "hair_shorten:fringe") && hairCopy.hairShape[1] == 0);
     hairCopy.hairShape[1] = 500;
     assert(change(hairCopy, "uncap_hair_length") && !hairCopy.uncapHairLength);
-    assert(hairCopy.hairShape[1] == 6 && hairCopy.hairShape[2] == 10);
+    assert(hairCopy.hairShape[1] == 20 && hairCopy.hairShape[2] == 20);
     assert(change(hairCopy, "uncap_hair_length"));
     assert(change(hairCopy, "reset_hair_parts") && !hairCopy.uncapHairLength && hairCopy.hairShape == defaultHairShape);
     auto invalidUncap = nlohmann::json::parse(exportCharacter(hairCopy));

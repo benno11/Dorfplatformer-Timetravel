@@ -61,11 +61,11 @@ struct PartPhysics {
             const float impact = std::clamp(previousVy / 1000.0f, 0.0f, 1.8f) * springiness;
             headY.velocity += impact * 14.0f;
             hatY.velocity -= impact * 24.0f;
-            hair.velocity += impact * 18.0f;
+            hair.velocity += impact * 8.0f;
             arms.velocity += impact * 3.0f;
         } else if (!grounded && wasGrounded && vy < -100.0f) {
             hatY.velocity += 10.0f;
-            hair.velocity -= 12.0f;
+            hair.velocity -= 5.0f;
         }
         const int steps = std::max(1, (int)std::ceil(dt * 240.0f));
         const float h = dt / steps;
@@ -77,7 +77,7 @@ struct PartPhysics {
             headX.step(inertia * 0.6f, 160, 18, 0.8f, h);
             headY.step((grounded ? std::fabs(stride) * 0.35f : vy * 0.0003f) + (sliding ? 0.3f : 0),
                 180, 16, 1.0f, h);
-            hair.step((inertia * 1.7f + vy * 0.00035f) * springiness, 65, 7 / springiness, 2.2f, h);
+            hair.step((inertia + vy * 0.00015f) * springiness, 85, 12 / springiness, 1.4f, h);
             hatX.step(inertia * 0.8f * springiness, 95, 9 / springiness, 1.2f, h);
             hatY.step(-headY.position * 0.6f, 120, 8 / springiness, 1.5f, h);
             arms.step(stride * 0.6f + inertia * 0.24f, 95, 10 / springiness, 0.85f, h);
@@ -98,8 +98,8 @@ struct PartPhysics {
             fringeProfile.stiffness *= 1.15f;
         }
         // The attachment's bounce contributes to inertia in world directions.
-        const float hairVx = vx + (appearance ? headX.velocity * direction * 16 : 0);
-        const float hairVy = vy + (appearance ? headY.velocity * 28 : 0);
+        const float hairVx = vx + (appearance ? headX.velocity * direction * 8 : 0);
+        const float hairVy = vy + (appearance ? headY.velocity * 10 : 0);
         builtInHair.update(dt, hairVx, hairVy, springiness, &hairCollisions, appearance ? &backProfile : nullptr);
         auto fringeCollisions = hairCollisions;
         if (appearance && appearance->hairStyle == customPartsHairStyle)

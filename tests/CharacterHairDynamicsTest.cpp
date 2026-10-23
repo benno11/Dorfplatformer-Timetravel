@@ -51,11 +51,13 @@ int main() {
         falling.update(1.0f / 60, 0, 900, 1, nullptr, &verticalProfile);
         stationary.update(1.0f / 60, 0, 0, 1, nullptr, &verticalProfile);
     }
-    assert(rising.offset(10).y > stationary.offset(10).y + 0.5f);
-    assert(falling.offset(10).y < stationary.offset(10).y - 0.5f);
+    const float rise = rising.offset(10).y - stationary.offset(10).y;
+    const float fall = stationary.offset(10).y - falling.offset(10).y;
+    assert(rise > 0.1f && rise < 0.5f);
+    assert(fall > 0.1f && fall < 0.6f);
     const float fallingTip = falling.offset(10).y;
     for (int frame = 0; frame < 12; ++frame) falling.update(1.0f / 60, 0, 0, 1, nullptr, &verticalProfile);
-    assert(falling.offset(10).y > fallingTip + 0.5f); // Landing releases compression into a rebound.
+    assert(falling.offset(10).y > fallingTip + 0.1f); // Landing eases back toward rest.
     for (int frame = 0; frame < 240; ++frame) falling.update(1.0f / 60, 0, 0, 1, nullptr, &verticalProfile);
     assert(std::fabs(falling.offset(10).y - stationary.offset(10).y) < 0.05f);
 
@@ -67,6 +69,7 @@ int main() {
         fallingLong.update(1.0f / 60, 0, 900, false, false, 1, 1, nullptr, &appearance);
     }
     assert(risingLong.floorHair[1].at(60).y > fallingLong.floorHair[1].at(60).y + 2);
+    assert(risingLong.floorHair[1].at(60).y < fallingLong.floorHair[1].at(60).y + 6);
     HairPhysics reference;
     for (int fps : {30, 60, 120, 240}) {
         HairPhysics simulation;
