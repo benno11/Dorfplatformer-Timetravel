@@ -469,6 +469,33 @@ int main(int argc, char** argv) {
         SDL_DestroySurface(detail);
     }
     assert(SDL_SetRenderScale(renderer, 1, 1));
+    // Gameplay/UI helpers can leave an explicit viewport. Custom characters
+    // must remain visible near its right edge with zoom and clipping enabled.
+    for (const Appearance& appearance : {Appearance{}, fineSprite}) {
+        assert(SDL_SetRenderScale(renderer, 3, 3));
+        const SDL_Rect view{0, 0, 200, 70};
+        const SDL_Rect clip{140, 10, 40, 40};
+        assert(SDL_SetRenderViewport(renderer, &view));
+        assert(SDL_SetRenderClipRect(renderer, &clip));
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        assert(SDL_RenderClear(renderer));
+        render(renderer, appearance, SDL_FRect{150, 20, 8, 14});
+        SDL_Rect actualView, actualClip;
+        float scaleX, scaleY;
+        assert(SDL_GetRenderScale(renderer, &scaleX, &scaleY) && scaleX == 3 && scaleY == 3);
+        assert(SDL_GetRenderViewport(renderer, &actualView) && SDL_RectsEqual(&view, &actualView));
+        assert(SDL_RenderClipEnabled(renderer));
+        assert(SDL_GetRenderClipRect(renderer, &actualClip) && SDL_RectsEqual(&clip, &actualClip));
+        SDL_Surface* visible = SDL_RenderReadPixels(renderer, nullptr);
+        assert(visible);
+        Uint8 r, g, b, alpha;
+        assert(SDL_ReadSurfacePixel(visible, 462, 87, &r, &g, &b, &alpha));
+        assert(r || g || b);
+        SDL_DestroySurface(visible);
+        assert(SDL_SetRenderClipRect(renderer, nullptr));
+        assert(SDL_SetRenderViewport(renderer, nullptr));
+        assert(SDL_SetRenderScale(renderer, 1, 1));
+    }
     Appearance hairTest;
     hairTest.hairPixels = std::string(16 * 16 * 8, '0');
     hairTest.hairPixels.replace((1 * 16 + 1) * 8, 8, "c8326480");

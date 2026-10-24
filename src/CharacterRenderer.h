@@ -56,14 +56,14 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& destination
     SDL_GetRenderScale(ren, &pixelScaleX, &pixelScaleY);
     if (!std::isfinite(pixelScaleX) || pixelScaleX <= 0) pixelScaleX = 1.0f;
     if (!std::isfinite(pixelScaleY) || pixelScaleY <= 0) pixelScaleY = 1.0f;
-    // Rasterize in output pixels. Rounding before zoom erases small details,
-    // and dividing snapped edges back into world units can leave rounding gaps.
-    struct RestoreScale {
-        SDL_Renderer* renderer;
-        float x, y;
-        ~RestoreScale() { SDL_SetRenderScale(renderer, x, y); }
-    } restoreScale{ren, pixelScaleX, pixelScaleY};
-    SDL_SetRenderScale(ren, 1.0f, 1.0f);
+    // Snap edges in output pixels, then submit them in renderer coordinates.
+    // Changing SDL's scale also rescales its viewport and clip rectangle, which
+    // can clip the entire character when gameplay has an explicit viewport.
+    auto fillPixelRect = [&](const SDL_FRect& pixel) {
+        const SDL_FRect rect{pixel.x / pixelScaleX, pixel.y / pixelScaleY,
+            pixel.w / pixelScaleX, pixel.h / pixelScaleY};
+        SDL_RenderFillRect(ren, &rect);
+    };
     const SDL_FRect dst{destination.x * pixelScaleX, destination.y * pixelScaleY,
         destination.w * pixelScaleX, destination.h * pixelScaleY};
     SDL_BlendMode oldBlend;
@@ -112,7 +112,7 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& destination
                 SDL_FRect pixel{x1, y1, std::round(dst.x + right * dst.w / 16) - x1,
                     std::round(dst.y + bottom * dst.h / 28) - y1};
                 SDL_SetRenderDrawColor(ren, color.r, color.g, color.b, (Uint8)(alpha * color.a / 255));
-                SDL_RenderFillRect(ren, &pixel);
+                fillPixelRect(pixel);
             }
         }
         SDL_SetRenderDrawColor(ren, oldR, oldG, oldB, oldA);
@@ -151,7 +151,7 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& destination
             physics->hairCollisions.blocksWorld(x, y, w, h);
         if (!clipHair && (part == Part::None || a.textures[(int)part] == 0)) {
             SDL_SetRenderDrawColor(ren, color.r, color.g, color.b, alpha);
-            SDL_RenderFillRect(ren, &rect);
+            fillPixelRect(rect);
         } else {
             for (float py = y; py < bottom; py += 1.0f) for (float px = x; px < right; px += 1.0f) {
                 if (clipHair && physics->hairCollisions.blocksWorld(px, py, std::min(1.0f, right - px), std::min(1.0f, bottom - py))) continue;
@@ -162,7 +162,7 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& destination
                 const float x1 = std::round(dst.x + px * dst.w / 16), y1 = std::round(dst.y + py * dst.h / 28);
                 SDL_FRect cell{x1, y1, std::round(dst.x + std::min(px + 1, right) * dst.w / 16) - x1,
                     std::round(dst.y + std::min(py + 1, bottom) * dst.h / 28) - y1};
-                SDL_RenderFillRect(ren, &cell);
+                fillPixelRect(cell);
             }
         }
     };
