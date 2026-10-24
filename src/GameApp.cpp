@@ -7306,8 +7306,10 @@ int RunGameApp(int argc, char** argv) {
                 for (int i = 0; i < (int)objects.size(); ++i) {
                     if (i >= (int)objectIds.size() || objectIds[i] != 67) continue;
                     const SDL_Rect fallbackSource{0, 0, 32, 70};
-                    const auto bounds = SignpostRendering::destination(objects[i].x - camX,
-                        objects[i].y + 16.0f - camY,
+                    // Activation runs before this tick's render camera is computed;
+                    // cull against the viewport used for the last rendered frame.
+                    const auto bounds = SignpostRendering::destination(objects[i].x - previousCameraX,
+                        objects[i].y + 16.0f - previousCameraY,
                         defaultEndSignFrame ? defaultEndSignFrame->rect : fallbackSource,
                         defaultEndSignFrame && defaultEndSignFrame->rotated);
                     SignpostRendering::forEachActivation(bounds, kGameplayViewW, kGameplayViewH,
