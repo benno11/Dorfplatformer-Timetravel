@@ -61,6 +61,7 @@
 #include "LevelWrap.h"
 #include "FrontendMenu.h"
 #include "GameSupport.h"
+#include "SignpostRendering.h"
 #include "AsyncAssetLoader.h"
 #include "ParallaxRenderer.h"
 #include "CrashReporter.h"
@@ -4446,8 +4447,11 @@ int RunGameApp(int argc, char** argv) {
             return true;
         };
         auto updateLowPowerSuspendState = [&]() -> bool {
+            // Unloading assets stops the victory track, which completion would
+            // mistake for its natural end. Defer suspension until it finishes.
             const bool shouldSuspend = lowPowerModeEnabled &&
                                        powerManagementEnabled &&
+                                       !levelCompleteActive &&
                                        (mainWindowMinimized || !mainWindowFocused);
             if (shouldSuspend) {
                 const Uint32 now = SDL_GetTicks();
@@ -4748,7 +4752,9 @@ int RunGameApp(int argc, char** argv) {
             auto isVerticalWrapEnabledAtX = [&](float) -> bool {
                 return levelWrapYEnabled();
             };
-            if (levelCompleteActive) {
+            // Suspension unloads the render targets and sprite frames. Keep its
+            // pause intact until focus returns and the assets have been restored.
+            if (levelCompleteActive && !lowPowerSuspendActive) {
                 paused = false;
                 pauseMenuAnim = 0.0f;
                 pauseMenuClosing = false;
@@ -4910,12 +4916,12 @@ int RunGameApp(int argc, char** argv) {
                     levelCompleteUiLerp = std::max(target, levelCompleteUiLerp - speed * dt);
                 }
             }
-            if (levelCompleteActive && !levelCompleteCounting) {
+            if (levelCompleteActive && !lowPowerSuspendActive && !levelCompleteCounting) {
                 if (!audio.isReady() || levelCompleteAudioChannel < 0 || !audio.isChannelPlaying(levelCompleteAudioChannel)) {
                     levelCompleteCounting = true;
                 }
             }
-            if (levelCompleteActive && levelCompleteCounting && !paused) {
+            if (levelCompleteActive && !lowPowerSuspendActive && levelCompleteCounting && !paused) {
                 // Uncapped payout during level complete: process full remaining bonus immediately.
                 int payoutPerFrame = std::max(1, levelCompleteCoinBonus + levelCompleteTimeScore);
                 int coinStep = std::min(levelCompleteCoinBonus, payoutPerFrame);
@@ -7290,28 +7296,32 @@ int RunGameApp(int argc, char** argv) {
 
             if (!levelCompleteActive && endSignState.present && !endSignState.triggered) {
                 const float playerCenterX = player.x + player.w * 0.5f;
-                const float prevPlayerCenterX = frameStartX + player.w * 0.5f;
+                // Keep the crossing continuous when the player crosses a map seam.
+                const float prevPlayerCenterX = playerCenterX +
+                    wrapDeltaNear(frameStartX - player.x, mapWrapW, gameplayWrapX);
                 int triggerIdx = -1;
                 float triggerX = 0.0f;
                 float triggerY = 0.0f;
                 float bestDxNow = 1e30f;
                 for (int i = 0; i < (int)objects.size(); ++i) {
                     if (i >= (int)objectIds.size() || objectIds[i] != 67) continue;
-                    const float signX = objects[i].x;
-                    const float signY = objects[i].y;
-                    const float dxNow = signX - playerCenterX;
-                    const float aboveDelta = player.y - signY;
-                    const bool crossedSignX = prevPlayerCenterX < signX && playerCenterX >= signX;
-                    const bool signNotFarLeft = signX >= prevPlayerCenterX - 8.0f;
-                    const bool signNotFarAbove = aboveDelta <= 220.0f;
-                    const bool signLikelyVisible = dxNow <= (float)kGameplayViewW * 0.95f;
-                    if (!crossedSignX || !signNotFarLeft || !signNotFarAbove || !signLikelyVisible) continue;
-                    if (dxNow < bestDxNow) {
-                        bestDxNow = dxNow;
-                        triggerIdx = i;
-                        triggerX = signX;
-                        triggerY = signY;
-                    }
+                    const SDL_Rect fallbackSource{0, 0, 32, 70};
+                    const auto bounds = SignpostRendering::destination(objects[i].x - camX,
+                        objects[i].y + 16.0f - camY,
+                        defaultEndSignFrame ? defaultEndSignFrame->rect : fallbackSource,
+                        defaultEndSignFrame && defaultEndSignFrame->rotated);
+                    SignpostRendering::forEachActivation(bounds, kGameplayViewW, kGameplayViewH,
+                        gameplayWrapX ? map.w * map.tileSize : 0, gameplayWrapY ? map.h * map.tileSize : 0,
+                        objects[i].x, prevPlayerCenterX, playerCenterX,
+                        [&](const SDL_Rect& copy, float signX) {
+                            const float signY = objects[i].y + (copy.y - bounds.y);
+                            const float dxNow = signX - playerCenterX;
+                            if (player.y - signY > 220.0f || dxNow >= bestDxNow) return;
+                            bestDxNow = dxNow;
+                            triggerIdx = i;
+                            triggerX = signX;
+                            triggerY = signY;
+                        });
                 }
                 if (triggerIdx >= 0) {
                     endSignState.objectIndex = triggerIdx;
@@ -7830,13 +7840,13 @@ int RunGameApp(int argc, char** argv) {
             if (isWrapControl) continue;
             float entityBaseX = obj.x - 16.0f;
             float entityBaseY = obj.y - 16.0f;
-            if (renderWrapX) {
+            if (renderWrapX && !isEndSign) {
                 const float wrapW = (float)(map.w * map.tileSize);
                 // Keep the primary entity render closest to camera X for stable wrapping.
                 while ((entityBaseX - camX) < -wrapW * 0.5f) entityBaseX += wrapW;
                 while ((entityBaseX - camX) >  wrapW * 0.5f) entityBaseX -= wrapW;
             }
-            if (renderWrapY) {
+            if (renderWrapY && !isEndSign) {
                 const float wrapH = (float)(map.h * map.tileSize);
                 // Keep the primary entity render closest to camera Y for stable wrapping.
                 while ((entityBaseY - camY) < -wrapH * 0.5f) entityBaseY += wrapH;
@@ -7887,6 +7897,21 @@ int RunGameApp(int argc, char** argv) {
                 }
             }
             if (!of && isEndSign) of = defaultEndSignFrame;
+            if (isEndSign) {
+                const SDL_Rect fallbackSource{0, 0, 32, 70};
+                const auto dst = SignpostRendering::destination(obj.x - camX, obj.y + 16.0f - camY,
+                    of ? of->rect : fallbackSource, of && of->rotated);
+                SignpostRendering::forEachVisible(dst, worldViewW, worldViewH,
+                    renderWrapX ? map.w * map.tileSize : 0, renderWrapY ? map.h * map.tileSize : 0,
+                    [&](const SDL_Rect& visible) {
+                        if (objectTex && of) renderFrame(ren, objectTex, *of, visible);
+                        else {
+                            SDL_SetRenderDrawColor(ren, 120, 220, 120, 255);
+                            SDL_RenderDrawRect(ren, &visible);
+                        }
+                    });
+                continue;
+            }
             if (!of) of = defaultEntityFrame;
             if (!isFastTravelChanger && !isBumper && !isEndSign && !isWrapControl && hideUnknownObjectTypes &&
                 currentLevelId != 9 && currentLevelId != 10 && !objectTypeKnown) {
@@ -7924,32 +7949,13 @@ int RunGameApp(int argc, char** argv) {
                     dstX += (32 - fw) / 2;
                     dstY += (32 - fh) / 2;
                 }
-                if (isEndSign) {
-                    const int srcW = of->rotated ? of->rect.h : of->rect.w;
-                    const int srcH = of->rotated ? of->rect.w : of->rect.h;
-                    // Use a stable world-scale size for signpost frames.
-                    const int targetH = 70;
-                    fh = targetH;
-                    fw = std::max(18, (int)std::lround((srcW / (double)std::max(1, srcH)) * targetH));
-                    // Anchor end_sign to object center X and tile-bottom Y for consistent visibility.
-                    const float objectCenterScreenX = obj.x - camX;
-                    const float objectBottomScreenY = (obj.y - 16.0f) - camY + 32.0f;
-                    dstX = (int)std::lround(objectCenterScreenX - fw * 0.5f);
-                    dstY = (int)std::lround(objectBottomScreenY - fh);
-                }
                 SDL_Rect dst{
                     dstX,
                     dstY,
                     fw,
                     fh
                 };
-                auto isOnscreen = [&](const SDL_Rect& r) -> bool {
-                    if (r.x + r.w <= 0 || r.y + r.h <= 0) return false;
-                    if (r.x >= worldViewW || r.y >= worldViewH) return false;
-                    return true;
-                };
                 auto renderObjFrame = [&](const SDL_Rect& outDst) {
-                    if (isEndSign && !isOnscreen(outDst)) return;
                     renderFrame(ren, objectTex, *of, outDst);
                     if (isBumper && bumperImpact != bumperImpacts.end() && bumperImpact->second.remaining > 0.0f) {
                         const float t = bumperImpact->second.remaining / bumperImpactDuration;
