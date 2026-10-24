@@ -196,7 +196,7 @@ int main() {
         assert(SDL_ReadSurfacePixel(output, 245, 104, &r, &g, &b, &alpha));
         assert(r == colors[2].r && g == colors[2].g && b == colors[2].b);
         if (uncapped) {
-            assert(SDL_ReadSurfacePixel(output, facing > 0 ? 243 : 251, 150, &r, &g, &b, &alpha));
+            assert(SDL_ReadSurfacePixel(output, facing > 0 ? 244 : 250, 150, &r, &g, &b, &alpha));
             assert(r == colors[2].r && g == colors[2].g && b == colors[2].b);
         }
         SDL_DestroySurface(output);
@@ -218,6 +218,12 @@ int main() {
         render(renderer, tapered, {48, 0, 32, 56}, Pose::Idle, 0, facing, 255, moving ? &motion : nullptr);
         SDL_Surface* output = SDL_RenderReadPixels(renderer, nullptr);
         assert(output);
+        // The inward edge covers the side of the head, beyond the former
+        // attachment, and mirrors with the character.
+        const int sideX = 48 + 2 * (facing > 0 ? 4 + width - 1 : 16 - 4 - width);
+        Uint8 sideR, sideG, sideB, sideAlpha;
+        assert(SDL_ReadSurfacePixel(output, sideX, 14, &sideR, &sideG, &sideB, &sideAlpha));
+        assert(sideR == colors[2].r && sideG == colors[2].g && sideB == colors[2].b);
         auto hairPixelsInRow = [&](int y) {
             int count = 0;
             for (int x = 48; x < 80; ++x) {

@@ -12,6 +12,15 @@ namespace CharacterCreator {
 // Fixed storage also supports uncapped hairstyles without allocating a joint per pixel.
 struct HairPhysics {
     struct Point { float x = 0, y = 0; };
+    struct MousePull {
+        int joint = -1;
+        Point target{};
+        Point force(int index, Point current, Point previous, float dt) const {
+            if (index != joint || dt <= 0 || !std::isfinite(target.x) || !std::isfinite(target.y)) return {};
+            return {std::clamp((target.x - current.x) * 900 - (current.x - previous.x) / dt * 30, -3000.0f, 3000.0f),
+                std::clamp((target.y - current.y) * 900 - (current.y - previous.y) / dt * 30, -3000.0f, 3000.0f)};
+        }
+    };
     struct Box {
         float x, y, w, h;
         bool body = false;
@@ -150,12 +159,14 @@ struct HairPhysics {
         return -speed * (0.015f + std::fabs(speed) * 0.000008f) * exposure / mass;
     }
     std::array<Point, jointCount> joints{}, previous{};
+    MousePull mouse;
     float restSpacing = spacing;
     float previousVx = 0, previousVy = 0;
     float stretch = 0, stretchVelocity = 0;
     bool initialized = false;
 
     void reset() {
+        mouse = {};
         for (int i = 0; i < jointCount; ++i) joints[i] = previous[i] = {0, i * spacing};
         initialized = false;
         stretch = stretchVelocity = 0;
@@ -235,8 +246,9 @@ struct HairPhysics {
                 const float fx = (-ax * 0.004f + airflow) * springiness - current.x * (4 + (1 - along) * 8 * stiffness);
                 const float fy = 65 - verticalAy * 0.006f * exposure + airDrag(movementVy, exposure, mass) * springiness +
                     (i * elasticSpacing - current.y) * 18;
-                joints[i].x += (current.x - previous[i].x) * drag + fx * h * h;
-                joints[i].y += (current.y - previous[i].y) * drag + fy * h * h;
+                const auto pull = mouse.force(i, current, previous[i], h);
+                joints[i].x += (current.x - previous[i].x) * drag + (fx + pull.x) * h * h;
+                joints[i].y += (current.y - previous[i].y) * drag + (fy + pull.y) * h * h;
                 previous[i] = current;
             }
             for (int iteration = 0; iteration < 8; ++iteration) {
@@ -286,7 +298,10 @@ struct HairPhysics {
             }
             // Bound cosmetic displacement without changing the player's collision box.
             for (int i = 1; i < jointCount; ++i) {
-                joints[i].x = std::clamp(joints[i].x, -lateralLimit, lateralLimit);
+                // A grabbed lock can swing farther. Ease back into the ordinary
+                // cosmetic limit after release instead of snapping sideways.
+                const float limit = mouse.joint > 0 ? reach : std::max(lateralLimit, std::fabs(joints[i].x) * std::exp(-6 * h));
+                joints[i].x = std::clamp(joints[i].x, -limit, limit);
                 joints[i].y = std::clamp(joints[i].y, -reach, i * spacing + 3.75f);
                 if (collisions && !collisions->boxes.empty()) {
                     const Point target = joints[i];

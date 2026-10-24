@@ -132,12 +132,14 @@ struct PartPhysics {
             const float scale = appearance->build == 0 ? 0.88f : (appearance->build == 2 ? 1.08f : 1.0f);
             const float width = appearance->hairShape[3] * scale;
             const float lean = (sliding ? 2.0f : 0) + headX.position;
-            float rootX = 8 + (3 + lean - 8) * scale + width * 0.5f;
-            if (facing < 0) rootX = 16 - rootX;
             const float head = 3 + headY.position * 1.3f;
             const HairPhysics::Point airflow{hairVx / (hairCollisions.hasWorldTransform ? hairCollisions.worldScale.x : 16),
                 vy / (hairCollisions.hasWorldTransform ? hairCollisions.worldScale.y : 28)};
             for (int strand = 0; strand < 2; ++strand) {
+                // The back lock sits one pixel inward to cover the side of the
+                // head; keep its persistent attachment aligned with rendering.
+                float rootX = 8 + ((strand == 1 ? 4 : 3) + lean - 8) * scale + width * 0.5f;
+                if (facing < 0) rootX = 16 - rootX;
                 // Uncapping changes the allowed length, not short-hair dynamics.
                 // The floor rope's body ejection can pin a short lock inside the
                 // head. Ordinary lengths already use the regular strand solver.

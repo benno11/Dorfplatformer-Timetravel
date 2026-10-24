@@ -47,6 +47,7 @@
 #include "CharacterRenderer.h"
 #include "CharacterAttributes.h"
 #include "CharacterHairCollision.h"
+#include "CharacterHairInteraction.h"
 #include "MovingPlatform.h"
 #include "Bumper.h"
 #include "Player.h"
@@ -2899,6 +2900,7 @@ int RunGameApp(int argc, char** argv) {
         LevelMeta meta;
         Player player;
         CharacterCreator::PartPhysics characterParts;
+        CharacterCreator::HairMouseInteraction hairMouse;
         bool wrapTriggerXActive = false;
         bool wrapTriggerYActive = false;
         auto resetLevelWrapTriggerState = [&]() {
@@ -3390,6 +3392,7 @@ int RunGameApp(int argc, char** argv) {
             currentAreaIdText = buildAreaIdText();
         };
         auto reloadLevel = [&](bool showIntroCard = true) {
+            hairMouse.release(characterParts);
             characterParts = CharacterCreator::PartPhysics{};
             spikeImpact.remaining = 0;
             movingPlatformStates.clear();
@@ -5041,6 +5044,7 @@ int RunGameApp(int argc, char** argv) {
             if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST) {
                 if (e.window.windowID == mainWindowId) {
                     mainWindowFocused = false;
+                    hairMouse.release(characterParts);
                     openPauseMenu();
                 }
             }
@@ -7353,6 +7357,7 @@ int RunGameApp(int argc, char** argv) {
         }
 
         RENDER_ONLY:
+        if (paused || !mainWindowFocused) hairMouse.release(characterParts);
         if (!paused) {
             if (showExperimentalFeatures && characterAppearance.enabled) {
                 const bool hairSliding = player.slideTime > 0.0f;
@@ -7370,7 +7375,10 @@ int RunGameApp(int argc, char** argv) {
                 }
                 characterParts.update(dt, player.vx, player.vy, player.onGround,
                     hairSliding, player.facing, CharacterCreator::attributeMultiplier(characterAppearance.springiness), &hairScene, &characterAppearance);
-            } else characterParts = CharacterCreator::PartPhysics{};
+            } else {
+                hairMouse.release(characterParts);
+                characterParts = CharacterCreator::PartPhysics{};
+            }
         }
         {
             const int targetPresentIntervalMs =
@@ -8326,6 +8334,7 @@ int RunGameApp(int argc, char** argv) {
                     playerAlpha = (Uint8)std::clamp((int)std::lround(95.0f + 160.0f * wave), 70, 255);
                 }
                 if (playerTex) SDL_SetTextureAlphaMod(playerTex, playerAlpha);
+                bool hairInputUpdated = false;
                 auto drawPlayerFrame = [&](const SDL_Rect& out) {
                     if (useCustomCharacter) {
                         auto pose = CharacterCreator::Pose::Idle;
@@ -8340,6 +8349,22 @@ int RunGameApp(int argc, char** argv) {
                             default: break;
                         }
                         const SDL_FRect destination{(float)out.x, (float)out.y, (float)out.w, (float)out.h};
+                        if (!hairInputUpdated) {
+                            hairInputUpdated = true;
+                            float mouseX = 0, mouseY = 0;
+                            const auto mouseButtons = SDL_GetMouseState(&mouseX, &mouseY);
+                            int winW = 0, winH = 0, gameX = 0, gameY = 0;
+                            SDL_GetWindowSize(win, &winW, &winH);
+                            const bool mouseActive = !paused && mainWindowFocused && SDL_GetMouseFocus() == win &&
+                                windowToGamePoint((int)mouseX, (int)mouseY, winW, winH, kBaseScreenW, kBaseScreenH, gameX, gameY, 1.0f);
+                            float x = gameX / kGameplayZoom;
+                            float y = gameY / kGameplayZoom;
+                            if (renderWrapX) x -= std::round((x - out.x - out.w * 0.5f) / (map.w * map.tileSize)) * (map.w * map.tileSize);
+                            if (renderWrapY) y -= std::round((y - out.y - out.h * 0.5f) / (map.h * map.tileSize)) * (map.h * map.tileSize);
+                            hairMouse.update(characterParts, characterAppearance, pose, player.facing,
+                                {(x - out.x) * 16 / out.w, (y - out.y) * 28 / out.h},
+                                (mouseButtons & SDL_BUTTON_LMASK) != 0, mouseActive);
+                        }
                         const auto bounds = CharacterCreator::visualBounds(characterAppearance, destination, pose, player.animTime, &characterParts);
                         if (bounds.x + bounds.w <= 0 || bounds.y + bounds.h <= 0 || bounds.x >= worldViewW || bounds.y >= worldViewH) return;
                         CharacterCreator::render(ren, characterAppearance, destination,

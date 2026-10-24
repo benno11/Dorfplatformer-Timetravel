@@ -9,6 +9,7 @@ struct HairFloorPhysics {
     static constexpr int capacity = 64;
     static constexpr float maxLength = 189;
     std::array<Point, capacity> points{}, previous{};
+    HairPhysics::MousePull mouse;
     Point oldOrigin{}, oldScale{1, 1};
     float length = 0, linkLength = 1, width = 1;
     int count = 0;
@@ -87,8 +88,9 @@ struct HairFloorPhysics {
                 const float mass = std::clamp(0.7f + width * 0.15f, 0.5f, 2.0f);
                 const float windX = HairPhysics::airDrag(airflow.x, exposure, mass) * springiness;
                 const float windY = HairPhysics::airDrag(airflow.y, exposure, mass) * springiness;
-                points[i].x += (current.x - previous[i].x) * drag + windX * h * h;
-                points[i].y += (current.y - previous[i].y) * drag + (160 + windY) * h * h;
+                const auto pull = mouse.force(i, current, previous[i], h);
+                points[i].x += (current.x - previous[i].x) * drag + (windX + pull.x) * h * h;
+                points[i].y += (current.y - previous[i].y) * drag + (160 + windY + pull.y) * h * h;
                 previous[i] = current;
             }
             for (int iteration = 0; iteration < 6; ++iteration) {

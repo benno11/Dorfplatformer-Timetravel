@@ -38,6 +38,7 @@
 #include "CharacterRenderer.h"
 #include "CharacterAttributes.h"
 #include "CharacterHairCollision.h"
+#include "CharacterHairInteraction.h"
 #include "CharacterFile.h"
 #include "CharacterSpriteImport.h"
 
@@ -150,6 +151,7 @@ struct SlimRuntime {
     int difficultyChoice = 0, difficultyFocus = 0;
     std::string difficultyStatus;
     CharacterCreator::PartPhysics characterParts;
+    CharacterCreator::HairMouseInteraction hairMouse;
     Uint64 characterPreviewTicks = 0;
     std::shared_ptr<CharacterFileDialog> characterFileDialog;
     std::vector<CharacterCreator::Appearance> importedCharacters;
@@ -1919,12 +1921,24 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
         runtime.characterParts.update(dt, scene == 1 || scene == 3 ? 500.0f * CharacterCreator::attributeMultiplier(ctx.characterAppearance->speed) : 0.0f,
             previewVy * CharacterCreator::attributeMultiplier(ctx.characterAppearance->jump), scene != 2, scene == 3, 1,
             CharacterCreator::attributeMultiplier(ctx.characterAppearance->springiness), &hairScene, ctx.characterAppearance);
+        float mouseX = 0, mouseY = 0;
+        const auto mouseButtons = SDL_GetMouseState(&mouseX, &mouseY);
+        int winW = 0, winH = 0, gameX = 0, gameY = 0;
+        SDL_GetWindowSize(ctx.win, &winW, &winH);
+        const bool mouseActive = SDL_GetMouseFocus() == ctx.win &&
+            (SDL_GetWindowFlags(ctx.win) & SDL_WINDOW_INPUT_FOCUS) && !runtime.difficultyPopupOpen &&
+            windowToGamePoint((int)mouseX, (int)mouseY, winW, winH, ctx.baseScreenW, ctx.baseScreenH, gameX, gameY);
+        runtime.hairMouse.update(runtime.characterParts, *ctx.characterAppearance, poses[scene], 1,
+            {(gameX / layout.scale - sprite.x) * 16 / sprite.w, (gameY / layout.scale - sprite.y) * 28 / sprite.h},
+            (mouseButtons & SDL_BUTTON_LMASK) != 0, mouseActive &&
+                (runtime.hairMouse.dragging() || SlimMenuLayout::contains(card, gameX / layout.scale, gameY / layout.scale)));
         CharacterCreator::render(ctx.ren, *ctx.characterAppearance, sprite, poses[scene], time,
             1, 255, &runtime.characterParts);
         DrawText(ctx.ren, card.x + (card.w - MeasureTextWidth(1, names[scene])) / 2,
             card.y + 64, 1, names[scene]);
     } else {
         runtime.characterPreviewTicks = 0;
+        runtime.hairMouse.release(runtime.characterParts);
         runtime.characterParts = CharacterCreator::PartPhysics{};
     }
     if (!runtime.waitingBind.empty() || !runtime.pendingGets.empty() ||
@@ -2174,6 +2188,7 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
                 const int index = std::atoi(arg.c_str());
                 if (index >= 0 && index < (int)runtime.importedCharacters.size()) {
                     *ctx.characterAppearance = runtime.importedCharacters[index];
+                    runtime.hairMouse.release(runtime.characterParts);
                     runtime.characterParts = CharacterCreator::PartPhysics{};
                     if (ctx.saveClientSettings) ctx.saveClientSettings();
                     runtime.vars["character_file_status"] = "Sprite character imported and saved.";
@@ -2709,6 +2724,7 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                                 CharacterCreator::Appearance imported;
                                 if (CharacterCreator::readCharacterFile(path, imported)) {
                                     *ctx.characterAppearance = std::move(imported);
+                                    runtime.hairMouse.release(runtime.characterParts);
                                     runtime.characterParts = CharacterCreator::PartPhysics{};
                                     if (ctx.saveClientSettings) ctx.saveClientSettings();
                                     status = ctx.characterAppearance->enabled ? "Character imported and saved." :
@@ -2734,6 +2750,7 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                                 ctx.characterAppearance->hairPixels = pixels;
                                 ctx.characterAppearance->hairStyle = CharacterCreator::customHairStyle;
                                 ctx.characterAppearance->sprites = {};
+                                runtime.hairMouse.release(runtime.characterParts);
                                 runtime.characterParts = CharacterCreator::PartPhysics{};
                             } else {
                                 ctx.characterAppearance->texturePixels[request->part] = pixels;
@@ -2893,7 +2910,10 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                      e.type == SDL_EVENT_MOUSE_WHEEL || e.type == SDL_EVENT_FINGER_DOWN ||
                      e.type == SDL_EVENT_FINGER_UP || e.type == SDL_EVENT_FINGER_MOTION ||
                      e.type == SDL_EVENT_FINGER_CANCELED)) continue;
-                if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST) stopAccountInput(runtime);
+                if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST) {
+                    runtime.hairMouse.release(runtime.characterParts);
+                    stopAccountInput(runtime);
+                }
                 if (runtime.accountForm.editing != AccountMenu::Field::None) {
                     if (e.type == SDL_EVENT_TEXT_INPUT) {
                         runtime.accountForm.insert(e.text.text ? e.text.text : "");

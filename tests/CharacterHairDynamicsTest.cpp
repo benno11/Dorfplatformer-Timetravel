@@ -1,5 +1,6 @@
 #include "CharacterPartPhysics.h"
 #include "CharacterHairCollision.h"
+#include "CharacterHairInteraction.h"
 #ifdef NDEBUG
 #undef NDEBUG
 #endif
@@ -9,6 +10,83 @@
 
 int main() {
     using namespace CharacterCreator;
+    for (int fps : {30, 60, 120}) for (int facing : {1, -1}) for (int build : {0, 1, 2}) {
+        Appearance a;
+        a.hairStyle = customPartsHairStyle;
+        a.hairShape = {{3, 0, 10, 2, 0}};
+        a.build = build;
+        PartPhysics parts;
+        HairMouseInteraction mouse;
+        const float dt = 1.0f / fps;
+        for (int i = 0; i < fps; ++i) parts.update(dt, 0, 0, true, false, facing, 1, nullptr, &a);
+        const float scale = build == 0 ? 0.88f : (build == 2 ? 1.08f : 1.0f);
+        float rootX = 8 + (5 - 8) * scale;
+        if (facing < 0) rootX = 16 - rootX;
+        const auto p = parts.builtInHair.joints[9];
+        HairPhysics::Point pointer{rootX + p.x * scale, 6.5f + p.y};
+        // Holding a click that began elsewhere cannot grab a lock accidentally.
+        mouse.update(parts, a, Pose::Idle, facing, {-50, -50}, true);
+        mouse.update(parts, a, Pose::Idle, facing, pointer, true);
+        assert(!mouse.dragging());
+        mouse.update(parts, a, Pose::Idle, facing, pointer, false);
+        mouse.update(parts, a, Pose::Idle, facing, pointer, true);
+        assert(mouse.dragging() && mouse.strand == 1 && !mouse.floor);
+        const int grabbed = mouse.joint;
+        pointer.x -= facing * 6;
+        pointer.y -= 2;
+        for (int i = 0; i < fps; ++i) {
+            mouse.update(parts, a, Pose::Idle, facing, pointer, true);
+            parts.update(dt, 0, 0, true, false, facing, 1, nullptr, &a);
+        }
+        assert(parts.builtInHair.joints[grabbed].x * facing < -1);
+        const auto held = parts.builtInHair.joints[grabbed];
+        mouse.update(parts, a, Pose::Idle, facing, pointer, false);
+        assert(!mouse.dragging() && parts.builtInHair.mouse.joint == -1);
+        assert(parts.builtInHair.joints[grabbed].x == held.x); // Release preserves position/momentum.
+        for (int i = 0; i < fps * 3; ++i) parts.update(dt, 0, 0, true, false, facing, 1, nullptr, &a);
+        assert(std::fabs(parts.builtInHair.joints[grabbed].x) < std::fabs(held.x));
+        assert(parts.builtInHair.joints[0].x == 0 && parts.builtInHair.joints[0].y == 0);
+        // Focus/pause cancellation requires a fresh press on return.
+        const auto tip = parts.builtInHair.joints[9];
+        pointer = {rootX + tip.x * scale, 6.5f + tip.y};
+        mouse.update(parts, a, Pose::Idle, facing, pointer, true);
+        assert(mouse.dragging());
+        mouse.update(parts, a, Pose::Idle, facing, pointer, true, false);
+        assert(!mouse.dragging());
+        mouse.update(parts, a, Pose::Idle, facing, pointer, true);
+        assert(!mouse.dragging());
+    }
+    // A floor-length lock remains constrained by terrain while being lifted.
+    {
+        Appearance a;
+        a.hairStyle = customPartsHairStyle;
+        a.uncapHairLength = true;
+        a.hairShape = {{3, 0, 80, 2, 0}};
+        PartPhysics parts;
+        HairMouseInteraction mouse;
+        auto scene = hairBodyCollisions(a, 1, false);
+        scene.boxes.push_back({-200, 28, 400, 16});
+        for (int i = 0; i < 120; ++i) parts.update(1.0f / 60, 0, 0, true, false, 1, 1, &scene, &a);
+        auto pointer = parts.floorHair[1].points[25];
+        mouse.update(parts, a, Pose::Idle, 1, pointer, true);
+        assert(mouse.dragging() && mouse.floor && mouse.strand == 1);
+        const int index = mouse.joint;
+        const float originalY = parts.floorHair[1].points[index].y;
+        pointer.y -= 12;
+        for (int i = 0; i < 120; ++i) {
+            mouse.update(parts, a, Pose::Idle, 1, pointer, true);
+            parts.update(1.0f / 60, 0, 0, true, false, 1, 1, &scene, &a);
+            const auto& rope = parts.floorHair[1];
+            for (int j = 1; j < rope.count; ++j) {
+                assert(std::isfinite(rope.points[j].x) && std::isfinite(rope.points[j].y));
+                assert(rope.points[j].y <= 27.501f);
+            }
+        }
+        assert(parts.floorHair[1].points[index].y < originalY - 1);
+        a.hairShape[2] = 0;
+        mouse.update(parts, a, Pose::Idle, 1, pointer, true);
+        assert(!mouse.dragging() && parts.floorHair[1].mouse.joint == -1);
+    }
     // Facing changes must not reverse world-space spring momentum or mirror
     // the particle chains. Compare a turn with continuing at the same speed.
     for (int initialFacing : {1, -1}) {

@@ -300,7 +300,7 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& destination
         } else if (a.hairStyle == customPartsHairStyle) {
             block(3 + lean, headY, 10, a.hairShape[0], hair, Part::Hair);
             hairStrand(3 + lean, headY + a.hairShape[0], a.hairShape[3], a.hairShape[1], 0, 0);
-            hairStrand(3 + lean, headY + 3, a.hairShape[3], a.hairShape[2], 0, 1, true);
+            hairStrand(4 + lean, headY + 3, a.hairShape[3], a.hairShape[2], 0, 1, true);
             if (a.hairShape[4]) {
                 const auto offset = hairOffset((float)a.hairShape[4]);
                 block(4 + lean + offset.x, headY - a.hairShape[4] + offset.y, 2, a.hairShape[4] + 1, hair, Part::Hair);
@@ -310,7 +310,7 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& destination
             block(3 + lean, headY, 10, a.hairStyle == 2 ? 4 : 3, hair, Part::Hair);
             hairStrand(3 + lean, headY + 3, a.hairStyle == 2 ? 3 : 2, 3, 0, 0);
             if (a.hairStyle == 2) {
-                hairStrand(3 + lean, headY + 5, 3, 7, 2, -1, true);
+                hairStrand(4 + lean, headY + 5, 3, 7, 2, -1, true);
             }
             if (a.hairStyle == 1) {
                 const auto offset = hairOffset(2);
