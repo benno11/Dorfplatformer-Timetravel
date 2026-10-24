@@ -497,6 +497,42 @@ int main(int argc, char** argv) {
         assert(SDL_SetRenderScale(renderer, 1, 1));
     }
     Appearance hairTest;
+    // Fractional menu zoom used to truncate thin hair rectangles to zero width
+    // or height. A solid imported hair image must cover every output pixel.
+    Appearance previewHair;
+    previewHair.hairStyle = customHairStyle;
+    for (int i = 0; i < 16 * 16; ++i) previewHair.hairPixels += "ff0000ff";
+    for (float zoom : {0.5f, 0.75f, 1.15f, 1.2f, 1.3f, 1.4f, 2.3f, 3.0f})
+        for (bool explicitViewport : {false, true}) for (int facing : {1, -1}) {
+            assert(SDL_SetRenderScale(renderer, zoom, zoom));
+            const SDL_Rect view{0, 0, 190, 70}, clip{90, 0, 50, 70};
+            assert(SDL_SetRenderViewport(renderer, explicitViewport ? &view : nullptr));
+            assert(SDL_SetRenderClipRect(renderer, explicitViewport ? &clip : nullptr));
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+            assert(SDL_RenderClear(renderer));
+            render(renderer, previewHair, SDL_FRect{100, 10, 30, 56}, Pose::Idle, 0, facing);
+            float actualX, actualY;
+            assert(SDL_GetRenderScale(renderer, &actualX, &actualY) && actualX == zoom && actualY == zoom);
+            assert(SDL_RenderViewportSet(renderer) == explicitViewport);
+            assert(SDL_RenderClipEnabled(renderer) == explicitViewport);
+            if (explicitViewport) {
+                SDL_Rect actualView, actualClip;
+                assert(SDL_GetRenderViewport(renderer, &actualView) && SDL_RectsEqual(&actualView, &view));
+                assert(SDL_GetRenderClipRect(renderer, &actualClip) && SDL_RectsEqual(&actualClip, &clip));
+            }
+            SDL_Surface* hairOutput = SDL_RenderReadPixels(renderer, nullptr);
+            assert(hairOutput);
+            for (int y = (int)std::round(10 * zoom); y < (int)std::round(14 * zoom); ++y)
+                for (int x = (int)std::round(100 * zoom); x < (int)std::round(130 * zoom); ++x) {
+                    Uint8 r, g, b, alpha;
+                    assert(SDL_ReadSurfacePixel(hairOutput, x, y, &r, &g, &b, &alpha));
+                    assert(r == 255 && g == 0 && b == 0);
+                }
+            SDL_DestroySurface(hairOutput);
+        }
+    assert(SDL_SetRenderViewport(renderer, nullptr));
+    assert(SDL_SetRenderClipRect(renderer, nullptr));
+    assert(SDL_SetRenderScale(renderer, 1, 1));
     hairTest.hairPixels = std::string(16 * 16 * 8, '0');
     hairTest.hairPixels.replace((1 * 16 + 1) * 8, 8, "c8326480");
     hairTest.hairStyle = customHairStyle;

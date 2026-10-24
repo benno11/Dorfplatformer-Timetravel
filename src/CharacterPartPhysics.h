@@ -13,6 +13,11 @@ struct PartSpring {
     float position = 0.0f;
     float velocity = 0.0f;
 
+    void mirror() {
+        position = -position;
+        velocity = -velocity;
+    }
+
     void step(float target, float stiffness, float damping, float limit, float dt) {
         velocity += ((target - position) * stiffness - velocity * damping) * dt;
         position += velocity * dt;
@@ -34,6 +39,8 @@ struct PartPhysics {
     float floorTrailDirection = 0;
     float gait = 0.0f;
     float previousVx = 0.0f, previousVy = 0.0f;
+    int previousFacing = 1;
+    float hairTurnTime = 0;
     bool wasGrounded = false;
     bool initialized = false;
 
@@ -48,13 +55,25 @@ struct PartPhysics {
         if (dt <= 0.0f) return;
         vx = std::clamp(vx, -2000.0f, 2000.0f);
         vy = std::clamp(vy, -2000.0f, 2000.0f);
+        const int currentFacing = facing < 0 ? -1 : 1;
         if (!initialized) {
             previousVx = vx;
             previousVy = vy;
             wasGrounded = grounded;
+            previousFacing = currentFacing;
             initialized = true;
         }
-        const float direction = facing < 0 ? -1.0f : 1.0f;
+        if (currentFacing != previousFacing) {
+            // These springs are facing-relative: change their coordinate basis
+            // so a turn preserves world-space position and velocity. The hair
+            // particle chains and resting floor tails already use world axes.
+            headX.mirror();
+            hair.mirror();
+            hatX.mirror();
+            previousFacing = currentFacing;
+            hairTurnTime = 0.15f;
+        }
+        const float direction = (float)currentFacing;
         const float acceleration = std::clamp((vx - previousVx) / dt, -12000.0f, 12000.0f) * direction;
         const float forwardSpeed = vx * direction;
         if (grounded && !wasGrounded) {
@@ -100,11 +119,13 @@ struct PartPhysics {
         // The attachment's bounce contributes to inertia in world directions.
         const float hairVx = vx + (appearance ? headX.velocity * direction * 8 : 0);
         const float hairVy = vy + (appearance ? headY.velocity * 10 : 0);
-        builtInHair.update(dt, hairVx, hairVy, springiness, &hairCollisions, appearance ? &backProfile : nullptr, vy);
+        const float turnTime = hairTurnTime;
+        builtInHair.update(dt, hairVx, hairVy, springiness, &hairCollisions, appearance ? &backProfile : nullptr, vy, turnTime);
         auto fringeCollisions = hairCollisions;
         if (appearance && appearance->hairStyle == customPartsHairStyle)
             fringeCollisions.root.y += appearance->hairShape[0] - 3;
-        fringeHair.update(dt, hairVx, hairVy, springiness, &fringeCollisions, appearance ? &fringeProfile : nullptr, vy);
+        fringeHair.update(dt, hairVx, hairVy, springiness, &fringeCollisions, appearance ? &fringeProfile : nullptr, vy, turnTime);
+        hairTurnTime = std::max(0.0f, hairTurnTime - dt);
         if (floorTrailDirection == 0) floorTrailDirection = -direction;
         if (std::fabs(vx) > 20) floorTrailDirection = vx > 0 ? -1.0f : 1.0f;
         if (appearance && appearance->hairStyle == customPartsHairStyle && appearance->uncapHairLength) {
@@ -117,11 +138,28 @@ struct PartPhysics {
             const HairPhysics::Point airflow{hairVx / (hairCollisions.hasWorldTransform ? hairCollisions.worldScale.x : 16),
                 vy / (hairCollisions.hasWorldTransform ? hairCollisions.worldScale.y : 28)};
             for (int strand = 0; strand < 2; ++strand) {
+                // Uncapping changes the allowed length, not short-hair dynamics.
+                // The floor rope's body ejection can pin a short lock inside the
+                // head. Ordinary lengths already use the regular strand solver.
+                const int length = appearance->hairShape[strand + 1];
+                if (length <= normalHairLengthLimit) {
+                    floorHair[strand] = {};
+                    continue;
+                }
                 const float startY = head + (strand == 0 ? appearance->hairShape[0] : 3) + 0.5f;
                 const auto& source = strand == 0 ? fringeHair : builtInHair;
                 const float verticalStrain = source.stretch / (source.restSpacing * (HairPhysics::jointCount - 1));
-                floorHair[strand].update(dt, {rootX, startY}, appearance->hairShape[strand + 1],
-                    width, floorTrailDirection, hairCollisions, springiness, airflow, verticalStrain);
+                float attachmentX = rootX;
+                if (turnTime > 0 && floorHair[strand].initialized) {
+                    // Move the attachment across the head over the turn rather
+                    // than jerking a fully stretched, grounded tail sideways.
+                    // Keep this in sprite coordinates so player travel still
+                    // carries the attachment immediately in world space.
+                    const float oldX = floorHair[strand].points[0].x;
+                    attachmentX = oldX + (rootX - oldX) * std::min(1.0f, dt / turnTime);
+                }
+                floorHair[strand].update(dt, {attachmentX, startY}, length,
+                    width, floorTrailDirection, hairCollisions, springiness, airflow, verticalStrain, turnTime);
             }
         } else floorHair = {};
         previousVx = vx;

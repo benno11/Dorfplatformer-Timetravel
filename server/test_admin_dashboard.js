@@ -23,6 +23,8 @@ test("local dashboard manages players, reviews and rates levels, confirms deleti
   let levels = [{ id: "demo", level_id: "demo", name: "Demo", owner: "<player>", difficulty: null, data: "raw level data" }];
   let allowDelete = false;
   let minimumVersionPolicy = {minimum_build: 239, reason: "Update your game."};
+  let updaterConfig = {enabled: false, command: [], cwd: "/srv/game", timeout_seconds: 900,
+    manifest_url: "https://updates.example.com/manifest.json"};
   const requests = [];
   const context = {
     document: { getElementById: q, createElement: () => new Element(), body: new Element() },
@@ -33,6 +35,12 @@ test("local dashboard manages players, reviews and rates levels, confirms deleti
       assert.equal(options.headers.Authorization, "Bearer local-secret-key");
       const route = url.split("?")[0];
       let result = { ok: true };
+      if (route === "/admin/api/updater" || route === "/admin/api/updater/validate") {
+        if (body && body.timeout_seconds < 1)
+          return {ok: false, json: async () => ({error: {message: "Timeout must be positive."}})};
+        if (body && route === "/admin/api/updater") updaterConfig = {...body};
+        result = {config: body || updaterConfig, valid: true, saved: route === "/admin/api/updater" && !!body, last_run: null};
+      }
       if (route === "/admin/api/moderator") player.is_moderator = body.enabled ? 1 : 0;
       if (route === "/admin/api/warn") player.warning = body.reason;
       if (route === "/admin/api/suspension") {
@@ -42,7 +50,7 @@ test("local dashboard manages players, reviews and rates levels, confirms deleti
       if (route === "/admin/api/moderator-login") result = { idToken: "moderator-token", displayName: "mod", isModerator: true };
       if (route === "/admin/api/rate") {
         assert.equal(options.headers["X-Moderator-Token"], "moderator-token");
-        levels[0].difficulty = body.difficulty;
+        levels[0].difficulty = body.difficulty || null;
       }
       if (route === "/admin/api/delete-level") levels = [];
       if (route === "/admin/api/minimum-version") minimumVersionPolicy = {...body};
@@ -62,6 +70,27 @@ test("local dashboard manages players, reviews and rates levels, confirms deleti
   q("adminKey").value = "local-secret-key";
   await trigger(q("unlockForm"), "submit");
   assert.equal(q("dashboard").hidden, false);
+  assert.equal(q("updaterEnabled").value, "disabled");
+  assert.equal(q("updaterCwd").value, "/srv/game");
+  q("updaterEnabled").value = "enabled";
+  q("updaterExecutable").value = "/path with spaces/python";
+  q("updaterArguments").value = "update.py\n--branch\nrelease next";
+  q("updaterTimeout").value = "300";
+  await trigger(q("updaterArguments"), "input");
+  assert.match(q("updaterPreview").textContent, /release next/);
+  await trigger(q("validateUpdater"));
+  assert.equal(updaterConfig.enabled, false); // Validation never saves.
+  assert.match(q("updaterStatus").textContent, /Nothing was saved or run/);
+  await trigger(q("saveUpdater"));
+  assert.equal(updaterConfig.enabled, true);
+  assert.deepEqual(updaterConfig.command, ["/path with spaces/python", "update.py", "--branch", "release next"]);
+  assert.equal(updaterConfig.timeout_seconds, 300);
+  assert.match(q("updaterStatus").textContent, /No update was run/);
+  q("updaterTimeout").value = "0";
+  await trigger(q("validateUpdater"));
+  assert.match(q("updaterStatus").textContent, /Timeout must be positive/);
+  await trigger(q("reloadUpdater"));
+  assert.equal(q("updaterTimeout").value, "300");
   assert.equal(q("adminKey").value, "");
   assert.equal(q("minimumVersion").value, "239");
   assert.equal(q("minimumVersionRange").value, "239");
@@ -106,6 +135,11 @@ test("local dashboard manages players, reviews and rates levels, confirms deleti
   q("difficulty").value = "6";
   await trigger(q("rateLevel"));
   assert.equal(levels[0].difficulty, 6);
+  q("difficulty").value = "0";
+  await trigger(q("rateLevel"));
+  assert.equal(levels[0].difficulty, null);
+  assert.match(q("levelDetails").textContent, /Unrated/);
+  assert.equal(q("difficulty").value, "0");
   q("deleteReason").value = "Breaks server rules";
   await trigger(q("deleteLevel"));
   assert.equal(levels.length, 1);

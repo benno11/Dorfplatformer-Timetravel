@@ -233,11 +233,14 @@ class AdminTests(unittest.TestCase):
         self.assertEqual(self.request("POST", "/admin/api/rate", payload)[0], 401)
         self.assertEqual(self.request("POST", "/admin/api/rate", payload, headers={"X-Moderator-Token": self.token})[0], 403)
         self.action("moderator", enabled=True)
-        for difficulty in (0, 10, True, "5"):
+        for difficulty in (-1, 10, True, "5"):
             self.assertEqual(self.request("POST", "/admin/api/rate", {**payload, "difficulty": difficulty},
                                          headers={"X-Moderator-Token": self.token})[0], 400)
         self.assertEqual(self.request("POST", "/admin/api/rate", payload, headers={"X-Moderator-Token": self.token})[0], 200)
         self.assertEqual(self.game.store.levels("GET", "test", False, False, {}, "")["difficulty"], 8)
+        self.assertEqual(self.request("POST", "/admin/api/rate", {**payload, "difficulty": 0},
+                                     headers={"X-Moderator-Token": self.token})[0], 200)
+        self.assertIsNone(self.game.store.levels("GET", "test", False, False, {}, "")["difficulty"])
         self.action("moderator", enabled=False)
         self.assertEqual(self.request("POST", "/admin/api/rate", payload, headers={"X-Moderator-Token": self.token})[0], 403)
 

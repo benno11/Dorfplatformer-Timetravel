@@ -95,7 +95,7 @@ async function selectLevel(id) {
   q("levelTitle").textContent = level.name;
   q("levelDetails").textContent = level.level_id + " · " + level.owner + " · " + (level.difficulty == null ? "Unrated" : level.difficulty + "/9");
   q("levelData").value = level.data;
-  q("difficulty").value = String(level.difficulty || 1);
+  q("difficulty").value = String(level.difficulty ?? 0);
   q("deleteReason").value = "";
 }
 function reason(id) {
@@ -112,7 +112,7 @@ q("unlockForm").addEventListener("submit", event => {
   event.preventDefault();
   perform(async () => {
     adminKey = q("adminKey").value.trim();
-    try { await refresh(); } catch (error) { adminKey = ""; throw error; }
+    try { await refresh(); await loadUpdaterSettings(); } catch (error) { adminKey = ""; throw error; }
     q("adminKey").value = ""; q("login").hidden = true; q("dashboard").hidden = false; q("lock").hidden = false;
     status("Connected to the local dashboard.");
   });
@@ -127,6 +127,10 @@ bind("lock", async () => {
     q("moderatorPassword").value = ""; q("moderatorStatus").textContent = "Not signed in as a moderator.";
     q("playerControls").hidden = true; q("levelControls").hidden = true;
     q("levelData").value = ""; for (const id of ["players", "levels", "events", "stats", "blockedVersions"]) q(id).replaceChildren();
+    for (const id of ["updaterExecutable", "updaterArguments", "updaterCwd", "updaterManifest"]) q(id).value = "";
+    q("updaterEnabled").value = "disabled"; q("updaterTimeout").value = "900";
+    q("updaterPreview").textContent = ""; q("updaterStatus").textContent = "Load settings to configure updates.";
+    q("updaterLastRun").textContent = "";
     status("Dashboard locked.");
   }
 });
@@ -196,3 +200,54 @@ bind("applyMinimumVersion", async () => {
   await api("minimum-version", {minimum_build: Number(value), reason: reason("minimumVersionReason")});
   await refresh(); status("Minimum client build saved.");
 });
+
+function updaterSettings() {
+  const executable = q("updaterExecutable").value.trim();
+  const args = q("updaterArguments").value;
+  return {
+    enabled: q("updaterEnabled").value === "enabled",
+    command: executable ? [executable, ...(args === "" ? [] : args.replace(/\r/g, "").split("\n"))] : [],
+    cwd: q("updaterCwd").value.trim(),
+    timeout_seconds: Number(q("updaterTimeout").value),
+    manifest_url: q("updaterManifest").value.trim()
+  };
+}
+function previewUpdater() {
+  const config = updaterSettings();
+  q("updaterPreview").textContent = config.command.length ? JSON.stringify(config.command, null, 2) : "No command configured.";
+  q("updaterStatus").textContent = "Unsaved changes. Validate or save to check these settings.";
+}
+function showUpdaterConfig(config) {
+  q("updaterEnabled").value = config.enabled ? "enabled" : "disabled";
+  q("updaterExecutable").value = config.command[0] || "";
+  q("updaterArguments").value = config.command.slice(1).join("\n");
+  q("updaterCwd").value = config.cwd;
+  q("updaterTimeout").value = String(config.timeout_seconds);
+  q("updaterManifest").value = config.manifest_url;
+  previewUpdater();
+}
+async function loadUpdaterSettings() {
+  const result = await api("updater");
+  showUpdaterConfig(result.config);
+  q("updaterStatus").textContent = result.config.enabled ? "Moderator updates enabled." : "Moderator updates disabled.";
+  q("updaterLastRun").textContent = result.last_run
+    ? new Date(result.last_run.created_at * 1000).toLocaleString() + " · " + result.last_run.reason
+    : "No update has been requested.";
+}
+async function configureUpdater(save) {
+  q("updaterStatus").textContent = save ? "Saving settings…" : "Validating settings…";
+  try {
+    const result = await api(save ? "updater" : "updater/validate", updaterSettings());
+    showUpdaterConfig(result.config);
+    q("updaterStatus").textContent = save ? "Settings saved. No update was run." : "Configuration is valid. Nothing was saved or run.";
+    status(save ? "Updater configuration saved." : "Updater configuration validated.");
+  } catch (error) {
+    q("updaterStatus").textContent = error.message;
+    throw error;
+  }
+}
+for (const id of ["updaterEnabled", "updaterExecutable", "updaterArguments", "updaterCwd", "updaterTimeout", "updaterManifest"])
+  q(id).addEventListener("input", previewUpdater);
+bind("reloadUpdater", loadUpdaterSettings);
+bind("validateUpdater", () => configureUpdater(false));
+bind("saveUpdater", () => configureUpdater(true));

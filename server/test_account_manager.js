@@ -50,7 +50,7 @@ test("account manager registration, account update and logout use the custom ser
   assert.equal(storage.size, 0);
   assert.equal(q("loginPanel").hidden, false);
 });
-test("moderators can select a level and submit a 1-9 rating", async () => {
+test("moderators can rate a level and clear its rating", async () => {
   const elements = new Map();
   const q = id => {
     if (!elements.has(id)) elements.set(id, {
@@ -71,7 +71,7 @@ test("moderators can select a level and submit a 1-9 rating", async () => {
       requests.push({ url, ...options });
       if (url === "/api/auth/login")
         return { ok: true, json: async () => ({ idToken: "mod-token", displayName: "mod", isModerator: true }) };
-      if (url === "/levels/demo/difficulty") rating = JSON.parse(options.body).difficulty;
+      if (url === "/levels/demo/difficulty") rating = JSON.parse(options.body).difficulty || null;
       return { ok: true, json: async () => ({ demo: { name: "Demo", difficulty: rating } }) };
     }
   };
@@ -90,5 +90,10 @@ test("moderators can select a level and submit a 1-9 rating", async () => {
   assert.equal(submission.headers.Authorization, "Bearer mod-token");
   assert.deepEqual(JSON.parse(submission.body), { difficulty: 7 });
   assert.match(q("ratingLevel").children[0].textContent, /7\/9/);
+  q("difficultyRating").value = "0";
+  await q("setDifficultyBtn").click();
+  const cleared = requests.filter(request => request.url === "/levels/demo/difficulty").at(-1);
+  assert.deepEqual(JSON.parse(cleared.body), { difficulty: 0 });
+  assert.match(q("ratingLevel").children[0].textContent, /Unrated/);
   assert.equal(q("setDifficultyBtn").disabled, false);
 });

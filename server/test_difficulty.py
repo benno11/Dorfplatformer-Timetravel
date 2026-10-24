@@ -39,9 +39,35 @@ class DifficultyTests(unittest.TestCase):
             status, result = self.request("PUT", "/levels/test/difficulty", {"difficulty": number}, token)
             self.assertEqual(status, 200, result)
             self.assertEqual(result["difficulty"], number)
-        for number in (0, 10, -1, True, False, 1.0, 1.5, "5", None, [], {}):
+        for number in (10, -1, True, False, 0.0, 1.0, 1.5, "0", "5", None, [], {}):
             self.assertEqual(self.request("PUT", "/levels/test/difficulty", {"difficulty": number}, token)[0], 400)
+        self.assertEqual(self.request("PUT", "/levels/test/difficulty", {}, token)[0], 400)
         self.assertEqual(self.request("GET", "/levels/test.json")[1]["difficulty"], 9)
+
+    def test_moderator_can_clear_rating_and_rate_again(self):
+        token = self.prepare()
+        self.assertEqual(self.request("PUT", "/levels/test/difficulty", {"difficulty": 7}, token)[0], 200)
+        for auth, expected in ((None, 401), (self.owner["idToken"], 403)):
+            self.assertEqual(self.request("PUT", "/levels/test/difficulty", {"difficulty": 0}, auth)[0], expected)
+        self.assertEqual(self.request("GET", "/levels/test.json")[1]["difficulty"], 7)
+        for _ in range(2):  # Clearing an already-unrated level is also valid.
+            status, result = self.request("PUT", "/levels/test/difficulty", {"difficulty": 0}, token)
+            self.assertEqual(status, 200, result)
+            self.assertIsNone(result["difficulty"])
+        self.assertIsNone(self.request("GET", "/levels/test.json")[1]["difficulty"])
+        self.assertIsNone(self.request("GET", "/levels.json?metadata=true")[1]["test"]["difficulty"])
+        self.assertIn("test", self.request("GET", "/levels.json?metadata=true&page=0&filter=unrated")[1]["levels"])
+        self.assertEqual(self.request("GET", "/levels.json?metadata=true&page=0&filter=hard")[1]["total"], 0)
+        reopened = Store(self.database)
+        self.assertIsNone(reopened.levels("GET", "test", False, False, {}, "")["difficulty"])
+        with reopened.connect() as db:
+            self.assertIsNone(db.execute("SELECT 1 FROM level_difficulties WHERE level_id='test'").fetchone())
+            event = db.execute("SELECT * FROM admin_events WHERE action='unrate_level' ORDER BY id DESC LIMIT 1").fetchone()
+            self.assertEqual(event["target_id"], "test")
+            self.assertEqual(event["actor"], self.moderator["localId"])
+        self.assertEqual(self.request("PUT", "/levels/test/difficulty", {"difficulty": 4}, token)[0], 200)
+        self.assertEqual(self.request("GET", "/levels/test.json")[1]["difficulty"], 4)
+        self.assertEqual(self.request("PUT", "/levels/missing/difficulty", {"difficulty": 0}, token)[0], 404)
 
     def test_upload_cannot_set_or_spoof_rating(self):
         token = self.prepare()

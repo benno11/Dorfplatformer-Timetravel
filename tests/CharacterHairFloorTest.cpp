@@ -62,6 +62,33 @@ int main() {
     // Merely turning cannot mirror the grounded tail to the other side.
     resting.update(1.0f / 60, {5, 6.5f}, 80, 2, 1, restingFloor);
     assert(std::fabs(resting.at(80).x - restingTip.x) < 2);
+    Appearance turningHair;
+    turningHair.hairStyle = customPartsHairStyle;
+    turningHair.uncapHairLength = true;
+    turningHair.hairShape = {{3, 0, 80, 2, 0}};
+    PartPhysics turningParts;
+    auto rightScene = hairBodyCollisions(turningHair, 1, false);
+    addHairWorldBox(rightScene, {-200, 28, 400, 16}, {0, 0, 16, 28});
+    for (int frame = 0; frame < 120; ++frame)
+        turningParts.update(1.0f / 60, 0, 0, true, false, 1, 1, &rightScene, &turningHair);
+    const auto beforeTurn = turningParts.floorHair[1].at(80);
+    const float oldTrailDirection = turningParts.floorTrailDirection;
+    auto leftScene = hairBodyCollisions(turningHair, -1, false);
+    addHairWorldBox(leftScene, {-200, 28, 400, 16}, {0, 0, 16, 28});
+    turningParts.update(1.0f / 60, 0, 0, true, false, -1, 1, &leftScene, &turningHair);
+    const auto afterTurn = turningParts.floorHair[1].at(80);
+    assert(std::fabs(afterTurn.x - beforeTurn.x) < 2);
+    assert(std::fabs(afterTurn.y - beforeTurn.y) < 2);
+    assert(turningParts.floorTrailDirection == oldTrailDirection);
+    auto lastTurnTip = afterTurn;
+    for (int frame = 0; frame < 30; ++frame) {
+        turningParts.update(1.0f / 60, 0, 0, true, false, -1, 1, &leftScene, &turningHair);
+        const auto tip = turningParts.floorHair[1].at(80);
+        assert(std::fabs(tip.x - lastTurnTip.x) < 2);
+        assert(std::fabs(tip.y - lastTurnTip.y) < 2);
+        assert(tip.x < 0); // No delayed reflection when the turn transition ends.
+        lastTurnTip = tip;
+    }
     // Walk toward the resting tail: its world position sticks while slack builds.
     for (int frame = 1; frame <= 20; ++frame) {
         restingFloor.worldOrigin.x = -frame * 0.5f;
@@ -127,8 +154,10 @@ int main() {
             auto scene = hairBodyCollisions(jumper, facing, false);
             addHairWorldBox(scene, {-500, 356, 1000, 64}, {0, y, 32, 56});
             motion.update(dt, 0, vy, grounded, false, facing, 1, &scene, &jumper);
+            assert(!motion.floorHair[0].initialized); // The short fringe uses regular strand physics.
+            assert(motion.floorHair[1].initialized);
             for (const auto& strand : motion.floorHair) {
-                assert(strand.initialized);
+                if (!strand.initialized) continue;
                 for (int i = 1; i < strand.count; ++i) {
                     const float dx = strand.points[i].x - strand.points[i - 1].x;
                     const float dy = strand.points[i].y - strand.points[i - 1].y;
@@ -146,6 +175,64 @@ int main() {
     assert(surface);
     SDL_Renderer* renderer = SDL_CreateSoftwareRenderer(surface);
     assert(renderer);
+    // The game/preview target can be larger than the physical window. Uncapped
+    // hair must use that target's bounds, even when the body is beyond the window.
+    SDL_Texture* previewTarget = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888,
+        SDL_TEXTUREACCESS_TARGET, 320, 192);
+    assert(previewTarget);
+    assert(SDL_SetRenderTarget(renderer, previewTarget));
+    Appearance targetHair;
+    targetHair.hairStyle = customPartsHairStyle;
+    targetHair.hairColor = 2;
+    targetHair.hairShape = {{3, 0, 60, 2, 0}};
+    for (bool uncapped : {false, true}) for (int facing : {1, -1}) {
+        targetHair.uncapHairLength = uncapped;
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        assert(SDL_RenderClear(renderer));
+        render(renderer, targetHair, {240, 100, 16, 28}, Pose::Idle, 0, facing);
+        SDL_Surface* output = SDL_RenderReadPixels(renderer, nullptr);
+        assert(output && output->w == 320 && output->h == 192);
+        Uint8 r, g, b, alpha;
+        assert(SDL_ReadSurfacePixel(output, 245, 104, &r, &g, &b, &alpha));
+        assert(r == colors[2].r && g == colors[2].g && b == colors[2].b);
+        if (uncapped) {
+            assert(SDL_ReadSurfacePixel(output, facing > 0 ? 243 : 251, 150, &r, &g, &b, &alpha));
+            assert(r == colors[2].r && g == colors[2].g && b == colors[2].b);
+        }
+        SDL_DestroySurface(output);
+    }
+    assert(SDL_SetRenderTarget(renderer, nullptr));
+    SDL_DestroyTexture(previewTarget);
+    // Back hair keeps its volume above the tip in both preview and physics
+    // rendering. Even the thinnest lock must remain visible in either direction.
+    for (int width : {1, 2, 4}) for (int facing : {1, -1}) for (bool moving : {false, true}) {
+        Appearance tapered;
+        tapered.hairStyle = customPartsHairStyle;
+        tapered.hairColor = 2;
+        tapered.build = 1;
+        tapered.uncapHairLength = true;
+        tapered.hairShape = {{3, 0, 40, width, 0}};
+        PartPhysics motion;
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        assert(SDL_RenderClear(renderer));
+        render(renderer, tapered, {48, 0, 32, 56}, Pose::Idle, 0, facing, 255, moving ? &motion : nullptr);
+        SDL_Surface* output = SDL_RenderReadPixels(renderer, nullptr);
+        assert(output);
+        auto hairPixelsInRow = [&](int y) {
+            int count = 0;
+            for (int x = 48; x < 80; ++x) {
+                Uint8 r, g, b, alpha;
+                assert(SDL_ReadSurfacePixel(output, x, y, &r, &g, &b, &alpha));
+                if (r == colors[2].r && g == colors[2].g && b == colors[2].b) ++count;
+            }
+            return count;
+        };
+        const int upperWidth = hairPixelsInRow(58), tipWidth = hairPixelsInRow(90);
+        assert(tipWidth >= 2);
+        if (width > 1) assert(upperWidth > tipWidth);
+        else assert(upperWidth == tipWidth);
+        SDL_DestroySurface(output);
+    }
     Appearance hair;
     hair.hairStyle = customPartsHairStyle;
     hair.uncapHairLength = true;

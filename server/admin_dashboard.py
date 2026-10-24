@@ -9,7 +9,8 @@ import sys
 from urllib.parse import parse_qs, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from game_server import ApiError, GameServer, Handler
+from game_server import ApiError, GameServer, Handler, ROOT, DEFAULT_UPDATE_MANIFEST_URL
+import updater_config
 
 WEB = Path(__file__).resolve().parent / "admin"
 
@@ -166,7 +167,12 @@ class AdminServer(GameServer):
         if address[0] != "127.0.0.1":
             raise ValueError("The admin dashboard must bind to 127.0.0.1.")
         self.admin_key = key
-        super().__init__(address, database, handler=AdminHandler)
+        super().__init__(address, database, handler=AdminHandler,
+                         server_update_command=os.environ.get("SERVER_UPDATE_COMMAND", ""),
+                         server_update_cwd=os.environ.get("SERVER_UPDATE_CWD", str(ROOT)),
+                         server_update_timeout=int(os.environ.get("SERVER_UPDATE_TIMEOUT", "900")),
+                         update_manifest_url=os.environ.get("UPDATE_MANIFEST_URL", DEFAULT_UPDATE_MANIFEST_URL))
+        self.updater_defaults = self.get_updater_config()
 
 
 class AdminHandler(Handler):
@@ -199,6 +205,20 @@ class AdminHandler(Handler):
                 raise ApiError(401, "Enter the local admin key.")
             if self.command == "GET" and url.path == "/admin/api/state":
                 self.send(200, dashboard_state(self.server.store, parse_qs(url.query)))
+                return
+            if self.command == "GET" and url.path == "/admin/api/updater":
+                self.send(200, {"config": updater_config.read_config(self.server.store, self.server.updater_defaults),
+                                "last_run": updater_config.last_run_event(self.server.store)})
+                return
+            if self.command == "POST" and url.path in ("/admin/api/updater", "/admin/api/updater/validate"):
+                try:
+                    config = updater_config.validate_config(self.body())
+                except ValueError as error:
+                    raise ApiError(400, str(error))
+                if url.path == "/admin/api/updater":
+                    updater_config.save_config(self.server.store, config)
+                self.send(200, {"config": config, "valid": True,
+                                "saved": url.path == "/admin/api/updater"})
                 return
             if self.command == "GET" and url.path == "/admin/api/level":
                 level_id = parse_qs(url.query).get("id", [""])[0]

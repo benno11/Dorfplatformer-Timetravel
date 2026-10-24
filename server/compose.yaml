@@ -9,6 +9,7 @@ services:
       PUBLIC_URL: https://${DOMAIN:?Set DOMAIN to your game server hostname}
       SERVER_UPDATE_COMMAND: ${SERVER_UPDATE_COMMAND:-}
       SERVER_UPDATE_CWD: ${SERVER_UPDATE_CWD:-/app}
+      SERVER_UPDATE_TIMEOUT: ${SERVER_UPDATE_TIMEOUT:-900}
     volumes:
       - game-data:/data
       - game-releases:/app/server/releases:ro
@@ -25,6 +26,9 @@ services:
     environment:
       DATABASE_PATH: /data/game.sqlite3
       ADMIN_PORT: "8081"
+      SERVER_UPDATE_COMMAND: ${SERVER_UPDATE_COMMAND:-}
+      SERVER_UPDATE_CWD: ${SERVER_UPDATE_CWD:-/app}
+      SERVER_UPDATE_TIMEOUT: ${SERVER_UPDATE_TIMEOUT:-900}
     volumes:
       - game-data:/data
   proxy:

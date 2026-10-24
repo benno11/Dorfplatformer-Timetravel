@@ -165,7 +165,8 @@ struct HairPhysics {
     HairPhysics() { reset(); }
 
     void update(float dt, float vx, float vy, float springiness = 1.0f, const CollisionScene* collisions = nullptr,
-        const Profile* profile = nullptr, float movementVy = std::numeric_limits<float>::quiet_NaN()) {
+        const Profile* profile = nullptr, float movementVy = std::numeric_limits<float>::quiet_NaN(),
+        float turnTime = 0) {
         if (!std::isfinite(dt) || !std::isfinite(vx) || !std::isfinite(vy)) {
             reset();
             return;
@@ -179,7 +180,7 @@ struct HairPhysics {
         const auto finiteValue = [](float value, float low, float high, float fallback) {
             return std::isfinite(value) ? std::clamp(value, low, high) : fallback;
         };
-        const float length = profile ? finiteValue(profile->length, 2, reach, reach) : reach;
+        const float length = profile ? finiteValue(profile->length, 1, reach, reach) : reach;
         const float stiffness = profile ? finiteValue(profile->stiffness, 0.5f, 2, 1) : 1;
         const float mass = profile ? finiteValue(profile->mass, 0.5f, 2, 1) : 1;
         const float newSpacing = length / (jointCount - 1);
@@ -204,6 +205,7 @@ struct HairPhysics {
         const float verticalAy = movementVy <= 0 ? std::min(ay, 0.0f) : ay;
         const int steps = std::max(1, (int)std::ceil(dt * 240));
         const float h = dt / steps;
+        turnTime = std::isfinite(turnTime) ? std::clamp(turnTime, 0.0f, 0.15f) : 0;
         float lateralLimit = 1.8f;
         if (collisions && collisions->bodySide) {
             for (const auto& box : collisions->boxes) {
@@ -290,7 +292,14 @@ struct HairPhysics {
                     const Point target = joints[i];
                     // Sweep from the parent as well so spawning or moving a surface cannot
                     // leave the strand threaded through it with its tip on the far side.
-                    const Point resolved = collisions->resolve(joints[i - 1], collisions->resolve(previous[i], target), true);
+                    auto bodyContact = collisions->resolve(previous[i], target);
+                    // Turning swaps the cosmetic head/torso colliders instantly.
+                    // Ease their ejection instead of reflecting the whole strand
+                    // in one frame; world walls and floors still resolve fully.
+                    const float response = turnTime > 0 ? std::min(1.0f, h / turnTime) : 1.0f;
+                    bodyContact = {target.x + (bodyContact.x - target.x) * response,
+                        target.y + (bodyContact.y - target.y) * response};
+                    const Point resolved = collisions->resolve(joints[i - 1], bodyContact, true);
                     if (std::fabs(resolved.x - target.x) > 0.00001f) {
                         previous[i].x = resolved.x + (target.x - previous[i].x) * 0.15f;
                     }
@@ -301,6 +310,7 @@ struct HairPhysics {
                     joints[i] = resolved;
                 }
             }
+            turnTime = std::max(0.0f, turnTime - h);
         }
         previousVx = vx;
         previousVy = vy;

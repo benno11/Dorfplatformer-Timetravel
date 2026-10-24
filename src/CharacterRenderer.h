@@ -56,13 +56,38 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& destination
     SDL_GetRenderScale(ren, &pixelScaleX, &pixelScaleY);
     if (!std::isfinite(pixelScaleX) || pixelScaleX <= 0) pixelScaleX = 1.0f;
     if (!std::isfinite(pixelScaleY) || pixelScaleY <= 0) pixelScaleY = 1.0f;
-    // Snap edges in output pixels, then submit them in renderer coordinates.
-    // Changing SDL's scale also rescales its viewport and clip rectangle, which
-    // can clip the entire character when gameplay has an explicit viewport.
+    // Draw snapped output pixels at unit scale. Dividing a one-pixel width by
+    // fractional UI zoom can round it below one when SDL scales it back, hiding
+    // entire hair rows/columns. Preserve the viewport and clip in pixel space
+    // too: resetting only the scale would shrink them and hide the character.
+    struct RestoreRasterState {
+        SDL_Renderer* renderer;
+        float x, y;
+        SDL_Rect viewport{}, clip{};
+        bool hasViewport, clipped;
+        ~RestoreRasterState() {
+            SDL_SetRenderScale(renderer, x, y);
+            SDL_SetRenderViewport(renderer, hasViewport ? &viewport : nullptr);
+            SDL_SetRenderClipRect(renderer, clipped ? &clip : nullptr);
+        }
+    } restore{ren, pixelScaleX, pixelScaleY, {}, {}, SDL_RenderViewportSet(ren), SDL_RenderClipEnabled(ren)};
+    SDL_GetRenderViewport(ren, &restore.viewport);
+    SDL_GetRenderClipRect(ren, &restore.clip);
+    const auto outputRect = [&](const SDL_Rect& rect) {
+        return SDL_Rect{(int)std::floor(rect.x * pixelScaleX), (int)std::floor(rect.y * pixelScaleY),
+            (int)std::ceil(rect.w * pixelScaleX), (int)std::ceil(rect.h * pixelScaleY)};
+    };
+    SDL_SetRenderScale(ren, 1, 1);
+    if (restore.hasViewport) {
+        const auto viewport = outputRect(restore.viewport);
+        SDL_SetRenderViewport(ren, &viewport);
+    }
+    if (restore.clipped) {
+        const auto clip = outputRect(restore.clip);
+        SDL_SetRenderClipRect(ren, &clip);
+    }
     auto fillPixelRect = [&](const SDL_FRect& pixel) {
-        const SDL_FRect rect{pixel.x / pixelScaleX, pixel.y / pixelScaleY,
-            pixel.w / pixelScaleX, pixel.h / pixelScaleY};
-        SDL_RenderFillRect(ren, &rect);
+        SDL_RenderFillRect(ren, &pixel);
     };
     const SDL_FRect dst{destination.x * pixelScaleX, destination.y * pixelScaleY,
         destination.w * pixelScaleX, destination.h * pixelScaleY};
@@ -123,7 +148,9 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& destination
     const float bob = physics ? physics->headY.position * 0.3f :
         (pose == Pose::Run ? ((int)(time * 24.0f) % 2) : 0);
     int outputWidth = 0, outputHeight = 0;
-    SDL_GetRenderOutputSize(ren, &outputWidth, &outputHeight);
+    // The window can be smaller than the game/preview texture. Clip against
+    // the active target so uncapping cannot hide hair beyond the window size.
+    SDL_GetCurrentRenderOutputSize(ren, &outputWidth, &outputHeight);
     const float hairLeft = dst.w > 0 ? -dst.x * 16.0f / dst.w : 0;
     const float hairRight = dst.w > 0 ? (outputWidth - dst.x) * 16.0f / dst.w : 16;
     const float hairTop = dst.h > 0 ? -dst.y * 28.0f / dst.h : 0.0f;
@@ -181,7 +208,7 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& destination
             offset.x *= facing < 0 ? -1.0f : 1.0f;
             return offset;
         };
-        auto hairStrand = [&](float x, float y, int width, int length, float rootDistance = 0.0f, int strandIndex = -1) {
+        auto hairStrand = [&](float x, float y, int width, int length, float rootDistance = 0.0f, int strandIndex = -1, bool backStrand = false) {
             auto strandOffset = [&](float distance) {
                 if (!physics || strandIndex != 0) return hairOffset(distance);
                 auto offset = physics->fringeHair.offset(distance);
@@ -197,6 +224,15 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& destination
                 std::max(0.0, std::floor((double)hairTop - y - margin))) : 0;
             const float scale = a.build == 0 ? 0.88f : (a.build == 2 ? 1.08f : 1.0f);
             const float worldWidth = width * scale;
+            auto rowWidth = [&](int row) {
+                if (!backStrand || length <= 1 || width <= 1) return (float)width;
+                // Keep volume near the head, then round off the silhouette toward
+                // a visible one-pixel tip. Measure along the authored strand so
+                // culling and floor folds cannot change its shape.
+                const float progress = (float)row / (length - 1);
+                const float taper = std::clamp((progress - 0.45f) / 0.55f, 0.0f, 1.0f);
+                return width - (width - 1) * taper * taper * (3 - 2 * taper);
+            };
             auto naturalPoint = [&](int row) {
                 const auto offset = strandOffset(rootDistance + row);
                 float left = 8 + (x + offset.x - 8) * scale;
@@ -218,6 +254,8 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& destination
                     {current.x, current.y + first - simulated->length}, worldWidth, trailDirection);
             } else if (physics) current = physics->hairCollisions.drape(naturalPoint(0), current, worldWidth, trailDirection);
             for (int row = first; row < rows; ++row) {
+                const float localWidth = rowWidth(row);
+                const float drawWorldWidth = localWidth * scale;
                 const auto offset = strandOffset(rootDistance + row);
                 const auto next = strandOffset(rootDistance + row + 1.0f);
                 if (physics) {
@@ -226,14 +264,14 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& destination
                     const float distance = std::sqrt(delta.x * delta.x + delta.y * delta.y);
                     // Only the extra draped tail needs length reconstruction. Ordinary
                     // locks retain their simulated compression and stretch when airborne.
-                    if (a.uncapHairLength && !simulated) {
+                    if (a.uncapHairLength && !simulated && length > normalHairLengthLimit) {
                         if (distance < 0.0001f) delta = {0, 1};
                         else if (distance < 1) { delta.x /= distance; delta.y /= distance; }
                     }
                     const auto end = simulated && row + 1 <= simulated->length ? simulated->at(row + 1.0f) :
                         physics->hairCollisions.drape(current, {current.x + delta.x, current.y + delta.y}, worldWidth, trailDirection);
-                    float left = std::min(current.x, end.x) - worldWidth * 0.5f;
-                    const float drawWidth = worldWidth + std::fabs(end.x - current.x);
+                    float left = std::min(current.x, end.x) - drawWorldWidth * 0.5f;
+                    const float drawWidth = drawWorldWidth + std::fabs(end.x - current.x);
                     if (facing < 0) left = 16 - left - drawWidth;
                     block(8 + (left - 8) / scale, std::min(current.y, end.y) - 0.5f, drawWidth / scale,
                         1.0f + std::fabs(end.y - current.y), hair, Part::Hair, row);
@@ -242,7 +280,7 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& destination
                     current = end;
                     continue;
                 }
-                block(x + offset.x, y + row + offset.y, (float)width,
+                block(x + offset.x + (width - localWidth) * 0.5f, y + row + offset.y, localWidth,
                     std::max(1.0f, 1.0f + next.y - offset.y), hair, Part::Hair, row);
             }
         };
@@ -262,7 +300,7 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& destination
         } else if (a.hairStyle == customPartsHairStyle) {
             block(3 + lean, headY, 10, a.hairShape[0], hair, Part::Hair);
             hairStrand(3 + lean, headY + a.hairShape[0], a.hairShape[3], a.hairShape[1], 0, 0);
-            hairStrand(3 + lean, headY + 3, a.hairShape[3], a.hairShape[2], 0, 1);
+            hairStrand(3 + lean, headY + 3, a.hairShape[3], a.hairShape[2], 0, 1, true);
             if (a.hairShape[4]) {
                 const auto offset = hairOffset((float)a.hairShape[4]);
                 block(4 + lean + offset.x, headY - a.hairShape[4] + offset.y, 2, a.hairShape[4] + 1, hair, Part::Hair);
@@ -272,7 +310,7 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& destination
             block(3 + lean, headY, 10, a.hairStyle == 2 ? 4 : 3, hair, Part::Hair);
             hairStrand(3 + lean, headY + 3, a.hairStyle == 2 ? 3 : 2, 3, 0, 0);
             if (a.hairStyle == 2) {
-                hairStrand(3 + lean, headY + 5, 3, 7, 2);
+                hairStrand(3 + lean, headY + 5, 3, 7, 2, -1, true);
             }
             if (a.hairStyle == 1) {
                 const auto offset = hairOffset(2);

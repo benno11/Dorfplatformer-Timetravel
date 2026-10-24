@@ -11,12 +11,15 @@ from pathlib import Path
 import re
 import secrets
 import shlex
+import signal
 import sqlite3
 import subprocess
 import sys
 import threading
 import time
 from urllib.parse import urlsplit, parse_qs
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import updater_config
 
 ROOT = Path(__file__).resolve().parent.parent
 MAX_BODY = 2 * 1024 * 1024
@@ -75,6 +78,8 @@ class Store:
         with self.connect() as db:
             db.executescript("""
                 PRAGMA journal_mode=WAL;
+                CREATE TABLE IF NOT EXISTS updater_configuration(
+                    id INTEGER PRIMARY KEY CHECK(id=1), config TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS users(
                     id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE COLLATE NOCASE,
                     username TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -276,10 +281,15 @@ class Store:
             if not db.execute("SELECT 1 FROM moderators WHERE user_id=?", (user["id"],)).fetchone():
                 raise ApiError(403, "Only moderators can set difficulty.")
             difficulty = body.get("difficulty")
-            if type(difficulty) is not int or not 1 <= difficulty <= 9:
-                raise ApiError(400, "Difficulty must be an integer from 1 to 9.")
+            if type(difficulty) is not int or not 0 <= difficulty <= 9:
+                raise ApiError(400, "Difficulty must be an integer from 0 (Unrated) to 9.")
             if not db.execute("SELECT 1 FROM levels WHERE id=?", (level_id,)).fetchone():
                 raise ApiError(404, "Level not found.")
+            if difficulty == 0:
+                db.execute("DELETE FROM level_difficulties WHERE level_id=?", (level_id,))
+                db.execute("INSERT INTO admin_events(action,target_id,reason,actor,created_at) VALUES(?,?,?,?,?)",
+                           ("unrate_level", level_id, "Difficulty cleared", user["id"], int(time.time())))
+                return {"level_id": level_id, "difficulty": None}
             db.execute("""INSERT INTO level_difficulties VALUES(?,?,?,?)
                 ON CONFLICT(level_id) DO UPDATE SET difficulty=excluded.difficulty,
                 rated_by=excluded.rated_by,rated_at=excluded.rated_at""",
@@ -446,13 +456,16 @@ class GameServer(ThreadingHTTPServer):
     daemon_threads = True
     def __init__(self, address, database, public_url="", releases=None,
                  update_manifest_url=DEFAULT_UPDATE_MANIFEST_URL, server_update_command=None,
-                 server_update_cwd=None, handler=None):
+                 server_update_cwd=None, handler=None, server_update_timeout=900):
         self.releases = Path(releases or ROOT / "server/releases").resolve()
         self.store = Store(database)
         self.public_url = public_url.rstrip("/")
         self.update_manifest_url = (update_manifest_url or "").strip()
         self.server_update_command = normalize_command(server_update_command)
         self.server_update_cwd = str(server_update_cwd or ROOT)
+        if type(server_update_timeout) is not int or not 1 <= server_update_timeout <= 86400:
+            raise ValueError("Server update timeout must be from 1 to 86400 seconds.")
+        self.server_update_timeout = server_update_timeout
         self.server_update_lock = threading.Lock()
         self.server_update_status = {
             "configured": bool(self.server_update_command),
@@ -469,12 +482,25 @@ class GameServer(ThreadingHTTPServer):
         self.attempts = {}
         super().__init__(address, handler or Handler)
 
+    def get_updater_config(self):
+        return updater_config.read_config(self.store, {
+            "enabled": bool(self.server_update_command), "command": self.server_update_command,
+            "cwd": self.server_update_cwd, "timeout_seconds": self.server_update_timeout,
+            "manifest_url": self.update_manifest_url})
+
     def get_server_update_status(self):
+        config = self.get_updater_config()
         with self.server_update_lock:
-            return dict(self.server_update_status)
+            status = dict(self.server_update_status)
+        status["configured"] = bool(config["enabled"] and config["command"])
+        if not status["running"] and status["state"] in ("idle", "not_configured"):
+            status["state"] = "idle" if status["configured"] else "not_configured"
+            status["detail"] = "Ready." if status["configured"] else "Server updater is disabled or not configured."
+        return status
 
     def trigger_server_update(self, user):
-        if not self.server_update_command:
+        config = self.get_updater_config()
+        if not config["enabled"] or not config["command"]:
             raise ApiError(503, "Server update command is not configured.")
         with self.server_update_lock:
             if self.server_update_status["running"]:
@@ -491,24 +517,49 @@ class GameServer(ThreadingHTTPServer):
             })
             status = dict(self.server_update_status)
         self.store.audit_event("server_update_requested", "server", "Triggered from in-game moderator action.", user["id"])
-        thread = threading.Thread(target=self._run_server_update, args=(user,), daemon=True)
+        thread = threading.Thread(target=self._run_server_update, args=(user, config), daemon=True)
         thread.start()
         return status
 
-    def _run_server_update(self, user):
+    def _run_server_update(self, user, config):
         exit_code = -1
         detail = "Server update failed."
         state = "failed"
         try:
-            process = subprocess.Popen(self.server_update_command, cwd=self.server_update_cwd,
+            process = subprocess.Popen(config["command"], cwd=config["cwd"],
                                        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                       stderr=subprocess.DEVNULL)
-            exit_code = process.wait()
+                                       stderr=subprocess.DEVNULL,
+                                       **({"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt"
+                                          else {"start_new_session": True}))
+            try:
+                exit_code = process.wait(timeout=config["timeout_seconds"])
+            except subprocess.TimeoutExpired:
+                # Update scripts may spawn git/build/restart helpers. Stop their
+                # process tree as well, so a timed-out run cannot keep updating.
+                if os.name == "nt":
+                    try:
+                        subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                       creationflags=subprocess.CREATE_NO_WINDOW, timeout=10)
+                    except (OSError, subprocess.TimeoutExpired):
+                        logging.exception("Could not stop updater process tree; stopping its main process")
+                else:
+                    try:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                if process.poll() is None:
+                    process.kill()
+                exit_code = process.wait()
+                detail = "Server update exceeded its " + str(config["timeout_seconds"]) + " second timeout."
+                raise TimeoutError(detail)
             if exit_code == 0:
                 state = "succeeded"
                 detail = "Server update command completed."
             else:
                 detail = "Server update command exited with code " + str(exit_code) + "."
+        except TimeoutError:
+            pass
         except Exception as error:
             detail = "Server update command failed to start: " + str(error)
         try:
@@ -613,8 +664,9 @@ class Handler(BaseHTTPRequestHandler):
             # account policy so blocked and legacy clients can still update.
             release_name = None
             if self.command == "GET" and path == "/update-manifest.json":
-                if self.server.update_manifest_url:
-                    self.redirect(self.server.update_manifest_url)
+                manifest_url = self.server.get_updater_config()["manifest_url"]
+                if manifest_url:
+                    self.redirect(manifest_url)
                     return
                 release_name = "update-manifest.json"
             elif self.command == "GET" and re.fullmatch(r"/releases/[A-Za-z0-9_-][A-Za-z0-9_.-]*\.(exe|msi|zip|apk|aab)", path):
@@ -645,7 +697,7 @@ class Handler(BaseHTTPRequestHandler):
                                 "level_server_url": self.server.public_url,
                                 "account_manager_url": "/", "auth": "opaque bearer sessions",
                                 "level_reactions": "/levels/<id>/vote",
-                                "windows_update_manifest_url": self.server.update_manifest_url or "/update-manifest.json",
+                                "windows_update_manifest_url": self.server.get_updater_config()["manifest_url"] or "/update-manifest.json",
                                 "server_update": {
                                     "endpoint": "/api/server/update",
                                     "configured": self.server.get_server_update_status()["configured"],
@@ -744,13 +796,19 @@ def main():
                         help="Fixed command moderators may trigger from the game to update the server.")
     parser.add_argument("--server-update-cwd", default=os.environ.get("SERVER_UPDATE_CWD", str(ROOT)),
                         help="Working directory for --server-update-command.")
+    parser.add_argument("--server-update-timeout", type=int,
+                        default=int(os.environ.get("SERVER_UPDATE_TIMEOUT", "900")), metavar="SECONDS",
+                        help="Maximum update command duration (1-86400 seconds, default 900).")
     parser.add_argument("--admin-port", type=int, default=int(os.environ.get("ADMIN_PORT", "8081")))
     parser.add_argument("--no-dashboard", action="store_true")
     parser.add_argument("--admin-key-file", default=os.environ.get("ADMIN_KEY_FILE", ""))
     args = parser.parse_args()
+    if not 1 <= args.server_update_timeout <= 86400:
+        parser.error("--server-update-timeout must be from 1 to 86400 seconds")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     server = GameServer((args.host, args.port), args.database, args.public_url, args.releases,
-                        args.update_manifest_url, args.server_update_command, args.server_update_cwd)
+                        args.update_manifest_url, args.server_update_command, args.server_update_cwd,
+                        server_update_timeout=args.server_update_timeout)
     logging.info("Game server listening on %s:%s", args.host, server.server_port)
     dashboard = None
     dashboard_thread = None
@@ -762,6 +820,7 @@ def main():
             key_file = Path(args.admin_key_file) if args.admin_key_file else Path(args.database).parent / "admin-key"
             key = load_admin_key(key_file)
             dashboard = AdminServer(("127.0.0.1", args.admin_port), args.database, key)
+            dashboard.updater_defaults = server.get_updater_config()
             dashboard_thread = threading.Thread(target=dashboard.serve_forever, daemon=True)
             dashboard_thread.start()
             logging.info("Admin dashboard: http://127.0.0.1:%s (key file: %s)", dashboard.server_port, key_file)

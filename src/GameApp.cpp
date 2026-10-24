@@ -7000,15 +7000,10 @@ int RunGameApp(int argc, char** argv) {
                                 continue;
                             }
                         } else {
-                            const float py2 = player.y + (float)player.h;
-                            const float prevPy2 = frameStartY + (float)player.h;
-                            const float playerCy = player.y + (float)player.h * 0.5f;
-                            const float bossCy = testBy + bossH * 0.5f;
-                            const bool stomp =
-                                (player.vy > 120.0f) &&
-                                (prevPy2 <= testBy + bossH * 0.35f) &&
-                                (py2 <= testBy + bossH * 0.45f) &&
-                                (playerCy <= bossCy);
+                            // Any airborne downward contact is an attack. A speed
+                            // threshold or shallow-overlap test can misclassify a
+                            // slow fall or a deep one-frame overlap as player damage.
+                            const bool stomp = !player.onGround && player.vy > 0.0f;
                             if (stomp && bossState.bossPlayerContactCooldown <= 0.0f && levelLoadDeathGraceTimer <= 0.0f) {
                                 player.y = testBy - (float)player.h;
                                 player.vy = -1000.0f;

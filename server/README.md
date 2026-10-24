@@ -113,6 +113,33 @@ or service restarts in a script and point SERVER_UPDATE_COMMAND at that script.
 Requests are audited in the server database as server_update_requested and
 server_update_succeeded/server_update_failed.
 
+The local operator dashboard also has a Server updater configuration panel:
+
+1. Open the localhost dashboard and unlock it with the local admin key.
+2. Choose Enabled or Disabled for moderator-triggered updates.
+3. Enter an executable or interpreter, such as /usr/bin/bash or a Python executable.
+   Put each argument on its own line. For a shell script, the first argument is
+   the script path. Spaces are literal; do not add shell quotes around paths.
+4. Select an existing working directory and a timeout from 1 to 86400 seconds.
+5. Set the client update-manifest URL, or leave it empty for local release hosting.
+6. Use Validate without running, then Save updater settings. Neither runs a command.
+
+Saved settings live in the game database and override the startup command,
+directory, timeout, and manifest settings. The public server reads changes live,
+including when the dashboard runs as a separate process against the same database.
+An update already in progress retains its original settings. Disabling the
+updater prevents future moderator requests; it does not cancel an active update.
+Reload settings / activity displays the most recent update request or result.
+The command is launched directly, without a shell; use an interpreter and script
+for multi-step updates. Configure paths that exist in both containers when using
+the separate Docker admin profile, and mount any operator scripts at those paths.
+
+Configuration and validation endpoints are available only through the authenticated
+loopback dashboard: GET/POST /admin/api/updater and POST /admin/api/updater/validate.
+They are unavailable on the public API and cannot be changed with a moderator token.
+Before any dashboard configuration is saved, --server-update-timeout or
+SERVER_UPDATE_TIMEOUT selects the command timeout (default 900 seconds).
+
 Optional local update hosting: start the server with --update-manifest-url ""
 (or UPDATE_MANIFEST_URL="") and put update-manifest.json plus release installers
 in server/releases (or --releases / RELEASES_PATH). The server then exposes the
@@ -192,8 +219,10 @@ roles. Existing sessions lose rating permission immediately when access is
 revoked; account registration and profile updates cannot grant moderator roles.
 
 Reload the account manager after a role change. Moderators see a Level difficulty
-panel: refresh levels, choose a level, select 1-9, and set its difficulty.
+panel: refresh levels, choose a level, select Unrated or 1-9, and set its difficulty.
 The API is PUT /levels/<id>/difficulty with a Bearer token and {"difficulty": 5}.
+Moderators can clear an existing rating with {"difficulty": 0}; the stored rating
+is removed and the response returns difficulty as null (Unrated).
 GET /levels.json?metadata=true returns level metadata and difficulty without
 downloading all level content. Full level responses also include difficulty;
 null means Unrated. Existing shallow-list and data-download formats still work.

@@ -1,6 +1,6 @@
 FROM python:3.13-slim
 WORKDIR /app
-COPY server/game_server.py server/import_levels.py server/moderators.py server/admin_dashboard.py /app/server/
+COPY server/game_server.py server/import_levels.py server/moderators.py server/admin_dashboard.py server/updater_config.py /app/server/
 COPY pages /app/pages
 COPY server/web /app/server/web
 COPY server/admin /app/server/admin

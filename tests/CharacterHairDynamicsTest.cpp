@@ -1,12 +1,99 @@
 #include "CharacterPartPhysics.h"
+#include "CharacterHairCollision.h"
 #ifdef NDEBUG
 #undef NDEBUG
 #endif
 #include <cassert>
 #include <limits>
+#include <utility>
 
 int main() {
     using namespace CharacterCreator;
+    // Facing changes must not reverse world-space spring momentum or mirror
+    // the particle chains. Compare a turn with continuing at the same speed.
+    for (int initialFacing : {1, -1}) {
+        Appearance turnAppearance;
+        turnAppearance.hairStyle = customPartsHairStyle;
+        turnAppearance.hairShape = {{3, 4, 10, 3, 0}};
+        PartPhysics moving;
+        const auto originalScene = hairBodyCollisions(turnAppearance, initialFacing, false);
+        for (int frame = 0; frame < 120; ++frame)
+            moving.update(1.0f / 60, initialFacing * 500.0f, 0, true, false,
+                initialFacing, 1, &originalScene, &turnAppearance);
+        PartPhysics continuing = moving, turning = moving;
+        const auto turnedScene = hairBodyCollisions(turnAppearance, -initialFacing, false);
+        continuing.update(1.0f / 240, initialFacing * 500.0f, 0, true, false,
+            initialFacing, 1, &originalScene, &turnAppearance);
+        turning.update(1.0f / 240, initialFacing * 500.0f, 0, true, false,
+            -initialFacing, 1, &turnedScene, &turnAppearance);
+        for (auto pair : {std::pair<PartSpring, PartSpring>{continuing.headX, turning.headX},
+            {continuing.hair, turning.hair}, {continuing.hatX, turning.hatX}}) {
+            assert(std::fabs(pair.first.position + pair.second.position) < 0.00001f);
+            assert(std::fabs(pair.first.velocity + pair.second.velocity) < 0.00001f);
+        }
+        for (int i = 0; i < HairPhysics::jointCount; ++i) {
+            assert(std::fabs(continuing.builtInHair.joints[i].x - turning.builtInHair.joints[i].x) < 0.15f);
+            assert(std::fabs(continuing.fringeHair.joints[i].x - turning.fringeHair.joints[i].x) < 0.15f);
+        }
+        assert(turning.builtInHair.joints.back().x * initialFacing < 0);
+        const auto pausedTurn = turning;
+        turning.update(0, 0, 0, true, false, initialFacing, 1, &originalScene, &turnAppearance);
+        assert(turning.previousFacing == pausedTurn.previousFacing);
+        assert(turning.hairTurnTime == pausedTurn.hairTurnTime);
+        assert(turning.hair.position == pausedTurn.hair.position && turning.hair.velocity == pausedTurn.hair.velocity);
+        for (int frame = 0; frame < 30; ++frame)
+            turning.update(1.0f / 60, 0, 0, true, false, -initialFacing, 1, &turnedScene, &turnAppearance);
+        assert(turning.hairTurnTime == 0);
+        assert(turning.builtInHair.joints.back().x * initialFacing > 0); // Settles on the new trailing side.
+        for (const auto& joint : turning.builtInHair.joints)
+            assert(std::isfinite(joint.x) && std::isfinite(joint.y));
+    }
+    HairPhysics::CollisionScene turnFloor;
+    turnFloor.radius = 0.5f;
+    turnFloor.boxes.push_back({-100, 5, 200, 8});
+    HairPhysics turningAtFloor;
+    HairPhysics::Profile floorProfile{10, 1, 1};
+    for (int frame = 0; frame < 30; ++frame) {
+        turningAtFloor.update(1.0f / 60, 500, 900, 1, &turnFloor, &floorProfile,
+            900, std::max(0.0f, 0.15f - frame / 60.0f));
+        for (const auto& joint : turningAtFloor.joints)
+            assert(joint.y <= 4.5f); // Turn easing cannot soften world collisions.
+    }
+    // The shortest authored lock must not secretly simulate twice its length.
+    HairPhysics singlePixel;
+    HairPhysics::Profile singleProfile{1, 1, 1};
+    singlePixel.update(1.0f / 60, 0, 0, 1, nullptr, &singleProfile);
+    assert(std::fabs(singlePixel.restSpacing * (HairPhysics::jointCount - 1) - 1) < 0.0001f);
+    // Uncapping must not replace short-hair physics with the floor rope. Include
+    // wide locks, jumps, turns, and shrinking a previously floor-length strand.
+    for (int length : {0, 1, 2, 3, 4, 6, normalHairLengthLimit}) for (int width : {1, 4}) {
+        Appearance capped;
+        capped.hairStyle = customPartsHairStyle;
+        capped.hairShape = {{3, length, length, width, 0}};
+        auto uncapped = capped;
+        uncapped.uncapHairLength = true;
+        PartPhysics normal, overrideParts;
+        for (int frame = 0; frame < 120; ++frame) {
+            const int facing = frame < 60 ? 1 : -1;
+            const float vx = facing * 300.0f;
+            const float vy = frame < 40 ? -500.0f : (frame < 80 ? 500.0f : 0);
+            const auto scene = hairBodyCollisions(capped, facing, false);
+            normal.update(1.0f / 60, vx, vy, vy == 0, false, facing, 1, &scene, &capped);
+            overrideParts.update(1.0f / 60, vx, vy, vy == 0, false, facing, 1, &scene, &uncapped);
+            assert(!overrideParts.floorHair[0].initialized && !overrideParts.floorHair[1].initialized);
+            for (int i = 0; i < HairPhysics::jointCount; ++i) {
+                const auto a = normal.builtInHair.joints[i], b = overrideParts.builtInHair.joints[i];
+                assert(std::isfinite(a.x) && std::isfinite(a.y));
+                assert(a.x == b.x && a.y == b.y);
+            }
+        }
+        uncapped.hairShape[2] = 80;
+        overrideParts.update(1.0f / 60, 0, 0, true, false, 1, 1, nullptr, &uncapped);
+        assert(overrideParts.floorHair[1].initialized);
+        uncapped.hairShape[2] = length;
+        overrideParts.update(1.0f / 60, 0, 0, true, false, 1, 1, nullptr, &uncapped);
+        assert(!overrideParts.floorHair[1].initialized);
+    }
     HairPhysics::CollisionScene torso;
     torso.bodySide = -1;
     torso.boxes.push_back({0, 0, 10, 20, true});

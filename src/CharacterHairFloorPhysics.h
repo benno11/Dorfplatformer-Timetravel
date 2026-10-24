@@ -23,7 +23,8 @@ struct HairFloorPhysics {
     }
 
     void update(float elapsed, Point root, int authoredLength, float strandWidth, float direction,
-        const HairPhysics::CollisionScene& scene, float springiness = 1, Point airflow = {}, float verticalStrain = 0) {
+        const HairPhysics::CollisionScene& scene, float springiness = 1, Point airflow = {}, float verticalStrain = 0,
+        float turnTime = 0) {
         if (elapsed <= 0) return;
         if (authoredLength <= 0 || !std::isfinite(elapsed)) { *this = {}; return; }
         const float newLength = std::min((float)authoredLength, maxLength);
@@ -43,7 +44,7 @@ struct HairFloorPhysics {
                 (oldOrigin.y - scene.worldOrigin.y) / scene.worldScale.y};
             if (std::fabs(shift.x) + std::fabs(shift.y) > length + 32) {
                 initialized = false; // Respawns and wraps must not stretch a rope across the map.
-                update(elapsed, root, authoredLength, strandWidth, direction, scene, springiness, airflow, verticalStrain);
+                update(elapsed, root, authoredLength, strandWidth, direction, scene, springiness, airflow, verticalStrain, turnTime);
                 return;
             }
             for (int i = 0; i < count; ++i) {
@@ -67,8 +68,7 @@ struct HairFloorPhysics {
             return box.x > right + margin || box.x + box.w < left - margin ||
                 box.y > bottom + margin || box.y + box.h < top - margin;
         }), contacts.boxes.end());
-        auto stretchContacts = contacts;
-        for (auto& box : stretchContacts.boxes) box.body = false;
+        turnTime = std::isfinite(turnTime) ? std::clamp(turnTime, 0.0f, 0.15f) : 0;
         springiness = std::isfinite(springiness) ? std::clamp(springiness, 0.75f, 1.25f) : 1;
         const float dt = std::min(elapsed, 1.0f / 30);
         const int steps = std::max(1, (int)std::ceil(dt * 120));
@@ -123,7 +123,15 @@ struct HairFloorPhysics {
                 }
                 for (int i = 1; i < count; ++i) {
                     const Point target = points[i];
-                    const Point resolved = resolve(points[i - 1], resolve(previous[i], target, false), true);
+                    auto bodyContact = resolve(previous[i], target, false);
+                    // Six constraint passes share one time-based body response.
+                    // Keep contacts gradual after the turn too, so restoring
+                    // the collider cannot suddenly eject a resting tail.
+                    const float response = std::min(1.0f, turnTime > 0
+                        ? std::min(12 * h / 6, h / (turnTime * 6)) : 12 * h / 6);
+                    bodyContact = {target.x + (bodyContact.x - target.x) * response,
+                        target.y + (bodyContact.y - target.y) * response};
+                    const Point resolved = resolve(points[i - 1], bodyContact, true);
                     if (resolved.y < target.y - 0.0001f) {
                         // Inelastic floor contact with tangential friction; a turn cannot
                         // instantly drag the entire resting tail to the opposite side.
@@ -145,21 +153,14 @@ struct HairFloorPhysics {
                 const float limit = elasticLink * 1.15f;
                 if (distance <= limit) continue;
                 const Point target{parent.x + dx * limit / distance, parent.y + dy * limit / distance};
-                // Sweep against the body as well here. Sideways body ejection can
-                // exceed the cap at a shoulder; sliding on its top stays connected.
-                const auto result = stretchContacts.resolve({parent.x - scene.root.x, parent.y - scene.root.y},
-                    {target.x - scene.root.x, target.y - scene.root.y}, true, width * 0.5f, 0.5f);
-                points[i] = {result.x + scene.root.x, result.y + scene.root.y};
-                const float resolvedX = points[i].x - parent.x, resolvedY = points[i].y - parent.y;
-                if (resolvedX * resolvedX + resolvedY * resolvedY > (limit + 0.002f) * (limit + 0.002f)) {
-                    // A wide attachment may begin inside its cosmetic head collider.
-                    // Let these links leave the head without tearing; world contacts
-                    // still take precedence so the strand cannot cross a wall/floor.
-                    points[i] = resolve(parent, target, true);
-                }
+                // Body contacts above are cosmetic and gradual. Projecting a
+                // root inside a turning head as if it were a solid world tile
+                // can teleport every link. Keep the hard cap and world sweep.
+                points[i] = resolve(parent, target, true);
                 // Do not turn a large positional repair into next-frame velocity.
                 previous[i] = points[i];
             }
+            turnTime = std::max(0.0f, turnTime - h);
         }
         points[0] = root;
     }

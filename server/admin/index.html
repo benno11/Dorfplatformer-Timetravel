@@ -54,7 +54,7 @@
             <p class="muted">Ratings require a moderator account. You can assign the role in the Players panel.</p>
             <form id="moderatorForm"><label for="moderatorEmail">Moderator email</label><input id="moderatorEmail" type="email" autocomplete="username" required><label for="moderatorPassword">Password</label><input id="moderatorPassword" type="password" autocomplete="current-password" required><button type="submit">Sign in for ratings</button></form>
             <p id="moderatorStatus">Not signed in as a moderator.</p>
-            <label for="difficulty">Difficulty (1 easiest, 9 hardest)</label><select id="difficulty"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option></select><button id="rateLevel">Save difficulty</button>
+            <label for="difficulty">Difficulty (Unrated, or 1 easiest to 9 hardest)</label><select id="difficulty"><option value="0">Unrated</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option></select><button id="rateLevel">Save difficulty</button>
             <h3>Remove level</h3><label for="deleteReason">Deletion reason</label><textarea id="deleteReason" rows="2" maxlength="500"></textarea><button id="deleteLevel" class="danger">Delete shared level</button>
           </div>
         </section>
@@ -77,6 +77,36 @@
         <label for="versionReason">Reason (shown to blocked clients)</label><textarea id="versionReason" maxlength="500" rows="2"></textarea>
         <div class="actions"><button id="blockVersion" class="danger">Block version</button><button id="unblockVersion">Unblock version</button></div>
         <div class="table-scroll"><table><thead><tr><th>Blocked build</th><th>Reason</th><th>Since</th></tr></thead><tbody id="blockedVersions"></tbody></table></div>
+      </section>
+      <section class="card">
+        <h2>Server updater configuration</h2>
+        <p>Configure the fixed update command moderators can run from the game. Saved settings apply immediately and survive server restarts.</p>
+        <div class="columns">
+          <div>
+            <label for="updaterEnabled">Moderator-triggered updates</label>
+            <select id="updaterEnabled"><option value="disabled">Disabled</option><option value="enabled">Enabled</option></select>
+            <label for="updaterExecutable">Executable or interpreter</label>
+            <input id="updaterExecutable" placeholder="/usr/bin/bash or C:\Python\python.exe" autocomplete="off" spellcheck="false">
+            <label for="updaterArguments">Arguments (one per line)</label>
+            <textarea id="updaterArguments" rows="5" spellcheck="false" placeholder="/srv/game/update-server.sh"></textarea>
+            <p class="muted">Paths with spaces need no quotes. Each line is one literal argument. For several commands, use a script and select its interpreter.</p>
+            <label for="updaterCwd">Working directory</label>
+            <input id="updaterCwd" autocomplete="off" spellcheck="false" placeholder="/srv/game">
+            <label for="updaterTimeout">Command timeout (seconds)</label>
+            <input id="updaterTimeout" type="number" min="1" max="86400" step="1" value="900">
+          </div>
+          <div>
+            <h3>Game client updates</h3>
+            <label for="updaterManifest">Update manifest URL</label>
+            <input id="updaterManifest" type="url" autocomplete="off" spellcheck="false" placeholder="https://example.com/update-manifest.json">
+            <p class="muted">Leave empty to serve update-manifest.json from the server's releases directory. This source is independent of the server update command.</p>
+            <h3>Command preview</h3><pre id="updaterPreview" class="command-preview"></pre>
+            <p id="updaterStatus" role="status" aria-live="polite">Load settings to configure updates.</p>
+            <h3>Latest update activity</h3><p id="updaterLastRun">No update has been requested.</p>
+          </div>
+        </div>
+        <div class="actions"><button id="reloadUpdater">Reload settings / activity</button><button id="validateUpdater">Validate without running</button><button id="saveUpdater" class="primary">Save updater settings</button></div>
+        <p class="muted">Saving and validation do not run an update. A running update keeps the settings it started with; changes apply to the next run.</p>
       </section>
       <section class="card"><h2>Recent moderation history</h2><p class="muted">Last 50 actions. Operator actions and moderator ratings are recorded.</p><div class="table-scroll"><table><thead><tr><th>Time</th><th>Action</th><th>Target</th><th>Reason</th><th>Actor</th></tr></thead><tbody id="events"></tbody></table></div></section>
     </div>
