@@ -1984,7 +1984,7 @@ int RunGameApp(int argc, char** argv) {
                 SDL_Log("Initialized client settings from placeholder: %s", placeholderPath.c_str());
             }
         }
-        showExperimentalFeatures = false;
+        //showExperimentalFeatures = false;
         saveClientSettings();
     }
 #if PLATFORMER_MOBILE
