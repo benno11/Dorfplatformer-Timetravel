@@ -6,8 +6,8 @@
       "ui_scale_percent": 100
     },
     "ui": {
-      "show_optional_sidebar": true,
-      "edge_padding": 0,
+      "show_optional_sidebar": false,
+      "edge_padding": 12,
       "native_text_resolution": true
     },
     "camera": {
@@ -24,8 +24,8 @@
     "audio": {
       "menu_music_enabled": true,
       "mute_all_audio": false,
-      "music_volume": 96,
-      "sfx_volume": 96
+      "music_volume": 67,
+      "sfx_volume": 50
     },
     "controls": {
       "move_left": 4,
@@ -36,7 +36,7 @@
     },
     "gameplay": {
       "power_management": true,
-      "low_power_mode": false,
+      "low_power_mode": true,
       "debug_mode_enabled": false
     },
     "network": {

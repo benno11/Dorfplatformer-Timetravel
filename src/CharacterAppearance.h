@@ -117,6 +117,7 @@ inline const std::array<Preset, 6> placeholderCharacters{{
     {"runner", "Runner", {true, 2, 0, 1, 2, 0, 0, 1}},
     {"mechanic", "Mechanic", {true, 4, 0, 0, 3, 7, 2, 6}},
     {"ranger", "Ranger", {true, 1, 3, 2, 5, 0, 0, 4}},
+    {"template", "Example", {true, 1, 2, 3, 4, 5, 6, 7}},
     {"royal", "Royal", {true, 5, 1, 2, 8, 0, 3, 4}},
     {"frost", "Frost", {true, 3, 1, 3, 6, 7, 2, 1}}
 }};

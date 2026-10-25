@@ -243,7 +243,12 @@ struct HairPhysics {
                 const float exposure = 0.3f + along * 0.7f;
                 const float drag = std::exp(-(10 - along * 2) * h / (springiness * std::sqrt(mass)));
                 const float airflow = airDrag(vx, exposure, mass);
-                const float fx = (-ax * 0.004f + airflow) * springiness - current.x * (4 + (1 - along) * 8 * stiffness);
+                // Short locks have little leverage, so the old force balance left
+                // even a 20-pixel strand moving by less than one screen pixel.
+                // Preserve their length-dependent bend while making running and
+                // sudden direction changes visibly carry through to the tips.
+                const float fx = (-ax * 0.012f + airflow * 2.5f) * springiness -
+                    current.x * (2 + (1 - along) * 5 * stiffness);
                 const float fy = 65 - verticalAy * 0.006f * exposure + airDrag(movementVy, exposure, mass) * springiness +
                     (i * elasticSpacing - current.y) * 18;
                 const auto pull = mouse.force(i, current, previous[i], h);

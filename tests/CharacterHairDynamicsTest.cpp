@@ -142,6 +142,17 @@ int main() {
     HairPhysics::Profile singleProfile{1, 1, 1};
     singlePixel.update(1.0f / 60, 0, 0, 1, nullptr, &singleProfile);
     assert(std::fabs(singlePixel.restSpacing * (HairPhysics::jointCount - 1) - 1) < 0.0001f);
+    // Ordinary-length locks must visibly trail at running speed. Previously the
+    // fixed lateral cap and weak airflow left a 20-pixel lock moving by about
+    // half a pixel, making every length below the floor-rope cutoff look rigid.
+    for (float length : {1.0f, 4.0f, 10.0f, 20.0f}) {
+        HairPhysics movingHair;
+        HairPhysics::Profile profile{length, 1, 1};
+        movingHair.update(1.0f / 60, 0, 0, 1, nullptr, &profile);
+        for (int frame = 0; frame < 30; ++frame)
+            movingHair.update(1.0f / 60, 500, 0, 1, nullptr, &profile);
+        assert(movingHair.offset(length).x < -std::min(1.0f, length * 0.2f));
+    }
     // Uncapping must not replace short-hair physics with the floor rope. Include
     // wide locks, jumps, turns, and shrinking a previously floor-length strand.
     for (int length : {0, 1, 2, 3, 4, 6, normalHairLengthLimit}) for (int width : {1, 4}) {
