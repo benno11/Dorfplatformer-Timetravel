@@ -2,5 +2,4 @@
 title "Extra Settings"
 text "More legacy categories unlock through experimental features."
 button "Anonymous Metrics: ${send_anonymous_metrics}" toggle send_anonymous_metrics
-button "Experimental Features: ${show_experimental_features}" toggle show_experimental_features
 button "Back" menu mainsetting
