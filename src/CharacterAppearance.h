@@ -112,7 +112,7 @@ struct Preset {
     const char* name;
     Appearance appearance;
 };
-inline const std::array<Preset, 6> placeholderCharacters{{
+inline const std::array<Preset, 7> placeholderCharacters{{
     {"explorer", "Explorer", {true, 0, 0, 0, 7, 0, 1, 4}},
     {"runner", "Runner", {true, 2, 0, 1, 2, 0, 0, 1}},
     {"mechanic", "Mechanic", {true, 4, 0, 0, 3, 7, 2, 6}},
