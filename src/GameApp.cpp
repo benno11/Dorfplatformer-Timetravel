@@ -7366,7 +7366,8 @@ int RunGameApp(int argc, char** argv) {
                 const CharacterCreator::HairPhysics::Box hairPlayer{player.x, player.y + player.h - hairHeight, (float)player.w, hairHeight};
                 auto hairScene = CharacterCreator::hairBodyCollisions(characterAppearance, player.facing, hairSliding);
                 const float floorHairReach = characterAppearance.uncapHairLength && characterAppearance.hairStyle == CharacterCreator::customPartsHairStyle ?
-                    std::min((float)kGameplayViewW, (float)std::max(characterAppearance.hairShape[1], characterAppearance.hairShape[2]) * player.w / 16) : 0;
+                    std::min((float)kGameplayViewW, (float)std::max({characterAppearance.hairShape[1],
+                        characterAppearance.hairShape[2], characterAppearance.hairShape[5]}) * player.w / 16) : 0;
                 CharacterCreator::addHairTileCollisions(hairScene, map, hairPlayer, (float)kGameplayViewH, gameplayWrapX, gameplayWrapY, floorHairReach);
                 for (int index = 0; index < (int)objects.size(); ++index) {
                     if (objectIds[index] != ObjectIds::MovingPlatform) continue;

@@ -24,13 +24,13 @@ inline constexpr std::array<Color, 10> colors{{
 inline constexpr std::array<const char*, 6> hairStyles{{"Short", "Spiky", "Long", "Shaved", "Imported Image", "Custom Parts"}};
 inline constexpr int customHairStyle = 4;
 inline constexpr int customPartsHairStyle = 5;
-inline constexpr std::array<const char*, 5> hairShapeIds{{"top", "fringe", "length", "width", "spikes"}};
-inline constexpr std::array<const char*, 5> hairShapeNames{{"Top Thickness", "Fringe Length", "Back Length", "Back Width", "Spike Height"}};
+inline constexpr std::array<const char*, 6> hairShapeIds{{"top", "fringe", "length", "width", "spikes", "side_length"}};
+inline constexpr std::array<const char*, 6> hairShapeNames{{"Top Thickness", "Fringe Length", "Back Length", "Back Width", "Spike Height", "Side Length"}};
 inline constexpr int normalHairLengthLimit = 20;
 inline constexpr int overrideHairLengthLimit = 10000;
-inline constexpr std::array<int, 5> hairShapeMaximum{{5, normalHairLengthLimit, normalHairLengthLimit, 4, 3}};
-inline constexpr std::array<int, 5> defaultHairShape{{3, 3, 0, 2, 0}};
-inline bool isHairLength(int i) { return i == 1 || i == 2; }
+inline constexpr std::array<int, 6> hairShapeMaximum{{5, normalHairLengthLimit, normalHairLengthLimit, 4, 3, normalHairLengthLimit}};
+inline constexpr std::array<int, 6> defaultHairShape{{3, 3, 0, 2, 0, 0}};
+inline bool isHairLength(int i) { return i == 1 || i == 2 || i == 5; }
 inline int hairShapeLimit(int i, bool uncapped) {
     return uncapped && isHairLength(i) ? overrideHairLengthLimit : hairShapeMaximum[i];
 }
@@ -80,7 +80,7 @@ struct Appearance {
     int gravity = 2;
     SpriteLayers sprites;
     std::string hairPixels;
-    std::array<int, 5> hairShape = defaultHairShape;
+    std::array<int, 6> hairShape = defaultHairShape;
     bool uncapHairLength = false;
 
     void normalize() {
@@ -112,11 +112,17 @@ struct Preset {
     const char* name;
     Appearance appearance;
 };
+inline Appearance rangerPresetAppearance() {
+    Appearance appearance{true, 1, 3, customPartsHairStyle, 5, 0, 0, 4};
+    appearance.hairShape[2] = 17;
+    appearance.hairShape[5] = 16;
+    return appearance;
+}
 inline const std::array<Preset, 7> placeholderCharacters{{
     {"explorer", "Explorer", {true, 0, 0, 0, 7, 0, 1, 4}},
     {"runner", "Runner", {true, 2, 0, 1, 2, 0, 0, 1}},
     {"mechanic", "Mechanic", {true, 4, 0, 0, 3, 7, 2, 6}},
-    {"ranger", "Ranger", {true, 1, 3, 2, 5, 0, 0, 4}},
+    {"ranger", "Ranger", rangerPresetAppearance()},
     {"template", "Example", {true, 1, 2, 3, 4, 5, 6, 7}},
     {"royal", "Royal", {true, 5, 1, 2, 8, 0, 3, 4}},
     {"frost", "Frost", {true, 3, 1, 3, 6, 7, 2, 1}}

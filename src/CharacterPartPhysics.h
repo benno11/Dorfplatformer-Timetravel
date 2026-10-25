@@ -34,8 +34,9 @@ struct PartPhysics {
     PartSpring headX, headY, hair, hatX, hatY, arms, legs;
     HairPhysics builtInHair;
     HairPhysics fringeHair;
+    HairPhysics sideHair;
     HairPhysics::CollisionScene hairCollisions;
-    std::array<HairFloorPhysics, 2> floorHair;
+    std::array<HairFloorPhysics, 3> floorHair;
     float floorTrailDirection = 0;
     float gait = 0.0f;
     float previousVx = 0.0f, previousVy = 0.0f;
@@ -105,7 +106,7 @@ struct PartPhysics {
         hairCollisions = collisions ? *collisions : HairPhysics::CollisionScene{};
         hairCollisions.root.x += headX.position * direction;
         hairCollisions.root.y += headY.position * 1.3f;
-        HairPhysics::Profile backProfile, fringeProfile;
+        HairPhysics::Profile backProfile, fringeProfile, sideProfile;
         if (appearance) {
             const int style = appearance->hairStyle;
             backProfile.length = style == customPartsHairStyle ? (float)appearance->hairShape[2] :
@@ -115,6 +116,8 @@ struct PartPhysics {
             fringeProfile = backProfile;
             fringeProfile.length = style == customPartsHairStyle ? (float)appearance->hairShape[1] : 3;
             fringeProfile.stiffness *= 1.15f;
+            sideProfile = backProfile;
+            sideProfile.length = style == customPartsHairStyle ? (float)appearance->hairShape[5] : 1;
         }
         // The attachment's bounce contributes to inertia in world directions.
         const float hairVx = vx + (appearance ? headX.velocity * direction * 8 : 0);
@@ -125,6 +128,12 @@ struct PartPhysics {
         if (appearance && appearance->hairStyle == customPartsHairStyle)
             fringeCollisions.root.y += appearance->hairShape[0] - 3;
         fringeHair.update(dt, hairVx, hairVy, springiness, &fringeCollisions, appearance ? &fringeProfile : nullptr, vy, turnTime);
+        auto sideCollisions = hairCollisions;
+        if (appearance && appearance->hairStyle == customPartsHairStyle) {
+            const float scale = appearance->build == 0 ? 0.88f : (appearance->build == 2 ? 1.08f : 1.0f);
+            sideCollisions.root.x += (10 - appearance->hairShape[3]) * scale * direction;
+        }
+        sideHair.update(dt, hairVx, hairVy, springiness, &sideCollisions, appearance ? &sideProfile : nullptr, vy, turnTime);
         hairTurnTime = std::max(0.0f, hairTurnTime - dt);
         if (floorTrailDirection == 0) floorTrailDirection = -direction;
         if (std::fabs(vx) > 20) floorTrailDirection = vx > 0 ? -1.0f : 1.0f;
@@ -135,21 +144,23 @@ struct PartPhysics {
             const float head = 3 + headY.position * 1.3f;
             const HairPhysics::Point airflow{hairVx / (hairCollisions.hasWorldTransform ? hairCollisions.worldScale.x : 16),
                 vy / (hairCollisions.hasWorldTransform ? hairCollisions.worldScale.y : 28)};
-            for (int strand = 0; strand < 2; ++strand) {
-                // The back lock sits one pixel inward to cover the side of the
-                // head; keep its persistent attachment aligned with rendering.
-                float rootX = 8 + ((strand == 1 ? 4 : 3) + lean - 8) * scale + width * 0.5f;
+            for (int strand = 0; strand < 3; ++strand) {
+                // Keep each persistent attachment aligned with its rendered lock:
+                // fringe and back on the trailing edge, side hair by the face.
+                const float rootLeft = strand == 0 ? 3.0f :
+                    (strand == 1 ? 4.0f : 13.0f - appearance->hairShape[3]);
+                float rootX = 8 + (rootLeft + lean - 8) * scale + width * 0.5f;
                 if (facing < 0) rootX = 16 - rootX;
                 // Uncapping changes the allowed length, not short-hair dynamics.
                 // The floor rope's body ejection can pin a short lock inside the
                 // head. Ordinary lengths already use the regular strand solver.
-                const int length = appearance->hairShape[strand + 1];
+                const int length = appearance->hairShape[strand == 2 ? 5 : strand + 1];
                 if (length <= normalHairLengthLimit) {
                     floorHair[strand] = {};
                     continue;
                 }
                 const float startY = head + (strand == 0 ? appearance->hairShape[0] : 3) + 0.5f;
-                const auto& source = strand == 0 ? fringeHair : builtInHair;
+                const auto& source = strand == 0 ? fringeHair : (strand == 1 ? builtInHair : sideHair);
                 const float verticalStrain = source.stretch / (source.restSpacing * (HairPhysics::jointCount - 1));
                 float attachmentX = rootX;
                 if (turnTime > 0 && floorHair[strand].initialized) {

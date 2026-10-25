@@ -31,7 +31,8 @@ inline bool importCharacter(const std::string& text, Appearance& appearance) {
     const bool uncappedHair = character.value("uncap_hair_length", false);
     if (character.contains("hair_shape")) {
         const auto& shape = character["hair_shape"];
-        if (!shape.is_array() || shape.size() != hairShapeIds.size()) return false;
+        // Five-value files predate the independently configurable side strand.
+        if (!shape.is_array() || (shape.size() != 5 && shape.size() != hairShapeIds.size())) return false;
         for (int i = 0; i < (int)shape.size(); ++i)
             if (!shape[i].is_number_integer() || shape[i] < (i == 3 ? 1 : 0) || shape[i] > hairShapeLimit(i, uncappedHair)) return false;
     }

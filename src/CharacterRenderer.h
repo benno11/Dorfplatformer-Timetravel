@@ -20,18 +20,20 @@ inline SDL_FRect visualBounds(Appearance a, const SDL_FRect& dst, Pose pose = Po
     double bottom = 28;
     if (a.hairShape[1] > 0) bottom = std::max(bottom, (double)headY + a.hairShape[0] + a.hairShape[1]);
     if (a.hairShape[2] > 0) bottom = std::max(bottom, (double)headY + 3 + a.hairShape[2]);
+    if (a.hairShape[5] > 0) bottom = std::max(bottom, (double)headY + 3 + a.hairShape[5]);
     float verticalMotion = 0;
     if (physics) {
         for (int i = 0; i < HairPhysics::jointCount; ++i) {
             verticalMotion = std::max(verticalMotion, physics->builtInHair.joints[i].y - i * physics->builtInHair.restSpacing);
             verticalMotion = std::max(verticalMotion, physics->fringeHair.joints[i].y - i * physics->fringeHair.restSpacing);
+            verticalMotion = std::max(verticalMotion, physics->sideHair.joints[i].y - i * physics->sideHair.restSpacing);
         }
     }
-    if (a.hairShape[1] > 0 || a.hairShape[2] > 0) bottom += verticalMotion + 1;
+    if (a.hairShape[1] > 0 || a.hairShape[2] > 0 || a.hairShape[5] > 0) bottom += verticalMotion + 1;
     float spread = 0;
     if (physics && !physics->hairCollisions.boxes.empty()) {
         const float scale = a.build == 0 ? 0.88f : (a.build == 2 ? 1.08f : 1.0f);
-        spread = (float)((double)std::max(a.hairShape[1], a.hairShape[2]) + HairPhysics::reach) * scale * dst.w / 16;
+        spread = (float)((double)std::max({a.hairShape[1], a.hairShape[2], a.hairShape[5]}) + HairPhysics::reach) * scale * dst.w / 16;
     }
     float left = dst.x - spread, right = dst.x + dst.w + spread;
     float top = 0;
@@ -210,8 +212,8 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& destination
         };
         auto hairStrand = [&](float x, float y, int width, int length, float rootDistance = 0.0f, int strandIndex = -1, bool backStrand = false) {
             auto strandOffset = [&](float distance) {
-                if (!physics || strandIndex != 0) return hairOffset(distance);
-                auto offset = physics->fringeHair.offset(distance);
+                if (!physics || strandIndex == 1 || strandIndex < 0) return hairOffset(distance);
+                auto offset = strandIndex == 0 ? physics->fringeHair.offset(distance) : physics->sideHair.offset(distance);
                 offset.x *= facing < 0 ? -1.0f : 1.0f;
                 return offset;
             };
@@ -301,6 +303,7 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& destination
             block(3 + lean, headY, 10, a.hairShape[0], hair, Part::Hair);
             hairStrand(3 + lean, headY + a.hairShape[0], a.hairShape[3], a.hairShape[1], 0, 0);
             hairStrand(4 + lean, headY + 3, a.hairShape[3], a.hairShape[2], 0, 1, true);
+            hairStrand(13 - a.hairShape[3] + lean, headY + 3, a.hairShape[3], a.hairShape[5], 0, 2, true);
             if (a.hairShape[4]) {
                 const auto offset = hairOffset((float)a.hairShape[4]);
                 block(4 + lean + offset.x, headY - a.hairShape[4] + offset.y, 2, a.hairShape[4] + 1, hair, Part::Hair);

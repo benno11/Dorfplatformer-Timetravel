@@ -87,6 +87,24 @@ int main() {
         mouse.update(parts, a, Pose::Idle, 1, pointer, true);
         assert(!mouse.dragging() && parts.floorHair[1].mouse.joint == -1);
     }
+    // Side hair has an independent solver and floor rope, so changing its
+    // length does not inherit or truncate the back-hair simulation.
+    {
+        Appearance a;
+        a.hairStyle = customPartsHairStyle;
+        a.uncapHairLength = true;
+        a.hairShape = {{3, 0, 40, 2, 0, 60}};
+        PartPhysics parts;
+        for (int frame = 0; frame < 60; ++frame)
+            parts.update(1.0f / 60, 300, 0, true, false, 1, 1, nullptr, &a);
+        assert(parts.floorHair[1].initialized && parts.floorHair[1].length == 40);
+        assert(parts.floorHair[2].initialized && parts.floorHair[2].length == 60);
+        a.uncapHairLength = false;
+        a.hairShape[2] = 10;
+        a.hairShape[5] = 5;
+        parts.update(1.0f / 60, 300, 0, true, false, 1, 1, nullptr, &a);
+        assert(parts.sideHair.restSpacing != parts.builtInHair.restSpacing);
+    }
     // Facing changes must not reverse world-space spring momentum or mirror
     // the particle chains. Compare a turn with continuing at the same speed.
     for (int initialFacing : {1, -1}) {

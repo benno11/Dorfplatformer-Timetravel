@@ -42,6 +42,8 @@ int main(int argc, char** argv) {
         const auto original = save(a);
         assert(change(a, "shirt") && save(a) != original);
     }
+    assert(change(a, "preset:ranger"));
+    assert(a.hairStyle == customPartsHairStyle && a.hairShape[2] == 17 && a.hairShape[5] == 10);
     const auto beforeUnknownPreset = save(a);
     assert(!change(a, "preset:missing") && save(a) == beforeUnknownPreset);
     a = Appearance{};
@@ -332,17 +334,21 @@ int main(int argc, char** argv) {
         assert(hairCopy.hairShape[i] == start);
     }
     assert(!change(hairCopy, "hair_shape:missing"));
-    hairCopy.hairShape = {{5, 6, 10, 4, 3}};
+    hairCopy.hairShape = {{5, 6, 10, 4, 3, 8}};
     Appearance partsTransferred;
     assert(importCharacter(exportCharacter(hairCopy), partsTransferred) && save(partsTransferred) == save(hairCopy));
     const auto beforeInvalidShape = save(partsTransferred);
     for (const auto& invalid : {nlohmann::json(42), nlohmann::json::array({1, 2}),
-        nlohmann::json::array({3, 3, 0, 0, 0}), nlohmann::json::array({3, 3, 21, 2, 0})}) {
+        nlohmann::json::array({3, 3, 0, 0, 0, 0}), nlohmann::json::array({3, 3, 21, 2, 0})}) {
         auto badShape = nlohmann::json::parse(exportCharacter(hairCopy));
         badShape["character"]["hair_shape"] = invalid;
         assert(!importCharacter(badShape.dump(), partsTransferred) && save(partsTransferred) == beforeInvalidShape);
     }
-    assert((load({{"hair_shape", {-10, 99, 99, 0, 99}}}).hairShape == std::array<int, 5>{{0, 20, 20, 1, 3}}));
+    assert((load({{"hair_shape", {-10, 99, 99, 0, 99}}}).hairShape == std::array<int, 6>{{0, 20, 20, 1, 3, 0}}));
+    auto legacyShapeDocument = nlohmann::json::parse(exportCharacter(hairCopy));
+    legacyShapeDocument["character"]["hair_shape"].erase(legacyShapeDocument["character"]["hair_shape"].end() - 1);
+    assert(importCharacter(legacyShapeDocument.dump(), partsTransferred));
+    assert(partsTransferred.hairShape[5] == 0);
     assert(change(hairCopy, "reset_hair_parts") && hairCopy.hairShape == defaultHairShape);
     assert(change(hairCopy, "uncap_hair_length") && hairCopy.uncapHairLength);
     hairCopy.hairShape[1] = 20;
