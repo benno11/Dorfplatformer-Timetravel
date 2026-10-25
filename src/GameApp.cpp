@@ -1906,6 +1906,7 @@ int RunGameApp(int argc, char** argv) {
             if (j.contains("show_experimental_features") && j["show_experimental_features"].is_boolean()) {
                 showExperimentalFeatures = j["show_experimental_features"].get<bool>();
             }
+            showExperimentalFeatures = false;
             if (j.contains("level_select_enabled") && j["level_select_enabled"].is_boolean()) {
                 levelSelectEnabled = j["level_select_enabled"].get<bool>();
             }
