@@ -105,6 +105,21 @@ int main() {
         parts.update(1.0f / 60, 300, 0, true, false, 1, 1, nullptr, &a);
         assert(parts.sideHair.restSpacing != parts.builtInHair.restSpacing);
     }
+    // Gameplay body colliders are authored for the back attachment. The side
+    // strand needs their mirrored head opening or ordinary lengths get thrown
+    // across the skull while the floor-rope path appears unaffected.
+    for (int length : {1, 4, 6, 10, 20}) for (int width : {1, 2, 4}) for (int facing : {1, -1}) {
+        Appearance a;
+        a.hairStyle = customPartsHairStyle;
+        a.hairShape = {{3, 0, 17, width, 0, length}};
+        PartPhysics parts;
+        const auto scene = hairBodyCollisions(a, facing, false);
+        for (int frame = 0; frame < 120; ++frame)
+            parts.update(1.0f / 60, facing * 300.0f, 0, true, false, facing, 1, &scene, &a);
+        const auto tip = parts.sideHair.offset((float)length);
+        assert(std::isfinite(tip.x) && std::isfinite(tip.y));
+        assert(std::fabs(tip.x) < width + 0.5f && std::fabs(tip.y) < 2.0f);
+    }
     // Facing changes must not reverse world-space spring momentum or mirror
     // the particle chains. Compare a turn with continuing at the same speed.
     for (int initialFacing : {1, -1}) {

@@ -132,6 +132,12 @@ struct PartPhysics {
         if (appearance && appearance->hairStyle == customPartsHairStyle) {
             const float scale = appearance->build == 0 ? 0.88f : (appearance->build == 2 ? 1.08f : 1.0f);
             sideCollisions.root.x += (10 - appearance->hairShape[3]) * scale * direction;
+            // Side hair attaches by the face, opposite the back lock. Without
+            // reversing this hint, short strands are ejected through the head
+            // toward the back as soon as gameplay body collisions are enabled.
+            sideCollisions.bodySide = -hairCollisions.bodySide;
+            for (auto& box : sideCollisions.boxes)
+                if (box.body) box.x = 16 - box.x - box.w;
         }
         sideHair.update(dt, hairVx, hairVy, springiness, &sideCollisions, appearance ? &sideProfile : nullptr, vy, turnTime);
         hairTurnTime = std::max(0.0f, hairTurnTime - dt);
