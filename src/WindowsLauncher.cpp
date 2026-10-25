@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -53,21 +54,27 @@ std::wstring quoteWindowsArg(const std::wstring& value) {
 
 std::string wideToUtf8(const std::wstring& text) {
     if (text.empty()) return std::string();
-    const int needed = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, nullptr, 0, nullptr, nullptr);
-    if (needed <= 0) return std::string(text.begin(), text.end());
+    if (text.size() > static_cast<size_t>((std::numeric_limits<int>::max)())) return std::string();
+    const int sourceLength = static_cast<int>(text.size());
+    const int needed = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS,
+        text.data(), sourceLength, nullptr, 0, nullptr, nullptr);
+    if (needed <= 0) return std::string();
     std::string out((size_t)needed, '\0');
-    WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, out.data(), needed, nullptr, nullptr);
-    if (!out.empty() && out.back() == '\0') out.pop_back();
+    if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, text.data(), sourceLength,
+            out.data(), needed, nullptr, nullptr) != needed) return std::string();
     return out;
 }
 
 std::wstring utf8ToWide(const std::string& text) {
     if (text.empty()) return std::wstring();
-    const int needed = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
-    if (needed <= 0) return std::wstring(text.begin(), text.end());
+    if (text.size() > static_cast<size_t>((std::numeric_limits<int>::max)())) return std::wstring();
+    const int sourceLength = static_cast<int>(text.size());
+    const int needed = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
+        text.data(), sourceLength, nullptr, 0);
+    if (needed <= 0) return std::wstring();
     std::wstring out((size_t)needed, L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, out.data(), needed);
-    if (!out.empty() && out.back() == L'\0') out.pop_back();
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), sourceLength,
+            out.data(), needed) != needed) return std::wstring();
     return out;
 }
 
