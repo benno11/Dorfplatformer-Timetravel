@@ -1,0 +1,8 @@
+# DF Slim Menu: general settings
+title "General Settings"
+button "Level Select: ${level_select_enabled}" toggle level_select_enabled
+button "Experimental Features: ${show_experimental_features}" toggle show_experimental_features
+button "Camera Clamp X: ${camera_clamp_x}" toggle camera_clamp_x
+button "Power Management: ${power_management_enabled}" toggle power_management_enabled
+button "Low Power Mode: ${low_power_mode_enabled}" toggle low_power_mode_enabled
+button "Back" menu mainsetting
