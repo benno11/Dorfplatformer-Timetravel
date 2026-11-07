@@ -1,0 +1,2 @@
+todos
+//todo implement a server explorer to replace the acount manager
