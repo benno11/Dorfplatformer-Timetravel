@@ -2327,7 +2327,6 @@ int RunGameApp(int argc, char** argv) {
             SDL_Delay(1);
         }
     };
-    bool reopenUserLevelMenu = false;
     FrontendMenuContext frontendCtx{};
     MigrateLegacyGameProgression(activeSaveSlotIndex);
     GameProgression progression = LoadGameProgression(activeSaveSlotIndex);
@@ -2354,7 +2353,6 @@ int RunGameApp(int argc, char** argv) {
     frontendCtx.defaultShowPlayerHitbox = &defaultShowPlayerHitbox;
     frontendCtx.defaultShowDebugView = &defaultShowDebugView;
     frontendCtx.defaultHideUnknownObjectTypes = &defaultHideUnknownObjectTypes;
-    frontendCtx.debugModeEnabled = &debugModeEnabled;
     frontendCtx.powerManagementEnabled = &powerManagementEnabled;
     frontendCtx.lowPowerModeEnabled = &lowPowerModeEnabled;
     frontendCtx.showExperimentalFeatures = &showExperimentalFeatures;
@@ -2380,9 +2378,7 @@ int RunGameApp(int argc, char** argv) {
     frontendCtx.activeSaveSlotIndex = &activeSaveSlotIndex;
     frontendCtx.extraSettings = extraSettings.data();
     frontendCtx.extraSettingsCount = (int)extraSettings.size();
-    frontendCtx.devToolsEnabled = &effectiveDevToolsEnabled;
     frontendCtx.debuggerAttached = &debuggerAttachedDebugOverride;
-    frontendCtx.showOptionalSidebar = &showOptionalSidebar;
     std::string frontendSelectedLevelPath;
     std::string frontendSelectedLevelName;
     frontendCtx.selectedLevelPath = &frontendSelectedLevelPath;
@@ -2828,29 +2824,16 @@ int RunGameApp(int argc, char** argv) {
         progression = LoadGameProgression(activeSaveSlotIndex);
         std::string selectedLevelPath;
         std::string customLevelName;
-        bool selectedFromCustomLevelMenu = false;
-        if (reopenUserLevelMenu) {
-            selectedLevelPath = RunCustomLevelSelect(win, ren);
-            selectedFromCustomLevelMenu = true;
-            reopenUserLevelMenu = false;
-        } else {
-            frontendSelectedLevelPath.clear();
-            frontendSelectedLevelName.clear();
-            refreshDebuggerDebugOverride();
-            FrontendAction action = runFrontendMenu(frontendCtx);
-            saveClientSettings();
-            if (!running || action == FrontendAction::Quit) break;
+        frontendSelectedLevelPath.clear();
+        frontendSelectedLevelName.clear();
+        refreshDebuggerDebugOverride();
+        FrontendAction action = runFrontendMenu(frontendCtx);
+        saveClientSettings();
+        if (!running || action == FrontendAction::Quit) break;
 
-            selectedLevelPath = frontendSelectedLevelPath;
-            customLevelName = frontendSelectedLevelName;
-            if (selectedLevelPath.empty()) {
-                selectedLevelPath = effectiveDebugModeEnabled() ? RunCampaignLevelSelect(win, ren)
-                                                               : std::string("assets/levels/level_001.txt");
-            }
-        }
-        if (selectedLevelPath.empty()) {
-            continue;
-        }
+        selectedLevelPath = frontendSelectedLevelPath;
+        customLevelName = frontendSelectedLevelName;
+        if (selectedLevelPath.empty()) selectedLevelPath = "assets/levels/level_001.txt";
         if (!loadGameplayAssets()) {
             if (!assetLoadCanceled) reportStartupError("Asset Loading Error", "Could not prepare gameplay assets.", win);
             break;
@@ -9511,7 +9494,6 @@ int RunGameApp(int argc, char** argv) {
         stopReplayRecording(returnToSelect ? "return_to_select" : "level_end");
         audio.unloadLevelMusic();
         // Every way out of a custom level returns to its originating browser.
-        if (selectedFromCustomLevelMenu) reopenUserLevelMenu = true;
         if (returnToSelect) {
             continue;
         }

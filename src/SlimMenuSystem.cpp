@@ -2317,28 +2317,11 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
         if (ctx.selectedLevelName) ctx.selectedLevelName->clear();
         return SlimMenuExit::StartGame;
     }
-    if (command == "campaign") {
-        if (!ctx.selectedLevelPath) return SlimMenuExit::Back;
-        const std::string path = RunCampaignLevelSelect(ctx.win, ctx.ren);
-        if (path.empty()) return SlimMenuExit::Continue;
-        *ctx.selectedLevelPath = path;
-        return SlimMenuExit::StartGame;
-    }
-    if (command == "levels") {
-        if (!ctx.selectedLevelPath) return SlimMenuExit::Back;
-        const std::string path = RunLevelSelect(ctx.win, ctx.ren);
-        runtime.localLevelsLoaded = false;
-        if (path.empty()) return SlimMenuExit::Continue;
-        *ctx.selectedLevelPath = path;
-        return SlimMenuExit::StartGame;
-    }
-    if (command == "custom") {
-        if (!ctx.selectedLevelPath) return SlimMenuExit::Back;
-        const std::string path = RunCustomLevelSelect(ctx.win, ctx.ren);
-        runtime.localLevelsLoaded = false;
-        if (path.empty()) return SlimMenuExit::Continue;
-        *ctx.selectedLevelPath = path;
-        return SlimMenuExit::StartGame;
+    // Keep menu-script commands on the current Slim menu navigation paths.
+    if (command == "campaign" || command == "levels" || command == "custom") {
+        currentMenu = command == "campaign" ? "mainplay" : "mainedit";
+        runtime.vars["__reload_menu"] = "1";
+        return SlimMenuExit::Continue;
     }
     if (command == "create_level") {
         const std::string createdPath = OpenLocalLevelEditorForMenu(ctx.win, ctx.ren, {});

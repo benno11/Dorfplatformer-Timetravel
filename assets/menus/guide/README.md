@@ -35,9 +35,9 @@ Commands:
 - `text "Text"` draws static text. Variables use `${name}`.
 - `button "Label" menu othermenu` opens another `.menu`.
 - `button "Updater" menu settingsupdater` opens the generated updater screen with live status, versions, release notes, progress, and the check/install action. It uses the existing platform updater and disables its action while busy or unavailable.
-- `button "Label" campaign` opens campaign level select.
-- `button "Label" levels` opens the combined level select.
-- `button "Label" custom` opens custom/editor levels.
+- `button "Label" campaign` opens the save selector.
+- `button "Label" levels` opens the Slim level browser.
+- `button "Label" custom` opens the Slim level browser.
 - `button "Label" menu editlevels` opens the editor level browser menu.
 - `button "Label" menu locallevels` opens the generated local-level pages.
 - `button "Label" menu onlinelevels` opens the generated online-level pages.

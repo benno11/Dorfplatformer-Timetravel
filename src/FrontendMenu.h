@@ -42,14 +42,12 @@ struct FrontendMenuContext {
     bool* defaultShowPlayerHitbox = nullptr;
     bool* defaultShowDebugView = nullptr;
     bool* defaultHideUnknownObjectTypes = nullptr;
-    bool* debugModeEnabled = nullptr;
     bool* powerManagementEnabled = nullptr;
     bool* lowPowerModeEnabled = nullptr;
     bool* showExperimentalFeatures = nullptr;
     bool* levelSelectEnabled = nullptr;
     bool* menuMusicEnabled = nullptr;
     bool* muteAllAudio = nullptr;
-    bool* showOptionalSidebar = nullptr;
     bool* nativeTextResolutionEnabled = nullptr;
     bool* waterEffectsEnabled = nullptr;
     SDL_Scancode* keyMoveLeft = nullptr;
@@ -70,7 +68,6 @@ struct FrontendMenuContext {
     int extraSettingsCount = 0;
     std::string* selectedLevelPath = nullptr;
     std::string* selectedLevelName = nullptr;
-    bool* devToolsEnabled = nullptr;
     bool* debuggerAttached = nullptr;
 
     std::function<void()> applyAudioVolumes;
