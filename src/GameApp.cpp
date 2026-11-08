@@ -1,5 +1,9 @@
 #include <SDL3/SDL.h>
 #include <SDL3_image/SDL_image.h>
+#if defined(__ANDROID__)
+#include <SDL3/SDL_system.h>
+#include <jni.h>
+#endif
 #include <charconv>
 #include <vector>
 #include <string>
@@ -134,6 +138,27 @@ static bool isDebuggerAttachedToGameProcess() {
         return true;
     }
     return false;
+}
+#elif defined(__ANDROID__)
+static bool isDebuggerAttachedToGameProcess() {
+    // APK variants can share Release-built native libraries, so NDEBUG does not
+    // identify a debug APK. Read the Java build flag once for this process.
+    static const bool debugBuild = [] {
+        auto* env = static_cast<JNIEnv*>(SDL_GetAndroidJNIEnv());
+        if (!env) return false;
+        jobject activity = static_cast<jobject>(SDL_GetAndroidActivity());
+        if (!activity) return false;
+        jclass activityClass = env->GetObjectClass(activity);
+        jmethodID method = activityClass
+            ? env->GetStaticMethodID(activityClass, "isDebugBuild", "()Z") : nullptr;
+        const bool enabled = method && env->CallStaticBooleanMethod(activityClass, method) == JNI_TRUE;
+        const bool failed = env->ExceptionCheck();
+        if (failed) env->ExceptionClear();
+        if (activityClass) env->DeleteLocalRef(activityClass);
+        env->DeleteLocalRef(activity);
+        return enabled && !failed;
+    }();
+    return debugBuild;
 }
 #else
 static bool isDebuggerAttachedToGameProcess() {

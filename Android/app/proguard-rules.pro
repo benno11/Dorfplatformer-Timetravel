@@ -15,6 +15,7 @@
 
 # Methods looked up explicitly via JNI GetStaticMethodID from native code.
 -keepclassmembers class com.Benno111.dorfplatformertimetravel.MainActivity {
+    public static boolean isDebugBuild();
     public static java.lang.String httpGet(java.lang.String, int);
     public static java.lang.String gameServerSignIn(java.lang.String, java.lang.String, java.lang.String, int);
     public static java.lang.String gameServerLogout(java.lang.String, java.lang.String, int);

@@ -45,6 +45,11 @@ public class MainActivity extends SDLActivity {
     private final View.OnSystemUiVisibilityChangeListener systemUiListener =
             visibility -> applyImmersiveMode();
 
+    // Called by the native game to enable debugger behavior in debug APKs.
+    public static boolean isDebugBuild() {
+        return BuildConfig.DEBUG;
+    }
+
     public static Context getAppContext() {
         final SDLActivity activity = mSingleton;
         return activity != null ? activity.getApplicationContext() : null;
