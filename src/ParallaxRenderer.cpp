@@ -23,6 +23,7 @@ const Frame* FindBgFrameIn(const std::unordered_map<std::string, Frame>& frameBy
 void RenderParallaxBackground(
     SDL_Renderer* ren,
     int currentWorldId,
+    bool wrapY,
     float camX,
     float camY,
     int mapW,
@@ -42,7 +43,7 @@ void RenderParallaxBackground(
     const char* layerMidAltName = nullptr;
     const char* layerFrontName = "front.png";
     const char* layerFrontAltName = nullptr;
-    bool repeatVertically = false;
+    bool repeatVertically = wrapY;
 
     if (currentWorldId == 2 && world2.texture) {
         active = &world2;
@@ -107,8 +108,13 @@ void RenderParallaxBackground(
         const float oxRaw = camX * layer.horizontalFactor;
         const float mapCamSpanY = std::max(1.0f, (float)(mapH * tileSize - worldViewH));
         const float parallaxCamY = mapCamSpanY - camY;
-        const float normalizedY = std::clamp(parallaxCamY / mapCamSpanY, 0.0f, 1.0f);
-        const float oy = normalizedY * ((float)fh * layer.verticalFactor);
+        const float normalizedY = wrapY ? parallaxCamY / mapCamSpanY
+            : std::clamp(parallaxCamY / mapCamSpanY, 0.0f, 1.0f);
+        float oy = normalizedY * ((float)fh * layer.verticalFactor);
+        if (repeatVertically) {
+            oy = std::fmod(oy, (float)fh);
+            if (oy < 0) oy += (float)fh;
+        }
 
         float ox = std::fmod(oxRaw, (float)fw);
         if (ox < 0.0f) ox += (float)fw;

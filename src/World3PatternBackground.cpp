@@ -32,8 +32,8 @@ bool RenderWorld3PatternBackground(
     // across the whole World 3 map instead of drifting as a parallax layer.
     const float bgCamX = camX;
     const float bgCamY = camY;
-    const int bgOffsetX = (int)std::floor(bgCamX) % blockW;
-    const int bgOffsetY = (int)std::floor(bgCamY) % blockH;
+    const int bgOffsetX = ((int)std::floor(bgCamX) % blockW + blockW) % blockW;
+    const int bgOffsetY = ((int)std::floor(bgCamY) % blockH + blockH) % blockH;
     const int worldBaseGX = (int)std::floor(bgCamX / (float)blockW);
     const int worldBaseGY = (int)std::floor(bgCamY / (float)blockH);
 

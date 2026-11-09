@@ -69,6 +69,7 @@
 #include "SignpostRendering.h"
 #include "AsyncAssetLoader.h"
 #include "ParallaxRenderer.h"
+#include "BackgroundCamera.h"
 #include "CrashReporter.h"
 #include "AudioSystem.h"
 #include "InputSystem.h"
@@ -79,6 +80,10 @@
 #include "UpdateManifest.h"
 
 namespace {
+// Bumper and fast-travel triggers sit slightly inside their 32-pixel blocks.
+constexpr float kTriggerHitboxInset = 2.0f;
+constexpr float kTriggerHitboxSize = 32.0f - 2.0f * kTriggerHitboxInset;
+
 static void setEnvCompat(const char* name, const char* value) {
 #if defined(_WIN32)
     _putenv_s(name, value ? value : "");
@@ -3260,6 +3265,7 @@ int RunGameApp(int argc, char** argv) {
         float cameraDisabledBySignpostX = 0.0f;
         float cameraDisabledBySignpostY = 0.0f;
         bool bossEndCameraFreezeEligible = false;
+        BackgroundCamera backgroundCamera;
         float previousCameraX = 0.0f;
         float previousCameraY = 0.0f;
         bool levelCompleteCameraLocked = false;
@@ -3443,6 +3449,7 @@ int RunGameApp(int argc, char** argv) {
             cameraDisabledBySignpostX = 0.0f;
             cameraDisabledBySignpostY = 0.0f;
             bossEndCameraFreezeEligible = false;
+            backgroundCamera.reset();
             previousCameraX = 0.0f;
             previousCameraY = 0.0f;
             endSignCameraLocked = false;
@@ -5606,10 +5613,10 @@ int RunGameApp(int argc, char** argv) {
                     if (fastTravelCooldown > 0.0f) break;
 
                     const auto& obj = objects[objIndex];
-                    const float ox = obj.x - 16.0f;
-                    const float oy = obj.y - 16.0f;
-                    const float ow = 32.0f;
-                    const float oh = 32.0f;
+                    const float ox = obj.x - 16.0f + kTriggerHitboxInset;
+                    const float oy = obj.y - 16.0f + kTriggerHitboxInset;
+                    const float ow = kTriggerHitboxSize;
+                    const float oh = kTriggerHitboxSize;
                     float testOx = ox;
                     float testOy = oy;
                     const bool overlap = overlapPlayerWithWrappedRect(ox, oy, ow, oh, testOx, testOy);
@@ -7260,10 +7267,10 @@ int RunGameApp(int argc, char** argv) {
             for (int objIdx = 0; objIdx < (int)objects.size(); ++objIdx) {
                 const auto& obj = objects[objIdx];
                 if (obj.id != "46") continue;
-                const float bx = obj.x - 16.0f;
-                const float by = obj.y - 16.0f;
-                const float bw = 32.0f;
-                const float bh = 32.0f;
+                const float bx = obj.x - 16.0f + kTriggerHitboxInset;
+                const float by = obj.y - 16.0f + kTriggerHitboxInset;
+                const float bw = kTriggerHitboxSize;
+                const float bh = kTriggerHitboxSize;
                 float testBx = bx;
                 float testBy = by;
                 const bool overlap = overlapPlayerWithWrappedRect(bx, by, bw, bh, testBx, testBy);
@@ -7555,6 +7562,9 @@ int RunGameApp(int argc, char** argv) {
         }
         SDL_RenderClear(ren);
 
+        backgroundCamera.update(camX, camY, (float)(map.w * map.tileSize),
+            (float)(map.h * map.tileSize), renderWrapX, renderWrapY);
+
         // World 3 uses a full-screen block pattern from DF_Blocks (3.1..3.10).
         const bool renderedWorld3PatternBg = (currentWorldId == 3) &&
             RenderWorld3PatternBackground(
@@ -7565,8 +7575,8 @@ int RunGameApp(int argc, char** argv) {
                 map.tileSize,
                 worldViewW,
                 worldViewH,
-                camX,
-                camY
+                backgroundCamera.x,
+                backgroundCamera.y
             );
 
         // World 6 uses an animated full-screen background instead of parallax.
@@ -7582,8 +7592,9 @@ int RunGameApp(int argc, char** argv) {
             RenderParallaxBackground(
                 ren,
                 currentWorldId,
-                camX,
-                camY,
+                renderWrapY,
+                backgroundCamera.x,
+                backgroundCamera.y,
                 map.w,
                 map.h,
                 map.tileSize,
@@ -8062,11 +8073,12 @@ int RunGameApp(int argc, char** argv) {
             if (showHitboxes) {
                 if (isFastTravelChanger) SDL_SetRenderDrawColor(ren, 220, 60, 220, 255);
                 else SDL_SetRenderDrawColor(ren, 255, 150, 60, 255);
+                const float inset = (isBumper || isFastTravelChanger) ? kTriggerHitboxInset : 0.0f;
                 SDL_FRect ehb{
-                    entityBaseX - camX,
-                    entityBaseY - camY,
-                    32.0f,
-                    32.0f
+                    entityBaseX - camX + inset,
+                    entityBaseY - camY + inset,
+                    32.0f - 2.0f * inset,
+                    32.0f - 2.0f * inset
                 };
                 drawVisibleDebugRect(ehb);
                 if (renderWrapY) {
@@ -8628,7 +8640,10 @@ int RunGameApp(int argc, char** argv) {
         SDL_SetRenderTarget(ren, gameTarget);
         BeginNativeTextOverlay(ren, kBaseScreenW, kBaseScreenH, nativeTextPresentDst);
         SDL_Rect worldDst{0, 0, screenW, screenH};
+        // Tint the completed scene in time period 3; HUD and menus stay neutral.
+        if (levelManager.timeId() == 3) SDL_SetTextureColorMod(worldTarget, 255, 210, 200);
         SDL_RenderTexture(ren, worldTarget, nullptr, &worldDst);
+        SDL_SetTextureColorMod(worldTarget, 255, 255, 255);
 
         // HUD: coin/timer/score
         int hudSeconds = levelCompleteActive ? levelCompleteSnapshotSeconds : (int)levelTimerSeconds;
@@ -8937,36 +8952,41 @@ int RunGameApp(int argc, char** argv) {
             }
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
 
-            // Camera bounds (level extents)
+            // World overlays are drawn on the HUD target, after gameplay zoom.
             SDL_SetRenderDrawColor(ren, 40, 200, 140, 255);
             SDL_FRect bounds{
-                -camX,
-                -camY,
-                (float)(map.w * map.tileSize),
-                (float)(map.h * map.tileSize)
+                -camX * kGameplayZoom,
+                -camY * kGameplayZoom,
+                (float)(map.w * map.tileSize) * kGameplayZoom,
+                (float)(map.h * map.tileSize) * kGameplayZoom
             };
             SDL_RenderDrawRectF(ren, &bounds);
 
-            // Tile IDs (debug)
-            SDL_SetRenderDrawColor(ren, 235, 235, 235, 255);
-            for (int y = tileMinY; y <= tileMaxY; y++) {
-                for (int x = tileMinX; x <= tileMaxX; x++) {
-                    int idx = y * map.w + x;
-                    int id = (int)map.tileIds[idx];
-                    int screenX = (int)(x * map.tileSize - camX);
-                    int screenY = (int)(y * map.tileSize - camY);
-                    const std::string idText = std::to_string(id);
-                    int idScale = std::clamp(map.tileSize / 14, 1, 3);
-                    const int fitW = std::max(4, map.tileSize - 4);
-                    const int fitH = std::max(4, map.tileSize - 4);
+            // Keep tile IDs centered on their displayed blocks at every resolution.
+            const float displayedTileSize = map.tileSize * kGameplayZoom;
+            const int fitSize = std::max(1, (int)std::floor(displayedTileSize - 4.0f));
+            const float textMultiplier = std::clamp(GetTextScaleMultiplier(), 0.5f, 2.0f);
+            for (int y = tileMinY; y <= tileMaxY; ++y) {
+                for (int x = tileMinX; x <= tileMaxX; ++x) {
+                    const int mapX = renderWrapX ? (x % map.w + map.w) % map.w : x;
+                    const int mapY = renderWrapY ? (y % map.h + map.h) % map.h : y;
+                    if (mapX < 0 || mapX >= map.w || mapY < 0 || mapY >= map.h) continue;
+                    const float screenX = (x * map.tileSize - camX) * kGameplayZoom;
+                    const float screenY = (y * map.tileSize - camY) * kGameplayZoom;
+                    if (screenX + displayedTileSize <= 0 || screenY + displayedTileSize <= 0 ||
+                        screenX >= screenW || screenY >= screenH) continue;
+                    const std::string idText = std::to_string(map.tileIds[mapY * map.w + mapX]);
+                    int idScale = std::max(1, (int)std::floor(displayedTileSize / (14.0f * textMultiplier)));
+                    auto textHeight = [&]() {
+                        return 10 * std::max(1, (int)std::lround(idScale * textMultiplier));
+                    };
                     while (idScale > 1 &&
-                           (MeasureTextWidth(idScale, idText) > fitW || (10 * idScale) > fitH)) {
+                           (MeasureTextWidth(idScale, idText) > fitSize || textHeight() > fitSize)) {
                         --idScale;
                     }
                     const int textW = MeasureTextWidth(idScale, idText);
-                    const int textH = 10 * idScale;
-                    const int textX = screenX + (map.tileSize - textW) / 2;
-                    const int textY = screenY + (map.tileSize - textH) / 2;
+                    const int textX = (int)std::lround(screenX + (displayedTileSize - textW) * 0.5f);
+                    const int textY = (int)std::lround(screenY + (displayedTileSize - textHeight()) * 0.5f);
                     DrawText(ren, textX, textY, idScale, idText);
                 }
             }

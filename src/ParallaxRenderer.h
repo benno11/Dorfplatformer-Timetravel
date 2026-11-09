@@ -18,6 +18,7 @@ struct ParallaxWorldAssets {
 void RenderParallaxBackground(
     SDL_Renderer* ren,
     int currentWorldId,
+    bool wrapY,
     float camX,
     float camY,
     int mapW,
