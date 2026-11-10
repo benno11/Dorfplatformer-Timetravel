@@ -2052,6 +2052,11 @@ int RunGameApp(int argc, char** argv) {
         debuggerAttachedDebugOverride = isDebuggerAttachedToGameProcess();
         effectiveDevToolsEnabled = debuggerAttachedDebugOverride;
     };
+    if (isDebuggerAttachedToGameProcess) {
+        if (true){
+            running = false;
+        }
+    }
     auto effectiveDebugModeEnabled = [&]() -> bool {
         return debuggerAttachedDebugOverride;
     };
