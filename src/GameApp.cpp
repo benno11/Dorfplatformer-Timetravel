@@ -8641,7 +8641,7 @@ int RunGameApp(int argc, char** argv) {
         BeginNativeTextOverlay(ren, kBaseScreenW, kBaseScreenH, nativeTextPresentDst);
         SDL_Rect worldDst{0, 0, screenW, screenH};
         // Tint the completed scene in time period 3; HUD and menus stay neutral.
-        if (levelManager.timeId() == 3) SDL_SetTextureColorMod(worldTarget, 255, 0, 0);
+        if (levelManager.timeId() == 3) SDL_SetTextureColorMod(worldTarget, 255, 25, 25);
         SDL_RenderTexture(ren, worldTarget, nullptr, &worldDst);
         SDL_SetTextureColorMod(worldTarget, 255, 255, 255);
 
