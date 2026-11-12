@@ -16,6 +16,9 @@ int main() {
             const double elapsed = (double)frame / fps;
             require(total <= ScoreSystem::kMaxGainPerSecond * elapsed + 0.001,
                 "Payout exceeded the per-second rate");
+            if (frame % fps == 0)
+                require(total == ScoreSystem::kMaxGainPerSecond * (frame / fps),
+                    "Every complete second must award exactly 1200 points");
         }
         require(total >= ScoreSystem::kMaxGainPerSecond * 10 - 1,
             "Fractional credit was lost at high frame rates");
@@ -49,6 +52,8 @@ int main() {
             const double elapsed = (double)frame / fps;
             const double expected = std::min(10000.0, 1200 * elapsed);
             require(std::fabs(paid - expected) <= 1.001, "Tally must advance at a constant real-time rate");
+            if (frame % fps == 0 && pending > 0)
+                require(paid == 1200 * (frame / fps), "Animated payout must award exactly 1200 per second");
             if (payout.playSound) {
                 require(payout.points > 0, "Silent frames must not trigger tally sounds");
                 require(lastTick < 0 || elapsed - lastTick >= 0.08 - 0.001,

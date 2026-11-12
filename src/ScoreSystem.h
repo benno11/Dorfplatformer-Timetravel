@@ -14,8 +14,10 @@ public:
     int budget(double seconds) {
         if (!std::isfinite(seconds) || seconds <= 0) return 0;
         const double credit = fractional + std::min(seconds, 1.0) * kMaxGainPerSecond;
-        const int points = (int)std::floor(credit);
-        fractional = credit - points;
+        // Treat tiny floating-point errors at an integer boundary as exact,
+        // so e.g. 144 frames still pay precisely 1200 points in one second.
+        const int points = (int)std::floor(credit + 1e-9);
+        fractional = std::max(0.0, credit - points);
         return points;
     }
     void reset() { fractional = 0; }
