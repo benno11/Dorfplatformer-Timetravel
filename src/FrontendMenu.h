@@ -76,6 +76,7 @@ struct FrontendMenuContext {
     std::function<void()> applyMenuMusicToggle;
     std::function<void()> updateDynamicResolution;
     std::function<void()> saveClientSettings;
+    std::function<void(int, int)> drawNotifications;
     std::function<bool()> launchUpdater;
     std::function<std::string()> getUpdaterStatusText;
     std::function<std::string()> getUpdaterStatusDetail;

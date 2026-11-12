@@ -2109,6 +2109,7 @@ void presentMenuFrame(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenu
     const SDL_Rect dst = computePresentRect(outputW, outputH, ctx.baseScreenW, ctx.baseScreenH);
     BeginNativeTextOverlay(ctx.ren, ctx.baseScreenW, ctx.baseScreenH, dst);
     renderMenu(menu, runtime, ctx, selected, prepared ? *prepared : computed);
+    if (ctx.drawNotifications) ctx.drawNotifications(ctx.baseScreenW, ctx.baseScreenH);
     SDL_SetRenderTarget(ctx.ren, nullptr);
     SDL_SetRenderViewport(ctx.ren, nullptr);
     SDL_SetRenderClipRect(ctx.ren, nullptr);

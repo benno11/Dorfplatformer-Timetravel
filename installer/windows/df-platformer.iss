@@ -1,7 +1,8 @@
 #ifndef LiteEdition
   #define LiteEdition 0
 #endif
-#if LiteEdition
+; Command-line /D values are strings: even "0" is truthy without conversion.
+#if Int(LiteEdition) == 1
   #define MyAppName "Dorfplatformer Timetravel Lite"
 #else
   #define MyAppName "Dorfplatformer Timetravel"
@@ -23,10 +24,10 @@
 #endif
 
 [Setup]
-#if LiteEdition
+#if Int(LiteEdition) == 1
 SetupIconFile=..\..\assets\icons\lite.ico
 #endif
-#if LiteEdition
+#if Int(LiteEdition) == 1
 AppId={{FD7B2C71-3EF8-4876-9272-5F151BBAD567}
 #else
 AppId={{D1BE0AE1-0D76-4A53-B02D-1CC6C36AB3AB}
@@ -45,7 +46,7 @@ ArchitecturesInstallIn64BitMode={#MyInstallIn64BitMode}
 #endif
 PrivilegesRequired=lowest
 OutputDir=..\..\dist\windows-installer\output
-#if LiteEdition
+#if Int(LiteEdition) == 1
 OutputBaseFilename=df-platformer-windows-installer-lite
 #else
 OutputBaseFilename=df-platformer-windows-installer
@@ -110,7 +111,11 @@ var
 
 function GetExistingSystemUninstallKey(): string;
 begin
+#if Int(LiteEdition) == 1
+  Result := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{FD7B2C71-3EF8-4876-9272-5F151BBAD567}_is1';
+#else
   Result := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{D1BE0AE1-0D76-4A53-B02D-1CC6C36AB3AB}_is1';
+#endif
 end;
 
 function ExtractCommandExe(const CommandLine: string): string;

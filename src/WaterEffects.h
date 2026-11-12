@@ -216,6 +216,8 @@ public:
             snapshotH_ = (int)pixelH;
             if (snapshot_) {
                 SDL_SetTextureBlendMode(snapshot_, SDL_BLENDMODE_NONE);
+                // Dim the refracted scene equally in all RGB channels under water.
+                SDL_SetTextureColorMod(snapshot_, 150, 150, 150);
                 SDL_SetTextureScaleMode(snapshot_, SDL_SCALEMODE_LINEAR);
             }
         }

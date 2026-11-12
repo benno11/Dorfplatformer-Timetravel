@@ -528,6 +528,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx, bool settingsOnly) {
         slim.applyRenderVsync = [&]() { applyRenderVsync(); };
         slim.updateDynamicResolution = ctx.updateDynamicResolution;
         slim.saveClientSettings = ctx.saveClientSettings;
+        slim.drawNotifications = ctx.drawNotifications;
         slim.signIn = [&](const std::string& email, const std::string& password, std::string& error) {
             bool success = false;
             try { success = loginWithGameServer(email, password, error); }
@@ -929,6 +930,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx, bool settingsOnly) {
             DrawText(ctx.ren, fpsBadge.x + fpsPadX, fpsBadge.y + fpsPadY, fpsScale, fpsText);
         }
 
+        if (ctx.drawNotifications) ctx.drawNotifications(ctx.baseScreenW, ctx.baseScreenH);
         SDL_SetRenderTarget(ctx.ren, nullptr);
         SDL_SetRenderDrawColor(ctx.ren, 118, 225, 255, 255); // #76e1ff
         SDL_RenderClear(ctx.ren);

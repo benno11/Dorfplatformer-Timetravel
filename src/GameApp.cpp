@@ -66,6 +66,7 @@
 #include "NetworkTransport.h"
 #include "LevelManager.h"
 #include "GameProgression.h"
+#include "Achievements.h"
 #include "LevelWrap.h"
 #include "LevelParameterObjects.h"
 #include "EditorObjectTools.h"
@@ -1687,9 +1688,11 @@ int RunGameApp(int argc, char** argv) {
         const int slot = std::clamp(slotIndex, 0, kSaveSlotCount - 1);
         return saveGameRootPath / ("save_slot_" + std::to_string(slot + 1) + ".json");
     };
+    Achievements achievements;
     bool serverSwapNoticeShown = false;
     auto saveClientSettings = [&]() {
         nlohmann::json j;
+        j["achievements"] = achievements.save();
         j["custom_character"] = CharacterCreator::save(characterAppearance);
         j["build_uuid"] = buildUuid;
         const bool savedFullscreen = PLATFORMER_MOBILE ? true : fullscreen;
@@ -1824,6 +1827,7 @@ int RunGameApp(int argc, char** argv) {
     };
     {
         auto applyClientSettingsJson = [&](const nlohmann::json& j) {
+            if (j.contains("achievements")) achievements.load(j["achievements"]);
             if (j.contains("custom_character")) characterAppearance = CharacterCreator::load(j["custom_character"]);
             auto parseScancode = [](const nlohmann::json& v, SDL_Scancode fallback) -> SDL_Scancode {
                 if (!v.is_number_integer()) return fallback;
@@ -2382,9 +2386,30 @@ int RunGameApp(int argc, char** argv) {
             SDL_Delay(1);
         }
     };
+    Uint64 lastAchievementDraw = SDL_GetTicksNS();
+    auto drawAchievementToast = [&](int canvasW, int canvasH) {
+        // Draw last in game coordinates so the toast scales with the screen.
+        const Uint64 now = SDL_GetTicksNS();
+        achievements.tick(static_cast<float>(now - lastAchievementDraw) / 1000000000.0f);
+        lastAchievementDraw = now;
+        if (const auto* title = achievements.toast()) {
+            const int toastW = std::min(560, canvasW - 32);
+            SDL_Rect toastRect{canvasW - toastW - 16, canvasH - 104, toastW, 88};
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+            SDL_SetRenderDrawColor(ren, 18, 104, 49, 245);
+            SDL_RenderFillRect(ren, &toastRect);
+            SDL_SetRenderDrawColor(ren, 86, 220, 124, 255);
+            SDL_RenderDrawRect(ren, &toastRect);
+            DrawTextColored(ren, toastRect.x + 18, toastRect.y + 14, 2, "ACHIEVEMENT UNLOCKED", SDL_Color{190, 255, 205, 255});
+            DrawTextColored(ren, toastRect.x + 18, toastRect.y + 46, 3, *title, SDL_Color{255, 255, 255, 255});
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
+        }
+
+    };
     uint64_t modLevelGeneration = 0;
     FrontendMenuContext frontendCtx{};
     frontendCtx.mods = &nativeMods;
+    frontendCtx.drawNotifications = drawAchievementToast;
     MigrateLegacyGameProgression(activeSaveSlotIndex);
     GameProgression progression = LoadGameProgression(activeSaveSlotIndex);
     frontendCtx.progression = &progression;
@@ -3547,6 +3572,17 @@ int RunGameApp(int argc, char** argv) {
             levelCompleteActive = true;
             if (progression.recordCompletion(levelManager.levelPath(), levelManager.worldId(),
                 levelManager.levelPartId(), levelManager.timeId(), hardmodePractice)) SaveGameProgression(progression, activeSaveSlotIndex);
+            if (!hardmodePractice) {
+                bool changed = achievements.unlock("complete_level");
+                if (IsCampaignLevelPath(levelManager.levelPath()) && levelManager.worldId() == 7 &&
+                    levelManager.levelPartId() == 1 && (levelManager.timeId() == 3 || levelManager.timeId() == 4)) {
+                    changed |= achievements.unlock("ending");
+                    if (levelManager.timeId() == 4) changed |= achievements.unlock("good_ending");
+                }
+                if (hardmodeRun && HardmodeLevelFromPath(levelManager.levelPath()) == kHardmodeLevelCount)
+                    changed |= achievements.unlock("beat_hardmode");
+                if (changed) saveClientSettings();
+            }
             if (hardmodeRun && HardmodeLevelFromPath(levelManager.levelPath()) == kHardmodeLevelCount) {
                 ClearHardmodeSnapshot(activeSaveSlotIndex);
             }
@@ -5045,7 +5081,10 @@ int RunGameApp(int argc, char** argv) {
                 if (levelCompleteCoinBonus <= 0 && levelCompleteTimeScore <= 0) {
                     if (!levelCompleteNextPath.empty()) {
                         const int completedWorldId = levelManager.worldId();
+                        const bool campaignCompletion = IsCampaignLevelPath(levelManager.levelPath()) && !hardmodePractice && !hardmodeRun;
                         if (transitionToLevelPath(levelCompleteNextPath)) {
+                            if (campaignCompletion && completedWorldId >= 1 && completedWorldId <= 6 &&
+                                levelManager.worldId() != completedWorldId && achievements.unlock("complete_world")) saveClientSettings();
                             if (Edition::lite || hardmodeRun || levelManager.worldId() != completedWorldId) {
                                 (void)saveGameToDisk();
                             }
@@ -6775,6 +6814,7 @@ int RunGameApp(int argc, char** argv) {
                         bossState.hurtFlash = 0.18f;
                     }
                 if (bossState.health <= 0) {
+                    if (!hardmodePractice && achievements.unlock("beat_boss")) saveClientSettings();
                     bossState.active = false;
                     secretFireballs.clear();
                     secretExplosions.clear();
@@ -7275,7 +7315,9 @@ int RunGameApp(int argc, char** argv) {
             if (collectedNow > 0) {
                 audio.playCoinSfx();
             }
-            levelManager.activateButtonsAtPlayer(map, player, gameplayWrapX, gameplayWrapY);
+            if (levelManager.activateButtonsAtPlayer(map, player, gameplayWrapX, gameplayWrapY) > 0 &&
+                !hardmodePractice && !hardmodeRun && IsCampaignLevelPath(levelManager.levelPath()) &&
+                achievements.button(levelManager.worldId(), levelManager.levelPartId())) saveClientSettings();
             if (timeTravelTriggerCooldown <= 0.0f) {
                 levelManager.updateTimeWarpIdAtPlayer(map, player, gameplayWrapX, gameplayWrapY);
             }
@@ -9351,6 +9393,8 @@ int RunGameApp(int argc, char** argv) {
             }
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
         }
+
+        drawAchievementToast(kBaseScreenW, kBaseScreenH);
 
         SDL_SetRenderTarget(ren, nullptr);
         SDL_SetRenderDrawColor(ren, 118, 225, 255, 255); // #76e1ff

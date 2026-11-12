@@ -79,6 +79,7 @@ struct SlimMenuContext {
     std::function<void()> applyRenderVsync;
     std::function<void()> updateDynamicResolution;
     std::function<void()> saveClientSettings;
+    std::function<void(int, int)> drawNotifications;
     std::function<bool(const std::string&, const std::string&, std::string&)> signIn;
     std::function<std::string()> getUpdaterStatusText;
     std::function<bool()> launchUpdater;
