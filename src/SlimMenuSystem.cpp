@@ -2,6 +2,7 @@
 #include "BuildInfo.h"
 #include "SlimMenuSystem.h"
 #include "SlimMenuLayout.h"
+#include "ButtonAnimation.h"
 #include "DifficultySelector.h"
 
 #include <SDL3/SDL.h>
@@ -120,6 +121,7 @@ void SDLCALL characterFileChosen(void* userdata, const char* const* files, int) 
 }
 
 struct SlimRuntime {
+    ButtonAnimations buttonAnimations;
     AccountMenu::Form accountForm;
     SDL_Window* accountInputWindow = nullptr;
     bool accountComposing = false;
@@ -324,6 +326,7 @@ std::string fallbackText(const std::string& value, const std::string& fallback =
 }
 
 std::string aboutVarValue(const std::string& var, const SlimMenuContext& ctx) {
+    if (var == "about_game_name") return Edition::name;
     if (var == "about_version") return fallbackText(ctx.versionString, "dev");
     if (var == "about_version_id") return fallbackText(ctx.versionIdString, "dev");
     if (var == "about_build_uuid") return fallbackText(ctx.buildUuid);
@@ -356,6 +359,10 @@ std::string aboutVarValue(const std::string& var, const SlimMenuContext& ctx) {
 }
 
 std::string contextVarValue(const std::string& name, const SlimRuntime& runtime, const SlimMenuContext& ctx) {
+    if (name == "clipboard_status") {
+        const auto found = runtime.vars.find(name);
+        return found == runtime.vars.end() ? "Select an information button to copy its value." : found->second;
+    }
     if (name == "account_email") return runtime.accountForm.display(AccountMenu::Field::Email);
     if (name == "account_password") return runtime.accountForm.display(AccountMenu::Field::Password);
     if (name == "account_signed_out" || name == "account_signed_in" || name == "account_needs_repair") {
@@ -413,7 +420,7 @@ bool varIsTruthy(const std::string& name, const SlimRuntime& runtime, const Slim
 
 std::string expandVars(std::string text, const SlimRuntime& runtime, const SlimMenuContext& ctx) {
     if (text.find("${") == std::string::npos) return text;
-    for (const char* name : {"account_email", "account_password"})
+    for (const char* name : {"account_email", "account_password", "about_game_name", "clipboard_status"})
         text = replaceAll(text, "${" + std::string(name) + "}", contextVarValue(name, runtime, ctx));
     for (const char* var : {"world_select_unlocked", "hardmode_unlocked", "hardmode_complete", "hardmode_furthest_level", "hardmode_save_exists"}) {
         const std::string placeholder = "${" + std::string(var) + "}";
@@ -1771,24 +1778,26 @@ SDL_Rect audioSliderTrack(const SDL_Rect& row) {
     return {row.x + inset, row.y + row.h - 24, std::max(1, row.w - 2 * inset), 8};
 }
 
-void renderMenuExit(const SlimRuntime& runtime, const SlimMenuContext& ctx, bool focused) {
+void renderMenuExit(SlimRuntime& runtime, const SlimMenuContext& ctx, bool focused) {
     const bool enabled = !menuNetworkBusy(runtime);
+    const SDL_Rect animatedRect = runtime.buttonAnimations.drawRect(-1, kMenuExitRect, focused,
+        ctx.win, ctx.baseScreenW, ctx.baseScreenH, 1.0f, enabled);
     if (runtime.menuTexture) {
         Uint8 red = 255, green = 255, blue = 255;
         SDL_GetTextureColorMod(runtime.menuTexture, &red, &green, &blue);
         const Uint8 brightness = enabled ? (focused ? 255 : 220) : 100;
         SDL_SetTextureColorMod(runtime.menuTexture, brightness, brightness, brightness);
-        const bool textured = drawMenuSprite(runtime, ctx.ren, "close-window", kMenuExitRect);
+        const bool textured = drawMenuSprite(runtime, ctx.ren, "close-window", animatedRect);
         SDL_SetTextureColorMod(runtime.menuTexture, red, green, blue);
         if (textured) return;
     }
     SDL_SetRenderDrawColor(ctx.ren, enabled ? (focused ? 100 : 55) : 45, enabled ? 80 : 48, enabled ? 100 : 52, 255);
-    SDL_RenderFillRect(ctx.ren, &kMenuExitRect);
+    SDL_RenderFillRect(ctx.ren, &animatedRect);
     SDL_SetRenderDrawColor(ctx.ren, enabled ? 210 : 85, enabled ? 225 : 90, enabled ? 245 : 95, 255);
-    SDL_RenderRect(ctx.ren, &kMenuExitRect);
+    SDL_RenderRect(ctx.ren, &animatedRect);
     const SDL_Color color = enabled ? SDL_Color{255, 255, 255, 255} : SDL_Color{125, 130, 140, 255};
-    DrawTextColored(ctx.ren, kMenuExitRect.x + (kMenuExitRect.w - MeasureTextWidth(2, "X")) / 2,
-        kMenuExitRect.y + 10, 2, "X", color);
+    DrawTextColored(ctx.ren, animatedRect.x + (animatedRect.w - MeasureTextWidth(2, "X")) / 2,
+        animatedRect.y + 10, 2, "X", color);
 }
 
 bool drawDifficultyBadge(SlimRuntime& runtime, SDL_Renderer* ren, const SDL_Rect& rect,
@@ -1844,7 +1853,8 @@ void renderDifficultyPopup(SlimRuntime& runtime, const SlimMenuContext& ctx) {
     for (int i = 0; i < (int)layout.buttons.size(); ++i) {
         const bool chosen = i <= 9 && i == runtime.difficultyChoice;
         const bool focused = i == runtime.difficultyFocus;
-        const auto& rect = layout.buttons[i];
+        const auto rect = runtime.buttonAnimations.drawRect(10000 + i, layout.buttons[i], focused,
+            ctx.win, ctx.baseScreenW, ctx.baseScreenH, 1.0f, !runtime.difficultySaving);
         if (!drawMenuSprite(runtime, ctx.ren, "button_genreaic", rect, 6.0f)) {
             SDL_SetRenderDrawColor(ctx.ren, chosen ? 65 : 48, chosen ? 135 : 73, chosen ? 170 : 98, 255);
             SDL_RenderFillRect(ctx.ren, &rect);
@@ -1963,7 +1973,7 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
     for (size_t index = 0; index < menu.items.size(); ++index) {
         const auto& item = menu.items[index];
         const std::string label = expandVars(item.label, runtime, ctx);
-        const SDL_Rect r = SlimMenuLayout::scrolled(layout.items[index], runtime.scrollY);
+        SDL_Rect r = SlimMenuLayout::scrolled(layout.items[index], runtime.scrollY);
         const bool isSelected = item.type != MenuItem::Type::Text && buttonIndex++ == selected;
         if (r.y + r.h <= layout.body.y || r.y >= layout.body.y + layout.body.h) continue;
         if (item.type == MenuItem::Type::Text) {
@@ -1990,6 +2000,9 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
                      r.y + SlimMenuLayout::offset(r.h - textScale * 10, item.labelVertical), textScale, label);
             continue;
         }
+        r = runtime.buttonAnimations.drawRect((int)index, r, isSelected, ctx.win,
+            ctx.baseScreenW, ctx.baseScreenH, layout.scale, !runtime.difficultyPopupOpen &&
+            !(item.command == "updater" && !runtime.updater.canAct()));
         if (item.type == MenuItem::Type::Slider) {
             const int* volume = audioSliderValue(item, ctx);
             const int value = volume ? std::clamp(*volume, 0, 128) : 0;
@@ -2165,6 +2178,11 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
     const std::string command = item.command;
     const std::string arg = expandVars(item.arg, runtime, ctx);
     if (!Edition::commandAllowed(command, arg)) return SlimMenuExit::Continue;
+    if (command == "copy") {
+        runtime.vars["clipboard_status"] = SDL_SetClipboardText(arg.c_str())
+            ? "Copied to clipboard." : "Could not copy to clipboard. Please try again.";
+        return SlimMenuExit::Continue;
+    }
     if (command == "account_edit") {
         if (arg == "email" || arg == "password")
             startAccountInput(runtime, ctx, arg == "password" ? AccountMenu::Field::Password : AccountMenu::Field::Email);
@@ -2664,6 +2682,7 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
             stopAccountInput(runtime);
             runtime.accountForm.password.clear();
         }
+        runtime.buttonAnimations.clear();
         SlimMenu menu = loadMenu(currentMenu, runtime, ctx);
         if (Edition::lite) {
             menu.items.erase(std::remove_if(menu.items.begin(), menu.items.end(), [](const MenuItem& item) {
@@ -2879,6 +2898,7 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
             };
             auto chooseDifficulty = [&](int option) {
                 if (menuNetworkBusy(runtime)) return;
+                runtime.buttonAnimations.activate(10000 + option);
                 if (option >= 0 && option <= 9) {
                     runtime.difficultyChoice = runtime.difficultyFocus = option;
                     runtime.difficultyStatus.clear();
@@ -3198,6 +3218,7 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                         continue;
                     }
                     if (MenuItem* item = buttonAt(menu, selected)) {
+                        runtime.buttonAnimations.activate(buttonItemIndex(menu, selected));
                         const std::string before = currentMenu;
                         const bool opensEditor = item->command == "create_level" || item->command == "edit_level" ||
                             item->command == "rename_level" || item->command == "resize_level";

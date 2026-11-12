@@ -31,6 +31,7 @@ int main() {
     require(Edition::commandAllowed("toggle", "level_select_enabled") == !Edition::lite, "Lite mode must be forced");
     require(Edition::menuAllowed("future_menu") == !Edition::lite, "Future menus need Lite opt-in");
     require(Edition::commandAllowed("future_command", "") == !Edition::lite, "Future commands need Lite opt-in");
+    require(Edition::commandAllowed("copy", "version"), "About values must be copyable in both editions");
     require(Edition::commandAllowed("toggle", "fullscreen"), "Display settings must remain usable");
     auto progression = LoadGameProgression();
     require(progression.hardmodeUnlocked == Edition::lite, "Lite must retain an active Hardmode flag");

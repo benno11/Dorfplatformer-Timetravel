@@ -39,7 +39,7 @@ int main() {
     require(ScoreSystem::addPoints(score, 1200) == 5 && score == std::numeric_limits<int>::max(),
         "The score must saturate safely without overflow");
     require(ScoreSystem::addPoints(score, 1200) == 0, "Maximum score must remain stable");
-    for (int fps : {10, 15, 30, 60, 144}) {
+    for (int fps : {10, 15, 30, 60, 120, 144, 240}) {
         ScoreSystem::PayoutAnimation animation;
         int pending = 10000, paid = 0, ticks = 0;
         double lastTick = -1;
@@ -68,6 +68,18 @@ int main() {
         require(!animation.advance(1000, 0).playSound && animation.advance(1000, 0).points == 0,
             "Pausing must stop scoring and sounds");
         require(animation.advance(10000, 5).points <= 1200, "Long stalls must respect the one-second burst limit");
+    }
+    // The displayed tally gets one small increment on each monitor refresh.
+    for (int refreshRate : {60, 120, 240}) {
+        ScoreSystem::PayoutAnimation perRefresh;
+        const int pointsPerRefresh = 1200 / refreshRate;
+        int total = 0;
+        for (int frame = 0; frame < refreshRate; ++frame) {
+            const auto payout = perRefresh.advance(100000, 1.0 / refreshRate);
+            require(payout.points == pointsPerRefresh, "Each refresh must get its own small increment");
+            total += payout.points;
+        }
+        require(total == 1200, "Displayed increments must add up to 1200 after one second");
     }
     ScoreSystem::PayoutAnimation variableFrames;
     int variablePaid = 0;

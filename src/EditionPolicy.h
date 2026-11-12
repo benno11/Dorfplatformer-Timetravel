@@ -36,7 +36,7 @@ inline bool commandAllowed(const std::string& command, const std::string& arg) {
     if (command == "inc" || command == "dec")
         return arg == "music_volume" || arg == "sfx_volume" || arg == "ui_scale_percent" || arg == "ui_edge_padding";
     for (const auto* allowed : {"back", "quit", "world", "campaign", "saved", "save_slot", "select_save",
-        "delete_save", "start", "toggle", "bind", "inc", "dec", "updater"})
+        "delete_save", "start", "toggle", "bind", "inc", "dec", "updater", "copy"})
         if (command == allowed) return true;
     return false;
 }

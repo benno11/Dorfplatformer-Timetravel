@@ -27,6 +27,7 @@
 #include "SlimMenuSystem.h"
 #include "TextRenderer.h"
 #include "UiScale.h"
+#include "ButtonAnimation.h"
 
 FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     bool& running = *ctx.running;
@@ -115,6 +116,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     bool closeMenuOpen = false;
     int closeMenuSel = 0;
     int menuSel = -1;
+    ButtonAnimations buttonAnimations;
     Uint64 inputBlockUntilTicks = 0;
     auto blockMenuInput = [&]() { inputBlockUntilTicks = SDL_GetTicks() + 250; };
     auto sanitizeAccountUsername = [](const std::string& in) -> std::string {
@@ -655,7 +657,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     if (SDL_PointInRect(&point, &rect)) { menuSel = i; accept = true; break; }
                 }
             }
-            if (accept && mainMenuSelectionAction(std::clamp(menuSel, 0, count - 1))) return FrontendAction::StartGame;
+            if (accept) {
+                buttonAnimations.activate(std::clamp(menuSel, 0, count - 1));
+                if (mainMenuSelectionAction(std::clamp(menuSel, 0, count - 1))) return FrontendAction::StartGame;
+            }
             if (!running) break;
         }
         if (!running) break;
@@ -762,6 +767,9 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 menuBtns[1] = mainMenuBtnRect(1);
                 menubuttoncount = 2;
             }
+            for (int i = 0; i < menubuttoncount; ++i)
+                menuBtns[i] = buttonAnimations.drawRect(i, menuBtns[i], i == menuSel, ctx.win,
+                    ctx.baseScreenW, ctx.baseScreenH);
             if (btnSpriteTex && btnSprite) {
                 for (int i = 0; i < menubuttoncount; ++i) {
                     if (btnSpriteIsGeneric) renderOpaqueCenterLoopedFrame(btnSpriteTex, *btnSprite, menuBtns[i]);
@@ -779,7 +787,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                     }
             }
             if (settingsLogoTex && settingsLogo) {
-                SDL_Rect b = mainMenuBtnRect(0);
+                SDL_Rect b = menuBtns[0];
                 SDL_Rect dst{
                     b.x + (int)std::lround((float)b.w * 0.18f),
                     b.y + (int)std::lround((float)b.h * 0.14f),
@@ -791,7 +799,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
             const int playButtonIndex = 1;
             const int editorButtonIndex = 2;
             if (playLogoTex && playLogo) {
-                SDL_Rect b = mainMenuBtnRect(playButtonIndex);
+                SDL_Rect b = menuBtns[playButtonIndex];
                 SDL_Rect dst{
                     b.x + (int)std::lround((float)b.w * 0.27f),
                     b.y + (int)std::lround((float)b.h * 0.11f),
@@ -801,7 +809,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 renderFrame(ctx.ren, playLogoTex, *playLogo, dst);
             }
             if (editorLogoTex && editorLogo && levelSelectEnabled) {
-                SDL_Rect b = mainMenuBtnRect(editorButtonIndex);
+                SDL_Rect b = menuBtns[editorButtonIndex];
                 SDL_Rect dst{
                     b.x + (int)std::lround((float)b.w * 0.30f),
                     b.y + (int)std::lround((float)b.h * 0.14f),
@@ -860,8 +868,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
                 BeginNativeTextOverlay(ctx.ren, ctx.baseScreenW, ctx.baseScreenH, presentDst);
                 DrawText(ctx.ren, modal.x + (modal.w - MeasureTextWidth(2, "CLOSE GAME?")) / 2, modal.y + (int)std::lround(18.0f * uiButtonScale()), 2, "CLOSE GAME?");
 
-                SDL_Rect resumeBtn = quitResumeBtnRect(modal);
-                SDL_Rect closeBtn = quitCloseBtnRect(modal);
+                SDL_Rect resumeBtn = buttonAnimations.drawRect(10, quitResumeBtnRect(modal), closeMenuSel == 0,
+                    ctx.win, ctx.baseScreenW, ctx.baseScreenH);
+                SDL_Rect closeBtn = buttonAnimations.drawRect(11, quitCloseBtnRect(modal), closeMenuSel == 1,
+                    ctx.win, ctx.baseScreenW, ctx.baseScreenH);
                 SDL_Texture* popupBtnTex = nullptr;
                 const Frame* popupBtnFrame = getMenuFrame("button_genreaic", popupBtnTex);
                 if (!popupBtnFrame) popupBtnFrame = getMenuFrame("button_genreaic.png", popupBtnTex);

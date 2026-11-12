@@ -68,6 +68,7 @@
 #include "LevelWrap.h"
 #include "FrontendMenu.h"
 #include "GameSupport.h"
+#include "ButtonAnimation.h"
 #include "SignpostRendering.h"
 #include "AsyncAssetLoader.h"
 #include "ParallaxRenderer.h"
@@ -3786,6 +3787,7 @@ int RunGameApp(int argc, char** argv) {
 
         bool levelRunning = true;
         bool paused = false;
+        ButtonAnimations pauseButtonAnimations;
         bool deathSequenceActive = false;
         bool deathLifeDeducted = false;
         float deathTimer = 0.0f;
@@ -4382,6 +4384,7 @@ int RunGameApp(int argc, char** argv) {
         Uint64 lastTicksNs = SDL_GetTicksNS();
         Uint32 lastPresentTicks = lastTicks;
         Uint64 lastPresentTicksNs = lastTicksNs;
+        Uint64 lastScoreFrameTicksNs = lastTicksNs;
         Uint32 nextPresentTicks = lastTicks;
         Uint32 nextGarbageCollectTicks = lastTicks + 5000;
         bool mainWindowFocused = true;
@@ -4969,21 +4972,6 @@ int RunGameApp(int argc, char** argv) {
                 }
             }
             if (levelCompleteActive && !lowPowerSuspendActive && levelCompleteCounting && !paused) {
-                if (Edition::scoresEnabled) {
-                    // Coin and time bonuses share one real-time payout budget.
-                    const int pending = (int)std::min<long long>(std::numeric_limits<int>::max(),
-                        (long long)levelCompleteCoinBonus + levelCompleteTimeScore);
-                    const auto payout = scorePayout.advance(pending, dtPrecise);
-                    int payoutBudget = payout.points;
-                    const int coinStep = std::min(levelCompleteCoinBonus, payoutBudget);
-                    levelCompleteCoinBonus -= coinStep;
-                    payoutBudget -= coinStep;
-                    const int timeStep = std::min(levelCompleteTimeScore, payoutBudget);
-                    levelCompleteTimeScore -= timeStep;
-                    const int awarded = ScoreSystem::addPoints(scoreCount, coinStep + timeStep);
-                    levelCompleteAccountedScore += awarded;
-                    if (awarded > 0 && payout.playSound) audio.playCoinSfx();
-                }
                 if (levelCompleteCoinBonus <= 0 && levelCompleteTimeScore <= 0) {
                     if (!levelCompleteNextPath.empty()) {
                         const int completedWorldId = levelManager.worldId();
@@ -7436,6 +7424,31 @@ int RunGameApp(int argc, char** argv) {
             }
         }
 
+        // Award score once per displayed frame, after the render-throttle gate.
+        // Simulation-only ticks must not silently consume the visible tally.
+        {
+            const Uint64 scoreFrameTicksNs = SDL_GetTicksNS();
+            const double scoreFrameSeconds = (double)(scoreFrameTicksNs - lastScoreFrameTicksNs) / 1000000000.0;
+            lastScoreFrameTicksNs = scoreFrameTicksNs;
+            if (levelCompleteActive && !lowPowerSuspendActive && levelCompleteCounting && !paused) {
+                if (Edition::scoresEnabled) {
+                    // Coin and time bonuses share one real-time payout budget.
+                    const int pending = (int)std::min<long long>(std::numeric_limits<int>::max(),
+                        (long long)levelCompleteCoinBonus + levelCompleteTimeScore);
+                    const auto payout = scorePayout.advance(pending, scoreFrameSeconds);
+                    int payoutBudget = payout.points;
+                    const int coinStep = std::min(levelCompleteCoinBonus, payoutBudget);
+                    levelCompleteCoinBonus -= coinStep;
+                    payoutBudget -= coinStep;
+                    const int timeStep = std::min(levelCompleteTimeScore, payoutBudget);
+                    levelCompleteTimeScore -= timeStep;
+                    const int awarded = ScoreSystem::addPoints(scoreCount, coinStep + timeStep);
+                    levelCompleteAccountedScore += awarded;
+                    if (awarded > 0 && payout.playSound) audio.playCoinSfx();
+                }
+            }
+        }
+
         const bool renderWrapX = gameplayWrapX;
         const bool renderWrapY = verticalWrapActive;
         const int renderLevelId = currentLevelId;
@@ -8782,6 +8795,9 @@ int RunGameApp(int argc, char** argv) {
                 pauseBtnRestart = restartDst;
                 pauseBtnExit = exitDst;
 
+                contDst = pauseButtonAnimations.drawRect(0, contDst, pauseSelection == 0, win, screenW, screenH);
+                restartDst = pauseButtonAnimations.drawRect(1, restartDst, pauseSelection == 1, win, screenW, screenH);
+                exitDst = pauseButtonAnimations.drawRect(2, exitDst, pauseSelection == 2, win, screenW, screenH);
                 renderFrame(ren, pauseTex, continueFrame, contDst);
                 renderFrame(ren, pauseTex, restartFrame, restartDst);
                 renderFrame(ren, pauseTex, exitFrame, exitDst);
@@ -8812,6 +8828,9 @@ int RunGameApp(int argc, char** argv) {
                 pauseBtnContinue = resumeBtn;
                 pauseBtnRestart = restartBtn;
                 pauseBtnExit = quitBtn;
+                resumeBtn = pauseButtonAnimations.drawRect(0, resumeBtn, pauseSelection == 0, win, screenW, screenH);
+                restartBtn = pauseButtonAnimations.drawRect(1, restartBtn, pauseSelection == 1, win, screenW, screenH);
+                quitBtn = pauseButtonAnimations.drawRect(2, quitBtn, pauseSelection == 2, win, screenW, screenH);
 
                 SDL_SetRenderDrawColor(ren, pauseSelection == 0 ? 70 : 45, pauseSelection == 0 ? 120 : 70, pauseSelection == 0 ? 170 : 90, pauseButtonAlpha);
                 SDL_RenderFillRect(ren, &resumeBtn);

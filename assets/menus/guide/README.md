@@ -285,3 +285,15 @@ like a normal tile to block boss movement. Players can walk and jump through it;
 it is invisible during normal gameplay and visible in the editor and debug
 overlays. Tile ID 98 is reserved for this behavior and needs no texture or
 block-definition entry.
+
+### Clipboard buttons
+
+`button "Version: ${about_version}" copy "${about_version}"` displays a value
+and copies the expanded argument to the system clipboard when activated.
+`${clipboard_status}` shows a confirmation or failure message. This command is
+available in both editions and supports mouse, touch, and keyboard navigation.
+
+Menu buttons automatically ease into a small lift on hover or keyboard/controller
+focus, and compress while pressed with a mouse or touch. Activation also gives
+buttons a short press response. Animations affect drawing only, so button hitboxes
+and scrolling stay stable.
