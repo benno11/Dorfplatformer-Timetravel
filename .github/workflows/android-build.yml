@@ -211,6 +211,13 @@ jobs:
       - name: Build
         shell: pwsh
         run: |
+          if ($env:RUNNER_OS -eq "Windows") {
+            # Never let a checked-in/cached installer stand in for this build.
+            $installerOutputDir = Join-Path $env:GITHUB_WORKSPACE "dist/windows-installer/output"
+            if (Test-Path $installerOutputDir) {
+              Get-ChildItem $installerOutputDir -Filter "*.exe" -File | Remove-Item -Force
+            }
+          }
           cmake --build build-ci --config Release --parallel
           if ($env:RUNNER_OS -eq "Windows") {
             cmake --build build-ci --config Release --target windows-installer --parallel

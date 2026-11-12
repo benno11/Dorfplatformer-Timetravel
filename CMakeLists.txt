@@ -1029,6 +1029,11 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING AND NOT ANDROID AND NOT IOS)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME windows_installer_rebuild
+      COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/WindowsInstallerBuildTest.py")
+  endif()
   add_executable(score_system_test tests/ScoreSystemTest.cpp)
   target_include_directories(score_system_test PRIVATE src)
   add_test(NAME score_system COMMAND score_system_test)
@@ -1326,8 +1331,10 @@ if(WIN32)
   )
 
   if(INNO_SETUP_COMPILER)
-    add_custom_command(
-      OUTPUT "${PLATFORMER_WINDOWS_INSTALLER_OUTPUT}"
+    # Explicit installer builds must always compile the freshly staged payload.
+    # A checked-in or cached .exe is not evidence that this source revision was packaged.
+    add_custom_target(windows-installer
+      BYPRODUCTS "${PLATFORMER_WINDOWS_INSTALLER_OUTPUT}"
       COMMAND ${CMAKE_COMMAND} -E make_directory "${PLATFORMER_WINDOWS_DIST_DIR}/output"
       COMMAND "${INNO_SETUP_COMPILER}"
         /Qp
@@ -1340,13 +1347,11 @@ if(WIN32)
       COMMENT "Building Windows installer with Inno Setup"
       VERBATIM
     )
-    add_custom_target(windows-installer
-      DEPENDS "${PLATFORMER_WINDOWS_INSTALLER_OUTPUT}"
-    )
   else()
     add_custom_target(windows-installer
-      COMMAND ${CMAKE_COMMAND} -E cmake_echo_color --yellow
-        "Inno Setup was not found. Built the staged Windows bundle only."
+      COMMAND ${CMAKE_COMMAND} -E cmake_echo_color --red
+        "Inno Setup was not found. Cannot build a fresh Windows installer."
+      COMMAND ${CMAKE_COMMAND} -E false
       DEPENDS windows-package
       VERBATIM
     )
