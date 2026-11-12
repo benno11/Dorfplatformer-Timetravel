@@ -53,3 +53,12 @@ so full-edition behavior and Lite restrictions are both checked:
 ```sh
 ctest --test-dir .build --output-on-failure -R '^edition_policy_'
 ```
+
+## GitHub Actions
+
+The Build Game workflow builds Full and Lite variants for Linux x64, Windows
+x64/x86, and Android debug/release APKs. It passes the edition flag to native
+compilation and Android Gradle together. Workflow artifacts include the edition
+in their names; Lite release assets have separate names while existing full
+release filenames are preserved. The iOS jobs retain their existing full-edition
+builds.
