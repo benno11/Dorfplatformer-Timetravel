@@ -2937,7 +2937,7 @@ int RunGameApp(int argc, char** argv) {
         };
         int livesCount = 5;
         int scoreCount = 0;
-        ScoreSystem::PayoutLimiter scorePayoutLimiter;
+        ScoreSystem::PayoutAnimation scorePayout;
         bool levelCompleteActive = false;
         bool levelCompleteCounting = false;
         std::string levelCompleteNextPath;
@@ -3557,7 +3557,7 @@ int RunGameApp(int argc, char** argv) {
                     for (int i = 0; i < elapsedMinutes; ++i) denom *= 5;
                     levelCompleteTimeScore = 10000 / std::max(1, denom);
                 }
-                scorePayoutLimiter.reset();
+                scorePayout.reset();
             }
             levelCompleteAccountedScore = 0;
             if (audio.isReady()) {
@@ -4963,7 +4963,10 @@ int RunGameApp(int argc, char** argv) {
             if (levelCompleteActive && !lowPowerSuspendActive && levelCompleteCounting && !paused) {
                 if (Edition::scoresEnabled) {
                     // Coin and time bonuses share one real-time payout budget.
-                    int payoutBudget = scorePayoutLimiter.budget(dtPrecise);
+                    const int pending = (int)std::min<long long>(std::numeric_limits<int>::max(),
+                        (long long)levelCompleteCoinBonus + levelCompleteTimeScore);
+                    const auto payout = scorePayout.advance(pending, dtPrecise);
+                    int payoutBudget = payout.points;
                     const int coinStep = std::min(levelCompleteCoinBonus, payoutBudget);
                     levelCompleteCoinBonus -= coinStep;
                     payoutBudget -= coinStep;
@@ -4971,7 +4974,7 @@ int RunGameApp(int argc, char** argv) {
                     levelCompleteTimeScore -= timeStep;
                     const int awarded = ScoreSystem::addPoints(scoreCount, coinStep + timeStep);
                     levelCompleteAccountedScore += awarded;
-                    if (awarded > 0) audio.playMessageSfx();
+                    if (awarded > 0 && payout.playSound) audio.playCoinSfx();
                 }
                 if (levelCompleteCoinBonus <= 0 && levelCompleteTimeScore <= 0) {
                     if (!levelCompleteNextPath.empty()) {

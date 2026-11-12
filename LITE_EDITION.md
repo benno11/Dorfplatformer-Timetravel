@@ -44,6 +44,7 @@ Lite restrictions:
 - Scoring is completely disabled: no score HUD, completion bonuses, score tally,
   debug score display, or persisted score. Full edition pays coin and time bonuses
   from a shared **1,200 points per second** budget, retaining unpaid bonuses.
+  The full-edition tally advances at a constant rate and plays paced coin sounds while awarding points.
 - Experiments and custom character features remain off regardless of saved
   preferences. Lite menu, command, and setting allowlists require explicit
   opt-in for future features. Shared gameplay mechanics remain available.
