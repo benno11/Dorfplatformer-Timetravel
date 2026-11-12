@@ -109,12 +109,14 @@ bool SaveGameProgression(const GameProgression& progression, int slotIndex) {
     auto flags = progression;
     if (Edition::lite) flags.hardmodeUnlocked = flags.worldSelectUnlocked = true;
     document["progression"] = progressionJson(flags);
+    if (!Edition::scoresEnabled) document.erase("score_count");
     return writeDocument(slotIndex, document);
 }
 json LoadGameSnapshot(int slotIndex, bool hardmode) {
     if (Edition::lite && hardmode) return json::object();
     auto document = readDocument(GameSaveSlotPath(slotIndex));
     if (hardmode) return document.value("hardmode_run", json::object());
+    if (!Edition::scoresEnabled) document.erase("score_count");
     return document;
 }
 bool HasGameSnapshot(int slotIndex, bool hardmode) {
@@ -137,6 +139,7 @@ bool SaveGameSnapshot(int slotIndex, bool hardmode, const json& snapshot) {
     if (hardmode) document["hardmode_run"] = snapshot;
     else {
         auto campaign = snapshot;
+        if (!Edition::scoresEnabled) campaign.erase("score_count");
         if (document.contains("progression")) campaign["progression"] = document["progression"];
         if (document.contains("hardmode_run")) campaign["hardmode_run"] = document["hardmode_run"];
         document = std::move(campaign);

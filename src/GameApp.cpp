@@ -1,4 +1,5 @@
 #include "EditionPolicy.h"
+#include "ScoreSystem.h"
 #include <SDL3/SDL.h>
 #include <SDL3_image/SDL_image.h>
 #if defined(__ANDROID__)
@@ -2936,6 +2937,7 @@ int RunGameApp(int argc, char** argv) {
         };
         int livesCount = 5;
         int scoreCount = 0;
+        ScoreSystem::PayoutLimiter scorePayoutLimiter;
         bool levelCompleteActive = false;
         bool levelCompleteCounting = false;
         std::string levelCompleteNextPath;
@@ -3544,14 +3546,18 @@ int RunGameApp(int argc, char** argv) {
             levelCompleteNextPath = allowNextLevelProgression ? levelManager.nextLevelPath() : "";
             levelCompleteAreaId = levelManager.levelPartId();
             levelCompleteSnapshotSeconds = (int)levelTimerSeconds;
-            levelCompleteCoinBonus = levelManager.coinCount() * 10;
-            const int elapsedMinutes = (int)std::floor(levelTimerSeconds / 60.0f);
-            if (elapsedMinutes > 3) {
-                levelCompleteTimeScore = 0;
-            } else {
-                int denom = 1;
-                for (int i = 0; i < elapsedMinutes; ++i) denom *= 5;
-                levelCompleteTimeScore = 10000 / std::max(1, denom);
+            levelCompleteCoinBonus = 0;
+            levelCompleteTimeScore = 0;
+            if (Edition::scoresEnabled) {
+                levelCompleteCoinBonus = (int)std::min<long long>(std::numeric_limits<int>::max(),
+                    std::max(0LL, (long long)levelManager.coinCount()) * 10);
+                const int elapsedMinutes = (int)std::floor(levelTimerSeconds / 60.0f);
+                if (elapsedMinutes <= 3) {
+                    int denom = 1;
+                    for (int i = 0; i < elapsedMinutes; ++i) denom *= 5;
+                    levelCompleteTimeScore = 10000 / std::max(1, denom);
+                }
+                scorePayoutLimiter.reset();
             }
             levelCompleteAccountedScore = 0;
             if (audio.isReady()) {
@@ -3676,7 +3682,7 @@ int RunGameApp(int argc, char** argv) {
             }
             levelTimerSeconds = savedGameRoot.value("level_timer_seconds", 0.0f);
             livesCount = savedGameRoot.value("lives_count", livesCount);
-            scoreCount = savedGameRoot.value("score_count", scoreCount);
+            if (Edition::scoresEnabled) scoreCount = std::max(0, savedGameRoot.value("score_count", scoreCount));
             levelManager.resetCoinCount();
             levelManager.addCoins(savedGameRoot.value("coin_count", 0));
             playerInvincibleTimer = savedGameRoot.value("player_invincible_timer", playerInvincibleTimer);
@@ -4275,7 +4281,7 @@ int RunGameApp(int argc, char** argv) {
                 root["allow_next_level_progression"] = allowNextLevelProgression;
                 root["level_timer_seconds"] = levelTimerSeconds;
                 root["lives_count"] = livesCount;
-                root["score_count"] = scoreCount;
+                if (Edition::scoresEnabled) root["score_count"] = scoreCount;
                 root["coin_count"] = levelManager.coinCount();
                 root["checkpoint"] = {
                     {"active", checkpointActive},
@@ -4955,21 +4961,17 @@ int RunGameApp(int argc, char** argv) {
                 }
             }
             if (levelCompleteActive && !lowPowerSuspendActive && levelCompleteCounting && !paused) {
-                // Uncapped payout during level complete: process full remaining bonus immediately.
-                int payoutPerFrame = std::max(1, levelCompleteCoinBonus + levelCompleteTimeScore);
-                int coinStep = std::min(levelCompleteCoinBonus, payoutPerFrame);
-                if (coinStep > 0) {
+                if (Edition::scoresEnabled) {
+                    // Coin and time bonuses share one real-time payout budget.
+                    int payoutBudget = scorePayoutLimiter.budget(dtPrecise);
+                    const int coinStep = std::min(levelCompleteCoinBonus, payoutBudget);
                     levelCompleteCoinBonus -= coinStep;
-                    scoreCount += coinStep;
-                    levelCompleteAccountedScore += coinStep;
-                    audio.playMessageSfx();
-                }
-                int timeStep = std::min(levelCompleteTimeScore, payoutPerFrame);
-                if (timeStep > 0) {
+                    payoutBudget -= coinStep;
+                    const int timeStep = std::min(levelCompleteTimeScore, payoutBudget);
                     levelCompleteTimeScore -= timeStep;
-                    scoreCount += timeStep;
-                    levelCompleteAccountedScore += timeStep;
-                    audio.playMessageSfx();
+                    const int awarded = ScoreSystem::addPoints(scoreCount, coinStep + timeStep);
+                    levelCompleteAccountedScore += awarded;
+                    if (awarded > 0) audio.playMessageSfx();
                 }
                 if (levelCompleteCoinBonus <= 0 && levelCompleteTimeScore <= 0) {
                     if (!levelCompleteNextPath.empty()) {
@@ -8678,8 +8680,10 @@ int RunGameApp(int argc, char** argv) {
         DrawText(ren, hudValueX + hudSlideOutX, hudTopY, hudScale, std::to_string(levelManager.coinCount()));
         DrawText(ren, hudLeftX + hudSlideOutX, hudTopY + hudLineGap, hudScale, "TIME");
         DrawText(ren, hudValueX + hudSlideOutX, hudTopY + hudLineGap, hudScale, timerText.str());
-        DrawText(ren, hudLeftX + hudSlideOutX, hudTopY + hudLineGap * 2, hudScale, "SCORE");
-        DrawText(ren, hudValueX + hudSlideOutX, hudTopY + hudLineGap * 2, hudScale, std::to_string(scoreCount));
+        if (Edition::scoresEnabled) {
+            DrawText(ren, hudLeftX + hudSlideOutX, hudTopY + hudLineGap * 2, hudScale, "SCORE");
+            DrawText(ren, hudValueX + hudSlideOutX, hudTopY + hudLineGap * 2, hudScale, std::to_string(scoreCount));
+        }
 
         if ((player.inWater || player.drownTimer > 0.0f) && !player.freeMove &&
             fastTravelActiveDir < 0 && !deathSequenceActive && !levelCompleteActive) {
@@ -8833,15 +8837,17 @@ int RunGameApp(int argc, char** argv) {
             DrawText(ren, screenW / 2 - topW / 2 + completeSlideInXForY(titleTopY), titleTopY, titleScale, titleTop);
             DrawText(ren, screenW / 2 - bottomW / 2 + completeSlideInXForY(titleBottomY), titleBottomY, titleScale, titleBottom);
 
-            const int bonusScale = 4;
-            const int bonusLineGap = 36;
-            const int bonusStartY = centerY - 100;
-            const std::string bonusLine1 = std::string("COIN BONUS: ") + std::to_string(levelCompleteCoinBonus);
-            const std::string bonusLine2 = std::string("TIME BONUS: ") + std::to_string(levelCompleteTimeScore);
-            const std::string bonusLine3 = std::string("TOTAL SCORE: ") + std::to_string(levelCompleteAccountedScore);
-            DrawText(ren, screenW / 2 - MeasureTextWidth(bonusScale, bonusLine1) / 2 + completeSlideInXForY(bonusStartY), bonusStartY, bonusScale, bonusLine1);
-            DrawText(ren, screenW / 2 - MeasureTextWidth(bonusScale, bonusLine2) / 2 + completeSlideInXForY(bonusStartY + bonusLineGap), bonusStartY + bonusLineGap, bonusScale, bonusLine2);
-            DrawText(ren, screenW / 2 - MeasureTextWidth(bonusScale, bonusLine3) / 2 + completeSlideInXForY(bonusStartY + bonusLineGap * 2), bonusStartY + bonusLineGap * 2, bonusScale, bonusLine3);
+            if (Edition::scoresEnabled) {
+                const int bonusScale = 4;
+                const int bonusLineGap = 36;
+                const int bonusStartY = centerY - 100;
+                const std::string bonusLine1 = std::string("COIN BONUS: ") + std::to_string(levelCompleteCoinBonus);
+                const std::string bonusLine2 = std::string("TIME BONUS: ") + std::to_string(levelCompleteTimeScore);
+                const std::string bonusLine3 = std::string("TOTAL SCORE: ") + std::to_string(levelCompleteAccountedScore);
+                DrawText(ren, screenW / 2 - MeasureTextWidth(bonusScale, bonusLine1) / 2 + completeSlideInXForY(bonusStartY), bonusStartY, bonusScale, bonusLine1);
+                DrawText(ren, screenW / 2 - MeasureTextWidth(bonusScale, bonusLine2) / 2 + completeSlideInXForY(bonusStartY + bonusLineGap), bonusStartY + bonusLineGap, bonusScale, bonusLine2);
+                DrawText(ren, screenW / 2 - MeasureTextWidth(bonusScale, bonusLine3) / 2 + completeSlideInXForY(bonusStartY + bonusLineGap * 2), bonusStartY + bonusLineGap * 2, bonusScale, bonusLine3);
+            }
         }
         auto formatFpsValue = [&](double value) -> std::string {
             std::ostringstream oss;
@@ -9235,7 +9241,10 @@ int RunGameApp(int argc, char** argv) {
                 DrawText(debugRen, 12, y, 2, std::string("Cam X/Y: ") + std::to_string((int)camX) + ", " + std::to_string((int)camY)); y += 20;
                 DrawText(debugRen, 12, y, 2, std::string("Map W/H: ") + std::to_string(map.w) + " x " + std::to_string(map.h)); y += 20;
                 DrawText(debugRen, 12, y, 2, std::string("TileSize: ") + std::to_string(map.tileSize)); y += 20;
-                DrawText(debugRen, 12, y, 2, std::string("Coins/Score/Lives: ") + std::to_string(levelManager.coinCount()) + "/" + std::to_string(scoreCount) + "/" + std::to_string(livesCount)); y += 20;
+                const std::string totals = Edition::scoresEnabled
+                    ? std::string("Coins/Score/Lives: ") + std::to_string(levelManager.coinCount()) + "/" + std::to_string(scoreCount) + "/" + std::to_string(livesCount)
+                    : std::string("Coins/Lives: ") + std::to_string(levelManager.coinCount()) + "/" + std::to_string(livesCount);
+                DrawText(debugRen, 12, y, 2, totals); y += 20;
                 DrawText(debugRen, 12, y, 2, std::string("Objects: ") + std::to_string((int)objects.size())); y += 20;
                 DrawText(debugRen, 12, y, 2, std::string("Level IDs (W/P/T): ") + std::to_string(levelManager.worldId()) + "/" + std::to_string(levelManager.levelPartId()) + "/" + std::to_string(levelManager.timeId())); y += 20;
                 DrawText(debugRen, 12, y, 2, std::string("TimeWarpId: ") + std::string(1, levelManager.timeWarpId())); y += 20;
