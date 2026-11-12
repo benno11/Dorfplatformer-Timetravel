@@ -1331,6 +1331,7 @@ if(WIN32)
   )
 
   if(INNO_SETUP_COMPILER)
+    get_filename_component(_platformer_installer_basename "${PLATFORMER_WINDOWS_INSTALLER_OUTPUT}" NAME_WE)
     # Explicit installer builds must always compile the freshly staged payload.
     # A checked-in or cached .exe is not evidence that this source revision was packaged.
     add_custom_target(windows-installer
@@ -1338,6 +1339,8 @@ if(WIN32)
       COMMAND ${CMAKE_COMMAND} -E make_directory "${PLATFORMER_WINDOWS_DIST_DIR}/output"
       COMMAND "${INNO_SETUP_COMPILER}"
         /Qp
+        /O${PLATFORMER_WINDOWS_DIST_DIR}/output
+        /F${_platformer_installer_basename}
         /DLiteEdition=$<BOOL:${PLATFORMER_LITE_EDITION}>
         /DMyAppVersion=${PLATFORMER_APP_VERSION_STRING}
         /DMyAppVersionId=${PLATFORMER_APP_VERSION_ID}

@@ -219,8 +219,10 @@ jobs:
             }
           }
           cmake --build build-ci --config Release --parallel
+          if ($LASTEXITCODE -ne 0) { throw "Desktop build failed with exit code $LASTEXITCODE" }
           if ($env:RUNNER_OS -eq "Windows") {
             cmake --build build-ci --config Release --target windows-installer --parallel
+            if ($LASTEXITCODE -ne 0) { throw "Windows installer build failed with exit code $LASTEXITCODE" }
           }
 
       - name: Install LLVM BOLT tools

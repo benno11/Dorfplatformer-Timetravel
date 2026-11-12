@@ -10,7 +10,7 @@ import unittest
 @unittest.skipUnless(shutil.which("cmake") and shutil.which("ninja"), "CMake and Ninja are required")
 class WindowsInstallerBuildTest(unittest.TestCase):
     def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory()
+        self.temporary = tempfile.TemporaryDirectory(prefix="installer regression ")
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         source = (Path(__file__).resolve().parents[1] / "CMakeLists.txt").read_text()
@@ -51,8 +51,14 @@ class WindowsInstallerBuildTest(unittest.TestCase):
         for lite in (False, True):
             with self.subTest(lite=lite):
                 compiler = self.root / "fake-iscc"
-                compiler.write_text('#!/bin/sh\ncat "$(dirname "$0")/payload" > "$(dirname "$0")/dist/windows-installer/output/'
-                                    + ('installer-lite.exe' if lite else 'installer.exe') + '"\n')
+                # Behave like Inno Setup: only the explicit /O and /F arguments
+                # determine where the executable is written.
+                compiler.write_text('#!/bin/sh\noutput=\nname=\n'
+                                    'for arg in "$@"; do\n'
+                                    '  case "$arg" in /O*) output=${arg#/O};; /F*) name=${arg#/F};; esac\n'
+                                    'done\n'
+                                    'test -n "$output" && test -n "$name" || exit 9\n'
+                                    'cat "$(dirname "$0")/payload" > "$output/$name.exe"\n')
                 compiler.chmod(0o755)
                 self.configure(compiler.as_posix(), lite)
                 payload = self.root / "payload"
@@ -64,6 +70,16 @@ class WindowsInstallerBuildTest(unittest.TestCase):
                 result = self.build()
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertEqual(self.installer.read_text(), "next build")
+
+    @unittest.skipIf(os.name == "nt", "The fake compiler uses a POSIX shell")
+    def test_compiler_failure_does_not_count_as_a_successful_build(self):
+        compiler = self.root / "failed-iscc"
+        compiler.write_text("#!/bin/sh\nexit 7\n")
+        compiler.chmod(0o755)
+        self.configure(compiler.as_posix())
+        result = self.build()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.installer.read_text(), "old installer")
 
     def test_missing_compiler_fails_even_with_an_old_installer(self):
         self.configure("")
