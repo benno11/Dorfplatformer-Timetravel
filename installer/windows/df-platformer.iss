@@ -24,6 +24,9 @@
 
 [Setup]
 #if LiteEdition
+SetupIconFile=..\..\assets\icons\lite.ico
+#endif
+#if LiteEdition
 AppId={{FD7B2C71-3EF8-4876-9272-5F151BBAD567}
 #else
 AppId={{D1BE0AE1-0D76-4A53-B02D-1CC6C36AB3AB}

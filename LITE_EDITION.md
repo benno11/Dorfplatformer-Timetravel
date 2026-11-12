@@ -66,3 +66,9 @@ compilation and Android Gradle together. Workflow artifacts include the edition
 in their names; Lite release assets have separate names while existing full
 release filenames are preserved. The iOS jobs retain their existing full-edition
 builds.
+
+Lite uses the supplied artwork in `assets/icons/lite.png` for its desktop window
+icon, a multi-size `assets/icons/lite.ico` for Windows executable resources, and
+`Android/app/src/main/res/drawable-nodpi/lite_icon.png` for Android and iOS
+packaging. Square app-icon variants pad the original artwork rather than crop it.
+The full edition retains its existing icons.

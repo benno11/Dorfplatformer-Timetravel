@@ -727,6 +727,14 @@ int RunGameApp(int argc, char** argv) {
         SDL_Quit();
         return 1;
     }
+#if !PLATFORMER_MOBILE
+    if (Edition::lite) {
+        if (SDL_Surface* icon = IMG_Load(ResolveAssetPath("assets/icons/lite.png").c_str())) {
+            SDL_SetWindowIcon(win, icon);
+            SDL_DestroySurface(icon);
+        }
+    }
+#endif
     setStartupProgress(0.18f);
     auto applyFullscreen = [&](bool enabled) -> bool {
         static int restoreX = SDL_WINDOWPOS_CENTERED;

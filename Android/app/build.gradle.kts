@@ -33,6 +33,8 @@ android {
     defaultConfig {
         applicationId = if (liteEdition) "com.Benno111.dorfplatformertimetravel_Lite" else "com.Benno111.dorfplatformertimetravel"
         manifestPlaceholders["editionName"] = editionName
+        manifestPlaceholders["editionIcon"] = if (liteEdition) "@drawable/lite_icon" else "@mipmap/ic_launcher"
+        manifestPlaceholders["editionRoundIcon"] = if (liteEdition) "@drawable/lite_icon" else "@mipmap/ic_launcher_round"
         resValue("string", "edition_name", editionName)
         buildConfigField("boolean", "LITE_EDITION", liteEdition.toString())
         minSdk = 24
