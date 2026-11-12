@@ -529,6 +529,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx, bool settingsOnly) {
         slim.updateDynamicResolution = ctx.updateDynamicResolution;
         slim.saveClientSettings = ctx.saveClientSettings;
         slim.drawNotifications = ctx.drawNotifications;
+        slim.achievements = ctx.achievements;
         slim.signIn = [&](const std::string& email, const std::string& password, std::string& error) {
             bool success = false;
             try { success = loginWithGameServer(email, password, error); }

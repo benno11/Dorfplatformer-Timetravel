@@ -1,5 +1,6 @@
 #include "EditionPolicy.h"
 #include "NativeMods.h"
+#include "Achievements.h"
 #include "BuildInfo.h"
 #include "SlimMenuSystem.h"
 #include "SlimMenuLayout.h"
@@ -584,6 +585,23 @@ UpdaterMenu::State readUpdaterState(const SlimMenuContext& ctx) {
 
 SlimMenu loadMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuContext& ctx) {
     if (!Edition::menuAllowed(name)) return loadMenu("mainsetting", runtime, ctx);
+    if (name == "achievements") {
+        SlimMenu menu; menu.name = name; menu.title = "Achievements";
+        auto text = [&](const std::string& label) { MenuItem item; item.label = label; menu.items.push_back(item); };
+        int unlocked = 0;
+        for (const auto& definition : Achievements::definitions)
+            if (ctx.achievements && ctx.achievements->has(definition.id)) ++unlocked;
+        text(std::to_string(unlocked) + "/" + std::to_string(Achievements::definitions.size()) + " unlocked");
+        text("Shared across all save slots.");
+        for (const auto& definition : Achievements::definitions) {
+            const bool earned = ctx.achievements && ctx.achievements->has(definition.id);
+            text(std::string(earned ? "[UNLOCKED] " : "[LOCKED] ") + definition.title);
+        }
+        text("World buttons: activate the buttons in areas 1 and 2.");
+        MenuItem back; back.type = MenuItem::Type::Button; back.label = "Back";
+        back.command = "back"; menu.items.push_back(back);
+        return menu;
+    }
     if (name == "settingsmods") {
         SlimMenu menu; menu.name = name; menu.title = "Native Mods";
         auto text = [&](const std::string& label) { MenuItem item; item.label = label; menu.items.push_back(item); };

@@ -9,6 +9,7 @@
 struct SlimMenuSession;
 namespace NativeMods { class Loader; }
 struct GameProgression;
+class Achievements;
 namespace CharacterCreator { struct Appearance; }
 
 enum class FrontendAction {
@@ -19,6 +20,7 @@ enum class FrontendAction {
 struct FrontendMenuContext {
     std::shared_ptr<SlimMenuSession> menuSession;
     GameProgression* progression = nullptr;
+    const Achievements* achievements = nullptr;
     CharacterCreator::Appearance* characterAppearance = nullptr;
     NativeMods::Loader* mods = nullptr;
     SDL_Window* win = nullptr;

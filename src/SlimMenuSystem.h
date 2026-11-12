@@ -11,6 +11,7 @@ struct Frame;
 struct SlimMenuSession;
 namespace NativeMods { class Loader; }
 struct GameProgression;
+class Achievements;
 namespace CharacterCreator { struct Appearance; }
 
 std::shared_ptr<SlimMenuSession> CreateSlimMenuSession();
@@ -19,6 +20,7 @@ std::string PendingSlimMenu(const std::shared_ptr<SlimMenuSession>& session);
 struct SlimMenuContext {
     std::shared_ptr<SlimMenuSession> session;
     GameProgression* progression = nullptr;
+    const Achievements* achievements = nullptr;
     CharacterCreator::Appearance* characterAppearance = nullptr;
     NativeMods::Loader* mods = nullptr;
     SDL_Window* win = nullptr;

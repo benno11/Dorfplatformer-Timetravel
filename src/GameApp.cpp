@@ -2410,6 +2410,7 @@ int RunGameApp(int argc, char** argv) {
     FrontendMenuContext frontendCtx{};
     frontendCtx.mods = &nativeMods;
     frontendCtx.drawNotifications = drawAchievementToast;
+    frontendCtx.achievements = &achievements;
     MigrateLegacyGameProgression(activeSaveSlotIndex);
     GameProgression progression = LoadGameProgression(activeSaveSlotIndex);
     frontendCtx.progression = &progression;

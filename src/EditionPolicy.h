@@ -18,7 +18,7 @@ inline bool menuAllowed(const std::string& menu) {
     if (!lite) return true;
     for (const auto* allowed : {"mainsetting", "mainplay", "saveplay", "worldselect", "savesettings", "savedelete",
         "settingsgeneral", "settingsdisplay", "settingsaudio", "settingscontrols", "settingsdebug",
-        "settingsabout", "settingsaboutrevision", "settingsupdater"})
+        "settingsabout", "settingsaboutrevision", "settingsupdater", "achievements"})
         if (menu == allowed) return true;
     return false;
 }
