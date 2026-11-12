@@ -1,3 +1,4 @@
+#include "EditionPolicy.h"
 #include "BuildInfo.h"
 #include "SlimMenuSystem.h"
 #include "SlimMenuLayout.h"
@@ -558,6 +559,11 @@ bool parseMenuAlignment(std::string value, SlimMenuLayout::Align& out) {
 
 UpdaterMenu::State readUpdaterState(const SlimMenuContext& ctx) {
     UpdaterMenu::State state;
+    if (Edition::lite) {
+        state.status = "UNAVAILABLE";
+        state.detail = "Install Lite updates using a Lite edition package.";
+        return state;
+    }
     state.available = (bool)ctx.launchUpdater;
     state.status = ctx.getUpdaterStatusText ? ctx.getUpdaterStatusText() : "";
     if (state.status.empty()) state.status = state.available ? "READY" : "UNAVAILABLE";
@@ -569,6 +575,7 @@ UpdaterMenu::State readUpdaterState(const SlimMenuContext& ctx) {
 }
 
 SlimMenu loadMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuContext& ctx) {
+    if (!Edition::menuAllowed(name)) return loadMenu("mainsetting", runtime, ctx);
     if (name == "settingsupdater") {
         SlimMenu menu;
         menu.name = name;
@@ -1554,7 +1561,7 @@ SlimMenu buildGeneratedLevelMenu(const std::string& name, SlimRuntime& runtime, 
             menu.items.push_back(MenuItem{MenuItem::Type::Button, "Continue Adventure", "saved", {}});
         if (ctx.progression && ctx.progression->worldSelectUnlocked)
             menu.items.push_back(MenuItem{MenuItem::Type::Button, "World Select", "menu", "worldselect"});
-        if (ctx.progression && ctx.progression->hardmodeUnlocked)
+        if (!Edition::lite && ctx.progression && ctx.progression->hardmodeUnlocked)
             menu.items.push_back(MenuItem{MenuItem::Type::Button, "Hardmode", "menu", "hardmode"});
         menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back", "menu", "mainplay"});
         return menu;
@@ -1564,7 +1571,7 @@ SlimMenu buildGeneratedLevelMenu(const std::string& name, SlimRuntime& runtime, 
         menu.name = name;
         menu.title = "Hardmode Practice";
         menu.items.push_back(MenuItem{MenuItem::Type::Text, "Practice does not affect run progress or completion.", {}, {}});
-        if (ctx.progression && ctx.progression->hardmodeUnlocked) {
+        if (!Edition::lite && ctx.progression && ctx.progression->hardmodeUnlocked) {
             for (int level = 1; level <= kHardmodeLevelCount; ++level)
                 menu.items.push_back(MenuItem{MenuItem::Type::Button, "Level " + std::to_string(level),
                     "hardmode_practice", std::to_string(level)});
@@ -1577,8 +1584,10 @@ SlimMenu buildGeneratedLevelMenu(const std::string& name, SlimRuntime& runtime, 
         menu.name = name;
         menu.title = "World Select";
         if (ctx.progression && ctx.progression->worldSelectUnlocked) {
-            for (int world = 1; world <= 7; ++world)
+            for (int world = 1; world <= 7; ++world) {
+                if (!Edition::worldSelectable(world)) continue;
                 menu.items.push_back(MenuItem{MenuItem::Type::Button, "World " + std::to_string(world), "world", std::to_string(world)});
+            }
         } else menu.items.push_back(MenuItem{MenuItem::Type::Text, "Reach an ending to unlock World Select.", {}, {}});
         menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back", "menu", "saveplay"});
         return menu;
@@ -2091,6 +2100,7 @@ int buttonCount(const SlimMenu& menu) {
 
 bool toggleBool(const std::string& name, SlimMenuContext& ctx) {
     const std::string var = normalizeVarName(name);
+    if (!Edition::commandAllowed("toggle", var)) return false;
     bool* target = boolSettingPtr(var, ctx);
     if (!target) return false;
     const bool next = !*target;
@@ -2154,6 +2164,7 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
     if (item.type == MenuItem::Type::Slider) return SlimMenuExit::Continue;
     const std::string command = item.command;
     const std::string arg = expandVars(item.arg, runtime, ctx);
+    if (!Edition::commandAllowed(command, arg)) return SlimMenuExit::Continue;
     if (command == "account_edit") {
         if (arg == "email" || arg == "password")
             startAccountInput(runtime, ctx, arg == "password" ? AccountMenu::Field::Password : AccountMenu::Field::Email);
@@ -2294,7 +2305,7 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
     if (command == "world") {
         if (!ctx.progression || !ctx.progression->worldSelectUnlocked || !ctx.selectedLevelPath) return SlimMenuExit::Continue;
         const int world = std::atoi(arg.c_str());
-        if (world < 1 || world > 7) return SlimMenuExit::Continue;
+        if (!Edition::worldSelectable(world)) return SlimMenuExit::Continue;
         LevelManager manager;
         const auto path = manager.levelPathByCode(world * 100 + 10 + (world >= 6 ? 3 : 1));
         if (path.empty()) return SlimMenuExit::Continue;
@@ -2499,6 +2510,7 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
         return SlimMenuExit::Continue;
     }
     if (command == "start") {
+        if (Edition::lite && !IsCampaignLevelPath(arg)) return SlimMenuExit::Continue;
         if (ctx.selectedLevelPath) *ctx.selectedLevelPath = arg;
         if (ctx.selectedLevelName) {
             *ctx.selectedLevelName = arg == runtime.vars["detail_path"] ? runtime.vars["detail_label"] : std::string();
@@ -2611,6 +2623,10 @@ std::string PendingSlimMenu(const std::shared_ptr<SlimMenuSession>& session) {
 }
 
 SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
+    if (Edition::lite) {
+        if (ctx.showExperimentalFeatures) *ctx.showExperimentalFeatures = false;
+        if (ctx.levelSelectEnabled) *ctx.levelSelectEnabled = false;
+    }
     // Drop any queued text belonging to the screen that opened this menu.
     CancelNativeTextOverlay(ctx.ren);
     SlimRuntime runtime;
@@ -2649,6 +2665,12 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
             runtime.accountForm.password.clear();
         }
         SlimMenu menu = loadMenu(currentMenu, runtime, ctx);
+        if (Edition::lite) {
+            menu.items.erase(std::remove_if(menu.items.begin(), menu.items.end(), [](const MenuItem& item) {
+                return !Edition::commandAllowed(item.command, item.arg) ||
+                    (item.type == MenuItem::Type::Text && item.label.find("${account_") != std::string::npos);
+            }), menu.items.end());
+        }
         if (restoreSelection) {
             selected = 0;
             int index = 0;

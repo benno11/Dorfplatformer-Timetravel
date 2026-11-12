@@ -1,4 +1,11 @@
-#define MyAppName "Dorfplatformer Timetravel"
+#ifndef LiteEdition
+  #define LiteEdition 0
+#endif
+#if LiteEdition
+  #define MyAppName "Dorfplatformer Timetravel Lite"
+#else
+  #define MyAppName "Dorfplatformer Timetravel"
+#endif
 #ifndef MyAppVersion
   #define MyAppVersion "2.2.0 Beta 1"
 #endif
@@ -16,7 +23,11 @@
 #endif
 
 [Setup]
+#if LiteEdition
+AppId={{FD7B2C71-3EF8-4876-9272-5F151BBAD567}
+#else
 AppId={{D1BE0AE1-0D76-4A53-B02D-1CC6C36AB3AB}
+#endif
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
@@ -31,7 +42,11 @@ ArchitecturesInstallIn64BitMode={#MyInstallIn64BitMode}
 #endif
 PrivilegesRequired=lowest
 OutputDir=..\..\dist\windows-installer\output
+#if LiteEdition
+OutputBaseFilename=df-platformer-windows-installer-lite
+#else
 OutputBaseFilename=df-platformer-windows-installer
+#endif
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

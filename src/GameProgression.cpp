@@ -1,3 +1,4 @@
+#include "EditionPolicy.h"
 #include "GameProgression.h"
 #include "AssetPath.h"
 #include <algorithm>
@@ -91,19 +92,27 @@ bool writeDocument(int slotIndex, const json& document) {
 }
 }
 std::string GameSaveSlotPath(int slotIndex) {
-    return (std::filesystem::path(GetAppSaveRootPath()) / "saves" /
+    return (std::filesystem::path(GetAppSaveRootPath()) / (Edition::lite ? "lite-saves" : "saves") /
         ("save_slot_" + std::to_string(std::clamp(slotIndex, 0, 2) + 1) + ".json")).string();
 }
 GameProgression LoadGameProgression(int slotIndex) {
     const auto document = readDocument(GameSaveSlotPath(slotIndex));
-    return document.contains("progression") ? readProgression(document["progression"]) : GameProgression{};
+    auto result = document.contains("progression") ? readProgression(document["progression"]) : GameProgression{};
+    if (Edition::lite) {
+        result.worldSelectUnlocked = true;
+        result.hardmodeUnlocked = true; // Preserve the unlock flag, but never expose the mode.
+    }
+    return result;
 }
 bool SaveGameProgression(const GameProgression& progression, int slotIndex) {
     auto document = readDocument(GameSaveSlotPath(slotIndex));
-    document["progression"] = progressionJson(progression);
+    auto flags = progression;
+    if (Edition::lite) flags.hardmodeUnlocked = flags.worldSelectUnlocked = true;
+    document["progression"] = progressionJson(flags);
     return writeDocument(slotIndex, document);
 }
 json LoadGameSnapshot(int slotIndex, bool hardmode) {
+    if (Edition::lite && hardmode) return json::object();
     auto document = readDocument(GameSaveSlotPath(slotIndex));
     if (hardmode) return document.value("hardmode_run", json::object());
     return document;
@@ -117,9 +126,14 @@ bool HasGameSnapshot(int slotIndex, bool hardmode) {
     } catch (...) { return false; }
 }
 bool SaveGameSnapshot(int slotIndex, bool hardmode, const json& snapshot) {
+    if (Edition::lite && hardmode) return false;
     if (!snapshot.is_object()) return false;
     auto document = readDocument(GameSaveSlotPath(slotIndex));
     if (!document.contains("progression")) document["progression"] = progressionJson({});
+    if (Edition::lite) {
+        document["progression"]["hardmode_unlocked"] = true;
+        document["progression"]["world_select_unlocked"] = true;
+    }
     if (hardmode) document["hardmode_run"] = snapshot;
     else {
         auto campaign = snapshot;
@@ -135,6 +149,7 @@ bool ClearHardmodeSnapshot(int slotIndex) {
     return writeDocument(slotIndex, document);
 }
 void MigrateLegacyGameProgression(int slotIndex) {
+    if (Edition::lite) return;
     const auto root = std::filesystem::path(GetAppSaveRootPath());
     const auto legacyProgression = root / "progression.json";
     const auto legacyRun = root / "saves" / "hardmode_run.json";

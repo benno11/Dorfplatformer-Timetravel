@@ -1,4 +1,5 @@
 param(
+    [switch]$LiteEdition,
     [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Release",
     [string]$Compiler = "",
@@ -23,6 +24,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+if ($LiteEdition -and $SkipNativeBuild) {
+    throw "Lite requires rebuilding the native library; remove -SkipNativeBuild."
+}
 
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $androidDir = Join-Path $repoRoot "Android"
@@ -478,6 +482,7 @@ function Build-NativeAndroidWindows {
     $hasCurl = (Test-Path (Join-Path $curlRoot "include\curl\curl.h")) -and (Test-Path (Join-Path $curlLibDir "libcurl.so"))
 
     $cppFlags = @(
+        "-DPLATFORMER_LITE_EDITION=$(if ($LiteEdition) { 1 } else { 0 })",
         "-I$(Join-Path $repoRoot 'build/android/generated')",
         "-I$jsonRoot",
         "-I$(Join-Path $sdlRoot 'include')",
@@ -803,11 +808,12 @@ function Invoke-NativeGameBuild {
     Push-Location $repoRoot
     try {
         $env:ABI = $Abi
-        & bash "./build/android-prod.sh"
+        $env:PLATFORMER_LITE_EDITION = if ($LiteEdition) { "ON" } else { "OFF" }
+        & bash "./comp/android-prod.sh"
         if ($LASTEXITCODE -ne 0) {
             throw "Native Android game code build failed with exit code $LASTEXITCODE."
         }
-        & bash "./build/update-android-app.sh"
+        & bash "./comp/update-android-app.sh"
         if ($LASTEXITCODE -ne 0) {
             throw "Android app sync failed with exit code $LASTEXITCODE."
         }
@@ -826,7 +832,7 @@ Invoke-NativeGameBuild
 $buildTask = if ($Configuration -eq "Debug") { "assembleDebug" } else { "assembleRelease" }
 $bundleTask = if ($Configuration -eq "Debug") { "bundleDebug" } else { "bundleRelease" }
 
-$args = @()
+$args = @("-PliteEdition=$($LiteEdition.IsPresent.ToString().ToLowerInvariant())")
 if ($Clean) {
     $args += "clean"
 }

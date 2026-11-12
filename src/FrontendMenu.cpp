@@ -1,3 +1,4 @@
+#include "EditionPolicy.h"
 #include "BuildInfo.h"
 #include "FrontendMenu.h"
 
@@ -37,6 +38,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     int& uiEdgePadding = ctx.uiEdgePadding ? *ctx.uiEdgePadding : uiEdgePaddingLocal;
     bool levelSelectEnabledLocal = true;
     bool& levelSelectEnabled = ctx.levelSelectEnabled ? *ctx.levelSelectEnabled : levelSelectEnabledLocal;
+    if (Edition::lite) levelSelectEnabled = false;
     std::string networkServerUrlLocal, networkAuthTokenLocal, networkUsernameLocal;
     std::string& levelServerUrl = ctx.levelServerUrl ? *ctx.levelServerUrl : networkServerUrlLocal;
     std::string& levelServerAuthToken = ctx.levelServerAuthToken ? *ctx.levelServerAuthToken : networkAuthTokenLocal;
@@ -126,6 +128,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
         return out;
     };    auto loginWithGameServer = [&](const std::string& email, const std::string& password, std::string& errOut) -> bool {
         errOut.clear();
+        if (Edition::lite) { errOut = "Accounts are unavailable in Lite."; return false; }
         SDL_Log("ACCOUNT: sign-in requested email=%s", email.c_str());
         if (email.empty() || password.empty()) {
             errOut = "Email/password required.";

@@ -1,3 +1,4 @@
+#include "EditionPolicy.h"
 #include "BuildInfo.h"
 #include "AssetPath.h"
 #include "NetworkTransport.h"
@@ -157,6 +158,7 @@ std::string ResolveAssetPath(const std::string& path) {
 
 std::string ReadTextFile(const std::string& path) {
     const std::string resolved = ResolveAssetPath(path);
+    if (Edition::lite && isHttpUrl(resolved)) return {};
 #if defined(HAVE_CURL) && HAVE_CURL
     if (isHttpUrl(resolved)) {
         const auto t0 = std::chrono::steady_clock::now();
@@ -313,14 +315,14 @@ std::string GetAppSaveRootPath() {
                 mediaRoot /= "Android";
                 mediaRoot /= "media";
                 mediaRoot /= pkg;
-                mediaRoot /= "DorfplatformerTimetravel";
+                mediaRoot /= Edition::storageName;
                 std::error_code ec;
                 std::filesystem::create_directories(mediaRoot, ec);
                 if (!ec) return mediaRoot.string();
             }
         }
         std::filesystem::path fallback(base);
-        fallback /= "DorfplatformerTimetravel";
+        fallback /= Edition::storageName;
         std::error_code ec;
         std::filesystem::create_directories(fallback, ec);
         return fallback.string();
@@ -329,7 +331,7 @@ std::string GetAppSaveRootPath() {
 #if PLATFORMER_IOS
     if (const char* documents = SDL_GetUserFolder(SDL_FOLDER_DOCUMENTS); documents && *documents) {
         std::filesystem::path documentsRoot(documents);
-        documentsRoot /= "DorfplatformerTimetravel";
+        documentsRoot /= Edition::storageName;
         std::error_code ec;
         std::filesystem::create_directories(documentsRoot, ec);
         if (!ec) {
@@ -340,8 +342,8 @@ std::string GetAppSaveRootPath() {
                 ec.message().c_str());
     }
 #endif
-    std::string base = ".";
-    char* prefPath = SDL_GetPrefPath("Benno111", "DorfplatformerTimetravel");
+    std::string base = Edition::lite ? "lite-data" : ".";
+    char* prefPath = SDL_GetPrefPath("Benno111", Edition::storageName);
     if (prefPath) {
         base = prefPath;
         SDL_free(prefPath);

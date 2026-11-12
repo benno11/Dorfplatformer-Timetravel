@@ -11,6 +11,9 @@ val signingProperties = Properties()
 val hasReleaseSigning = signingPropertiesFile.exists()
 val canonicalAssetsDir = rootProject.layout.projectDirectory.dir("../assets")
 val packagedConfig = JsonSlurper().parse(canonicalAssetsDir.file("config.json").asFile) as Map<*, *>
+val liteEdition = providers.gradleProperty("liteEdition").map { it.toBoolean() }.getOrElse(false)
+val editionName = "Dorfplatformer Timetravel" + if (liteEdition) " Lite" else ""
+
 val packagedVersionCode = (packagedConfig["version_id"] as Number).toInt()
 val packagedVersionName = packagedConfig["version"] as String
 require(packagedVersionCode in 1..2100000000) { "Invalid config version_id" }
@@ -28,7 +31,10 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.Benno111.dorfplatformertimetravel"
+        applicationId = if (liteEdition) "com.Benno111.dorfplatformertimetravel_Lite" else "com.Benno111.dorfplatformertimetravel"
+        manifestPlaceholders["editionName"] = editionName
+        resValue("string", "edition_name", editionName)
+        buildConfigField("boolean", "LITE_EDITION", liteEdition.toString())
         minSdk = 24
         targetSdk = 36
         versionCode = packagedVersionCode

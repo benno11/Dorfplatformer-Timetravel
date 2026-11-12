@@ -1,3 +1,4 @@
+#include "EditionPolicy.h"
 #include <SDL3/SDL.h>
 #include <SDL3_image/SDL_image.h>
 #if defined(__ANDROID__)
@@ -713,10 +714,10 @@ int RunGameApp(int argc, char** argv) {
         startupLoadingVisible = false;
     };
 
-    win = SDL_CreateWindow("Dorfplatformer Timetravel", startupWindowW, startupWindowH, SDL_WINDOW_RESIZABLE);
+    win = SDL_CreateWindow(Edition::name, startupWindowW, startupWindowH, SDL_WINDOW_RESIZABLE);
     if (!win) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "SDL_CreateWindow(resizable) failed: %s", SDL_GetError());
-        win = SDL_CreateWindow("Dorfplatformer Timetravel", startupWindowW, startupWindowH, 0);
+        win = SDL_CreateWindow(Edition::name, startupWindowW, startupWindowH, 0);
     }
     if (!win) {
         reportStartupError("Window Error", std::string("SDL_CreateWindow failed: ") + SDL_GetError(), nullptr);
@@ -1655,12 +1656,12 @@ int RunGameApp(int argc, char** argv) {
     float fastTravelChangeDelay = 0.0f;
     int musicVolume = 96; // 0..128
     int sfxVolume = 96;   // 0..128
-    const std::string localClientSettingsPath = "client_settings.json";
+    const std::string localClientSettingsPath = Edition::lite ? "client_settings_lite.json" : "client_settings.json";
     const std::string appSaveRootPath = GetAppSaveRootPath();
     constexpr const char* kSavedGameSelectionToken = "__DF_SAVEGAME_CONTINUE__";
     constexpr int kSaveSlotCount = 3;
     int activeSaveSlotIndex = 0;
-    const std::filesystem::path saveGameRootPath = std::filesystem::path(appSaveRootPath) / "saves";
+    const std::filesystem::path saveGameRootPath = std::filesystem::path(GameSaveSlotPath(0)).parent_path();
     const std::filesystem::path replayDirPath = std::filesystem::path(appSaveRootPath) / "replays";
     std::string clientSettingsPath = localClientSettingsPath;
     if (!appSaveRootPath.empty()) {
@@ -2031,6 +2032,14 @@ int RunGameApp(int argc, char** argv) {
         levelServerAccountUsername.clear();
         saveClientSettings();
     }
+    if (Edition::lite) {
+        levelSelectEnabled = false;
+        showExperimentalFeatures = false;
+        characterAppearance = CharacterCreator::Appearance{};
+        levelServerUrl.clear();
+        levelServerAuthToken.clear();
+        levelServerAccountUsername.clear();
+    }
     // The account manager is hosted by the selected game server.
     accountManagerUrl = levelServerUrl;
     SetLevelServerUrl(levelServerUrl);
@@ -2052,11 +2061,6 @@ int RunGameApp(int argc, char** argv) {
         debuggerAttachedDebugOverride = isDebuggerAttachedToGameProcess();
         effectiveDevToolsEnabled = debuggerAttachedDebugOverride;
     };
-    if (isDebuggerAttachedToGameProcess) {
-        if (true){
-            //running = false; disabled to allow bebug 
-        }
-    }
     auto effectiveDebugModeEnabled = [&]() -> bool {
         return debuggerAttachedDebugOverride;
     };
@@ -2111,7 +2115,7 @@ int RunGameApp(int argc, char** argv) {
         audio.applyMenuMusicToggle(menuMusicEnabled);
     };
     auto telemetryEnabled = [&]() -> bool {
-        return extraSettings.size() > 44 ? extraSettings[44] : false;
+        return !Edition::lite && (extraSettings.size() > 44 ? extraSettings[44] : false);
     };
     auto sendDiscordTelemetry = [&](const std::string& event, const nlohmann::json& details) {
         try {
@@ -2838,7 +2842,7 @@ int RunGameApp(int argc, char** argv) {
     // Enforce persisted startup audio state immediately.
     applyMenuMusicToggle();
     // Show the migration notice at first startup, then persist its dismissal.
-    if (!serverSwapNoticeShown) {
+    if (!Edition::lite && !serverSwapNoticeShown) {
         if (SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "Game server changed",
                 "We have moved to a new game server.\n\n"
                 "Old server accounts do not transfer. Open Account Manager from "
@@ -2876,6 +2880,9 @@ int RunGameApp(int argc, char** argv) {
         applyAudioVolumes();
         bool loadSavedGame = false;
         nlohmann::json savedGameRoot;
+        if (Edition::lite && (selectedLevelPath == kStartHardmodeToken ||
+            selectedLevelPath == kContinueHardmodeToken || HardmodePracticeLevel(selectedLevelPath) > 0 ||
+            HardmodeLevelFromPath(selectedLevelPath) > 0)) continue;
         const int practiceLevel = HardmodePracticeLevel(selectedLevelPath);
         const bool hardmodePractice = practiceLevel > 0;
         if (hardmodePractice) selectedLevelPath = HardmodeLevelPath(practiceLevel);
@@ -2891,6 +2898,7 @@ int RunGameApp(int argc, char** argv) {
         }
         if (loadSavedGame && !savedGameRoot.is_object()) continue;
         const std::string entryPath = loadSavedGame ? savedGameRoot.value("level_path", std::string()) : selectedLevelPath;
+        if (Edition::lite && !IsCampaignLevelPath(entryPath)) continue;
         const bool hardmodeRun = !hardmodePractice && HardmodeLevelFromPath(entryPath) > 0;
         if (continueHardmode && !hardmodeRun) continue;
         if (hardmodeRun && loadSavedGame && savedGameRoot.value("hardmode_failed", false)) {
@@ -3787,6 +3795,7 @@ int RunGameApp(int argc, char** argv) {
             syncWorldBackground();
             droppedCoins.clear();
             reloadLevel();
+            if (Edition::lite && saveGameToDisk) (void)saveGameToDisk();
             return true;
         };
         float fastTravelCooldown = 0.0f;
@@ -4966,7 +4975,7 @@ int RunGameApp(int argc, char** argv) {
                     if (!levelCompleteNextPath.empty()) {
                         const int completedWorldId = levelManager.worldId();
                         if (transitionToLevelPath(levelCompleteNextPath)) {
-                            if (hardmodeRun || levelManager.worldId() != completedWorldId) {
+                            if (Edition::lite || hardmodeRun || levelManager.worldId() != completedWorldId) {
                                 (void)saveGameToDisk();
                             }
                             continue;

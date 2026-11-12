@@ -11,7 +11,7 @@
         android:enableOnBackInvokedCallback="false"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
-        android:label="Dorfplatformer Timetravel"
+        android:label="${editionName}"
         android:maxAspectRatio="4.0"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:resizeableActivity="true"

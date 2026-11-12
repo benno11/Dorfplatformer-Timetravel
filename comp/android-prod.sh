@@ -34,6 +34,7 @@ for abi in "${ABI_LIST[@]}"; do
   build_dir="${REPO_ROOT}/build/android/${abi}"
   cmake -S "${REPO_ROOT}" -B "${build_dir}" \
     -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    -DPLATFORMER_LITE_EDITION="${PLATFORMER_LITE_EDITION:-OFF}" \
     -DANDROID_ABI="${abi}" \
     -DANDROID_PLATFORM=android-24 \
     -DANDROID_NDK="${ANDROID_NDK_HOME}" \
