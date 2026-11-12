@@ -83,5 +83,5 @@ struct FrontendMenuContext {
     std::function<void()> pollUpdaterAutoRelaunch;
 };
 
-FrontendAction runFrontendMenu(FrontendMenuContext& ctx);
+FrontendAction runFrontendMenu(FrontendMenuContext& ctx, bool settingsOnly = false);
 

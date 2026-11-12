@@ -392,3 +392,43 @@ loading is atomic: malformed layer data cannot partially apply parameter values.
 Older readers still enumerate all ID/X/Y triples but ignore the new layers;
 resaving in an older editor can strip them. Object values and layers survive
 resizing and save-game snapshots.
+
+### Level upgrades
+
+Opening a chunk-encoded legacy level or a `DFLVL2`/`DFLVL3` level in the editor
+schedules an upgrade to `DFLVL4` on its next save, autosave, or exit. The original
+file is copied to `<level-path>.pre-upgrade.bak` before any replacement. Existing
+backups are never overwritten: additional backups get numbered suffixes. If the
+backup cannot be created, the upgrade does not replace the original.
+
+A shared current-format writer preserves the decoded tile IDs and object
+positions, along with level settings, parameter values, and object layers.
+Legacy wrap-control objects retain their behavior. Repeated upgrades are stable;
+current-format files do not create migration backups. Missing parameter values
+stay missing rather than acquiring guessed values. Playing bundled or downloaded
+levels only decodes them in memory and never rewrites their source files.
+
+Truncated modern tile/object data, invalid known object extensions, unknown
+extension sections, and unsupported modern formats are rejected instead of being
+silently resaved with lost content. Legacy encoding is tracked separately from
+its numeric version so a legacy file numbered 4 still receives the upgrade.
+
+### Brushes and in-game controls
+
+The editor's Brush -/+ controls select square brushes of 1x1, 3x3, 5x5, 7x7, or
+9x9 cells. Comma/period also decrease/increase the size. A canvas hover outline
+previews the affected cells. Brushes paint and erase tiles or objects, clipping
+at level edges. Object brushes respect the active layer and Delete mode;
+Configure Object always targets a single object.
+
+The gameplay pause menu has the main-menu gear button inside the pause window's
+top-right corner. It opens the
+existing settings menu and returns to the paused game. Keyboard/controller Up
+focuses Settings, and Down returns to Resume. Audio, display, controls, and debug
+settings apply without restarting the level. Time spent in settings does not
+advance gameplay, score payouts, or a paused death animation.
+
+On death, the player uses the configured Death sprite, rises briefly, then falls
+past the bottom of the screen before respawning. The camera stays fixed during
+the flight, and the sprite ignores collisions and wrapping. Life deduction and
+Hardmode restart rules remain in effect. Pausing also pauses the death flight.

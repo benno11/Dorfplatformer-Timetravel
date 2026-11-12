@@ -286,6 +286,39 @@ std::string SerializeLevelObjects(const std::vector<ObjectInstance>& objects) {
     return out.str();
 }
 
+bool LevelNeedsUpgrade(const LevelMeta& meta) {
+    return meta.legacyEncoding || meta.formatVersion < kCurrentLevelFormatVersion;
+}
+
+std::string SerializeLevelBNNLVL(const TileMap& map, const std::vector<ObjectInstance>& objects, const LevelMeta& meta) {
+    if (map.w <= 0 || map.h <= 0 || map.w > 4096 || map.h > 4096 ||
+        map.tileIds.size() != (size_t)map.w * map.h ||
+        (!meta.legacyEncoding && meta.formatVersion > kCurrentLevelFormatVersion)) return {};
+    for (const auto& obj : objects) {
+        if (!std::isfinite(obj.x) || !std::isfinite(obj.y) || obj.layer < 0 || obj.layer > 9) return {};
+        if (LevelParameters::definition(obj) && obj.parameterValue && !LevelParameters::valid(obj)) return {};
+    }
+    LevelMeta current = meta;
+    if (LevelNeedsUpgrade(meta)) {
+        // Legacy wrap controls enable wrapping on contact, as in the original loader.
+        for (const auto& obj : objects) {
+            if (obj.id == "62") current.wrapX = true;
+            if (obj.id == "63") current.wrapY = true;
+        }
+    }
+    std::ostringstream out;
+    out << SerializeLevelMetaHeader(current) << "DFLVL" << kCurrentLevelFormatVersion << ' ' << map.w << ' ' << map.h << "\n";
+    for (int y = 0; y < map.h; ++y) {
+        for (int x = 0; x < map.w; ++x) {
+            if (x) out << ' ';
+            out << map.tileIds[(size_t)y * map.w + x];
+        }
+        out << "\n";
+    }
+    out << SerializeLevelObjects(objects);
+    return out.str();
+}
+
 static void parseLevelMetaHeader(std::string& data, LevelMeta& meta) {
     meta = LevelMeta{};
     std::istringstream in(data);
@@ -544,7 +577,7 @@ bool loadLevelBNNLVL(const std::string& path,
         map.bg.assign(total, 0);
         for (int i = 0; i < total; ++i) {
             int id = 2;
-            if (!(in >> id)) break;
+            if (!(in >> id)) return false;
             if (id < 0) id = 0;
             if (id > 65535) id = 65535;
             map.tileIds[i] = (unsigned short)id;
@@ -554,24 +587,19 @@ bool loadLevelBNNLVL(const std::string& path,
         objects.clear();
         std::string objHeader;
         if (in >> objHeader) {
-            if (objHeader == "OBJ") {
-                int objCount = 0;
-                if (in >> objCount) {
-                    objCount = std::clamp(objCount, 0, 200000);
-                    objects.reserve(objCount);
-                    for (int i = 0; i < objCount; ++i) {
-                        int id = 0;
-                        float x = 0.0f;
-                        float y = 0.0f;
-                        if (!(in >> id >> x >> y)) break;
-                        if (id <= 0) continue;
-                        ObjectInstance obj;
-                        obj.id = std::to_string(id);
-                        obj.x = x;
-                        obj.y = y;
-                        objects.push_back(obj);
-                    }
-                }
+            if (objHeader != "OBJ") return false;
+            int objCount = 0;
+            if (!(in >> objCount) || objCount < 0 || objCount > 200000) return false;
+            objects.reserve(objCount);
+            for (int i = 0; i < objCount; ++i) {
+                int id = 0;
+                float x = 0.0f, y = 0.0f;
+                if (!(in >> id >> x >> y) || id <= 0 || !std::isfinite(x) || !std::isfinite(y)) return false;
+                ObjectInstance obj;
+                obj.id = std::to_string(id);
+                obj.x = x;
+                obj.y = y;
+                objects.push_back(obj);
             }
         }
         std::string extension;
@@ -581,7 +609,7 @@ bool loadLevelBNNLVL(const std::string& path,
         while (in >> extension) {
             const bool parameterSection = extension.rfind("OBJPARAM", 0) == 0;
             const bool layerSection = extension.rfind("OBJLAYER", 0) == 0;
-            if (!parameterSection && !layerSection) break;
+            if (!parameterSection && !layerSection) return false;
             if ((parameterSection && (extension != "OBJPARAM1" || sawValues)) ||
                 (layerSection && (extension != "OBJLAYER1" || sawLayers))) return false;
             sawValues |= parameterSection;
@@ -621,6 +649,7 @@ bool loadLevelBNNLVL(const std::string& path,
     if (!nextLegacyToken(s, cur, t) || !t.hasValue) return false;
     int ver = t.value;
     meta.formatVersion = ver;
+    meta.legacyEncoding = true;
 
     // parse_next_chunk: max_x
     if (!nextLegacyToken(s, cur, t) || !t.hasValue) return false;

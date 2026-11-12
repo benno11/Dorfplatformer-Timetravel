@@ -71,6 +71,7 @@
 #include "FrontendMenu.h"
 #include "GameSupport.h"
 #include "ButtonAnimation.h"
+#include "DeathAnimation.h"
 #include "SignpostRendering.h"
 #include "AsyncAssetLoader.h"
 #include "ParallaxRenderer.h"
@@ -3809,6 +3810,8 @@ int RunGameApp(int argc, char** argv) {
         bool deathSequenceActive = false;
         bool deathLifeDeducted = false;
         float deathTimer = 0.0f;
+        DeathAnimation::Flight deathFlight;
+        float lastRenderCamX = 0, lastRenderCamY = 0;
         struct DroppedCoin {
             WaterVisuals::InteractionState waterState;
             float x = 0.0f;
@@ -4382,6 +4385,15 @@ int RunGameApp(int argc, char** argv) {
             }
         };
         auto beginDeathSequence = [&]() {
+            if (deathSequenceActive) return;
+            float screenX = player.x - lastRenderCamX;
+            if (wrapTriggerXActive && map.w > 0) screenX = std::remainder(screenX - kGameplayViewW * 0.5f, (float)(map.w * map.tileSize)) + kGameplayViewW * 0.5f;
+            deathFlight.start(std::clamp(screenX, 0.0f, (float)(kGameplayViewW - player.w)),
+                std::clamp(player.y - lastRenderCamY, 0.0f, (float)(kGameplayViewH - player.h)));
+            player.anim = ANIM_DEATH;
+            player.animTime = 0;
+            player.vx = player.vy = 0;
+            setFastTravelActiveDir(-1, "death");
             player.hasShield = false;
             player.slideTime = 0.0f;
             deathSequenceActive = true;
@@ -4426,6 +4438,11 @@ int RunGameApp(int argc, char** argv) {
         SDL_Rect pauseBtnContinue{0,0,0,0};
         SDL_Rect pauseBtnRestart{0,0,0,0};
         SDL_Rect pauseBtnExit{0,0,0,0};
+        SDL_Rect pauseBtnSettings{0,0,0,0};
+        bool pauseSettingsRequested = false;
+        std::unique_ptr<SDL_Texture, decltype(&SDL_DestroyTexture)> pauseSettingsTexture(nullptr, SDL_DestroyTexture);
+        std::unordered_map<std::string, Frame> pauseSettingsFrames;
+        bool pauseSettingsAssetsAttempted = false;
         constexpr float kPauseMenuAnimDurationSec = 0.22f;
         constexpr float kPauseButtonFadeDelay = 0.46f;
         float pauseMenuAnim = 0.0f;
@@ -4452,11 +4469,15 @@ int RunGameApp(int argc, char** argv) {
             if (pauseSelection == 0) {
                 closePauseMenu();
             } else if (pauseSelection == 1) {
+                deathSequenceActive = false;
+                deathTimer = 0;
                 droppedCoins.clear();
                 reloadLevel();
                 paused = false;
                 pauseMenuAnim = 0.0f;
                 pauseMenuClosing = false;
+            } else if (pauseSelection == 3) {
+                pauseSettingsRequested = true;
             } else {
                 if (hardmodeRun) (void)saveGameToDisk();
                 returnToSelect = true;
@@ -4467,6 +4488,9 @@ int RunGameApp(int argc, char** argv) {
             if (lowPowerSuspendActive) return;
             paused = true;
             stopDebugButtonEditing();
+            pauseSettingsTexture.reset();
+            pauseSettingsFrames.clear();
+            pauseSettingsAssetsAttempted = false;
             unloadGameplayAssets();
             lowPowerSuspendActive = true;
             lastTicks = SDL_GetTicks();
@@ -5175,7 +5199,7 @@ int RunGameApp(int argc, char** argv) {
                     const int my = (int)std::lround(e.tfinger.y * dbgH);
                     consumedByDebugger = handleDetailedDebuggerTap(mx, my);
                 }
-                if (debugToolsEnabled() && !consumedByDebugger && e.tfinger.windowID == mainWindowId) {
+                if (!paused && debugToolsEnabled() && !consumedByDebugger && e.tfinger.windowID == mainWindowId) {
                     // Touch hotspot (top-right) to toggle detailed debugger on mobile.
                     if (e.tfinger.x >= 0.92f && e.tfinger.y <= 0.10f) {
                         toggleDetailedDebugger();
@@ -5346,11 +5370,13 @@ int RunGameApp(int argc, char** argv) {
                     togglePauseMenu();
                 }
                 if (paused) {
+                    if (e.key.key == SDLK_UP) pauseSelection = 3;
+                    if (e.key.key == SDLK_DOWN && pauseSelection == 3) pauseSelection = 0;
                     if (e.key.key == SDLK_LEFT || e.key.key == SDLK_a) {
                         pauseSelection = std::max(0, pauseSelection - 1);
                     }
                     if (e.key.key == SDLK_RIGHT || e.key.key == SDLK_d) {
-                        pauseSelection = std::min(2, pauseSelection + 1);
+                        pauseSelection = std::min(3, pauseSelection + 1);
                     }
                     if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) {
                         handlePauseSelect(pauseSelection);
@@ -5360,11 +5386,15 @@ int RunGameApp(int argc, char** argv) {
             if (!isKeyPauseToggleEvent && !levelCompleteActive && InputSystem::isPauseToggleEvent(e)) {
                 togglePauseMenu();
             }
+            if (paused && e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
+                if (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_UP) pauseSelection = 3;
+                if (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_DOWN && pauseSelection == 3) pauseSelection = 0;
+            }
             if (paused && InputSystem::isLeftEvent(e)) {
                 pauseSelection = std::max(0, pauseSelection - 1);
             }
             if (paused && InputSystem::isRightEvent(e)) {
-                pauseSelection = std::min(2, pauseSelection + 1);
+                pauseSelection = std::min(3, pauseSelection + 1);
             }
             if (paused && InputSystem::isAcceptEvent(e)) {
                 handlePauseSelect(pauseSelection);
@@ -5378,6 +5408,7 @@ int RunGameApp(int argc, char** argv) {
                     if (SDL_PointInRect(&pt, &pauseBtnContinue)) handlePauseSelect(0);
                     else if (SDL_PointInRect(&pt, &pauseBtnRestart)) handlePauseSelect(1);
                     else if (SDL_PointInRect(&pt, &pauseBtnExit)) handlePauseSelect(2);
+                    else if (SDL_PointInRect(&pt, &pauseBtnSettings)) handlePauseSelect(3);
                 }
             }
             if (pauseButtonsInteractive && e.type == SDL_EVENT_FINGER_DOWN &&
@@ -5392,8 +5423,33 @@ int RunGameApp(int argc, char** argv) {
                     if (SDL_PointInRect(&pt, &pauseBtnContinue)) handlePauseSelect(0);
                     else if (SDL_PointInRect(&pt, &pauseBtnRestart)) handlePauseSelect(1);
                     else if (SDL_PointInRect(&pt, &pauseBtnExit)) handlePauseSelect(2);
+                    else if (SDL_PointInRect(&pt, &pauseBtnSettings)) handlePauseSelect(3);
                 }
             }
+        }
+        if (pauseSettingsRequested) {
+            pauseSettingsRequested = false;
+            auto settingsCtx = frontendCtx;
+            settingsCtx.gameTarget = gameTarget;
+            settingsCtx.menuSession.reset();
+            const auto result = runFrontendMenu(settingsCtx, true);
+            if (result == FrontendAction::Quit) { running = false; continue; }
+            saveClientSettings();
+            applyAudioVolumes();
+            showFpsCounter = defaultShowFpsCounter;
+            showHitboxes = defaultShowHitboxes;
+            showPlayerHitbox = defaultShowPlayerHitbox;
+            showDebugView = defaultShowDebugView;
+            hideUnknownObjectTypes = defaultHideUnknownObjectTypes;
+            if (showDetailedDebugger != defaultShowDetailedDebugger) toggleDetailedDebugger();
+            const Uint64 resumedTicks = SDL_GetTicksNS();
+            lastTicksNs = lastPresentTicksNs = lastScoreFrameTicksNs = resumedTicks;
+            lastTicks = lastPresentTicks = nextPresentTicks = SDL_GetTicks();
+            activeTouches.clear();
+            SDL_FlushEvent(SDL_EVENT_KEY_DOWN);
+            SDL_FlushEvent(SDL_EVENT_MOUSE_BUTTON_DOWN);
+            SDL_FlushEvent(SDL_EVENT_FINGER_DOWN);
+            continue;
         }
         if (updateLowPowerSuspendState()) {
             if (!running || !levelRunning) continue;
@@ -5436,13 +5492,16 @@ int RunGameApp(int argc, char** argv) {
 
         if (deathSequenceActive && !paused) {
             deathTimer += dt;
+            deathFlight.advance(dtPrecise);
+            player.anim = ANIM_DEATH;
+            player.animTime = deathTimer;
             if (!deathLifeDeducted && deathTimer >= 0.12f) {
                 if (livesSystemEnabled) {
                     livesCount = std::max(0, livesCount - 1);
                 }
                 deathLifeDeducted = true;
             }
-            if (deathLifeDeducted && deathTimer >= 0.90f) {
+            if (deathLifeDeducted && deathFlight.finished(kGameplayViewH, player.h)) {
                 deathSequenceActive = false;
                 deathTimer = 0.0f;
                 if (hardmodeRun) {
@@ -7292,7 +7351,7 @@ int RunGameApp(int argc, char** argv) {
                 }
                 ++objIdx;
             }
-            if (deathSequenceActive) continue;
+            if (deathSequenceActive) goto RENDER_ONLY;
 
             // Spring objects (id 31): bounce player upward on top contact.
             for (int objIdx = 0; objIdx < (int)objects.size(); ++objIdx) {
@@ -7622,10 +7681,12 @@ int RunGameApp(int argc, char** argv) {
             }
         }
         // Snap render camera to pixel grid to avoid subpixel shimmer across all worlds.
+        if (deathSequenceActive) { camX = lastRenderCamX; camY = lastRenderCamY; }
         camX = std::round(camX);
         camY = std::round(camY);
         previousCameraX = camX;
         previousCameraY = camY;
+        if (!deathSequenceActive) { lastRenderCamX = camX; lastRenderCamY = camY; }
 
         int nativeTextWinW = 0;
         int nativeTextWinH = 0;
@@ -8379,15 +8440,19 @@ int RunGameApp(int argc, char** argv) {
         }
 
         SDL_FRect pr{ player.x - camX, player.y - camY, (float)player.w, (float)player.h };
-        if (renderWrapX) {
+        if (renderWrapX && !deathSequenceActive) {
             const float wrapW = (float)(map.w * map.tileSize);
             while (pr.x < -wrapW * 0.5f) pr.x += wrapW;
             while (pr.x >  wrapW * 0.5f) pr.x -= wrapW;
         }
-        if (renderWrapY) {
+        if (renderWrapY && !deathSequenceActive) {
             const float wrapH = (float)(map.h * map.tileSize);
             while (pr.y < -wrapH * 0.5f) pr.y += wrapH;
             while (pr.y >  wrapH * 0.5f) pr.y -= wrapH;
+        }
+        if (deathSequenceActive) {
+            player.anim = ANIM_DEATH;
+            pr.x = deathFlight.x; pr.y = deathFlight.y();
         }
         if (fastTravelActiveDir < 0) {
             const std::vector<const Frame*>* seq = &animIdleFrames;
@@ -8432,7 +8497,7 @@ int RunGameApp(int argc, char** argv) {
             const bool useCustomCharacter = showExperimentalFeatures && characterAppearance.enabled;
             if (useCustomCharacter || (playerTex && renderFramePtr)) {
                 Uint8 playerAlpha = 255;
-                if (playerInvincibleTimer > 0.0f || player.slideTime > 0.0f) {
+                if (!deathSequenceActive && (playerInvincibleTimer > 0.0f || player.slideTime > 0.0f)) {
                     const float phase = (float)(SDL_GetTicksNS() / 1000000000.0) * 14.0f;
                     const float wave = 0.5f + 0.5f * std::sin(phase);
                     playerAlpha = (Uint8)std::clamp((int)std::lround(95.0f + 160.0f * wave), 70, 255);
@@ -8463,8 +8528,8 @@ int RunGameApp(int argc, char** argv) {
                                 windowToGamePoint((int)mouseX, (int)mouseY, winW, winH, kBaseScreenW, kBaseScreenH, gameX, gameY, 1.0f);
                             float x = gameX / kGameplayZoom;
                             float y = gameY / kGameplayZoom;
-                            if (renderWrapX) x -= std::round((x - out.x - out.w * 0.5f) / (map.w * map.tileSize)) * (map.w * map.tileSize);
-                            if (renderWrapY) y -= std::round((y - out.y - out.h * 0.5f) / (map.h * map.tileSize)) * (map.h * map.tileSize);
+                            if (renderWrapX && !deathSequenceActive) x -= std::round((x - out.x - out.w * 0.5f) / (map.w * map.tileSize)) * (map.w * map.tileSize);
+                            if (renderWrapY && !deathSequenceActive) y -= std::round((y - out.y - out.h * 0.5f) / (map.h * map.tileSize)) * (map.h * map.tileSize);
                             hairMouse.update(characterParts, characterAppearance, pose, player.facing,
                                 {(x - out.x) * 16 / out.w, (y - out.y) * 28 / out.h},
                                 (mouseButtons & SDL_BUTTON_LMASK) != 0, mouseActive);
@@ -8491,7 +8556,7 @@ int RunGameApp(int argc, char** argv) {
                     dst.y += (int)pr.h - dst.h;
                 }
                 drawPlayerFrame(dst);
-                if (renderWrapY) {
+                if (renderWrapY && !deathSequenceActive) {
                     const int wrapH = map.h * map.tileSize;
                     SDL_Rect dstTop = dst;
                     SDL_Rect dstBottom = dst;
@@ -8500,7 +8565,7 @@ int RunGameApp(int argc, char** argv) {
                     drawPlayerFrame(dstTop);
                     drawPlayerFrame(dstBottom);
                 }
-                if (renderWrapX) {
+                if (renderWrapX && !deathSequenceActive) {
                     const int wrapW = map.w * map.tileSize;
                     SDL_Rect dstLeft = dst;
                     SDL_Rect dstRight = dst;
@@ -8509,7 +8574,7 @@ int RunGameApp(int argc, char** argv) {
                     drawPlayerFrame(dstLeft);
                     drawPlayerFrame(dstRight);
                 }
-                if (renderWrapY && renderWrapX) {
+                if (renderWrapY && renderWrapX && !deathSequenceActive) {
                     const int wrapW = map.w * map.tileSize;
                     const int wrapH = map.h * map.tileSize;
                     SDL_Rect dstTL = dst;
@@ -8531,7 +8596,7 @@ int RunGameApp(int argc, char** argv) {
                 SDL_RenderFillRectF(ren, &pr);
                 SDL_SetRenderDrawColor(ren, 255, 80, 80, 255);
                 SDL_RenderDrawRectF(ren, &pr);
-                if (renderWrapY) {
+                if (renderWrapY && !deathSequenceActive) {
                     const float wrapH = (float)(map.h * map.tileSize);
                     SDL_FRect prTop{ pr.x, pr.y - wrapH, pr.w, pr.h };
                     SDL_FRect prBottom{ pr.x, pr.y + wrapH, pr.w, pr.h };
@@ -8541,7 +8606,7 @@ int RunGameApp(int argc, char** argv) {
                     SDL_RenderDrawRectF(ren, &prTop);
                     SDL_RenderDrawRectF(ren, &prBottom);
                 }
-                if (renderWrapX) {
+                if (renderWrapX && !deathSequenceActive) {
                     const float wrapW = (float)(map.w * map.tileSize);
                     SDL_FRect prLeft{ pr.x - wrapW, pr.y, pr.w, pr.h };
                     SDL_FRect prRight{ pr.x + wrapW, pr.y, pr.w, pr.h };
@@ -8551,7 +8616,7 @@ int RunGameApp(int argc, char** argv) {
                     SDL_RenderDrawRectF(ren, &prLeft);
                     SDL_RenderDrawRectF(ren, &prRight);
                 }
-                if (renderWrapY && renderWrapX) {
+                if (renderWrapY && renderWrapX && !deathSequenceActive) {
                     const float wrapW = (float)(map.w * map.tileSize);
                     const float wrapH = (float)(map.h * map.tileSize);
                     SDL_FRect prTL{ pr.x - wrapW, pr.y - wrapH, pr.w, pr.h };
@@ -8800,6 +8865,7 @@ int RunGameApp(int argc, char** argv) {
             bool hasRestart = pauseTex && pauseFrames.count("Retartbtn") != 0;
             bool hasExit = pauseTex && pauseFrames.count("exitbtn") != 0;
 
+            SDL_Rect pauseWindow{};
             if (hasPanel && hasContinue && hasRestart && hasExit) {
                 const Frame& panelFrame = pauseFrames["Panel"];
                 SDL_Rect panelDst = scaleRectCentered(SDL_Rect{
@@ -8809,6 +8875,7 @@ int RunGameApp(int argc, char** argv) {
                     panelFrame.rect.h
                 });
                 panelDst.y += pauseSlideY;
+                pauseWindow = panelDst;
                 SDL_SetTextureAlphaMod(pauseTex, pausePanelAlpha);
                 renderFrame(ren, pauseTex, panelFrame, panelDst);
                 SDL_SetTextureAlphaMod(pauseTex, pauseButtonAlpha);
@@ -8847,10 +8914,11 @@ int RunGameApp(int argc, char** argv) {
 
                 SDL_SetRenderDrawColor(ren, 255, 255, 255, (Uint8)std::clamp((int)std::lround(200.0f * pauseButtonT), 0, 200));
                 SDL_Rect highlight = (pauseSelection == 0) ? contDst : (pauseSelection == 1 ? restartDst : exitDst);
-                SDL_RenderDrawRect(ren, &highlight);
+                if (pauseSelection < 3) SDL_RenderDrawRect(ren, &highlight);
             } else {
                 SDL_Rect panel = scaleRectCentered(SDL_Rect{screenW / 2 - 140, screenH / 2 - 90, 280, 180});
                 panel.y += pauseSlideY;
+                pauseWindow = panel;
                 SDL_SetRenderDrawColor(ren, 30, 30, 38, (Uint8)std::clamp((int)std::lround(230.0f * pauseEase), 0, 230));
                 SDL_RenderFillRect(ren, &panel);
                 SDL_SetRenderDrawColor(ren, 80, 90, 110, pausePanelAlpha);
@@ -8890,6 +8958,37 @@ int RunGameApp(int argc, char** argv) {
             }
 
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
+            if (!pauseSettingsAssetsAttempted) {
+                pauseSettingsAssetsAttempted = true;
+                pauseSettingsTexture.reset(loadTextureSafe(ren, "assets/Sheets/DF_Main_menu-uhd.png"));
+                pauseSettingsFrames = loadPlistFrames("assets/Sheets/DF_Main_menu-uhd.plist");
+                if (pauseSettingsTexture) SDL_SetTextureScaleMode(pauseSettingsTexture.get(), SDL_SCALEMODE_NEAREST);
+            }
+            const int settingsSize = std::max(1, std::min({(int)std::lround(52 * uiButtonScale), pauseWindow.w / 5, pauseWindow.h / 4}));
+            const int settingsInset = std::max(4, (int)std::lround(12 * uiButtonScale));
+            pauseBtnSettings = {pauseWindow.x + pauseWindow.w - settingsInset - settingsSize,
+                pauseWindow.y + settingsInset, settingsSize, settingsSize};
+            const auto settingsDraw = pauseButtonAnimations.drawRect(3, pauseBtnSettings, pauseSelection == 3, win, screenW, screenH);
+            const auto buttonFrame = pauseSettingsFrames.find("btn_sprite");
+            const auto gearFrame = pauseSettingsFrames.find("settings_btn_logo");
+            if (pauseSettingsTexture && buttonFrame != pauseSettingsFrames.end() && gearFrame != pauseSettingsFrames.end()) {
+                SDL_SetTextureAlphaMod(pauseSettingsTexture.get(), pauseButtonAlpha);
+                renderFrame(ren, pauseSettingsTexture.get(), buttonFrame->second, settingsDraw);
+                const SDL_Rect gear{settingsDraw.x + (int)std::lround(settingsDraw.w * 0.18f),
+                    settingsDraw.y + (int)std::lround(settingsDraw.h * 0.14f),
+                    (int)std::lround(settingsDraw.w * 0.64f), (int)std::lround(settingsDraw.h * 0.64f)};
+                renderFrame(ren, pauseSettingsTexture.get(), gearFrame->second, gear);
+                SDL_SetTextureAlphaMod(pauseSettingsTexture.get(), 255);
+            } else {
+                SDL_SetRenderDrawColor(ren, 75, 85, 110, pauseButtonAlpha);
+                SDL_RenderFillRect(ren, &settingsDraw);
+                DrawTextColored(ren, settingsDraw.x + (settingsDraw.w - MeasureTextWidth(2, "S")) / 2,
+                    settingsDraw.y + (settingsDraw.h - 20) / 2, 2, "S", SDL_Color{255,255,255,pauseButtonAlpha});
+            }
+            if (pauseSelection == 3) {
+                SDL_SetRenderDrawColor(ren, 180, 200, 230, pauseButtonAlpha);
+                SDL_RenderRect(ren, &settingsDraw);
+            }
         }
         if (levelCompleteUiLerp > 0.001f) {
             const int centerY = screenH / 2;

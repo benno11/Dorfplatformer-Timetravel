@@ -10,5 +10,6 @@ struct ResizePlan {
 };
 bool planResize(const TileMap& map, const std::vector<ObjectInstance>& objects, int width, int height, ResizePlan& plan);
 bool renameFile(const std::string& path, const std::string& name, std::string& renamedPath, std::string& error);
+bool backupForUpgrade(const std::string& path, std::string& backupPath, std::string& error);
 bool replaceFile(const std::string& temporary, const std::string& target);
 }

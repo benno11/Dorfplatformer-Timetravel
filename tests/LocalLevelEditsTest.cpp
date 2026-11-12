@@ -1,5 +1,6 @@
 #include "LocalLevelEdits.h"
 #include "EditorObjectTools.h"
+#include "EditorBrush.h"
 #include <cassert>
 #include <chrono>
 #include <filesystem>
@@ -14,6 +15,13 @@ static std::string read(const fs::path& path) {
 }
 
 int main() {
+    assert(EditorBrush::cells(10, 10, 5, 5, 1).size() == 1);
+    assert(EditorBrush::cells(10, 10, 5, 5, 3).size() == 9);
+    assert(EditorBrush::cells(10, 10, 0, 0, 3).size() == 4);
+    assert(EditorBrush::cells(5, 4, 2, 2, 9).size() == 20);
+    for (const auto& cell : EditorBrush::cells(5, 4, 0, 0, 9))
+        assert(cell.first >= 0 && cell.first < 5 && cell.second >= 0 && cell.second < 4);
+
     std::vector<ObjectInstance> layered;
     EditorObjects::replace(layered, {"31", 48, 48, {}, 0});
     EditorObjects::replace(layered, {"46", 48, 48, {}, 2});
@@ -81,6 +89,15 @@ int main() {
     assert(!LocalLevelEdits::renameFile(original.string(), "missing", renamed, error));
     assert(LocalLevelEdits::renameFile(firstRename, "../outside", renamed, error));
     assert(fs::path(renamed).parent_path() == dir && fs::path(renamed).extension() == ".bnnlvl");
+    std::string upgradeBackup;
+    assert(LocalLevelEdits::backupForUpgrade(renamed, upgradeBackup, error));
+    assert(read(upgradeBackup) == "level data" && read(renamed) == "level data");
+    std::string secondBackup;
+    assert(LocalLevelEdits::backupForUpgrade(renamed, secondBackup, error));
+    assert(secondBackup != upgradeBackup && read(secondBackup) == "level data");
+    const std::string secondBackupFile = secondBackup;
+    assert(!LocalLevelEdits::backupForUpgrade(original.string(), secondBackup, error));
+    assert(secondBackup.empty() && !error.empty());
     const auto temporary = dir / "replacement.tmp";
     assert(!LocalLevelEdits::replaceFile(temporary.string(), renamed));
     assert(read(renamed) == "level data");
@@ -89,6 +106,8 @@ int main() {
     assert(read(renamed) == "resized data" && !fs::exists(temporary));
     fs::remove(renamed);
     fs::remove(existing);
+    fs::remove(upgradeBackup);
+    fs::remove(secondBackupFile);
     assert(fs::remove(dir));
     std::cout << "Local level edit tests passed\n";
 }

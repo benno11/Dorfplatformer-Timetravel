@@ -294,6 +294,53 @@ int main() {
         assert(!loadLevelBNNLVL("bad_layer.bin", map, objects, loaded));
         assert(!objects[0].parameterValue && objects[0].layer == 0); // Atomic extension loading.
     }
+    assert(loadLevelBNNLVL("configured.bin", map, objects, loaded));
+    files["configured_upgrade.bin"] = SerializeLevelBNNLVL(map, objects, loaded);
+    assert(loadLevelBNNLVL("configured_upgrade.bin", map, objects, loaded));
+    assert(loaded.levelId == original.levelId && loaded.themeOverride == original.themeOverride);
+    assert(loaded.world == original.world && loaded.area == original.area && loaded.time == original.time);
+    assert(loaded.wrapX == original.wrapX && loaded.wrapY == original.wrapY && loaded.bouncyTile12 == original.bouncyTile12);
+    // Upgrade all supported encodings through one canonical writer. Upgrading
+    // again is byte-stable and never invents missing trigger values.
+    for (int version : {2, 3, 4}) {
+        files["upgrade_source.bin"] = "DFLVL" + std::to_string(version) +
+            " 3 1\n0 98 65535\nOBJ 2\n1106 16.25 16\n62 48 16\nOBJLAYER1 1\n0 2\n";
+        assert(loadLevelBNNLVL("upgrade_source.bin", map, objects, loaded));
+        assert(LevelNeedsUpgrade(loaded) == (version < 4));
+        const auto upgraded = SerializeLevelBNNLVL(map, objects, loaded);
+        assert(!upgraded.empty());
+        files["upgrade_output.bin"] = upgraded;
+        assert(loadLevelBNNLVL("upgrade_output.bin", map, objects, loaded));
+        assert(!LevelNeedsUpgrade(loaded) && loaded.formatVersion == kCurrentLevelFormatVersion);
+        assert((map.tileIds == std::vector<unsigned short>{0, 98, 65535}));
+        assert(objects.size() == 2 && objects[0].x == 16.25f && objects[0].layer == 2);
+        assert(!objects[0].parameterValue);
+        if (version < 4) assert(loaded.wrapX);
+        assert(SerializeLevelBNNLVL(map, objects, loaded) == upgraded);
+    }
+    // The original chunk-encoded campaign level is upgraded from its decoded
+    // geometry, preventing coordinate adjustments from being applied twice.
+    assert(loadLevelBNNLVL("assets/levels/level_001.txt", map, objects, loaded));
+    assert(loaded.legacyEncoding && LevelNeedsUpgrade(loaded));
+    const auto originalTiles = map.tileIds;
+    const auto originalObjects = objects;
+    files["campaign_upgraded.bin"] = SerializeLevelBNNLVL(map, objects, loaded);
+    assert(loadLevelBNNLVL("campaign_upgraded.bin", map, objects, loaded));
+    assert(!loaded.legacyEncoding && !LevelNeedsUpgrade(loaded));
+    assert(map.tileIds == originalTiles && objects.size() == originalObjects.size());
+    for (size_t i = 0; i < objects.size(); ++i) {
+        assert(objects[i].id == originalObjects[i].id);
+        assert(objects[i].x == originalObjects[i].x && objects[i].y == originalObjects[i].y);
+    }
+    const auto stableCampaign = SerializeLevelBNNLVL(map, objects, loaded);
+    assert(stableCampaign == files["campaign_upgraded.bin"]);
+    loaded.formatVersion = 5;
+    assert(SerializeLevelBNNLVL(map, objects, loaded).empty());
+    for (const auto& malformed : {"DFLVL2 2 2\n2 2\n", "DFLVL3 1 1\n2\nOBJ 1\n31 16\n",
+        "DFLVL4 1 1\n2\nOBJ x\n", "DFLVL4 1 1\n2\nOBJ 0\nOBJFUTURE1 1\n0 123\n"}) {
+        files["cannot_upgrade.bin"] = malformed;
+        assert(!loadLevelBNNLVL("cannot_upgrade.bin", map, objects, loaded));
+    }
     // Filtered legacy entries must not shift the value indices in saved files.
     assert(SerializeLevelObjects({{"player", 1, 2}, {"1102", 16, 16, 0}}) ==
         "OBJ 1\n1102 16 16\nOBJPARAM1 1\n0 0\n");

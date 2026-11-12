@@ -29,7 +29,7 @@
 #include "UiScale.h"
 #include "ButtonAnimation.h"
 
-FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
+FrontendAction runFrontendMenu(FrontendMenuContext& ctx, bool settingsOnly) {
     bool& running = *ctx.running;
     bool& fullscreen = *ctx.fullscreen;
     bool& vsyncEnabled = *ctx.vsyncEnabled;
@@ -563,6 +563,12 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx) {
     auto mainMenuLabelForIndex = [](int index) -> std::string {
         return index == 0 ? "SETTINGS" : index == 1 ? "PLAY" : "EDITOR";
     };
+    if (settingsOnly) {
+        ctx.menuSession = CreateSlimMenuSession();
+        runScriptMenu("mainsetting");
+        cleanupMenuAssets();
+        return running ? FrontendAction::StartGame : FrontendAction::Quit;
+    }
     if (ctx.applyAudioVolumes) ctx.applyAudioVolumes();
     if (ctx.applyMenuMusicToggle) ctx.applyMenuMusicToggle();
     const std::string resumeMenu = PendingSlimMenu(ctx.menuSession);

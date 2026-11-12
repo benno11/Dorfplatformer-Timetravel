@@ -53,6 +53,24 @@ bool renameFile(const std::string& path, const std::string& name, std::string& r
     return true;
 }
 
+bool backupForUpgrade(const std::string& path, std::string& backupPath, std::string& error) {
+    backupPath.clear();
+    error.clear();
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(path, ec) || ec) { error = "Could not read the original level."; return false; }
+    for (int suffix = 0; suffix < 10000; ++suffix) {
+        const std::string target = path + ".pre-upgrade" + (suffix ? "." + std::to_string(suffix) : "") + ".bak";
+        if (std::filesystem::copy_file(path, target, std::filesystem::copy_options::none, ec)) {
+            backupPath = target;
+            return true;
+        }
+        if (ec != std::errc::file_exists) { error = "Could not create the level upgrade backup."; return false; }
+        ec.clear();
+    }
+    error = "Could not find an unused upgrade backup name.";
+    return false;
+}
+
 bool replaceFile(const std::string& temporary, const std::string& target) {
 #ifdef _WIN32
     return MoveFileExW(std::filesystem::path(temporary).c_str(), std::filesystem::path(target).c_str(),

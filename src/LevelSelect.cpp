@@ -29,6 +29,7 @@
 #include "LevelLoader.h"
 #include "LevelParameterObjects.h"
 #include "EditorObjectTools.h"
+#include "EditorBrush.h"
 #include "ButtonAnimation.h"
 #include "LocalLevelEdits.h"
 #include "ObjectIds.h"
@@ -214,7 +215,8 @@ unsigned short normalizeTileIdForSave(unsigned short id) {
 
 std::string writeLocalLevelFile(const std::vector<unsigned short>& rowMajorGrid, int w, int h,
                                 const std::string& targetPath = "",
-                                const std::vector<ObjectInstance>& objects = {}, const LevelMeta& config = {}) {
+                                const std::vector<ObjectInstance>& objects = {}, const LevelMeta& config = {},
+                                std::string* upgradeBackup = nullptr) {
     if (w <= 0 || h <= 0) return {};
     if ((int)rowMajorGrid.size() != w * h) return {};
     // DFLVL4 adds level configuration while retaining exact row-major tile IDs.
@@ -247,22 +249,13 @@ std::string writeLocalLevelFile(const std::vector<unsigned short>& rowMajorGrid,
     fileConfig.levelId = levelId;
     fileConfig.wrapX = wrapX;
     fileConfig.wrapY = wrapY;
-    std::string data = SerializeLevelMetaHeader(fileConfig);
-    data.reserve((size_t)w * (size_t)h * 4 + 64);
-    data += "DFLVL4 ";
-    data += std::to_string(w);
-    data += " ";
-    data += std::to_string(h);
-    data += "\n";
-    for (int y = 0; y < h; ++y) {
-        for (int x = 0; x < w; ++x) {
-            if (x > 0) data.push_back(' ');
-            const unsigned short id = normalizeTileIdForSave(rowMajorGrid[y * w + x]);
-            data += std::to_string((int)id);
-        }
-        data.push_back('\n');
-    }
-    data += SerializeLevelObjects(objects);
+    TileMap saveMap;
+    saveMap.w = w;
+    saveMap.h = h;
+    saveMap.tileIds = rowMajorGrid;
+    for (auto& tile : saveMap.tileIds) tile = normalizeTileIdForSave(tile);
+    const std::string data = SerializeLevelBNNLVL(saveMap, objects, fileConfig);
+    if (data.empty()) return {};
 
     std::filesystem::path outPath;
     if (!targetPath.empty()) {
@@ -278,6 +271,12 @@ std::string writeLocalLevelFile(const std::vector<unsigned short>& rowMajorGrid,
         for (int attempt = 0; attempt < 1000 && std::filesystem::exists(outPath); ++attempt) {
             outPath = std::filesystem::path(dir) / ("local_" + std::to_string(ts + attempt + 1) + ".bin");
         }
+    }
+    // All rewrite paths, including Resize, protect old sources before upgrading.
+    if (LevelNeedsUpgrade(config) && std::filesystem::exists(outPath)) {
+        std::string localBackup, error;
+        std::string& backup = upgradeBackup ? *upgradeBackup : localBackup;
+        if (backup.empty() && !LocalLevelEdits::backupForUpgrade(outPath.string(), backup, error)) return {};
     }
     const std::filesystem::path tmpPath = outPath.string() + ".tmp";
 
@@ -761,6 +760,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
     int fingerPaletteLastY = 0;
     float fingerPaletteScrollAccum = 0.0f;
     int activeLayer = 0;
+    int brushSize = 1;
     bool configureObjects = false;
     bool touchPanMode = false;
     bool touchEraseMode = false;
@@ -789,15 +789,28 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         std::string content(reinterpret_cast<const char*>(grid.data()), grid.size() * sizeof(grid[0]));
         return content + SerializeLevelMetaHeader(editorConfig) + SerializeLevelObjects(placedObjects);
     };
-    std::string savedSnapshot = initialPath.empty() ? std::string() : snapshot();
+    bool upgradePending = !initialPath.empty() && LevelNeedsUpgrade(editorConfig);
+    std::string upgradeBackup;
+    if (upgradePending) { statusText = "OLD LEVEL - UPGRADE ON SAVE"; statusUntil = SDL_GetTicks() + 5000; }
+    std::string savedSnapshot = initialPath.empty() || upgradePending ? std::string() : snapshot();
     Uint64 nextAutosave = SDL_GetTicks() + 15000;
     auto saveEditor = [&](bool exitAfter, bool automatic = false) {
-        const std::string path = writeLocalLevelFile(grid, gridW, gridH, saveTargetPath, placedObjects, editorConfig);
+        if (upgradePending && upgradeBackup.empty()) {
+            std::string error;
+            if (!LocalLevelEdits::backupForUpgrade(saveTargetPath, upgradeBackup, error)) {
+                statusText = "UPGRADE BACKUP FAILED - RETRY"; statusUntil = SDL_GetTicks() + 5000; return false;
+            }
+        }
+        const bool upgrading = upgradePending;
+        const std::string path = writeLocalLevelFile(grid, gridW, gridH, saveTargetPath, placedObjects, editorConfig, &upgradeBackup);
         if (path.empty()) { statusText = "SAVE FAILED - RETRY IN MENU"; statusUntil = SDL_GetTicks() + 5000; return false; }
         saveTargetPath = savedPath = path;
+        upgradePending = false;
+        editorConfig.formatVersion = kCurrentLevelFormatVersion;
+        editorConfig.legacyEncoding = false;
         savedSnapshot = snapshot();
         nextAutosave = SDL_GetTicks() + 15000;
-        statusText = automatic ? "AUTO SAVED" : "SAVED";
+        statusText = upgrading ? "UPGRADED - BACKUP SAVED" : (automatic ? "AUTO SAVED" : "SAVED");
         statusUntil = SDL_GetTicks() + 2500;
         editorFingerActive = fingerPainting = fingerPaletteScroll = fingerGridPanning = middlePanning = false;
         if (exitAfter) running = false;
@@ -992,8 +1005,11 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         EditorObjects::replace(placedObjects, obj);
     };
     auto applyAt = [&](int cx, int cy, bool erase) {
-        if (objectMode) placeObjectAt(cx, cy, erase);
-        else paintAt(cx, cy, erase);
+        if (configureObjects) { configureObjectAt(cx, cy); return; }
+        for (const auto& cell : EditorBrush::cells(gridW, gridH, cx, cy, brushSize)) {
+            if (objectMode) placeObjectAt(cell.first, cell.second, erase);
+            else paintAt(cell.first, cell.second, erase);
+        }
     };
 
     while (running) {
@@ -1040,7 +1056,9 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         SDL_Rect zoomInBtn{panelX + controlW + controlGap, margin + (controlH + controlGap) * 2, controlW, controlH};
         SDL_Rect layerDownBtn{panelX, margin + (controlH + controlGap) * 3, controlW, controlH};
         SDL_Rect layerUpBtn{panelX + controlW + controlGap, layerDownBtn.y, controlW, controlH};
-        const int paletteStartY = margin + (controlH + controlGap) * 4 + 4;
+        SDL_Rect brushDownBtn{panelX, margin + (controlH + controlGap) * 4, controlW, controlH};
+        SDL_Rect brushUpBtn{panelX + controlW + controlGap, brushDownBtn.y, controlW, controlH};
+        const int paletteStartY = margin + (controlH + controlGap) * 5 + 4;
         const int actionY = winH - margin - 48;
         SDL_Rect configBtn{panelX, actionY, sideW, 44};
         SDL_Rect objectConfigBtn{panelX, actionY - 52, sideW, 44};
@@ -1075,6 +1093,13 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                     activeLayer = std::clamp(activeLayer + (SDL_PointInRect(&toolPoint, &layerUpBtn) ? 1 : -1), 0, EditorObjects::maxLayer);
                     editorFingerActive = fingerPainting = false;
                     continue;
+                }
+                if ((mouseTool || touchTool) && (SDL_PointInRect(&toolPoint, &brushDownBtn) || SDL_PointInRect(&toolPoint, &brushUpBtn))) {
+                    brushSize = std::clamp(brushSize + (SDL_PointInRect(&toolPoint, &brushUpBtn) ? 2 : -2), 1, EditorBrush::maxSize);
+                    editorFingerActive = fingerPainting = false; continue;
+                }
+                if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && (e.key.key == SDLK_COMMA || e.key.key == SDLK_PERIOD)) {
+                    brushSize = std::clamp(brushSize + (e.key.key == SDLK_PERIOD ? 2 : -2), 1, EditorBrush::maxSize); continue;
                 }
                 const bool configObject = ((mouseTool || touchTool) && SDL_PointInRect(&toolPoint, &objectConfigBtn)) ||
                     (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && e.key.key == SDLK_F3);
@@ -1600,6 +1625,18 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             SDL_RenderLine(ren, (float)gridX, (float)gy, (float)(gridX + gridViewW), (float)gy);
         }
         SDL_SetRenderDrawColor(ren, 90, 110, 140, 255);
+        if (!paused && !configureObjects && !touchPanMode && SDL_GetMouseFocus() == win) {
+            float mx = 0, my = 0;
+            SDL_GetMouseState(&mx, &my);
+            if (mx >= gridX && mx < gridX + gridViewW && my >= gridY && my < gridY + gridViewH) {
+                const int cx = ((int)mx - gridX + viewX) / cell, cy = ((int)my - gridY + viewY) / cell;
+                SDL_SetRenderDrawColor(ren, touchEraseMode ? 255 : 140, touchEraseMode ? 95 : 220, 130, 255);
+                for (const auto& position : EditorBrush::cells(gridW, gridH, cx, cy, brushSize)) {
+                    SDL_Rect preview{gridX + position.first * cell - viewX, gridY + position.second * cell - viewY, cell, cell};
+                    SDL_RenderRect(ren, &preview);
+                }
+            }
+        }
         SDL_SetRenderClipRect(ren, nullptr);
         SDL_Rect border{gridX - 1, gridY - 1, gridViewW + 2, gridViewH + 2};
         SDL_RenderDrawRect(ren, &border);
@@ -1614,6 +1651,12 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         DrawText(ren, configBtn.x + (configBtn.w - MeasureTextWidth(2, "LEVEL CONFIG")) / 2, configBtn.y + 12, 2, "LEVEL CONFIG");
         skin.draw(ren, objectConfigBtn, configureObjects);
         DrawText(ren, objectConfigBtn.x + (objectConfigBtn.w - MeasureTextWidth(2, "CONFIGURE OBJECT")) / 2, objectConfigBtn.y + 12, 2, "CONFIGURE OBJECT");
+        skin.draw(ren, brushDownBtn);
+        skin.draw(ren, brushUpBtn);
+        const std::string brushLabel = "BRUSH " + std::to_string(brushSize) + "x" + std::to_string(brushSize);
+        DrawText(ren, brushDownBtn.x + 8, brushDownBtn.y + 14, 2, "-");
+        DrawText(ren, brushUpBtn.x + brushUpBtn.w - 20, brushUpBtn.y + 14, 2, "+");
+        DrawText(ren, panelX + (sideW - MeasureTextWidth(2, brushLabel)) / 2, brushDownBtn.y + 14, 2, brushLabel);
         skin.draw(ren, layerDownBtn);
         skin.draw(ren, layerUpBtn);
         const std::string layerLabel = "LAYER " + std::to_string(activeLayer);

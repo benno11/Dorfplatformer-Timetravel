@@ -14,6 +14,7 @@ struct ObjectInstance {
 
 struct LevelMeta {
     int formatVersion = 0;
+    bool legacyEncoding = false;
     std::string name;
     int levelId = 0;
     int themeOverride = 0;
@@ -31,3 +32,7 @@ bool loadLevelBNNLVL(const std::string& path, TileMap& map, std::vector<ObjectIn
 std::string SerializeLevelMetaHeader(const LevelMeta& meta);
 
 std::string SerializeLevelObjects(const std::vector<ObjectInstance>& objects);
+
+inline constexpr int kCurrentLevelFormatVersion = 4;
+bool LevelNeedsUpgrade(const LevelMeta& meta);
+std::string SerializeLevelBNNLVL(const TileMap& map, const std::vector<ObjectInstance>& objects, const LevelMeta& meta);
