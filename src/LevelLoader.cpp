@@ -276,6 +276,13 @@ std::string SerializeLevelObjects(const std::vector<ObjectInstance>& objects) {
         for (size_t i = 0; i < valid.size(); ++i)
             if (valid[i]->parameterValue) out << i << ' ' << *valid[i]->parameterValue << "\n";
     }
+    size_t layers = 0;
+    for (const auto* obj : valid) if (obj->layer != 0) ++layers;
+    if (layers) {
+        out << "OBJLAYER1 " << layers << "\n";
+        for (size_t i = 0; i < valid.size(); ++i)
+            if (valid[i]->layer != 0) out << i << ' ' << valid[i]->layer << "\n";
+    }
     return out.str();
 }
 
@@ -568,24 +575,38 @@ bool loadLevelBNNLVL(const std::string& path,
             }
         }
         std::string extension;
-        if (in >> extension) {
-            if (extension.rfind("OBJPARAM", 0) == 0) {
-                if (extension != "OBJPARAM1") return false;
-                int count = 0;
-                if (!(in >> count) || count < 0 || count > (int)objects.size()) return false;
-                std::vector<bool> seen(objects.size(), false);
-                std::vector<std::optional<int>> values(objects.size());
-                for (int i = 0; i < count; ++i) {
-                    int index = 0, value = 0;
-                    if (!(in >> index >> value) || index < 0 || index >= (int)objects.size() || seen[index]) return false;
-                    seen[index] = true;
+        std::vector<std::optional<int>> values(objects.size());
+        std::vector<int> layers(objects.size(), 0);
+        bool sawValues = false, sawLayers = false;
+        while (in >> extension) {
+            const bool parameterSection = extension.rfind("OBJPARAM", 0) == 0;
+            const bool layerSection = extension.rfind("OBJLAYER", 0) == 0;
+            if (!parameterSection && !layerSection) break;
+            if ((parameterSection && (extension != "OBJPARAM1" || sawValues)) ||
+                (layerSection && (extension != "OBJLAYER1" || sawLayers))) return false;
+            sawValues |= parameterSection;
+            sawLayers |= layerSection;
+            int count = 0;
+            if (!(in >> count) || count < 0 || count > (int)objects.size()) return false;
+            std::vector<bool> seen(objects.size(), false);
+            for (int i = 0; i < count; ++i) {
+                int index = 0, value = 0;
+                if (!(in >> index >> value) || index < 0 || index >= (int)objects.size() || seen[index]) return false;
+                seen[index] = true;
+                if (parameterSection) {
                     ObjectInstance candidate = objects[index];
                     candidate.parameterValue = value;
                     if (LevelParameters::definition(candidate) && !LevelParameters::valid(candidate)) return false;
                     values[index] = value;
+                } else {
+                    if (value < 0 || value > 9) return false;
+                    layers[index] = value;
                 }
-                for (size_t i = 0; i < objects.size(); ++i) objects[i].parameterValue = values[i];
             }
+        }
+        for (size_t i = 0; i < objects.size(); ++i) {
+            objects[i].parameterValue = values[i];
+            objects[i].layer = layers[i];
         }
         if (meta.name.empty()) meta.name = magic;
         meta.entitySpawnPos.clear();

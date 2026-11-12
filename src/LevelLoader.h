@@ -9,6 +9,7 @@ struct ObjectInstance {
     float x=0,y=0;
     // Present only for versioned parameter objects; old clients retain the ID/position.
     std::optional<int> parameterValue;
+    int layer = 0; // Object layers 0-9, drawn from back to front.
 };
 
 struct LevelMeta {

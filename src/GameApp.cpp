@@ -67,6 +67,7 @@
 #include "GameProgression.h"
 #include "LevelWrap.h"
 #include "LevelParameterObjects.h"
+#include "EditorObjectTools.h"
 #include "FrontendMenu.h"
 #include "GameSupport.h"
 #include "ButtonAnimation.h"
@@ -3672,6 +3673,7 @@ int RunGameApp(int argc, char** argv) {
                     obj.id = objj.value("id", std::string());
                     obj.x = objj.value("x", 0.0f);
                     obj.y = objj.value("y", 0.0f);
+                    obj.layer = std::clamp(objj.value("layer", 0), 0, EditorObjects::maxLayer);
                     if (objj.contains("parameter_value") && objj["parameter_value"].is_number_integer())
                         obj.parameterValue = objj["parameter_value"].get<int>();
                     objects.push_back(std::move(obj));
@@ -4212,6 +4214,7 @@ int RunGameApp(int argc, char** argv) {
             j["id"] = obj.id;
             j["x"] = obj.x;
             j["y"] = obj.y;
+            j["layer"] = obj.layer;
             if (obj.parameterValue) j["parameter_value"] = *obj.parameterValue;
             return j;
         };
@@ -7908,7 +7911,7 @@ int RunGameApp(int argc, char** argv) {
         }
 
 
-        for (int objIdx = 0; objIdx < (int)objects.size(); ++objIdx) {
+        for (int objIdx : EditorObjects::renderOrder(objects)) {
             const auto& obj = objects[objIdx];
             const int objId = (objIdx < (int)objectIds.size()) ? objectIds[objIdx] : -1;
             if (objId == ObjectIds::Shield) {

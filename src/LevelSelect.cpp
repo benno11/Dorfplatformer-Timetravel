@@ -28,6 +28,8 @@
 #include "GameSupport.h"
 #include "LevelLoader.h"
 #include "LevelParameterObjects.h"
+#include "EditorObjectTools.h"
+#include "ButtonAnimation.h"
 #include "LocalLevelEdits.h"
 #include "ObjectIds.h"
 #include "InputSystem.h"
@@ -566,8 +568,37 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
     return out;
 }
 
+class EditorSkin {
+    SDL_Texture* texture = nullptr;
+    std::unordered_map<std::string, Frame> frames;
+public:
+    explicit EditorSkin(SDL_Renderer* ren) {
+        texture = loadTextureSafe(ren, "assets/Sheets/DF_Menus-uhd.png");
+        frames = loadPlistFrames("assets/Sheets/DF_Menus-uhd.plist");
+        if (texture) SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
+    }
+    ~EditorSkin() { if (texture) SDL_DestroyTexture(texture); }
+    void draw(SDL_Renderer* ren, const SDL_Rect& rect, bool active = false, bool panel = false) {
+        auto frame = frames.find(panel ? "window" : "button_genreaic");
+        if (!texture || frame == frames.end()) { SDL_RenderFillRect(ren, &rect); return; }
+        const auto& f = frame->second;
+        const Uint8 tint = panel || active ? 255 : 195;
+        SDL_SetTextureColorMod(texture, tint, tint, tint);
+        if (f.rotated) renderFrame(ren, texture, f, rect);
+        else {
+            const SDL_FRect src{(float)f.rect.x, (float)f.rect.y, (float)f.rect.w, (float)f.rect.h};
+            const SDL_FRect dst{(float)rect.x, (float)rect.y, (float)rect.w, (float)rect.h};
+            const float border = panel ? 56.0f : 6.0f;
+            SDL_RenderTexture9Grid(ren, texture, &src, border, border, border, border,
+                std::min(1.0f, std::min(rect.w, rect.h) / (border * 2)), &dst);
+        }
+        SDL_SetTextureColorMod(texture, 255, 255, 255);
+    }
+};
+
 bool RunLevelConfigMenu(SDL_Window* win, SDL_Renderer* ren, LevelMeta& config) {
     LevelMeta draft = config;
+    EditorSkin skin(ren);
     int selected = 0;
     bool running = true, applied = false, touching = false;
     SDL_FingerID finger = 0;
@@ -640,12 +671,13 @@ bool RunLevelConfigMenu(SDL_Window* win, SDL_Renderer* ren, LevelMeta& config) {
         }
         SDL_SetRenderDrawColor(ren, 20, 29, 42, 255);
         SDL_RenderClear(ren);
+        skin.draw(ren, SDL_Rect{48, 8, 544, 448}, false, true);
         DrawText(ren, 320 - MeasureTextWidth(3, "Level Config") / 2, 24, 3, "Level Config");
         const int values[] = {draft.world, draft.area, draft.time};
         const char* names[] = {"World", "Area", "Time"};
         for (int row = 0; row < 6; ++row) {
             SDL_SetRenderDrawColor(ren, selected == row ? 65 : 39, selected == row ? 96 : 59, selected == row ? 130 : 82, 255);
-            SDL_RenderFillRect(ren, &rows[row]);
+            skin.draw(ren, rows[row], selected == row);
             SDL_SetRenderDrawColor(ren, selected == row ? 230 : 130, 205, 235, 255);
             SDL_RenderRect(ren, &rows[row]);
             const std::string label = row < 3 ? std::string(names[row]) + ": " + (values[row] ? std::to_string(values[row]) : "Auto") :
@@ -665,6 +697,7 @@ bool RunLevelConfigMenu(SDL_Window* win, SDL_Renderer* ren, LevelMeta& config) {
     if (applied) config = draft;
     return applied;
 }
+
 
 std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::string& initialPath = "",
                                 const std::string& newLevelName = "", int newLevelW = -1, int newLevelH = -1) {
@@ -686,6 +719,9 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             grid = loadedMap.tileIds;
             placedObjects = loadedObjects;
             editorConfig = loadedMeta;
+        } else {
+            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Level editor", "This level could not be loaded. The original file was not changed.", win);
+            return {};
         }
     } else {
         for (int x = 0; x < gridW; ++x) grid[(gridH - 1) * gridW + x] = 1;
@@ -712,9 +748,9 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
     bool running = true;
     const Uint64 inputBlockUntilTicks = SDL_GetTicks() + 1000;
     bool paused = false;
-    int pauseSel = 0; // 0 Resume, 1 Save, 2 Exit
+    int pauseSel = 0; // Resume, Save & Resume, Save & Exit, Exit
     std::string savedPath;
-    const std::string saveTargetPath = initialPath.empty() ? buildNamedLocalLevelPath(newLevelName) : initialPath;
+    std::string saveTargetPath = initialPath.empty() ? buildNamedLocalLevelPath(newLevelName) : initialPath;
     std::string statusText;
     Uint64 statusUntil = 0;
     SDL_FingerID activeEditorFinger = 0;
@@ -724,15 +760,17 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
     bool fingerPaletteMoved = false;
     int fingerPaletteLastY = 0;
     float fingerPaletteScrollAccum = 0.0f;
+    int activeLayer = 0;
+    bool configureObjects = false;
     bool touchPanMode = false;
     bool touchEraseMode = false;
     auto toggleTouchPanMode = [&]() {
         touchPanMode = !touchPanMode;
-        if (touchPanMode) touchEraseMode = false;
+        if (touchPanMode) { touchEraseMode = false; configureObjects = false; }
     };
     auto toggleTouchEraseMode = [&]() {
         touchEraseMode = !touchEraseMode;
-        if (touchEraseMode) touchPanMode = false;
+        if (touchEraseMode) { touchPanMode = false; configureObjects = false; }
     };
     bool fingerGridPanning = false;
     float fingerGridLastX = 0.0f;
@@ -745,6 +783,33 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
     bool middlePanning = false;
     int lastPanMouseX = 0;
     int lastPanMouseY = 0;
+    EditorSkin skin(ren);
+    ButtonAnimations editorAnimations;
+    auto snapshot = [&]() {
+        std::string content(reinterpret_cast<const char*>(grid.data()), grid.size() * sizeof(grid[0]));
+        return content + SerializeLevelMetaHeader(editorConfig) + SerializeLevelObjects(placedObjects);
+    };
+    std::string savedSnapshot = initialPath.empty() ? std::string() : snapshot();
+    Uint64 nextAutosave = SDL_GetTicks() + 15000;
+    auto saveEditor = [&](bool exitAfter, bool automatic = false) {
+        const std::string path = writeLocalLevelFile(grid, gridW, gridH, saveTargetPath, placedObjects, editorConfig);
+        if (path.empty()) { statusText = "SAVE FAILED - RETRY IN MENU"; statusUntil = SDL_GetTicks() + 5000; return false; }
+        saveTargetPath = savedPath = path;
+        savedSnapshot = snapshot();
+        nextAutosave = SDL_GetTicks() + 15000;
+        statusText = automatic ? "AUTO SAVED" : "SAVED";
+        statusUntil = SDL_GetTicks() + 2500;
+        editorFingerActive = fingerPainting = fingerPaletteScroll = fingerGridPanning = middlePanning = false;
+        if (exitAfter) running = false;
+        return true;
+    };
+    auto pauseAction = [&](int action) {
+        pauseSel = action;
+        if (action == 0) paused = false;
+        else if (action == 1) { if (saveEditor(false)) paused = false; }
+        else if (action == 2) saveEditor(true);
+        else if (snapshot() == savedSnapshot || saveEditor(false, true)) running = false;
+    };
     auto openLevelConfig = [&]() {
         editorFingerActive = fingerPainting = fingerPaletteScroll = fingerGridPanning = middlePanning = false;
         RunLevelConfigMenu(win, ren, editorConfig);
@@ -803,6 +868,19 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         if (id == 30) { r = 240; g = 80; b = 120; return; }
         if (id == 68) { r = 150; g = 100; b = 255; return; }
         r = 180; g = 180; b = 180;
+    };
+    SDL_Texture* editorEntities = loadTextureSafe(ren, "assets/Sheets/DF_Enitys-uhd.png");
+    const auto editorEntityFrames = loadPlistFrames("assets/Sheets/DF_Enitys-uhd.plist");
+    auto drawObjectTexture = [&](int id, const SDL_Rect& rect, bool ghost) {
+        const char* key = id == 31 ? "Spring" : (id == 46 ? "Bumper" :
+            (id == ObjectIds::MovingPlatform ? "moving_block" : (id == ObjectIds::Shield ? "Shied_icon" :
+            (id == ObjectIds::ShellChraker ? "ShellChraker_base" : ""))));
+        const auto frame = editorEntityFrames.find(key);
+        if (!editorEntities || frame == editorEntityFrames.end()) return false;
+        SDL_SetTextureColorMod(editorEntities, ghost ? 80 : 255, ghost ? 80 : 255, ghost ? 80 : 255);
+        renderFrame(ren, editorEntities, frame->second, rect);
+        SDL_SetTextureColorMod(editorEntities, 255, 255, 255);
+        return true;
     };
     auto isAutoTileId = [](unsigned short id) -> bool {
         return (id >= 3 && id <= 11) || (id >= 38 && id <= 40);
@@ -871,52 +949,47 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         // Keep neighboring auto-tiles valid on every tile placement.
         refreshAutoTileAround(cx, cy);
     };
-    auto objectCellX = [&](const ObjectInstance& obj) -> int {
-        return (int)std::floor(obj.x / (float)kEditorTileSize);
-    };
-    auto objectCellY = [&](const ObjectInstance& obj) -> int {
-        return (int)std::floor(obj.y / (float)kEditorTileSize);
-    };
-    auto eraseObjectAt = [&](int cx, int cy) -> bool {
-        const size_t before = placedObjects.size();
-        placedObjects.erase(std::remove_if(placedObjects.begin(), placedObjects.end(),
-            [&](const ObjectInstance& obj) {
-                return objectCellX(obj) == cx && objectCellY(obj) == cy;
-            }), placedObjects.end());
-        return placedObjects.size() != before;
+    auto configureObjectAt = [&](int cx, int cy) {
+        const int index = EditorObjects::find(placedObjects, cx, cy, activeLayer);
+        if (index < 0) { statusText = "SELECT AN OBJECT ON THIS LAYER"; statusUntil = SDL_GetTicks() + 2500; return; }
+        ObjectInstance draft = placedObjects[index];
+        auto inputNumber = [&](int initial, int minimum, int maximum, const std::string& title, int& result) {
+            const auto text = RunLocalLevelRenamePrompt(win, ren, std::to_string(initial), title,
+                "VALUE (" + std::to_string(minimum) + "-" + std::to_string(maximum) + "): ");
+            if (text.empty()) return false;
+            try {
+                size_t end = 0;
+                const int value = std::stoi(text, &end);
+                if (end != text.size() || value < minimum || value > maximum) throw std::out_of_range("value");
+                result = value;
+                return true;
+            } catch (...) { statusText = "INVALID VALUE - OBJECT UNCHANGED"; statusUntil = SDL_GetTicks() + 2500; return false; }
+        };
+        editorFingerActive = fingerPainting = false;
+        if (const auto* parameter = LevelParameters::definition(draft)) {
+            int value = draft.parameterValue.value_or(parameter->initial);
+            if (!inputNumber(value, parameter->minimum, parameter->maximum, parameter->label, value)) return;
+            draft.parameterValue = value;
+        }
+        if (!inputNumber(draft.layer, 0, EditorObjects::maxLayer, "OBJECT LAYER", draft.layer)) return;
+        placedObjects.erase(placedObjects.begin() + index);
+        EditorObjects::replace(placedObjects, draft);
+        activeLayer = draft.layer;
     };
     auto placeObjectAt = [&](int cx, int cy, bool erase) {
         if (cx < 0 || cy < 0 || cx >= gridW || cy >= gridH) return;
-        if (erase) { eraseObjectAt(cx, cy); return; }
+        if (erase) { EditorObjects::erase(placedObjects, cx, cy, activeLayer, touchEraseMode); return; }
+        if (configureObjects) { configureObjectAt(cx, cy); return; }
         if (selectedObjectPalette < 0 || selectedObjectPalette >= (int)objectPalette.size()) return;
-        const int id = objectPalette[selectedObjectPalette];
         ObjectInstance obj;
-        obj.id = std::to_string(id);
+        obj.id = std::to_string(objectPalette[selectedObjectPalette]);
         obj.x = (float)(cx * kEditorTileSize + kEditorTileSize / 2);
         obj.y = (float)(cy * kEditorTileSize + kEditorTileSize / 2);
-        if (const auto* parameter = LevelParameters::definition(id)) {
-            int initial = parameter->initial;
-            for (const auto& existing : placedObjects)
-                if (objectCellX(existing) == cx && objectCellY(existing) == cy && existing.id == obj.id && existing.parameterValue)
-                    initial = *existing.parameterValue;
-            const auto number = RunLocalLevelRenamePrompt(win, ren, std::to_string(initial),
-                parameter->label, "VALUE (" + std::to_string(parameter->minimum) + "-" +
-                std::to_string(parameter->maximum) + "): ");
-            editorFingerActive = fingerPainting = false;
-            if (number.empty()) return;
-            try {
-                size_t end = 0;
-                const int value = std::stoi(number, &end);
-                if (end != number.size() || value < parameter->minimum || value > parameter->maximum) throw std::out_of_range("parameter");
-                obj.parameterValue = value;
-            } catch (...) {
-                statusText = "INVALID PARAMETER VALUE";
-                statusUntil = SDL_GetTicks() + 2500;
-                return;
-            }
-            eraseObjectAt(cx, cy);
-        } else if (eraseObjectAt(cx, cy)) return;
-        placedObjects.push_back(obj);
+        obj.layer = activeLayer;
+        const int existing = EditorObjects::find(placedObjects, cx, cy, activeLayer);
+        if (existing >= 0 && placedObjects[existing].id == obj.id) return;
+        if (const auto* parameter = LevelParameters::definition(obj)) obj.parameterValue = parameter->initial;
+        EditorObjects::replace(placedObjects, obj);
     };
     auto applyAt = [&](int cx, int cy, bool erase) {
         if (objectMode) placeObjectAt(cx, cy, erase);
@@ -965,36 +1038,55 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         SDL_Rect eraseModeBtn{panelX + controlW + controlGap, margin + controlH + controlGap, controlW, controlH};
         SDL_Rect zoomOutBtn{panelX, margin + (controlH + controlGap) * 2, controlW, controlH};
         SDL_Rect zoomInBtn{panelX + controlW + controlGap, margin + (controlH + controlGap) * 2, controlW, controlH};
-        const int paletteStartY = margin + (controlH + controlGap) * 3 + 4;
+        SDL_Rect layerDownBtn{panelX, margin + (controlH + controlGap) * 3, controlW, controlH};
+        SDL_Rect layerUpBtn{panelX + controlW + controlGap, layerDownBtn.y, controlW, controlH};
+        const int paletteStartY = margin + (controlH + controlGap) * 4 + 4;
         const int actionY = winH - margin - 48;
-        SDL_Rect saveBtn{panelX, actionY, controlW, 48};
-        SDL_Rect cancelBtn{panelX + controlW + controlGap, actionY, controlW, 48};
-        SDL_Rect configBtn{panelX, actionY - 52, sideW, 44};
+        SDL_Rect configBtn{panelX, actionY, sideW, 44};
+        SDL_Rect objectConfigBtn{panelX, actionY - 52, sideW, 44};
         const int paletteRowH = 48;
-        const int paletteBottomY = configBtn.y - 66;
+        const int paletteBottomY = objectConfigBtn.y - 66;
         const int paletteViewRows = std::max(1, (paletteBottomY - paletteStartY) / paletteRowH);
         const int paletteCountNow = objectMode ? (int)objectPalette.size() : (int)palette.size();
         int& activePaletteScroll = objectMode ? objectPaletteScroll : tilePaletteScroll;
         const int maxPaletteScroll = std::max(0, paletteCountNow - paletteViewRows);
         activePaletteScroll = std::clamp(activePaletteScroll, 0, maxPaletteScroll);
         SDL_Rect paletteViewport{panelX, paletteStartY, sideW, paletteViewRows * paletteRowH};
-        const int pauseW = std::min(360, winW - margin * 2);
-        const int pauseH = std::min(240, winH - margin * 2);
+        const int pauseW = std::min(380, winW - margin * 2);
+        const int pauseH = std::min(310, winH - margin * 2);
         SDL_Rect pausePanel{(winW - pauseW) / 2, (winH - pauseH) / 2, pauseW, pauseH};
-        const int pauseGap = 8;
-        const int pauseInset = 16;
-        const int pauseButtonW = (pauseW - pauseInset * 2 - pauseGap * 2) / 3;
-        const int pauseButtonY = pausePanel.y + pausePanel.h - 64;
-        SDL_Rect pauseResumeBtn{pausePanel.x + pauseInset, pauseButtonY, pauseButtonW, 48};
-        SDL_Rect pauseSaveBtn{pauseResumeBtn.x + pauseButtonW + pauseGap, pauseButtonY, pauseButtonW, 48};
-        SDL_Rect pauseExitBtn{pauseSaveBtn.x + pauseButtonW + pauseGap, pauseButtonY, pauseButtonW, 48};
+        const int pauseButtonW = pauseW - 32;
+        const int pauseButtonH = std::clamp((pauseH - 116) / 4, 16, 44);
+        SDL_Rect pauseBtns[4];
+        for (int i = 0; i < 4; ++i) pauseBtns[i] = {pausePanel.x + 16, pausePanel.y + 76 + i * (pauseButtonH + 8), pauseButtonW, pauseButtonH};
 
         SDL_Event e;
-        while (SDL_PollEvent(&e)) {
+        while (running && SDL_PollEvent(&e)) {
             editorInput.handleEvent(e);
             if (e.type == SDL_QUIT) { running = false; break; }
             if (SDL_GetTicks() < inputBlockUntilTicks) continue;
             if (!paused) {
+                SDL_Point toolPoint{};
+                const bool mouseTool = e.type == SDL_EVENT_MOUSE_BUTTON_DOWN && e.button.button == SDL_BUTTON_LEFT && e.button.which != SDL_TOUCH_MOUSEID;
+                const bool touchTool = e.type == SDL_EVENT_FINGER_DOWN;
+                if (mouseTool) toolPoint = {(int)e.button.x, (int)e.button.y};
+                if (touchTool) toolPoint = {(int)(e.tfinger.x * winW), (int)(e.tfinger.y * winH)};
+                if ((mouseTool || touchTool) && (SDL_PointInRect(&toolPoint, &layerDownBtn) || SDL_PointInRect(&toolPoint, &layerUpBtn))) {
+                    activeLayer = std::clamp(activeLayer + (SDL_PointInRect(&toolPoint, &layerUpBtn) ? 1 : -1), 0, EditorObjects::maxLayer);
+                    editorFingerActive = fingerPainting = false;
+                    continue;
+                }
+                const bool configObject = ((mouseTool || touchTool) && SDL_PointInRect(&toolPoint, &objectConfigBtn)) ||
+                    (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && e.key.key == SDLK_F3);
+                if (configObject) {
+                    configureObjects = !configureObjects; objectMode = true;
+                    touchPanMode = touchEraseMode = false; editorFingerActive = fingerPainting = false;
+                    continue;
+                }
+                if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && e.key.key == SDLK_DELETE) { toggleTouchEraseMode(); continue; }
+                if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && (e.key.key == SDLK_LEFTBRACKET || e.key.key == SDLK_RIGHTBRACKET)) {
+                    activeLayer = std::clamp(activeLayer + (e.key.key == SDLK_RIGHTBRACKET ? 1 : -1), 0, EditorObjects::maxLayer); continue;
+                }
                 bool configure = e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && e.key.key == SDLK_F2;
                 configure = configure || (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN && e.gbutton.button == SDL_GAMEPAD_BUTTON_WEST);
                 SDL_Point point{};
@@ -1043,40 +1135,10 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 SDL_Point pt{tx, ty};
 
                 if (paused) {
-                    if (SDL_PointInRect(&pt, &pauseResumeBtn)) {
-                        pauseSel = 0;
-                        paused = false;
-                    } else if (SDL_PointInRect(&pt, &pauseSaveBtn)) {
-                        pauseSel = 1;
-                        savedPath = writeLocalLevelFile(grid, gridW, gridH, saveTargetPath, placedObjects, editorConfig);
-                        if (!savedPath.empty()) {
-                            running = false;
-                            break;
-                        }
-                        statusText = "SAVE FAILED";
-                        statusUntil = SDL_GetTicks() + 1800;
-                    } else if (SDL_PointInRect(&pt, &pauseExitBtn)) {
-                        pauseSel = 2;
-                        running = false;
-                        break;
-                    }
+                    for (int i = 0; i < 4; ++i) if (SDL_PointInRect(&pt, &pauseBtns[i])) pauseAction(i);
                     continue;
                 }
 
-                if (SDL_PointInRect(&pt, &saveBtn)) {
-                    savedPath = writeLocalLevelFile(grid, gridW, gridH, saveTargetPath, placedObjects, editorConfig);
-                    if (!savedPath.empty()) {
-                        running = false;
-                        break;
-                    }
-                    statusText = "SAVE FAILED";
-                    statusUntil = SDL_GetTicks() + 1800;
-                    continue;
-                }
-                if (SDL_PointInRect(&pt, &cancelBtn)) {
-                    running = false;
-                    break;
-                }
                 if (SDL_PointInRect(&pt, &tileModeBtn)) {
                     objectMode = false;
                     touchPanMode = false;
@@ -1145,7 +1207,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                     const int cx = ((tx - gridX) + viewX) / cell;
                     const int cy = ((ty - gridY) + viewY) / cell;
                     applyAt(cx, cy, touchEraseMode);
-                    fingerPainting = true;
+                    fingerPainting = !configureObjects;
                 } else {
                     fingerPainting = false;
                 }
@@ -1245,24 +1307,9 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                     continue;
                 }
                 if (paused) {
-                    if (e.key.key == SDLK_LEFT || e.key.key == SDLK_a) pauseSel = std::max(0, pauseSel - 1);
-                    if (e.key.key == SDLK_RIGHT || e.key.key == SDLK_d) pauseSel = std::min(2, pauseSel + 1);
-                    if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) {
-                        if (pauseSel == 0) {
-                            paused = false;
-                        } else if (pauseSel == 1) {
-                            savedPath = writeLocalLevelFile(grid, gridW, gridH, saveTargetPath, placedObjects, editorConfig);
-                            if (!savedPath.empty()) {
-                                running = false;
-                                break;
-                            }
-                            statusText = "SAVE FAILED";
-                            statusUntil = SDL_GetTicks() + 1800;
-                        } else {
-                            running = false;
-                            break;
-                        }
-                    }
+                    if (e.key.key == SDLK_LEFT || e.key.key == SDLK_UP || e.key.key == SDLK_a) pauseSel = std::max(0, pauseSel - 1);
+                    if (e.key.key == SDLK_RIGHT || e.key.key == SDLK_DOWN || e.key.key == SDLK_d) pauseSel = std::min(3, pauseSel + 1);
+                    if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) pauseAction(pauseSel);
                     continue;
                 }
                 if (e.key.key >= SDLK_1 && e.key.key <= SDLK_9) {
@@ -1282,27 +1329,20 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 if (e.key.key == SDLK_EQUALS || e.key.key == SDLK_PLUS || e.key.key == SDLK_KP_PLUS) {
                     setEditorZoom(editorZoomPercent + 25, gridX + gridViewW / 2, gridY + gridViewH / 2);
                 }
-                if (e.key.key == SDLK_c || e.key.key == SDLK_C) {
+                if ((e.key.key == SDLK_c || e.key.key == SDLK_C) && touchEraseMode) {
                     std::fill(grid.begin(), grid.end(), (unsigned short)2);
                     for (int x = 0; x < gridW; ++x) grid[(gridH - 1) * gridW + x] = 1;
                     const int spawnX = std::min(3, std::max(0, gridW - 1));
                     const int spawnY = std::max(0, gridH - 4);
                     grid[spawnY * gridW + spawnX] = 28;
-                    placedObjects.clear();
+                    placedObjects.erase(std::remove_if(placedObjects.begin(), placedObjects.end(), [&](const auto& obj) { return obj.layer == activeLayer; }), placedObjects.end());
                 }
                 if (e.key.key == SDLK_LEFT) viewX = std::max(0, viewX - std::max(8, cell * 2));
                 if (e.key.key == SDLK_RIGHT) viewX = std::min(maxViewX, viewX + std::max(8, cell * 2));
                 if (e.key.key == SDLK_UP) viewY = std::max(0, viewY - std::max(8, cell * 2));
                 if (e.key.key == SDLK_DOWN) viewY = std::min(maxViewY, viewY + std::max(8, cell * 2));
-                if (e.key.key == SDLK_s || e.key.key == SDLK_S || e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) {
-                    savedPath = writeLocalLevelFile(grid, gridW, gridH, saveTargetPath, placedObjects, editorConfig);
-                    if (!savedPath.empty()) {
-                        running = false;
-                        break;
-                    }
-                    statusText = "SAVE FAILED";
-                    statusUntil = SDL_GetTicks() + 1800;
-                }
+                if (e.key.key == SDLK_s || e.key.key == SDLK_S) saveEditor(false);
+
             }
             if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
                 const bool isBackBtn =
@@ -1316,24 +1356,9 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                     continue;
                 }
                 if (paused) {
-                    if (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_LEFT) pauseSel = std::max(0, pauseSel - 1);
-                    if (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_RIGHT) pauseSel = std::min(2, pauseSel + 1);
-                    if (isAcceptBtn) {
-                        if (pauseSel == 0) {
-                            paused = false;
-                        } else if (pauseSel == 1) {
-                            savedPath = writeLocalLevelFile(grid, gridW, gridH, saveTargetPath, placedObjects, editorConfig);
-                            if (!savedPath.empty()) {
-                                running = false;
-                                break;
-                            }
-                            statusText = "SAVE FAILED";
-                            statusUntil = SDL_GetTicks() + 1800;
-                        } else {
-                            running = false;
-                            break;
-                        }
-                    }
+                    if (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_LEFT || e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_UP) pauseSel = std::max(0, pauseSel - 1);
+                    if (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_RIGHT || e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_DOWN) pauseSel = std::min(3, pauseSel + 1);
+                    if (isAcceptBtn) pauseAction(pauseSel);
                     continue;
                 }
                 if (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_UP) {
@@ -1359,27 +1384,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             }
             if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT && paused) {
                 SDL_Point pt{(int)e.button.x, (int)e.button.y};
-                if (SDL_PointInRect(&pt, &pauseResumeBtn)) {
-                    pauseSel = 0;
-                    paused = false;
-                    continue;
-                }
-                if (SDL_PointInRect(&pt, &pauseSaveBtn)) {
-                    pauseSel = 1;
-                    savedPath = writeLocalLevelFile(grid, gridW, gridH, saveTargetPath, placedObjects, editorConfig);
-                    if (!savedPath.empty()) {
-                        running = false;
-                        break;
-                    }
-                    statusText = "SAVE FAILED";
-                    statusUntil = SDL_GetTicks() + 1800;
-                    continue;
-                }
-                if (SDL_PointInRect(&pt, &pauseExitBtn)) {
-                    pauseSel = 2;
-                    running = false;
-                    break;
-                }
+                for (int i = 0; i < 4; ++i) if (SDL_PointInRect(&pt, &pauseBtns[i])) pauseAction(i);
                 continue;
             }
             if (e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEMOTION) {
@@ -1414,6 +1419,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 bool dragPaint = (e.type == SDL_MOUSEMOTION) && ((e.motion.state & SDL_BUTTON_LMASK) || (e.motion.state & SDL_BUTTON_RMASK));
                 bool clickPaint = (e.type == SDL_MOUSEBUTTONDOWN) && (e.button.button == SDL_BUTTON_LEFT || e.button.button == SDL_BUTTON_RIGHT);
                 if (!dragPaint && !clickPaint) continue;
+                if (configureObjects && dragPaint) continue;
                 int mx = (e.type == SDL_MOUSEMOTION) ? e.motion.x : e.button.x;
                 int my = (e.type == SDL_MOUSEMOTION) ? e.motion.y : e.button.y;
                 bool erase = false;
@@ -1468,19 +1474,6 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                     setEditorZoom(editorZoomPercent + 25, gridX + gridViewW / 2, gridY + gridViewH / 2);
                     continue;
                 }
-                if (SDL_PointInRect(&pt, &saveBtn)) {
-                    savedPath = writeLocalLevelFile(grid, gridW, gridH, saveTargetPath, placedObjects, editorConfig);
-                    if (!savedPath.empty()) {
-                        running = false;
-                        break;
-                    }
-                    statusText = "SAVE FAILED";
-                    statusUntil = SDL_GetTicks() + 1800;
-                }
-                if (SDL_PointInRect(&pt, &cancelBtn)) {
-                    running = false;
-                    break;
-                }
                 const int paletteCount = objectMode ? (int)objectPalette.size() : (int)palette.size();
                 int& paletteScroll = objectMode ? objectPaletteScroll : tilePaletteScroll;
                 const int maxScroll = std::max(0, paletteCount - paletteViewRows);
@@ -1499,6 +1492,8 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
 
         SDL_SetRenderDrawColor(ren, 18, 20, 26, 255);
         SDL_RenderClear(ren);
+        skin.draw(ren, SDL_Rect{panelX - 6, margin - 6, sideW + 12, winH - margin * 2 + 12}, false, true);
+        SDL_SetRenderClipRect(ren, &gridViewport);
 
         const int drawX0 = std::max(0, viewX / cell);
         const int drawY0 = std::max(0, viewY / cell);
@@ -1566,7 +1561,10 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             if (id == 70) return "NY";
             return "";
         };
-        for (const auto& obj : placedObjects) {
+        auto editorOrder = EditorObjects::renderOrder(placedObjects);
+        std::stable_partition(editorOrder.begin(), editorOrder.end(), [&](int index) { return placedObjects[index].layer != activeLayer; });
+        for (int objectIndex : editorOrder) {
+            const auto& obj = placedObjects[objectIndex];
             int id = 0;
             try { id = std::stoi(obj.id); } catch (...) { id = 0; }
             if (id <= 0) continue;
@@ -1577,10 +1575,11 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             if (rc.x + rc.w < gridX || rc.y + rc.h < gridY || rc.x > gridX + gridViewW || rc.y > gridY + gridViewH) continue;
             Uint8 r = 220, g = 220, b = 240;
             objectColor(id, r, g, b);
+            if (obj.layer != activeLayer) { r /= 3; g /= 3; b /= 3; }
             SDL_SetRenderDrawColor(ren, r, g, b, 200);
             SDL_Rect in{rc.x + std::max(2, cell / 6), rc.y + std::max(2, cell / 6), std::max(4, cell - std::max(4, cell / 3)), std::max(4, cell - std::max(4, cell / 3))};
-            SDL_RenderFillRect(ren, &in);
-            const std::string valueTag = obj.parameterValue ? std::to_string(id) + "=" + std::to_string(*obj.parameterValue) : std::to_string(id);
+            if (!drawObjectTexture(id, in, obj.layer != activeLayer)) SDL_RenderFillRect(ren, &in);
+            const std::string valueTag = (obj.parameterValue ? std::to_string(id) + "=" + std::to_string(*obj.parameterValue) : std::to_string(id)) + " L" + std::to_string(obj.layer);
             DrawText(ren, rc.x + 3, rc.y + 3, std::max(1, cell / 24), valueTag);
             const char* tag = objectTag(id);
             if (tag[0] != '\0') {
@@ -1601,63 +1600,58 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             SDL_RenderLine(ren, (float)gridX, (float)gy, (float)(gridX + gridViewW), (float)gy);
         }
         SDL_SetRenderDrawColor(ren, 90, 110, 140, 255);
+        SDL_SetRenderClipRect(ren, nullptr);
         SDL_Rect border{gridX - 1, gridY - 1, gridViewW + 2, gridViewH + 2};
         SDL_RenderDrawRect(ren, &border);
 
-        const int helpScale = sideW < 220 ? 1 : 2;
-        DrawText(ren, panelX, configBtn.y - 42, helpScale,
-                 touchPanMode ? "DRAG CANVAS TO PAN" : (touchEraseMode ? "DRAG TO ERASE" : "TAP OR DRAG TO PAINT"));
-        DrawText(ren, panelX, configBtn.y - 22, helpScale, "F2: CONFIG  ESC: MENU");
-        if (!statusText.empty() && SDL_GetTicks() < statusUntil) {
-            DrawText(ren, panelX, configBtn.y - 62, helpScale, statusText);
-        }
-        SDL_SetRenderDrawColor(ren, 55, 75, 110, 255);
-        SDL_RenderFillRect(ren, &configBtn);
-        SDL_SetRenderDrawColor(ren, 185, 210, 240, 255);
-        SDL_RenderDrawRect(ren, &configBtn);
+        const int helpScale = 1;
+        DrawText(ren, panelX + 4, objectConfigBtn.y - 40, helpScale,
+            configureObjects ? "TAP OBJECT TO CONFIGURE" : (touchPanMode ? "DRAG TO PAN" : (touchEraseMode ? "DELETE MODE" : "PLACE / OVERRIDE")));
+        DrawText(ren, panelX + 4, objectConfigBtn.y - 24, helpScale, "F2: LEVEL  F3: OBJECT  ESC: MENU");
+        if (!statusText.empty() && SDL_GetTicks() < statusUntil)
+            DrawText(ren, panelX + 4, objectConfigBtn.y - 56, 1, statusText);
+        skin.draw(ren, configBtn);
         DrawText(ren, configBtn.x + (configBtn.w - MeasureTextWidth(2, "LEVEL CONFIG")) / 2, configBtn.y + 12, 2, "LEVEL CONFIG");
-        SDL_SetRenderDrawColor(ren, 55, 95, 70, 255);
-        SDL_RenderFillRect(ren, &saveBtn);
-        SDL_SetRenderDrawColor(ren, 190, 230, 200, 255);
-        SDL_RenderDrawRect(ren, &saveBtn);
-        DrawText(ren, saveBtn.x + std::max(8, (saveBtn.w - MeasureTextWidth(2, "SAVE")) / 2), saveBtn.y + 14, 2, "SAVE");
-        SDL_SetRenderDrawColor(ren, 75, 55, 55, 255);
-        SDL_RenderFillRect(ren, &cancelBtn);
-        SDL_SetRenderDrawColor(ren, 220, 190, 190, 255);
-        SDL_RenderDrawRect(ren, &cancelBtn);
-        DrawText(ren, cancelBtn.x + std::max(6, (cancelBtn.w - MeasureTextWidth(2, "EXIT")) / 2), cancelBtn.y + 14, 2, "EXIT");
+        skin.draw(ren, objectConfigBtn, configureObjects);
+        DrawText(ren, objectConfigBtn.x + (objectConfigBtn.w - MeasureTextWidth(2, "CONFIGURE OBJECT")) / 2, objectConfigBtn.y + 12, 2, "CONFIGURE OBJECT");
+        skin.draw(ren, layerDownBtn);
+        skin.draw(ren, layerUpBtn);
+        const std::string layerLabel = "LAYER " + std::to_string(activeLayer);
+        DrawText(ren, layerDownBtn.x + 8, layerDownBtn.y + 14, 2, "-");
+        DrawText(ren, layerUpBtn.x + layerUpBtn.w - 20, layerUpBtn.y + 14, 2, "+");
+        DrawText(ren, panelX + (sideW - MeasureTextWidth(2, layerLabel)) / 2, layerDownBtn.y + 14, 2, layerLabel);
 
         SDL_SetRenderDrawColor(ren, objectMode ? 50 : 90, objectMode ? 70 : 110, objectMode ? 90 : 170, 255);
-        SDL_RenderFillRect(ren, &tileModeBtn);
+        skin.draw(ren, tileModeBtn, !objectMode);
         SDL_SetRenderDrawColor(ren, 220, 220, 230, 255);
         SDL_RenderDrawRect(ren, &tileModeBtn);
         const char* tileModeLabel = controlW < 105 ? "TILE" : "TILES";
         DrawText(ren, tileModeBtn.x + std::max(4, (tileModeBtn.w - MeasureTextWidth(2, tileModeLabel)) / 2), tileModeBtn.y + 13, 2, tileModeLabel);
         SDL_SetRenderDrawColor(ren, objectMode ? 90 : 50, objectMode ? 110 : 70, objectMode ? 170 : 90, 255);
-        SDL_RenderFillRect(ren, &objectModeBtn);
+        skin.draw(ren, objectModeBtn, objectMode);
         SDL_SetRenderDrawColor(ren, 220, 220, 230, 255);
         SDL_RenderDrawRect(ren, &objectModeBtn);
         const char* objectModeLabel = controlW < 120 ? "OBJ" : "OBJECTS";
         DrawText(ren, objectModeBtn.x + std::max(4, (objectModeBtn.w - MeasureTextWidth(2, objectModeLabel)) / 2), objectModeBtn.y + 13, 2, objectModeLabel);
 
         SDL_SetRenderDrawColor(ren, touchPanMode ? 90 : 50, touchPanMode ? 120 : 70, touchPanMode ? 170 : 90, 255);
-        SDL_RenderFillRect(ren, &panModeBtn);
+        skin.draw(ren, panModeBtn, touchPanMode);
         SDL_SetRenderDrawColor(ren, 220, 220, 230, 255);
         SDL_RenderDrawRect(ren, &panModeBtn);
         DrawText(ren, panModeBtn.x + std::max(4, (panModeBtn.w - MeasureTextWidth(2, "PAN")) / 2), panModeBtn.y + 13, 2, "PAN");
         SDL_SetRenderDrawColor(ren, touchEraseMode ? 150 : 50, touchEraseMode ? 75 : 70, touchEraseMode ? 75 : 90, 255);
-        SDL_RenderFillRect(ren, &eraseModeBtn);
+        skin.draw(ren, eraseModeBtn, touchEraseMode);
         SDL_SetRenderDrawColor(ren, 220, 220, 230, 255);
         SDL_RenderDrawRect(ren, &eraseModeBtn);
-        DrawText(ren, eraseModeBtn.x + std::max(4, (eraseModeBtn.w - MeasureTextWidth(2, "ERASE")) / 2), eraseModeBtn.y + 13, 2, "ERASE");
+        DrawText(ren, eraseModeBtn.x + std::max(4, (eraseModeBtn.w - MeasureTextWidth(2, "DELETE")) / 2), eraseModeBtn.y + 13, 2, "DELETE");
 
         SDL_SetRenderDrawColor(ren, 55, 65, 90, 255);
-        SDL_RenderFillRect(ren, &zoomOutBtn);
+        skin.draw(ren, zoomOutBtn, false);
         SDL_SetRenderDrawColor(ren, 220, 220, 230, 255);
         SDL_RenderDrawRect(ren, &zoomOutBtn);
         DrawText(ren, zoomOutBtn.x + std::max(4, (zoomOutBtn.w - MeasureTextWidth(2, "-")) / 2), zoomOutBtn.y + 13, 2, "-");
         SDL_SetRenderDrawColor(ren, 55, 65, 90, 255);
-        SDL_RenderFillRect(ren, &zoomInBtn);
+        skin.draw(ren, zoomInBtn, false);
         SDL_SetRenderDrawColor(ren, 220, 220, 230, 255);
         SDL_RenderDrawRect(ren, &zoomInBtn);
         DrawText(ren, zoomInBtn.x + std::max(4, (zoomInBtn.w - MeasureTextWidth(2, "+")) / 2), zoomInBtn.y + 13, 2, "+");
@@ -1674,7 +1668,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             const bool selected = objectMode ? (i == selectedObjectPalette) : (i == selectedPalette);
             SDL_Rect r{panelX, paletteStartY + row * paletteRowH, sideW - 12, 42};
             SDL_SetRenderDrawColor(ren, selected ? 70 : 45, selected ? 100 : 65, selected ? 160 : 95, 255);
-            SDL_RenderFillRect(ren, &r);
+            skin.draw(ren, r, selected);
             SDL_SetRenderDrawColor(ren, 220, 220, 230, 255);
             SDL_RenderDrawRect(ren, &r);
             if (!objectMode) {
@@ -1702,8 +1696,10 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 objectColor(oid, tr, tg, tb);
                 SDL_SetRenderDrawColor(ren, tr, tg, tb, 255);
                 SDL_Rect sw{r.x + 6, r.y + 6, 24, 24};
-                SDL_RenderFillRect(ren, &sw);
-                DrawText(ren, r.x + 38, r.y + 8, 2, objectLabel(oid));
+                if (!drawObjectTexture(oid, sw, false)) SDL_RenderFillRect(ren, &sw);
+                const std::string label = objectLabel(oid);
+                const int textScale = MeasureTextWidth(2, label) <= r.w - 42 ? 2 : 1;
+                DrawText(ren, r.x + 38, r.y + (r.h - textScale * 10) / 2, textScale, label);
             }
         }
         if (paletteCount > paletteViewRows) {
@@ -1717,36 +1713,37 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             SDL_RenderFillRect(ren, &thumb);
         }
 
-        DrawText(ren, panelX, paletteStartY + paletteViewRows * paletteRowH + 14, 2, "LEVEL EDITOR");
+
         if (paused) {
-            SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+            SDL_SetRenderDrawColor(ren, 0, 0, 0, 180);
             SDL_Rect dim{0, 0, winW, winH};
             SDL_RenderFillRect(ren, &dim);
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
 
-            SDL_SetRenderDrawColor(ren, 30, 34, 42, 255);
-            SDL_RenderFillRect(ren, &pausePanel);
-            SDL_SetRenderDrawColor(ren, 180, 200, 230, 255);
-            SDL_RenderDrawRect(ren, &pausePanel);
-            const int pauseTextScale = pauseW < 340 ? 1 : 2;
-            DrawText(ren, pausePanel.x + std::max(8, (pausePanel.w - MeasureTextWidth(3, "PAUSED")) / 2), pausePanel.y + 20, 3, "PAUSED");
-            DrawText(ren, pausePanel.x + 20, pausePanel.y + 68, pauseTextScale, "TAP RESUME, SAVE, OR EXIT");
-
-            SDL_Rect pauseBtns[3] = {pauseResumeBtn, pauseSaveBtn, pauseExitBtn};
-            const char* labels[3] = {"RESUME", "SAVE", "EXIT"};
-            for (int i = 0; i < 3; ++i) {
-                SDL_SetRenderDrawColor(ren, i == pauseSel ? 90 : 60, i == pauseSel ? 120 : 80, i == pauseSel ? 170 : 110, 255);
-                SDL_RenderFillRect(ren, &pauseBtns[i]);
-                SDL_SetRenderDrawColor(ren, 220, 220, 235, 255);
-                SDL_RenderDrawRect(ren, &pauseBtns[i]);
-                const int labelScale = pauseButtonW < 80 ? 1 : 2;
-                DrawText(ren, pauseBtns[i].x + std::max(3, (pauseBtns[i].w - MeasureTextWidth(labelScale, labels[i])) / 2),
-                         pauseBtns[i].y + (labelScale == 1 ? 17 : 14), labelScale, labels[i]);
+            skin.draw(ren, pausePanel, false, true);
+            DrawText(ren, pausePanel.x + (pausePanel.w - MeasureTextWidth(3, "PAUSED")) / 2, pausePanel.y + 16, 3, "PAUSED");
+            const std::string notice = SDL_GetTicks() < statusUntil ? statusText : "AUTO SAVE EVERY 15 SECONDS";
+            DrawText(ren, pausePanel.x + (pausePanel.w - MeasureTextWidth(1, notice)) / 2, pausePanel.y + 52, 1, notice);
+            const char* labels[4] = {"RESUME", "SAVE & RESUME", "SAVE & EXIT", "EXIT"};
+            for (int i = 0; i < 4; ++i) {
+                const SDL_Rect rect = editorAnimations.drawRect(i, pauseBtns[i], i == pauseSel, win, winW, winH);
+                skin.draw(ren, rect, i == pauseSel);
+                const int labelScale = pauseButtonW < 200 ? 1 : 2;
+                DrawText(ren, rect.x + (rect.w - MeasureTextWidth(labelScale, labels[i])) / 2,
+                    rect.y + (rect.h - labelScale * 10) / 2, labelScale, labels[i]);
             }
+        }
+        if (SDL_GetTicks() >= nextAutosave) {
+            nextAutosave = SDL_GetTicks() + 15000;
+            if (snapshot() != savedSnapshot) saveEditor(false, true);
         }
         SDL_RenderPresent(ren);
         SDL_Delay(16);
     }
 
+    if (snapshot() != savedSnapshot) saveEditor(false, true);
+    if (editorEntities) SDL_DestroyTexture(editorEntities);
     if (blocksTex) SDL_DestroyTexture(blocksTex);
     return savedPath;
 }
@@ -1822,6 +1819,7 @@ namespace {
 std::string RunLocalLevelRenamePrompt(SDL_Window* win, SDL_Renderer* ren, const std::string& initialName,
     const std::string& title, const std::string& fieldLabel) {
     std::string name = initialName;
+    EditorSkin skin(ren);
     bool accepted = false;
     bool running = true;
     bool textInputActive = false;
@@ -1915,23 +1913,23 @@ std::string RunLocalLevelRenamePrompt(SDL_Window* win, SDL_Renderer* ren, const 
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
         SDL_RenderClear(ren);
         SDL_SetRenderDrawColor(ren, 30, 34, 44, 255);
-        SDL_RenderFillRect(ren, &panel);
+        skin.draw(ren, panel, false, true);
         SDL_SetRenderDrawColor(ren, 200, 210, 230, 255);
         SDL_RenderDrawRect(ren, &panel);
         const int titleScale = MeasureTextWidth(3, title) <= panel.w - 40 ? 3 : 2;
         DrawText(ren, panel.x + 20, panel.y + 20, titleScale, title);
         SDL_SetRenderDrawColor(ren, 68, 98, 158, 255);
-        SDL_RenderFillRect(ren, &rowName);
+        skin.draw(ren, rowName, true);
         SDL_SetRenderDrawColor(ren, 220, 225, 235, 255);
         SDL_RenderDrawRect(ren, &rowName);
         DrawText(ren, rowName.x + 10, rowName.y + 11, 2, fieldLabel + name);
         SDL_SetRenderDrawColor(ren, 55, 95, 70, 255);
-        SDL_RenderFillRect(ren, &okBtn);
+        skin.draw(ren, okBtn);
         SDL_SetRenderDrawColor(ren, 205, 235, 210, 255);
         SDL_RenderDrawRect(ren, &okBtn);
         DrawText(ren, okBtn.x + 48, okBtn.y + 12, 2, "OK");
         SDL_SetRenderDrawColor(ren, 80, 55, 70, 255);
-        SDL_RenderFillRect(ren, &cancelBtn);
+        skin.draw(ren, cancelBtn);
         SDL_SetRenderDrawColor(ren, 235, 205, 210, 255);
         SDL_RenderDrawRect(ren, &cancelBtn);
         DrawText(ren, cancelBtn.x + 34, cancelBtn.y + 12, 2, "CANCEL");

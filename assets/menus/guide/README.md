@@ -300,9 +300,10 @@ and scrolling stay stable.
 
 ### Level parameter objects (object values format 1)
 
-The editor's Objects palette includes eight setters. Place one and enter an
-integer, or tap an existing setter with the same selected type to edit its value.
-Cancel and invalid input leave the previous object intact. Erase removes it.
+The editor's Objects palette includes eight setters. Placing one uses its default
+value. Select **Configure Object** (F3), then tap the placed setter on the active
+layer to enter its value and layer. Cancel and invalid input leave the previous
+object intact. Delete mode removes objects on the active layer.
 These invisible, non-solid 32-pixel triggers activate when the player enters them;
 leaving and re-entering activates them again. Overlapping setters apply in file
 order. Death/restart reloads the level's original settings.
@@ -348,3 +349,46 @@ not add a warning to already-released clients. Saving with an older editor can
 strip the extension; a setter without its value is inert in newer clients rather
 than silently applying zero. Save games preserve setter values and changed level
 settings.
+
+### Editor controls, saves, and object layers
+
+The editor sidebar, palette, pause menu, and configuration dialogs use the menu
+atlas. Available object sprites are shown on the canvas and in the palette.
+
+- **Esc / controller Back** opens the pause menu: Resume, Save & Resume,
+  Save & Exit, and Exit. Save & Resume keeps the editor open; Save & Exit returns
+  to the browser. The old bottom Save/Exit controls are removed. **S** saves while
+  continuing to edit.
+- Changes autosave every **15 seconds** to the same level file, using atomic file
+  replacement. Exit flushes pending changes. Unchanged levels are not repeatedly
+  written. Save failures stay visible and can be retried from the pause menu.
+- **Configure Object / F3** selects the configuration tool. Tap an existing object
+  on the active layer. Setters expose their numeric value; every object exposes
+  its layer. Both prompts must be accepted before any change is committed.
+  **Level Config / F2** continues to configure the level itself.
+- Layer **-/+** controls or **[ / ]** select layers **0-9**. Each layer can contain
+  an object in the same grid cell. Other layers remain visible but dimmed; only
+  the active layer is edited or deleted. Higher layers draw in front of lower
+  layers during gameplay, with file order preserved within a layer. Layers do not
+  change collision or trigger activation.
+- Placing the same object again preserves it and its configured values. Placing
+  a different object overrides the cell on the active layer. Removing an object
+  requires **Delete** mode (button or Delete key); a right click alone cannot
+  remove it. **C** clears tiles and active-layer objects only while Delete is on.
+
+Nonzero object layers are saved after the legacy triples using an optional
+extension (which may appear before or after `OBJPARAM1`):
+
+```text
+OBJLAYER1 2
+0 1
+3 4
+```
+
+Each row is a zero-based object index followed by its layer, 0-9. Unlisted objects
+use layer 0. Unsupported versions, repeated sections, duplicate/out-of-range
+indices, invalid layer values, and incomplete rows are rejected. Extension
+loading is atomic: malformed layer data cannot partially apply parameter values.
+Older readers still enumerate all ID/X/Y triples but ignore the new layers;
+resaving in an older editor can strip them. Object values and layers survive
+resizing and save-game snapshots.

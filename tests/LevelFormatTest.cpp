@@ -279,6 +279,21 @@ int main() {
     assert(loadLevelBNNLVL("future_setter.bin", map, objects, loaded));
     assert(objects[0].parameterValue == 42 && !LevelParameters::apply(objects[0], loaded));
     assert(SerializeLevelObjects(objects).find("0 42") != std::string::npos);
+    // Layers round-trip alongside parameters; both extension orders are accepted.
+    for (const auto& sections : {"OBJPARAM1 1\n0 3\nOBJLAYER1 1\n0 7\n", "OBJLAYER1 1\n0 7\nOBJPARAM1 1\n0 3\n"}) {
+        files["layered.bin"] = std::string("DFLVL4 1 1\n2\nOBJ 1\n1106 16 16\n") + sections;
+        assert(loadLevelBNNLVL("layered.bin", map, objects, loaded));
+        assert(objects[0].layer == 7 && objects[0].parameterValue == 3);
+        files["layered_roundtrip.bin"] = "DFLVL4 1 1\n2\n" + SerializeLevelObjects(objects);
+        assert(loadLevelBNNLVL("layered_roundtrip.bin", map, objects, loaded));
+        assert(objects[0].layer == 7 && objects[0].parameterValue == 3);
+    }
+    for (const auto& section : {"OBJLAYER2 1\n0 1\n", "OBJLAYER1 1\n0 -1\n", "OBJLAYER1 1\n0 10\n",
+        "OBJLAYER1 1\n1 0\n", "OBJLAYER1 1\n0\n", "OBJLAYER1 0\nOBJLAYER1 0\n"}) {
+        files["bad_layer.bin"] = std::string("DFLVL4 1 1\n2\nOBJ 1\n1106 16 16\nOBJPARAM1 1\n0 3\n") + section;
+        assert(!loadLevelBNNLVL("bad_layer.bin", map, objects, loaded));
+        assert(!objects[0].parameterValue && objects[0].layer == 0); // Atomic extension loading.
+    }
     // Filtered legacy entries must not shift the value indices in saved files.
     assert(SerializeLevelObjects({{"player", 1, 2}, {"1102", 16, 16, 0}}) ==
         "OBJ 1\n1102 16 16\nOBJPARAM1 1\n0 0\n");

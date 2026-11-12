@@ -1,4 +1,5 @@
 #include "LocalLevelEdits.h"
+#include "EditorObjectTools.h"
 #include <cassert>
 #include <chrono>
 #include <filesystem>
@@ -13,6 +14,24 @@ static std::string read(const fs::path& path) {
 }
 
 int main() {
+    std::vector<ObjectInstance> layered;
+    EditorObjects::replace(layered, {"31", 48, 48, {}, 0});
+    EditorObjects::replace(layered, {"46", 48, 48, {}, 2});
+    assert(layered.size() == 2);
+    // Repeated placement/overrides never toggle an object off or touch other layers.
+    EditorObjects::replace(layered, {"31", 48, 48, {}, 0});
+    assert(layered.size() == 2);
+    EditorObjects::replace(layered, {"1106", 48, 48, 3, 0});
+    assert(layered.size() == 2 && layered[0].parameterValue == 3 && layered[1].id == "46");
+    assert(!EditorObjects::erase(layered, 1, 1, 0, false) && layered.size() == 2);
+    assert(EditorObjects::find(layered, 1, 1, 2) == 1);
+    assert(EditorObjects::erase(layered, 1, 1, 0, true));
+    assert(layered.size() == 1 && layered[0].layer == 2);
+    EditorObjects::replace(layered, {"97", 80, 48, {}, 0});
+    EditorObjects::replace(layered, {"96", 112, 48, {}, 2});
+    const auto order = EditorObjects::renderOrder(layered);
+    assert((order == std::vector<int>{1, 0, 2})); // Stable within one layer.
+
     TileMap map;
     map.resize(7, 6);
     map.tileIds.assign(42, 2);
@@ -21,7 +40,7 @@ int main() {
     map.tileIds[6] = 67;
     map.tileIds[5 * 7] = 9;
     map.tileIds[5 * 7 + 6] = 0;
-    const std::vector<ObjectInstance> objects{{"17", 0, 0}, {"22", 159, 159},
+    const std::vector<ObjectInstance> objects{{"17", 0, 0, {}, 4}, {"22", 159, 159},
         {"23", 160, 20}, {"24", 20, 160}, {"25", -1, 0},
         {"26", std::numeric_limits<float>::quiet_NaN(), 0}};
     LocalLevelEdits::ResizePlan plan;
@@ -29,6 +48,7 @@ int main() {
     assert(plan.tiles.size() == 25 && plan.tiles[0] == 66 && plan.tiles[24] == 65535);
     assert(plan.croppedTiles == 2 && plan.croppedObjects == 4);
     assert(plan.objects.size() == 2 && plan.objects[1].id == "22" && plan.objects[1].x == 159);
+    assert(plan.objects[0].layer == 4);
     assert(LocalLevelEdits::planResize(map, {}, 9, 8, plan));
     assert(plan.tiles[6] == 67 && plan.tiles[5 * 9] == 9 && plan.tiles[7 * 9 + 8] == 2);
     assert(plan.croppedTiles == 0);
