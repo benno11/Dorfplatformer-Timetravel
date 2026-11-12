@@ -30,6 +30,22 @@ bool FileExists(const std::string& path) {
 }
 
 int main() {
+    // Boss barriers survive level loading and runtime edits without becoming
+    // player solids; their collision is derived from the saved tile ID.
+    files["boss_barrier.bin"] = "DFLVL4 3 1\n2 98 2\nOBJ 0\n";
+    {
+        TileMap map;
+        LevelMeta metadata;
+        std::vector<ObjectInstance> entities;
+        assert(loadLevelBNNLVL("boss_barrier.bin", map, entities, metadata));
+        assert(map.tileIds[1] == TileIds::BossBarrier);
+        assert(!map.getSolid(1, 0) && map.getBossSolid(1, 0));
+        LevelManager edits;
+        edits.setTileAt(map, 1, 2);
+        assert(!map.getBossSolid(1, 0));
+        edits.setTileAt(map, 1, TileIds::BossBarrier);
+        assert(!map.getSolid(1, 0) && map.getBossSolid(1, 0));
+    }
     // Attribute decoding must agree when loading and changing a tile at runtime.
     // Blank/unknown definitions are air; #, =, and ^ mean solid, platform, water.
     files["assets/blockdefined.txt"] = std::string(100, '\n') + "\n#\n=\n^\n?\n";

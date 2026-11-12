@@ -44,7 +44,7 @@ void SetVerticalWrapCollision(bool enabled) {
     g_verticalWrapCollision = enabled;
 }
 
-bool RectHitsSolid(const TileMap& map, float x, float y, int w, int h) {
+static bool rectHitsActorSolid(const TileMap& map, float x, float y, int w, int h, bool boss) {
     if (hitsDynamicSolid(x, y, w, h)) return true;
     int t = map.tileSize;
     int left = (int)std::floor(x / t);
@@ -55,10 +55,18 @@ bool RectHitsSolid(const TileMap& map, float x, float y, int w, int h) {
         for (int tx = left; tx <= right; ++tx) {
             const int qx = g_horizontalWrapCollision ? wrapTileX(tx, map.w) : tx;
             const int qy = g_verticalWrapCollision ? wrapTileY(ty, map.h) : ty;
-            if (map.getSolid(qx, qy)) return true;
+            if (boss ? map.getBossSolid(qx, qy) : map.getSolid(qx, qy)) return true;
         }
     }
     return false;
+}
+
+bool RectHitsSolid(const TileMap& map, float x, float y, int w, int h) {
+    return rectHitsActorSolid(map, x, y, w, h, false);
+}
+
+bool RectHitsBossSolid(const TileMap& map, float x, float y, int w, int h) {
+    return rectHitsActorSolid(map, x, y, w, h, true);
 }
 
 static bool rectHitsSemiSolidDown(const TileMap& map, float oldY, float newY, float x, int w, int h) {

@@ -716,7 +716,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         24, 29, 30, 41, 49,
         51, 52, 53, 54, 55,
         83, 84, 85, 86, 87, 88,
-        28
+        28, TileIds::BossBarrier
     };
     std::unordered_map<int, std::string> objectTypeById;
     const std::vector<int> objectPalette = loadEditorObjectPalette(objectTypeById);
@@ -811,6 +811,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
     }
 
     auto tileColor = [](unsigned short id, Uint8& r, Uint8& g, Uint8& b) {
+        if (id == TileIds::BossBarrier) { r = 175; g = 70; b = 225; return; }
         if (id == 1) { r = 120; g = 120; b = 130; return; }
         if (id == 2) { r = 24; g = 26; b = 34; return; }
         if (id == 24) { r = 220; g = 180; b = 40; return; }
@@ -1686,6 +1687,8 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 }
                 if (pid == 7) {
                     DrawText(ren, r.x + 38, r.y + 8, 2, "Main Ground Tiles");
+                } else if (pid == TileIds::BossBarrier) {
+                    DrawText(ren, r.x + 38, r.y + 8, 2, "Boss Barrier (98)");
                 } else {
                     DrawText(ren, r.x + 38, r.y + 8, 2, std::string("Tile ") + std::to_string((int)pid));
                 }

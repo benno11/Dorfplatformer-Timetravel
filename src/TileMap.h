@@ -1,6 +1,7 @@
 #pragma once
 #include <SDL3/SDL.h>
 #include <vector>
+#include "TileIds.h"
 
 struct TileMap {
     int tileSize = 32;
@@ -16,6 +17,7 @@ struct TileMap {
 
     void resize(int W, int H);
     unsigned char getSolid(int x, int y) const;
+    unsigned char getBossSolid(int x, int y) const;
     unsigned char getSemiSolid(int x, int y) const;
     unsigned char getWater(int x, int y) const;
     void setSolid(int x, int y, unsigned char v);

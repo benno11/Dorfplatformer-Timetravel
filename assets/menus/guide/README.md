@@ -277,3 +277,11 @@ set show_extra false
 if show_extra skip 1
 button "Extra Button" back
 ```
+
+### Boss Barrier tile
+
+The local level editor's Tiles palette includes **Boss Barrier (98)**. Place it
+like a normal tile to block boss movement. Players can walk and jump through it;
+it is invisible during normal gameplay and visible in the editor and debug
+overlays. Tile ID 98 is reserved for this behavior and needs no texture or
+block-definition entry.

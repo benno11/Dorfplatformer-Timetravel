@@ -3063,7 +3063,7 @@ int RunGameApp(int argc, char** argv) {
         std::vector<SecretFireball> secretFireballs;
         std::vector<SecretExplosion> secretExplosions;
         auto bossRectHitsSolid = [&](float cx, float cy, float w, float h) -> bool {
-            return RectHitsSolid(map, cx - w * 0.5f, cy - h * 0.5f, (int)std::lround(w), (int)std::lround(h));
+            return RectHitsBossSolid(map, cx - w * 0.5f, cy - h * 0.5f, (int)std::lround(w), (int)std::lround(h));
         };
         auto ejectBossFromSolid = [&](float& bx, float& by, float bossW, float bossH) -> bool {
             if (!bossRectHitsSolid(bx, by, bossW, bossH)) return true;
@@ -6857,7 +6857,7 @@ int RunGameApp(int argc, char** argv) {
                         const float prevY = bossState.y;
                         bossState.vy += bossGravity * dt;
                         bossState.y += bossState.vy * dt;
-                        if (RectHitsSolid(map, bossState.x - halfW, bossState.y - halfH, bossHitW, bossHitH)) {
+                        if (RectHitsBossSolid(map, bossState.x - halfW, bossState.y - halfH, bossHitW, bossHitH)) {
                             bossState.y = prevY;
                             bossState.vy = -bossState.vy;
                         }
@@ -6875,13 +6875,13 @@ int RunGameApp(int argc, char** argv) {
                         const int bossHitH = (int)std::lround(bossH);
                         bossState.vy += bossGravity * dt;
                         const float nextX = bossState.x + bossState.vx * dt;
-                        if (!RectHitsSolid(map, nextX - halfW, bossState.y - halfH, bossHitW, bossHitH)) {
+                        if (!RectHitsBossSolid(map, nextX - halfW, bossState.y - halfH, bossHitW, bossHitH)) {
                             bossState.x = nextX;
                         } else {
                             bossState.vx = -bossState.vx;
                         }
                         const float nextY = bossState.y + bossState.vy * dt;
-                        if (!RectHitsSolid(map, bossState.x - halfW, nextY - halfH, bossHitW, bossHitH)) {
+                        if (!RectHitsBossSolid(map, bossState.x - halfW, nextY - halfH, bossHitW, bossHitH)) {
                             bossState.y = nextY;
                         } else {
                             bossState.vy = -bossState.vy;
@@ -7655,6 +7655,7 @@ int RunGameApp(int argc, char** argv) {
                     }
                     const unsigned short sourceId = map.tileIds[row + mapX];
                     const unsigned short id = waterEffectsEnabled && sourceId == 29 ? 41 : sourceId;
+                    if (id == TileIds::BossBarrier) continue;
                     if (id == 0 || (waterEffectsEnabled && map.water[row + mapX])) continue;
 
                     const Frame* frame = nullptr;
@@ -8646,7 +8647,7 @@ int RunGameApp(int argc, char** argv) {
         BeginNativeTextOverlay(ren, kBaseScreenW, kBaseScreenH, nativeTextPresentDst);
         SDL_Rect worldDst{0, 0, screenW, screenH};
         // Tint the completed scene in time period 3; HUD and menus stay neutral.
-        if (levelManager.timeId() == 3) SDL_SetTextureColorMod(worldTarget, 255, 25, 25);
+        if (levelManager.timeId() == 3) SDL_SetTextureColorMod(worldTarget, 255, 0, 0);
         SDL_RenderTexture(ren, worldTarget, nullptr, &worldDst);
         SDL_SetTextureColorMod(worldTarget, 255, 255, 255);
 

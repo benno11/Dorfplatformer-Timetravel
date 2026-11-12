@@ -55,6 +55,13 @@ unsigned char TileMap::getSolid(int x,int y) const{
     return solid[y*w+x];
 }
 
+unsigned char TileMap::getBossSolid(int x, int y) const {
+    if (getSolid(x, y)) return 1;
+    if (x < 0 || x >= w || h <= 0) return 0;
+    y = std::clamp(y, 0, h - 1);
+    return tileIds[y * w + x] == TileIds::BossBarrier;
+}
+
 unsigned char TileMap::getSemiSolid(int x,int y) const{
     if(x<0||x>=w) return 0;
     if(y<0) y=0;
@@ -87,6 +94,9 @@ void TileMap::setWater(int x,int y,unsigned char v){
 void TileMap::setBlockDefinition(int index, char definition) {
     if (index < 0 || (size_t)index >= solid.size() || (size_t)index >= semisolid.size() ||
         (size_t)index >= water.size()) return;
+    // Boss barriers never become player solids, platforms, or water, even if
+    // an external definition file assigns this reserved tile another attribute.
+    if ((size_t)index < tileIds.size() && tileIds[index] == TileIds::BossBarrier) definition = 0;
     // blockdefined.txt: # is solid, = is a one-way platform, ^ is water.
     // Empty or unrecognized definitions are air. Always clear the other flags.
     solid[index] = definition == '#';

@@ -39,6 +39,7 @@ struct KeyboardBindings {
 };
 
 bool RectHitsSolid(const TileMap& map, float x, float y, int w, int h);
+bool RectHitsBossSolid(const TileMap& map, float x, float y, int w, int h);
 bool EjectPlayerFromSolid(Player& player, const TileMap& map);
 void SetHorizontalWrapCollision(bool enabled);
 void SetVerticalWrapCollision(bool enabled);
