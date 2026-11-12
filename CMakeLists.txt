@@ -189,6 +189,7 @@ endfunction()
 set(PLATFORMER_GAME_SOURCES
   src/main.cpp
   src/GameApp.cpp
+  src/NativeMods.cpp
   src/AndroidEntrypoints.cpp
   src/TileMap.cpp
   src/LevelLoader.cpp
@@ -1154,6 +1155,18 @@ if(BUILD_TESTING AND NOT ANDROID AND NOT IOS)
   target_compile_definitions(async_asset_loader_test PRIVATE SDL_ENABLE_OLD_NAMES=1)
   add_test(NAME async_asset_loader COMMAND async_asset_loader_test)
   set_tests_properties(async_asset_loader PROPERTIES TIMEOUT 15)
+  add_library(native_mod_fixture MODULE tests/NativeModFixture.cpp)
+  set_target_properties(native_mod_fixture PROPERTIES PREFIX ""
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/test-mods"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/test-mods")
+  if(WIN32)
+    target_sources(native_mod_fixture PRIVATE sdk/example/exports.def)
+  endif()
+  add_executable(native_mods_test tests/NativeModsTest.cpp src/NativeMods.cpp)
+  target_include_directories(native_mods_test PRIVATE src third_party)
+  target_link_libraries(native_mods_test PRIVATE ${SDL3_LINK_TARGET} nlohmann_json::nlohmann_json)
+  add_dependencies(native_mods_test native_mod_fixture)
+  add_test(NAME native_mods COMMAND native_mods_test "$<TARGET_FILE:native_mod_fixture>")
   add_executable(death_animation_test tests/DeathAnimationTest.cpp)
   target_include_directories(death_animation_test PRIVATE src)
   add_test(NAME death_animation COMMAND death_animation_test)

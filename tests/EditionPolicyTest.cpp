@@ -29,6 +29,8 @@ int main() {
         require(Edition::commandAllowed(command, "") == !Edition::lite, "Restricted command policy mismatch");
     require(Edition::commandAllowed("toggle", "show_experimental_features") == !Edition::lite, "Experiments must stay disabled");
     require(Edition::commandAllowed("toggle", "level_select_enabled") == !Edition::lite, "Lite mode must be forced");
+    require(Edition::menuAllowed("settingsmods") == !Edition::lite, "Native mods must remain disabled in Lite");
+    require(Edition::commandAllowed("mod_toggle", "example") == !Edition::lite, "Lite must reject mod actions");
     require(Edition::menuAllowed("future_menu") == !Edition::lite, "Future menus need Lite opt-in");
     require(Edition::commandAllowed("future_command", "") == !Edition::lite, "Future commands need Lite opt-in");
     require(Edition::commandAllowed("copy", "version"), "About values must be copyable in both editions");

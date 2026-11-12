@@ -1,0 +1,18 @@
+{
+  "id": "example.auto_hop",
+  "name": "Auto Hop",
+  "version": "1.0.0",
+  "api": {"major": 1, "minor": 0},
+  "libraries": {
+    "windows-x64": "windows-x64/auto_hop.dll",
+    "windows-x86": "windows-x86/auto_hop.dll",
+    "linux-x64": "linux-x64/auto_hop.so",
+    "linux-arm64": "linux-arm64/auto_hop.so",
+    "macos-x64": "macos-x64/auto_hop.dylib",
+    "macos-arm64": "macos-arm64/auto_hop.dylib",
+    "android-arm64": "android-arm64/auto_hop.so",
+    "android-armv7": "android-armv7/auto_hop.so",
+    "android-x64": "android-x64/auto_hop.so",
+    "android-x86": "android-x86/auto_hop.so"
+  }
+}

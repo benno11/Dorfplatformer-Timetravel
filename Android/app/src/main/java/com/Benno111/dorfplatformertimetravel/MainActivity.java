@@ -24,6 +24,79 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
 public class MainActivity extends SDLActivity {
+    private static final int NATIVE_MOD_IMPORT = 0x4d31;
+    private String nativeModImportRoot;
+
+    // Called by the native Mods menu; Android's document picker grants access
+    // to the selected ZIP without broad storage permissions.
+    public void importNativeMod(String root) {
+        nativeModImportRoot = root;
+        runOnUiThread(() -> {
+            android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(android.content.Intent.CATEGORY_OPENABLE);
+            intent.setType("application/zip");
+            intent.putExtra(android.content.Intent.EXTRA_MIME_TYPES, new String[]{"application/zip", "application/octet-stream", "application/x-zip-compressed"});
+            try { startActivityForResult(intent, NATIVE_MOD_IMPORT); }
+            catch (Exception error) { android.widget.Toast.makeText(this, "Could not open mod picker", android.widget.Toast.LENGTH_LONG).show(); }
+        });
+    }
+
+    @Override
+    protected void onActivityResult(int request, int result, android.content.Intent data) {
+        if (request != NATIVE_MOD_IMPORT) { super.onActivityResult(request, result, data); return; }
+        if (result != RESULT_OK || data == null || data.getData() == null || nativeModImportRoot == null) return;
+        final java.io.File root = new java.io.File(nativeModImportRoot);
+        final android.net.Uri uri = data.getData();
+        new Thread(() -> {
+            java.io.File staging = new java.io.File(root, ".import-" + java.util.UUID.randomUUID());
+            String message;
+            try {
+                if (!staging.mkdirs()) throw new java.io.IOException("Could not create mod staging directory");
+                java.io.InputStream input = getContentResolver().openInputStream(uri);
+                if (input == null) throw new java.io.IOException("Could not read selected mod");
+                NativeModArchive.extract(input, staging);
+                java.io.File content = staging;
+                java.io.File manifest = new java.io.File(content, "mod.json");
+                if (!manifest.isFile()) {
+                    java.io.File[] children = staging.listFiles();
+                    if (children != null && children.length == 1 && children[0].isDirectory()) {
+                        content = children[0]; manifest = new java.io.File(content, "mod.json");
+                    }
+                }
+                if (!manifest.isFile() || manifest.length() > 65536) throw new java.io.IOException("Missing or oversized mod.json");
+                java.io.ByteArrayOutputStream text = new java.io.ByteArrayOutputStream();
+                try (java.io.InputStream stream = new java.io.FileInputStream(manifest)) {
+                    byte[] buffer = new byte[4096]; int read;
+                    while ((read = stream.read(buffer)) != -1) text.write(buffer, 0, read);
+                }
+                org.json.JSONObject json = new org.json.JSONObject(text.toString("UTF-8"));
+                String id = json.getString("id");
+                if (!id.matches("[A-Za-z0-9_-][A-Za-z0-9._-]{0,79}")) throw new java.io.IOException("Invalid mod ID");
+                json.getString("version"); json.getJSONObject("api"); json.getJSONObject("libraries");
+                java.io.File destination = new java.io.File(root, id);
+                java.io.File backup = new java.io.File(root, ".backup-" + id + "-" + java.util.UUID.randomUUID());
+                boolean replaced = destination.exists();
+                if (replaced && !destination.renameTo(backup)) throw new java.io.IOException("Could not back up installed mod");
+                if (!content.renameTo(destination)) {
+                    if (replaced) backup.renameTo(destination);
+                    throw new java.io.IOException("Could not install mod");
+                }
+                message = "Mod installed. Scan for mods, then restart the game.";
+            } catch (Exception error) { message = "Mod import failed: " + error.getMessage(); }
+            finally { deleteModStaging(staging); }
+            final String notice = message;
+            runOnUiThread(() -> android.widget.Toast.makeText(this, notice, android.widget.Toast.LENGTH_LONG).show());
+        }, "NativeModImport").start();
+    }
+
+    private static void deleteModStaging(java.io.File file) {
+        if (file.isDirectory()) {
+            java.io.File[] children = file.listFiles();
+            if (children != null) for (java.io.File child : children) deleteModStaging(child);
+        }
+        file.delete();
+    }
+
     private static final String TAG = "MainActivity";
     private static volatile boolean softKeyboardActive = false;
     private static volatile boolean preloadAttempted = false;

@@ -1,4 +1,5 @@
 #include "EditionPolicy.h"
+#include "NativeMods.h"
 #include "BuildInfo.h"
 #include "SlimMenuSystem.h"
 #include "SlimMenuLayout.h"
@@ -583,6 +584,31 @@ UpdaterMenu::State readUpdaterState(const SlimMenuContext& ctx) {
 
 SlimMenu loadMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuContext& ctx) {
     if (!Edition::menuAllowed(name)) return loadMenu("mainsetting", runtime, ctx);
+    if (name == "settingsmods") {
+        SlimMenu menu; menu.name = name; menu.title = "Native Mods";
+        auto text = [&](const std::string& label) { MenuItem item; item.label = label; menu.items.push_back(item); };
+        auto button = [&](const std::string& label, const std::string& command, const std::string& arg = "") {
+            MenuItem item; item.type = MenuItem::Type::Button; item.label = label; item.command = command; item.arg = arg; menu.items.push_back(item);
+        };
+        text("Mod API 1.0 - " + NativeMods::Loader::platform());
+        text(runtime.vars.count("mod_status") ? runtime.vars["mod_status"] : "Changes apply after restarting the game.");
+        if (ctx.mods) {
+            for (const auto& mod : ctx.mods->list()) {
+                button(mod.name + " " + mod.version + (mod.enabled ? " [ON]" : " [OFF]"), "mod_toggle", mod.id);
+                text(mod.status);
+            }
+            if (ctx.mods->list().empty()) text("No mods installed. Add a folder containing mod.json.");
+#ifdef __ANDROID__
+            button("Import Mod ZIP", "mod_import");
+#else
+            button("Open Mods Folder", "mod_folder");
+#endif
+            button("Copy Mods Folder Path", "mod_path");
+            button("Scan for Installed Mods", "mod_scan");
+        } else text("Native mod loader is unavailable.");
+        button("Back", "menu", "mainsetting");
+        return menu;
+    }
     if (name == "settingsupdater") {
         SlimMenu menu;
         menu.name = name;
@@ -2178,6 +2204,43 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
     const std::string command = item.command;
     const std::string arg = expandVars(item.arg, runtime, ctx);
     if (!Edition::commandAllowed(command, arg)) return SlimMenuExit::Continue;
+    if (command.rfind("mod_", 0) == 0 && ctx.mods) {
+        if (command == "mod_toggle") ctx.mods->toggle(arg, runtime.vars["mod_status"]);
+        if (command == "mod_scan") { ctx.mods->rescan(); runtime.vars["mod_status"] = "Scan complete. Restart to load newly installed mods."; }
+        if (command == "mod_path") runtime.vars["mod_status"] = SDL_SetClipboardText(ctx.mods->folder().c_str()) ? "Mods folder path copied." : "Could not copy folder path.";
+        if (command == "mod_folder") {
+            const auto path = std::filesystem::u8path(ctx.mods->folder()).generic_u8string();
+            std::string url = "file://";
+#ifdef _WIN32
+            url += "/";
+#endif
+            const char* hex = "0123456789ABCDEF";
+            for (unsigned char c : path) {
+                if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+                    c == '/' || c == ':' || c == '-' || c == '_' || c == '.' || c == '~') url += (char)c;
+                else { url += '%'; url += hex[c >> 4]; url += hex[c & 15]; }
+            }
+            runtime.vars["mod_status"] = SDL_OpenURL(url.c_str()) ? "Opened mods folder." : "Mods folder: " + ctx.mods->folder();
+        }
+#ifdef __ANDROID__
+        if (command == "mod_import") {
+            auto* env = static_cast<JNIEnv*>(SDL_GetAndroidJNIEnv());
+            jobject activity = static_cast<jobject>(SDL_GetAndroidActivity());
+            if (env && activity) {
+                jclass type = env->GetObjectClass(activity);
+                jmethodID method = env->GetMethodID(type, "importNativeMod", "(Ljava/lang/String;)V");
+                jstring root = env->NewStringUTF(ctx.mods->folder().c_str());
+                if (method) env->CallVoidMethod(activity, method, root);
+                env->DeleteLocalRef(root);
+                if (env->ExceptionCheck()) { env->ExceptionClear(); runtime.vars["mod_status"] = "Could not open mod importer."; }
+                else runtime.vars["mod_status"] = "Choose a ZIP, then scan for installed mods.";
+                env->DeleteLocalRef(type); env->DeleteLocalRef(activity);
+            }
+        }
+#endif
+        runtime.vars["__reload_menu"] = "1";
+        return SlimMenuExit::Continue;
+    }
     if (command == "copy") {
         runtime.vars["clipboard_status"] = SDL_SetClipboardText(arg.c_str())
             ? "Copied to clipboard." : "Could not copy to clipboard. Please try again.";

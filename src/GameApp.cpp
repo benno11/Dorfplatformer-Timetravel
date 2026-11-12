@@ -1,4 +1,5 @@
 #include "EditionPolicy.h"
+#include "NativeMods.h"
 #include "ScoreSystem.h"
 #include <SDL3/SDL.h>
 #include <SDL3_image/SDL_image.h>
@@ -1671,6 +1672,8 @@ int RunGameApp(int argc, char** argv) {
     int sfxVolume = 96;   // 0..128
     const std::string localClientSettingsPath = Edition::lite ? "client_settings_lite.json" : "client_settings.json";
     const std::string appSaveRootPath = GetAppSaveRootPath();
+    NativeMods::Loader nativeMods(appSaveRootPath);
+    nativeMods.start();
     constexpr const char* kSavedGameSelectionToken = "__DF_SAVEGAME_CONTINUE__";
     constexpr int kSaveSlotCount = 3;
     int activeSaveSlotIndex = 0;
@@ -2379,7 +2382,9 @@ int RunGameApp(int argc, char** argv) {
             SDL_Delay(1);
         }
     };
+    uint64_t modLevelGeneration = 0;
     FrontendMenuContext frontendCtx{};
+    frontendCtx.mods = &nativeMods;
     MigrateLegacyGameProgression(activeSaveSlotIndex);
     GameProgression progression = LoadGameProgression(activeSaveSlotIndex);
     frontendCtx.progression = &progression;
@@ -3445,6 +3450,7 @@ int RunGameApp(int argc, char** argv) {
             bumperSparks.clear();
             playerWaterState = {};
             levelManager.reloadLevel(map, objects, meta, player);
+            ++modLevelGeneration;
             parameterContacts.clear();
             if (hardmodeRun) {
                 const int reached = HardmodeLevelFromPath(levelManager.levelPath());
@@ -7487,6 +7493,15 @@ int RunGameApp(int argc, char** argv) {
             updatePlayerAnimState(inputMove, inputDown, dt);
         }
 
+        if (!paused && !deathSequenceActive && !levelCompleteActive && !Edition::lite) {
+            DFPlayerState modPlayer{sizeof(DFPlayerState), player.x, player.y, player.vx, player.vy,
+                player.onGround ? 1 : 0, player.facing, player.hasShield ? 1 : 0};
+            const DFLevelState modLevel{sizeof(DFLevelState), loadedLevelId(), levelManager.worldId(),
+                levelManager.levelPartId(), levelManager.timeId(), map.w, map.h, map.tileSize};
+            nativeMods.tick(dtPrecise, modPlayer, modLevel, modLevelGeneration);
+            player.x = modPlayer.x; player.y = modPlayer.y; player.vx = modPlayer.velocity_x; player.vy = modPlayer.velocity_y;
+            player.onGround = modPlayer.on_ground != 0; player.facing = modPlayer.facing < 0 ? -1 : 1; player.hasShield = modPlayer.has_shield != 0;
+        }
         RENDER_ONLY:
         if (paused || !mainWindowFocused) hairMouse.release(characterParts);
         if (!paused) {
@@ -9757,6 +9772,7 @@ int RunGameApp(int argc, char** argv) {
     if (debugRen && debugRen != ren) SDL_DestroyRenderer(debugRen);
     if (debugWin && debugWin != win) SDL_DestroyWindow(debugWin);
     ShutdownTextRenderer();
+    nativeMods.shutdown();
     audio.shutdown();
     sendDiscordTelemetry("shutdown", {
         {"build_uuid", buildUuid},

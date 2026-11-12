@@ -7,6 +7,7 @@
 #include <string>
 
 struct SlimMenuSession;
+namespace NativeMods { class Loader; }
 struct GameProgression;
 namespace CharacterCreator { struct Appearance; }
 
@@ -19,6 +20,7 @@ struct FrontendMenuContext {
     std::shared_ptr<SlimMenuSession> menuSession;
     GameProgression* progression = nullptr;
     CharacterCreator::Appearance* characterAppearance = nullptr;
+    NativeMods::Loader* mods = nullptr;
     SDL_Window* win = nullptr;
     SDL_Renderer* ren = nullptr;
     SDL_Texture* gameTarget = nullptr;

@@ -469,6 +469,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx, bool settingsOnly) {
     auto runScriptMenu = [&](const std::string& menuName) -> bool {
         if (!ctx.menuSession) ctx.menuSession = CreateSlimMenuSession();
         SlimMenuContext slim{};
+        slim.mods = ctx.mods;
         slim.win = ctx.win;
         slim.ren = ctx.ren;
         slim.menuTexture = menuFallbackTex;
