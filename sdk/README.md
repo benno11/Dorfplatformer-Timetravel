@@ -26,6 +26,13 @@ and ABI compatibility still apply. Android uninstall removes the private copies.
 Mods are native code with the game's process permissions. Only install code you
 trust; a crashing native mod can crash the game. This loader is not a sandbox.
 
+## Exported example
+
+[Download the ready-to-import Auto Hop ZIP](packages/example.auto_hop.zip?raw=1).
+It includes Android, Windows, Linux, and macOS libraries, source, and checksums.
+Linux runtime behavior was verified; the other platform binaries are cross-built.
+On Android, import it through Settings → Mods → Import Mod ZIP and restart.
+
 ## Build the example
 
 The Auto Hop example makes the player jump automatically when landing:
