@@ -1095,7 +1095,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                     continue;
                 }
                 if ((mouseTool || touchTool) && (SDL_PointInRect(&toolPoint, &brushDownBtn) || SDL_PointInRect(&toolPoint, &brushUpBtn))) {
-                    brushSize = std::clamp(brushSize + (SDL_PointInRect(&toolPoint, &brushUpBtn) ? 2 : -2), 1, EditorBrush::maxSize);
+                    brushSize = std::clamp(brushSize + (SDL_PointInRect(&toolPoint, &brushUpBtn) ? 1 : -1), 1, EditorBrush::maxSize);
                     editorFingerActive = fingerPainting = false; continue;
                 }
                 if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && (e.key.key == SDLK_COMMA || e.key.key == SDLK_PERIOD)) {
