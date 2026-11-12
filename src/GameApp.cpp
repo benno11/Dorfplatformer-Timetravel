@@ -2054,7 +2054,7 @@ int RunGameApp(int argc, char** argv) {
     };
     if (isDebuggerAttachedToGameProcess) {
         if (true){
-            running = false;
+            //running = false; disabled to allow bebug 
         }
     }
     auto effectiveDebugModeEnabled = [&]() -> bool {
