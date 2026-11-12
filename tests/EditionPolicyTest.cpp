@@ -1,5 +1,6 @@
 #include "EditionPolicy.h"
 #include "GameProgression.h"
+#include "SaveFormat.h"
 #include <nlohmann/json.hpp>
 #include <chrono>
 #include <filesystem>
@@ -13,6 +14,10 @@ static void require(bool condition, const char* message) {
     if (!condition) throw std::runtime_error(message);
 }
 int main() {
+    require(Edition::achievementAvailable("beat_hardmode") == !Edition::lite, "Hardmode achievement must be hidden in Lite");
+    for (const auto* id : {"complete_level", "beat_boss", "complete_world", "ending", "good_ending",
+        "buttons_world_1", "buttons_world_2", "buttons_world_3", "buttons_world_4", "buttons_world_5", "buttons_world_6"})
+        require(Edition::achievementAvailable(id), "Campaign achievements remain obtainable in both editions");
     saveRoot = std::filesystem::temp_directory_path() /
         ("df-edition-test-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     struct Cleanup { ~Cleanup() { std::filesystem::remove_all(saveRoot); } } cleanup;
@@ -41,26 +46,27 @@ int main() {
     require(LoadGameProgression().hardmodeUnlocked == Edition::lite, "Hardmode flag must survive saves");
     const nlohmann::json snapshot{{"level_path", "assets/levels/level_001.txt"}, {"score_count", 1234}};
     require(SaveGameSnapshot(0, false, snapshot) && HasGameSnapshot(0), "Campaign saves must work");
-    require(SaveGameSnapshot(0, true, {{"level_path", HardmodeLevelPath(1)}}) == !Edition::lite,
+    require(SaveGameSnapshot(0, true, {{"resume_world", 0}, {"resume_level", 1}}) == !Edition::lite,
         "Lite must reject Hardmode snapshots");
     require(HasGameSnapshot(0, true) == !Edition::lite, "Lite must not load Hardmode runs");
     require(std::filesystem::path(GameSaveSlotPath(0)).parent_path().filename() == (Edition::lite ? "lite-saves" : "saves"),
         "Edition saves must be isolated");
     std::ifstream in(GameSaveSlotPath(0));
-    auto persisted = nlohmann::json::parse(in);
+    auto persisted = *SaveFormat::decode(std::string(std::istreambuf_iterator<char>(in), {}));
     require(persisted["progression"]["hardmode_unlocked"] == Edition::lite, "Persisted unlock flag is incorrect");
-    require(persisted.contains("score_count") == Edition::scoresEnabled,
+    require(!persisted.contains("score_count"),
         "Lite must never persist a score field");
-    require(LoadGameSnapshot(0).contains("score_count") == Edition::scoresEnabled,
+    require(!LoadGameSnapshot(0).contains("score_count"),
         "Lite must never restore score state");
-    if (Edition::scoresEnabled) require(persisted["score_count"] == 1234, "Full saves must retain score state");
+
     if (!Edition::scoresEnabled) {
         persisted["score_count"] = 9876; // A save from an older Lite build.
         { std::ofstream out(GameSaveSlotPath(0)); out << persisted; }
         require(!LoadGameSnapshot(0).contains("score_count"), "Legacy Lite scores must be ignored");
         require(SaveGameProgression(progression), "Cannot update Lite progression");
         std::ifstream migrated(GameSaveSlotPath(0));
-        require(!nlohmann::json::parse(migrated).contains("score_count"), "Legacy Lite scores must be removed on save");
+        const auto decoded = SaveFormat::decode(std::string(std::istreambuf_iterator<char>(migrated), {}));
+        require(decoded && !decoded->contains("score_count"), "Legacy Lite scores must be removed on save");
     }
     std::cout << (Edition::lite ? "Lite" : "Full") << " edition policy tests passed\n";
 }

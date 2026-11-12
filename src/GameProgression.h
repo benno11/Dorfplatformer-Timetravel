@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <vector>
 #include <nlohmann/json_fwd.hpp>
 
 inline constexpr int kHardmodeLevelCount = 20;
@@ -19,6 +20,7 @@ struct GameProgression {
 };
 
 GameProgression LoadGameProgression(int slotIndex = 0);
+std::vector<int> LoadGameButtonStates(int slotIndex = 0);
 bool SaveGameProgression(const GameProgression& progression, int slotIndex = 0);
 std::string GameSaveSlotPath(int slotIndex);
 nlohmann::json LoadGameSnapshot(int slotIndex, bool hardmode = false);

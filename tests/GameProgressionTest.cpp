@@ -1,4 +1,5 @@
 #include "GameProgression.h"
+#include "SaveFormat.h"
 #include <nlohmann/json.hpp>
 #include <chrono>
 #include <filesystem>
@@ -75,33 +76,69 @@ int main() {
         require(HardmodeLevelFromPath("https://example.test/assets/Hardmode levels/level_01.txt") == 0,
             "Remote levels must not start hardmode");
         require(fs::path(GameSaveSlotPath(2)).filename() == "save_slot_3.json", "Every slot has its own file");
-        const nlohmann::json campaign = {{"level_path", "assets/levels/level_010.txt"}, {"score_count", 123}};
-        const nlohmann::json run = {{"level_path", HardmodeLevelPath(6)}, {"hardmode_failed", false}};
-        require(SaveGameSnapshot(0, false, campaign), "Save campaign in slot one");
-        require(SaveGameSnapshot(0, true, run), "Save hardmode in the same slot");
-        require(HasGameSnapshot(0) && HasGameSnapshot(0, true), "One slot must retain both modes");
-        require(LoadGameProgression(0).hardmodeComplete, "Snapshot saves must preserve unlocks");
-        require(LoadGameSnapshot(0).value("score_count", 0) == 123, "Hardmode must preserve the campaign snapshot");
-        require(LoadGameSnapshot(0, true).value("level_path", std::string()) == HardmodeLevelPath(6),
-            "Hardmode must resume from its slot's run");
-        require(SaveGameSnapshot(0, false, campaign), "Resave campaign");
-        require(HasGameSnapshot(0, true), "Campaign saves must preserve the hardmode run");
-        require(!LoadGameProgression(1).worldSelectUnlocked && !HasGameSnapshot(1, true),
-            "Fresh slots must not inherit another slot's unlocks or run");
-        GameProgression otherSlot;
-        otherSlot.recordEnding(false);
-        require(SaveGameProgression(otherSlot, 1), "Save a different ending in slot two");
+        const nlohmann::json campaign = {{"resume_world", 4}, {"resume_level", 7},
+            {"active_button_world_areas", {11, 12, 21, 42}}, {"player", {{"x", 900}}}, {"score_count", 123}};
+        const nlohmann::json run = {{"level_path", HardmodeLevelPath(6)}, {"resume_world", 0}, {"resume_level", 6}};
+        require(SaveGameSnapshot(0, false, campaign), "Save compact campaign restart point");
+        require(fs::file_size(GameSaveSlotPath(0)) == 4, "Save has exactly the requested fields");
+        require(HasGameSnapshot(0) && !HasGameSnapshot(0, true), "Campaign is the active mode");
+        auto resumed = LoadGameSnapshot(0);
+        require(resumed["resume_world"] == 4 && resumed["resume_level"] == 5 &&
+            !resumed.contains("player") && !resumed.contains("score_count"), "Resume has only level-start data");
+        require(SaveGameSnapshot(0, true, run) && HasGameSnapshot(0, true) && !HasGameSnapshot(0), "Hardmode restart point");
+        require(LoadGameSnapshot(0, true)["level_path"] == HardmodeLevelPath(6), "Hardmode starts at the saved level");
+        require(LoadGameSnapshot(0, true)["active_button_world_areas"] == campaign["active_button_world_areas"],
+            "Hardmode must preserve campaign buttons");
+        require(SaveGameSnapshot(0, false, campaign), "Campaign replaces active restart point");
+        require(LoadGameProgression(0).hardmodeComplete, "Restart updates preserve completion flags");
+        GameProgression otherSlot; otherSlot.recordEnding(false);
+        require(SaveGameProgression(otherSlot, 1), "Save different flags in slot two");
         require(LoadGameProgression(1).worldSelectUnlocked && !LoadGameProgression(1).hardmodeUnlocked,
-            "Unlocks must belong to the slot that earned them");
-        require(SaveGameProgression(progression, 0), "Resave slot one's unlocks");
-        require(HasGameSnapshot(0) && HasGameSnapshot(0, true), "Unlock updates must preserve both snapshots");
-        require(ClearHardmodeSnapshot(0) && !HasGameSnapshot(0, true) && HasGameSnapshot(0),
-            "Completing hardmode removes only that slot's run");
-        require(LoadGameProgression(0).hardmodeComplete, "Completing a run must retain earned unlocks");
+            "Slot unlocks remain isolated");
         fs::remove(GameSaveSlotPath(1));
-        require(!LoadGameProgression(1).worldSelectUnlocked && !HasGameSnapshot(1),
-            "Deleting a slot must also delete its unlocks");
-        require(LoadGameProgression(0).hardmodeComplete, "Deleting another slot must preserve progression");
+        require(!LoadGameProgression(1).worldSelectUnlocked, "Deleting a slot deletes its flags");
+        { std::ofstream out(GameSaveSlotPath(2));
+          out << nlohmann::json{{"level_path", "assets/levels/level_050.txt"},
+              {"active_button_world_areas", {11, 52}}, {"player", {{"x", 900}}},
+              {"progression", {{"world_select_unlocked", true}}}}; }
+        const auto legacy = LoadGameSnapshot(2);
+        require(legacy["resume_world"] == 5 && legacy["resume_level"] == 12 && !legacy.contains("player"),
+            "Legacy campaign resumes at level start");
+        require(SaveGameProgression(LoadGameProgression(2), 2) && fs::file_size(GameSaveSlotPath(2)) == 4,
+            "Legacy JSON upgrades to exact compact size");
+        require(LoadGameButtonStates(2) == std::vector<int>({11, 52}) && LoadGameSnapshot(2)["resume_level"] == 11,
+            "Migration retains buttons and resume level");
+        fs::remove(GameSaveSlotPath(2));
+        for (int oldVersion : {1, 2}) for (bool saveRestart : {false, true}) {
+            std::string oldBytes("23333334"); oldBytes.push_back(oldVersion);
+            if (oldVersion == 1) {
+                for (const char mask : {1, 0, 0, 0, 2, 0}) oldBytes.push_back(mask);
+                oldBytes.push_back(static_cast<char>(0xC2)); oldBytes.push_back(5);
+            } else {
+                oldBytes.push_back(1); oldBytes.push_back(static_cast<char>(0x52));
+                oldBytes.push_back(static_cast<char>(0xC2));
+            }
+            { std::ofstream out(GameSaveSlotPath(2), std::ios::binary); out.write(oldBytes.data(), oldBytes.size()); }
+            const auto flags = LoadGameProgression(2);
+            require(flags.worldSelectUnlocked && LoadGameSnapshot(2)["resume_world"] == 5,
+                "Older binary save loads before conversion");
+            const bool converted = saveRestart ? SaveGameSnapshot(2, false, nlohmann::json::object()) :
+                SaveGameProgression(flags, 2);
+            require(converted && fs::file_size(GameSaveSlotPath(2)) == 4,
+                "Every save entry point automatically converts older binary formats");
+            { std::ifstream in(GameSaveSlotPath(2), std::ios::binary);
+              require(in.get() == SaveFormat::version, "Converted file starts with current format number"); }
+            require(LoadGameProgression(2).worldSelectUnlocked && LoadGameSnapshot(2)["resume_world"] == 5 &&
+                LoadGameSnapshot(2)["resume_level"] == 11 && LoadGameButtonStates(2) == std::vector<int>({11, 52}),
+                "Conversion preserves unlocks, buttons and area restart point");
+            fs::remove(GameSaveSlotPath(2));
+        }
+        auto future = SaveFormat::encode(campaign); future[0] = 4;
+        { std::ofstream out(GameSaveSlotPath(2), std::ios::binary); out.write(future.data(), future.size()); }
+        require(!SaveGameProgression(progression, 2) && !SaveGameSnapshot(2, false, campaign), "Never overwrite future saves");
+        { std::ifstream in(GameSaveSlotPath(2), std::ios::binary);
+          require(std::string(std::istreambuf_iterator<char>(in), {}) == future, "Rejected writes preserve original bytes"); }
+        fs::remove(GameSaveSlotPath(2));
         std::ofstream(GameSaveSlotPath(0)) << R"({"progression":{"hardmode_furthest_level":500}})";
         require(LoadGameProgression().hardmodeFurthestLevel == 20, "Loaded progress must remain bounded");
         std::ofstream(GameSaveSlotPath(0)) << "malformed";
@@ -116,7 +153,7 @@ int main() {
             "Migration must not duplicate global unlocks into other slots");
         require(fs::exists(saveRoot / "progression.json.migrated") &&
             fs::exists(saveRoot / "saves" / "hardmode_run.json.migrated"), "Legacy files must be archived");
-        require(!HasGameSnapshot(1), "A slot with only unlocks and hardmode must not offer campaign continue");
+        require(!HasGameSnapshot(1), "An active Hardmode restart must not offer campaign continue");
         std::cout << "Game progression tests passed\n";
     } catch (const std::exception& e) {
         std::cerr << e.what() << '\n';

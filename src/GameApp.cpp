@@ -2935,6 +2935,11 @@ int RunGameApp(int argc, char** argv) {
         if (selectedLevelPath == kSavedGameSelectionToken || continueHardmode) {
             loadSavedGame = true;
             savedGameRoot = LoadGameSnapshot(activeSaveSlotIndex, continueHardmode);
+            if (savedGameRoot.contains("resume_world") && savedGameRoot.value("resume_world", 0) > 0) {
+                const int level = savedGameRoot.value("resume_level", 1) - 1;
+                savedGameRoot["level_path"] = levelManager.levelPathByCode(
+                    savedGameRoot.value("resume_world", 1) * 100 + (level / 4 + 1) * 10 + level % 4 + 1);
+            }
             if (!savedGameRoot.is_object() || !savedGameRoot.contains("level_path")) {
                 SDL_Log("SAVE: no playable snapshot in slot %d", activeSaveSlotIndex + 1);
                 continue;
@@ -3628,6 +3633,19 @@ int RunGameApp(int argc, char** argv) {
             }
         };
 
+        auto restoreSavedButtons = [&]() {
+            levelManager.clearButtonAreasForDebug();
+            if (hardmodeRun || hardmodePractice) return;
+            const auto buttons = LoadGameButtonStates(activeSaveSlotIndex);
+            const int currentKey = levelManager.worldId() * 10 + levelManager.levelPartId();
+            bool pressed = false;
+            for (const int key : buttons) {
+                levelManager.setButtonAreaActiveForDebug(key / 10, key % 10, true);
+                pressed = pressed || key == currentKey;
+            }
+            if (pressed) for (int i = 0; i < static_cast<int>(map.tileIds.size()); ++i)
+                if (map.tileIds[i] == 66) levelManager.setTileAt(map, i, 67);
+        };
         if (loadSavedGame) {
             if (!savedGameRoot.is_object()) {
                 SDL_Log("SAVE: continue requested but snapshot was invalid");
@@ -3769,17 +3787,7 @@ int RunGameApp(int argc, char** argv) {
             fastTravelOverlapWasActive = savedGameRoot.value("fast_travel_overlap_was_active", fastTravelOverlapWasActive);
             fastTravelBlendVx = savedGameRoot.value("fast_travel_blend_vx", fastTravelBlendVx);
             fastTravelBlendVy = savedGameRoot.value("fast_travel_blend_vy", fastTravelBlendVy);
-            levelManager.clearButtonAreasForDebug();
-            if (savedGameRoot.contains("active_button_world_areas") && savedGameRoot["active_button_world_areas"].is_array()) {
-                for (const auto& v : savedGameRoot["active_button_world_areas"]) {
-                    if (!v.is_number_integer()) continue;
-                    const int key = v.get<int>();
-                    if (key <= 0) continue;
-                    levelManager.setButtonAreaActiveForDebug(key / 10, key % 10, true);
-                }
-            }
-            // Continuing a save is also a level start: discard saved button presses.
-            levelManager.resetButtonsForLevelStart(map);
+            restoreSavedButtons();
             resetBossStateForLoadedLevel();
             if (savedGameRoot.contains("boss") && savedGameRoot["boss"].is_object()) {
                 const auto& bj = savedGameRoot["boss"];
@@ -3844,6 +3852,7 @@ int RunGameApp(int argc, char** argv) {
             playSceneIntroCard();
         } else {
             reloadLevel();
+            restoreSavedButtons();
         }
         if (!running) break;
 
@@ -4255,84 +4264,6 @@ int RunGameApp(int argc, char** argv) {
             return true;
         };
 
-        auto saveObjectJson = [](const ObjectInstance& obj) {
-            nlohmann::json j;
-            j["id"] = obj.id;
-            j["x"] = obj.x;
-            j["y"] = obj.y;
-            j["layer"] = obj.layer;
-            if (obj.parameterValue) j["parameter_value"] = *obj.parameterValue;
-            return j;
-        };
-        auto savePlayerJson = [](const Player& p) {
-            nlohmann::json j;
-            j["x"] = p.x;
-            j["y"] = p.y;
-            j["vx"] = p.vx;
-            j["tilePushDirection"] = p.tilePushDirection;
-            j["tile12BounceActive"] = p.tile12BounceActive;
-            j["hasShield"] = p.hasShield;
-            j["slideTime"] = p.slideTime;
-            j["slideDirection"] = p.slideDirection;
-            j["slideWasDown"] = p.slideWasDown;
-            j["vy"] = p.vy;
-            j["w"] = p.w;
-            j["h"] = p.h;
-            j["onGround"] = p.onGround;
-            j["jumpHeld"] = p.jumpHeld;
-            j["jumpWasDown"] = p.jumpWasDown;
-            j["jumpHoldTime"] = p.jumpHoldTime;
-            j["jumpBufferTime"] = p.jumpBufferTime;
-            j["inWater"] = p.inWater;
-            j["drownTimer"] = p.drownTimer;
-            j["freeMove"] = p.freeMove;
-            j["facing"] = p.facing;
-            j["anim"] = p.anim;
-            j["animTime"] = p.animTime;
-            return j;
-        };
-        auto saveBossJson = [&](const BossRuntimeState& b) {
-            nlohmann::json j;
-            j["active"] = b.active;
-            j["world"] = b.world;
-            j["source_world"] = b.sourceWorld;
-            j["activation_cooldown"] = b.activationCooldown;
-            j["health"] = b.health;
-            j["max_health"] = b.maxHealth;
-            j["x"] = b.x;
-            j["y"] = b.y;
-            j["vx"] = b.vx;
-            j["vy"] = b.vy;
-            j["hurt_flash"] = b.hurtFlash;
-            j["phase"] = b.phase;
-            j["replay_index"] = (uint64_t)b.replayIndex;
-            j["replay_frame_acc"] = b.replayFrameAcc;
-            j["rainbow_timer"] = b.rainbowTimer;
-            j["secret_shot_timer"] = b.secretShotTimer;
-            j["secret_touch_damage_cooldown"] = b.secretTouchDamageCooldown;
-            j["boss_player_contact_cooldown"] = b.bossPlayerContactCooldown;
-            return j;
-        };
-        auto saveSecretFireballJson = [](const SecretFireball& f) {
-            nlohmann::json j;
-            j["x"] = f.x;
-            j["y"] = f.y;
-            j["vx"] = f.vx;
-            j["vy"] = f.vy;
-            j["timer"] = f.timer;
-            j["phase"] = f.phase;
-            return j;
-        };
-        auto saveSecretExplosionJson = [](const SecretExplosion& e) {
-            nlohmann::json j;
-            j["x"] = e.x;
-            j["y"] = e.y;
-            j["radius"] = e.radius;
-            j["life"] = e.life;
-            j["hitPlayer"] = e.hitPlayer;
-            j["hitBoss"] = e.hitBoss;
-            return j;
-        };
         saveGameToDisk = [&]() -> bool {
             try {
                 if (hardmodePractice) return false;
@@ -4341,79 +4272,12 @@ int RunGameApp(int argc, char** argv) {
                 const std::filesystem::path savePath = saveGamePathForSlot(activeSaveSlotIndex);
                 std::error_code ec;
                 std::filesystem::create_directories(savePath.parent_path(), ec);
+                // Compact saves retain progression and campaign button flags only.
                 nlohmann::json root;
-                root["version"] = 1;
-                root["level_path"] = levelManager.levelPath();
-                root["custom_level_name"] = customLevelName;
-                root["hardmode_active"] = hardmodeRun;
-                root["hardmode_failed"] = hardmodeRun && deathSequenceActive;
-                refreshDebuggerDebugOverride();
-                root["debug_mode_enabled"] = effectiveDebugModeEnabled();
-                root["debug"] = {
-                    {"mode_enabled", effectiveDebugModeEnabled()},
-                    {"settings_debug_mode_enabled", debugModeEnabled},
-                    {"debugger_attached", debuggerAttachedDebugOverride}
-                };
-                root["allow_next_level_progression"] = allowNextLevelProgression;
-                root["level_timer_seconds"] = levelTimerSeconds;
-                root["lives_count"] = livesCount;
-                if (Edition::scoresEnabled) root["score_count"] = scoreCount;
-                root["coin_count"] = levelManager.coinCount();
-                root["checkpoint"] = {
-                    {"active", checkpointActive},
-                    {"level_path", checkpointLevelPath},
-                    {"tile_x", checkpointTileX},
-                    {"tile_y", checkpointTileY}
-                };
-                root["player_invincible_timer"] = playerInvincibleTimer;
-                root["level_load_death_grace_timer"] = levelLoadDeathGraceTimer;
-                root["player_spawn_lock_frames"] = playerSpawnLockFrames;
-                root["player_spawn_lock_x"] = playerSpawnLockX;
-                root["player_spawn_lock_y"] = playerSpawnLockY;
-                root["camera_smoothing_suppress_timer"] = cameraSmoothingSuppressTimer;
-                root["camera_look_ahead_x"] = cameraLookAheadX;
-                root["min_cam_x_override"] = minCamXOverride;
-                root["time_travel_trigger_cooldown"] = timeTravelTriggerCooldown;
-                root["fast_travel_active_dir"] = fastTravelActiveDir;
-                root["fast_travel_overlap_was_active"] = fastTravelOverlapWasActive;
-                root["fast_travel_blend_vx"] = fastTravelBlendVx;
-                root["fast_travel_blend_vy"] = fastTravelBlendVy;
-                root["map"] = {
-                    {"tile_size", map.tileSize},
-                    {"w", map.w},
-                    {"h", map.h},
-                    {"tile_ids", map.tileIds},
-                    {"bg", map.bg}
-                };
-                root["player"] = savePlayerJson(player);
-                root["meta"] = {
-                    {"name", meta.name},
-                    {"level_id", meta.levelId}, {"theme_override", meta.themeOverride},
-                    {"wrap_x", wrapTriggerXActive}, {"wrap_y", wrapTriggerYActive},
-                    {"world", meta.world}, {"area", meta.area}, {"time", meta.time},
-                    {"bouncy_tile_12", meta.bouncyTile12},
-                    {"entity_spawn_pos", meta.entitySpawnPos},
-                    {"entity_spawn_type", meta.entitySpawnType}
-                };
-                root["objects"] = nlohmann::json::array();
-                for (size_t index = 0; index < objects.size(); ++index) {
-                    auto object = saveObjectJson(objects[index]);
-                    if (objectIds[index] == ObjectIds::MovingPlatform) {
-                        object["platform_elapsed"] = movingPlatformStates[index].elapsed;
-                        object["platform_started"] = movingPlatformStates[index].started;
-                    }
-                    root["objects"].push_back(std::move(object));
-                }
                 root["active_button_world_areas"] = levelManager.activeButtonWorldAreas();
-                root["boss"] = saveBossJson(bossState);
-                root["secret_fireballs"] = nlohmann::json::array();
-                for (const auto& f : secretFireballs) {
-                    root["secret_fireballs"].push_back(saveSecretFireballJson(f));
-                }
-                root["secret_explosions"] = nlohmann::json::array();
-                for (const auto& ex : secretExplosions) {
-                    root["secret_explosions"].push_back(saveSecretExplosionJson(ex));
-                }
+                root["resume_world"] = hardmodeRun ? 0 : std::clamp(levelManager.worldId(), 1, 7);
+                root["resume_level"] = hardmodeRun ? (deathSequenceActive ? 1 : HardmodeLevelFromPath(levelManager.levelPath())) :
+                    (std::clamp(levelManager.levelPartId(), 1, 3) - 1) * 4 + std::clamp(levelManager.timeId(), 1, 4);
                 if (!SaveGameSnapshot(activeSaveSlotIndex, hardmodeRun, root)) return false;
                 SDL_Log("SAVE: wrote %s", savePath.string().c_str());
                 return true;

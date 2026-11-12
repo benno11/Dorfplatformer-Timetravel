@@ -8,6 +8,9 @@
 namespace Edition {
 inline constexpr bool lite = PLATFORMER_LITE_EDITION != 0;
 inline constexpr bool scoresEnabled = !lite;
+inline bool achievementAvailable(const std::string& id) {
+    return !lite || id != "beat_hardmode";
+}
 inline constexpr const char* name = lite ? "Dorfplatformer Timetravel Lite" : "Dorfplatformer Timetravel";
 inline bool worldSelectable(int world) {
     return world >= 1 && world <= 6 && (!lite || (world != 2 && world != 4 && world != 6));

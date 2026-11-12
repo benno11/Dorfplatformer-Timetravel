@@ -1,5 +1,7 @@
 #include "EditionPolicy.h"
 #include "GameProgression.h"
+#include "SaveFormat.h"
+#include <iterator>
 #include "AssetPath.h"
 #include <algorithm>
 #include <filesystem>
@@ -39,8 +41,28 @@ json readDocument(const std::filesystem::path& path) {
     try {
         std::ifstream in(path, std::ios::binary);
         if (!in.is_open()) return json::object();
-        auto document = json::parse(in);
-        return document.is_object() ? document : json::object();
+        const std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        auto document = SaveFormat::decode(bytes);
+        if (!document) return json::object();
+        // Recover the restart point before converting legacy snapshots.
+        if (!document->contains("resume_world") && document->contains("level_path")) {
+            const auto path = document->value("level_path", std::string());
+            const int hardLevel = HardmodeLevelFromPath(path);
+            if (hardLevel > 0) {
+                (*document)["resume_world"] = 0; (*document)["resume_level"] = hardLevel;
+            } else if (IsCampaignLevelPath(path)) {
+                const auto stem = std::filesystem::path(path).stem().string();
+                const int index = std::stoi(stem.substr(stem.find_last_of('_') + 1));
+                if (index >= 1 && index <= 59) {
+                    const int world = index <= 50 ? (index - 1) / 10 + 1 : (index <= 56 ? 6 : 7);
+                    const int within = index <= 50 ? (index - 1) % 10 : (index <= 56 ? index - 51 : index - 57);
+                    const int ordinal = world <= 5 ? within + 1 + (within >= 8 ? 2 : 0) :
+                        (world == 6 ? (within / 2) * 4 + 3 + within % 2 : (within == 0 ? 3 : 4));
+                    (*document)["resume_world"] = world; (*document)["resume_level"] = ordinal;
+                }
+            }
+        }
+        return *document;
     } catch (...) { return json::object(); }
 }
 GameProgression readProgression(const json& j) {
@@ -65,11 +87,20 @@ bool writeDocument(int slotIndex, const json& document) {
     std::error_code ec;
     std::filesystem::create_directories(path.parent_path(), ec);
     if (ec) return false;
+    // Never replace a corrupt or newer-format save with an empty/default document.
+    if (std::filesystem::exists(path, ec)) {
+        std::ifstream existing(path, std::ios::binary);
+        if (!existing.is_open()) return false;
+        const std::string bytes((std::istreambuf_iterator<char>(existing)), std::istreambuf_iterator<char>());
+        if (!SaveFormat::decode(bytes)) return false;
+    }
+    std::string encoded;
+    try { encoded = SaveFormat::encode(document); } catch (...) { return false; }
     const auto tmp = std::filesystem::path(path.string() + ".tmp");
     {
         std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
         if (!out.is_open()) return false;
-        out << document.dump(2);
+        out.write(encoded.data(), static_cast<std::streamsize>(encoded.size()));
         out.flush();
         if (!out.good()) return false;
     }
@@ -104,6 +135,15 @@ GameProgression LoadGameProgression(int slotIndex) {
     }
     return result;
 }
+std::vector<int> LoadGameButtonStates(int slotIndex) {
+    const auto document = readDocument(GameSaveSlotPath(slotIndex));
+    std::vector<int> states;
+    if (document.contains("active_button_world_areas") && document["active_button_world_areas"].is_array())
+        for (const auto& entry : document["active_button_world_areas"])
+            if (entry.is_number_integer() && entry >= 11 && entry <= 63 && entry.get<int>() % 10 >= 1 && entry.get<int>() % 10 <= 3)
+                states.push_back(entry.get<int>());
+    return states;
+}
 bool SaveGameProgression(const GameProgression& progression, int slotIndex) {
     auto document = readDocument(GameSaveSlotPath(slotIndex));
     auto flags = progression;
@@ -115,7 +155,16 @@ bool SaveGameProgression(const GameProgression& progression, int slotIndex) {
 json LoadGameSnapshot(int slotIndex, bool hardmode) {
     if (Edition::lite && hardmode) return json::object();
     auto document = readDocument(GameSaveSlotPath(slotIndex));
-    if (hardmode) return document.value("hardmode_run", json::object());
+    if (!document.contains("resume_world") && hardmode) document = document.value("hardmode_run", json::object());
+    if (document.contains("resume_world")) {
+        const int world = document.value("resume_world", 1);
+        if (hardmode != (world == 0)) return json::object();
+        json restart{{"resume_world", world}, {"resume_level", document.value("resume_level", 1)},
+            {"active_button_world_areas", document.value("active_button_world_areas", json::array())},
+            {"progression", document.value("progression", json::object())}};
+        if (hardmode) restart["level_path"] = HardmodeLevelPath(document.value("resume_level", 1));
+        return restart;
+    }
     if (!Edition::scoresEnabled) document.erase("score_count");
     return document;
 }
@@ -123,6 +172,7 @@ bool HasGameSnapshot(int slotIndex, bool hardmode) {
     try {
         const auto snapshot = LoadGameSnapshot(slotIndex, hardmode);
         if (!snapshot.is_object()) return false;
+        if (!hardmode && snapshot.contains("resume_world")) return snapshot.value("resume_world", 0) > 0;
         const auto path = snapshot.value("level_path", std::string());
         return hardmode ? HardmodeLevelFromPath(path) > 0 : !path.empty();
     } catch (...) { return false; }
@@ -136,19 +186,20 @@ bool SaveGameSnapshot(int slotIndex, bool hardmode, const json& snapshot) {
         document["progression"]["hardmode_unlocked"] = true;
         document["progression"]["world_select_unlocked"] = true;
     }
-    if (hardmode) document["hardmode_run"] = snapshot;
-    else {
-        auto campaign = snapshot;
-        if (!Edition::scoresEnabled) campaign.erase("score_count");
-        if (document.contains("progression")) campaign["progression"] = document["progression"];
-        if (document.contains("hardmode_run")) campaign["hardmode_run"] = document["hardmode_run"];
-        document = std::move(campaign);
+    if (!hardmode && snapshot.contains("active_button_world_areas"))
+        document["active_button_world_areas"] = snapshot["active_button_world_areas"];
+    if (snapshot.contains("resume_world") && snapshot.contains("resume_level")) {
+        document["resume_world"] = snapshot["resume_world"];
+        document["resume_level"] = snapshot["resume_level"];
     }
     return writeDocument(slotIndex, document);
 }
 bool ClearHardmodeSnapshot(int slotIndex) {
     auto document = readDocument(GameSaveSlotPath(slotIndex));
     document.erase("hardmode_run");
+    if (document.value("resume_world", 1) == 0) {
+        document["resume_world"] = 1; document["resume_level"] = 1;
+    }
     return writeDocument(slotIndex, document);
 }
 void MigrateLegacyGameProgression(int slotIndex) {
@@ -162,8 +213,10 @@ void MigrateLegacyGameProgression(int slotIndex) {
     auto document = readDocument(GameSaveSlotPath(slotIndex));
     if (!document.contains("progression") && !oldProgression.empty())
         document["progression"] = progressionJson(readProgression(oldProgression));
-    if (!document.contains("hardmode_run") && oldRun.contains("level_path"))
-        document["hardmode_run"] = oldRun;
+    if (!document.contains("resume_world") && oldRun.contains("resume_world")) {
+        document["resume_world"] = oldRun["resume_world"];
+        document["resume_level"] = oldRun["resume_level"];
+    }
     if (!writeDocument(slotIndex, document)) return;
     // Archive once, so another slot cannot inherit the same global unlocks.
     std::error_code ec;

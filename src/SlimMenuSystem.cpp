@@ -262,8 +262,7 @@ int parseSaveSlotArg(const std::string& arg) {
 }
 
 std::filesystem::path saveSlotPath(int slotIndex) {
-    const int slot = std::clamp(slotIndex, 0, kSaveSlotCount - 1);
-    return std::filesystem::path(GetAppSaveRootPath()) / "saves" / ("save_slot_" + std::to_string(slot + 1) + ".json");
+    return GameSaveSlotPath(slotIndex);
 }
 
 bool saveSlotExists(int slotIndex) {
@@ -588,12 +587,16 @@ SlimMenu loadMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuC
     if (name == "achievements") {
         SlimMenu menu; menu.name = name; menu.title = "Achievements";
         auto text = [&](const std::string& label) { MenuItem item; item.label = label; menu.items.push_back(item); };
-        int unlocked = 0;
-        for (const auto& definition : Achievements::definitions)
+        int unlocked = 0, available = 0;
+        for (const auto& definition : Achievements::definitions) {
+            if (!Edition::achievementAvailable(definition.id)) continue;
+            ++available;
             if (ctx.achievements && ctx.achievements->has(definition.id)) ++unlocked;
-        text(std::to_string(unlocked) + "/" + std::to_string(Achievements::definitions.size()) + " unlocked");
+        }
+        text(std::to_string(unlocked) + "/" + std::to_string(available) + " unlocked");
         text("Shared across all save slots.");
         for (const auto& definition : Achievements::definitions) {
+            if (!Edition::achievementAvailable(definition.id)) continue;
             const bool earned = ctx.achievements && ctx.achievements->has(definition.id);
             text(std::string(earned ? "[UNLOCKED] " : "[LOCKED] ") + definition.title);
         }
