@@ -1,5 +1,7 @@
 #include "AssetPath.h"
 #include "LevelLoader.h"
+#include "LevelParameterObjects.h"
+#include <sstream>
 #include "LevelManager.h"
 #include "ObjectIds.h"
 #include "GameProgression.h"
@@ -230,6 +232,78 @@ int main() {
         assert(objects[4].id == std::to_string(ObjectIds::ShellChraker));
         assert(objects[5].id == std::to_string(ObjectIds::Shield));
     }
+    // Parameter values live after the unchanged triples, so old readers can
+    // still enumerate the reserved object IDs without misreading positions.
+    std::vector<ObjectInstance> setters;
+    for (const auto& d : LevelParameters::definitions)
+        setters.push_back({std::to_string(d.id), 16.25f, 48.5f, d.maximum});
+    const std::string setterStream = SerializeLevelObjects(setters);
+    files["setters.bin"] = "DFLVL4 2 2\n2 2 2 2\n" + setterStream;
+    assert(loadLevelBNNLVL("setters.bin", map, objects, loaded));
+    assert(objects.size() == setters.size());
+    assert(objects[0].x == 16.25f && objects[0].y == 48.5f);
+    for (size_t i = 0; i < setters.size(); ++i) {
+        assert(objects[i].id == setters[i].id);
+        assert(objects[i].parameterValue == setters[i].parameterValue);
+        assert(LevelParameters::apply(objects[i], loaded));
+    }
+    assert(loaded.levelId == std::numeric_limits<int>::max() && loaded.themeOverride == 7);
+    assert(loaded.world == 7 && loaded.area == 3 && loaded.time == 4);
+    assert(loaded.wrapX && loaded.wrapY && loaded.bouncyTile12);
+    assert(SerializeLevelObjects(objects) == setterStream);
+    std::istringstream legacy(setterStream);
+    std::string section;
+    int count = 0;
+    legacy >> section >> count;
+    assert(section == "OBJ" && count == 8);
+    for (int i = 0; i < count; ++i) {
+        int id; float x, y;
+        assert(legacy >> id >> x >> y);
+        assert(id == 1100 + i && x == 16.25f && y == 48.5f);
+    }
+    legacy >> section;
+    assert(section == "OBJPARAM1");
+    // Unsupported payload versions and malformed/invalid values fail safely.
+    for (const auto& extension : {"OBJPARAM2 1\n0 1\n", "OBJPARAM1 1\n2 1\n",
+        "OBJPARAM1 2\n0 1\n0 0\n", "OBJPARAM1 1\n0 -1\n", "OBJPARAM1 1\n0 2\n",
+        "OBJPARAM1 1\n0 9999999999999999999999\n", "OBJPARAM1 1\n0\n"}) {
+        files["invalid_setter.bin"] = std::string("DFLVL4 1 1\n2\nOBJ 1\n1102 16 16\n") + extension;
+        assert(!loadLevelBNNLVL("invalid_setter.bin", map, objects, loaded));
+        for (const auto& obj : objects) assert(!obj.parameterValue); // No partial extension is applied.
+    }
+    files["old_resave.bin"] = "DFLVL4 1 1\n2\nOBJ 1\n1102 16 16\n";
+    assert(loadLevelBNNLVL("old_resave.bin", map, objects, loaded));
+    assert(!objects[0].parameterValue && !LevelParameters::apply(objects[0], loaded));
+    // Unknown future IDs keep their values on a new-client round trip.
+    files["future_setter.bin"] = "DFLVL4 1 1\n2\nOBJ 1\n1200 16 16\nOBJPARAM1 1\n0 42\n";
+    assert(loadLevelBNNLVL("future_setter.bin", map, objects, loaded));
+    assert(objects[0].parameterValue == 42 && !LevelParameters::apply(objects[0], loaded));
+    assert(SerializeLevelObjects(objects).find("0 42") != std::string::npos);
+    // Filtered legacy entries must not shift the value indices in saved files.
+    assert(SerializeLevelObjects({{"player", 1, 2}, {"1102", 16, 16, 0}}) ==
+        "OBJ 1\n1102 16 16\nOBJPARAM1 1\n0 0\n");
+    // Entering applies once, staying does not undo another change, re-entry applies again.
+    map.resize(4, 4);
+    Player triggerPlayer;
+    triggerPlayer.x = triggerPlayer.y = 0;
+    std::vector<bool> contacts;
+    objects = {{"1106", 16, 16, 3}};
+    loaded = LevelMeta{};
+    assert(LevelParameters::update(triggerPlayer, map, objects, contacts, loaded, false, false).size() == 1);
+    assert(loaded.time == 3);
+    loaded.time = 2;
+    assert(LevelParameters::update(triggerPlayer, map, objects, contacts, loaded, false, false).empty());
+    assert(loaded.time == 2);
+    triggerPlayer.x = 300;
+    LevelParameters::update(triggerPlayer, map, objects, contacts, loaded, false, false);
+    triggerPlayer.x = 0;
+    assert(LevelParameters::update(triggerPlayer, map, objects, contacts, loaded, false, false).size() == 1);
+    assert(loaded.time == 3);
+    // Seam contacts use the current wrap state.
+    contacts.clear(); objects[0].x = 120; triggerPlayer.x = -20;
+    assert(LevelParameters::update(triggerPlayer, map, objects, contacts, loaded, false, false).empty());
+    assert(LevelParameters::update(triggerPlayer, map, objects, contacts, loaded, true, false).size() == 1);
+
     map.resize(4, 4);
     objects = {{std::to_string(ObjectIds::Shield), 48, 80}};
     manager.resetCoinCount();

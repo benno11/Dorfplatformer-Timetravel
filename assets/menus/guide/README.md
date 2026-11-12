@@ -297,3 +297,54 @@ Menu buttons automatically ease into a small lift on hover or keyboard/controlle
 focus, and compress while pressed with a mouse or touch. Activation also gives
 buttons a short press response. Animations affect drawing only, so button hitboxes
 and scrolling stay stable.
+
+### Level parameter objects (object values format 1)
+
+The editor's Objects palette includes eight setters. Place one and enter an
+integer, or tap an existing setter with the same selected type to edit its value.
+Cancel and invalid input leave the previous object intact. Erase removes it.
+These invisible, non-solid 32-pixel triggers activate when the player enters them;
+leaving and re-entering activates them again. Overlapping setters apply in file
+order. Death/restart reloads the level's original settings.
+
+| Object ID | Parameter | Values |
+| --- | --- | --- |
+| 1100 | Level ID | 0 to 2147483647; 0 uses the filename ID |
+| 1101 | Theme override | 0 to 7; 0 uses the world's theme |
+| 1102 | Horizontal wrapping | 0 off, 1 on |
+| 1103 | Vertical wrapping | 0 off, 1 on |
+| 1104 | World | 0 to 7; 0 uses the path-derived world |
+| 1105 | Area | 0 to 3; 0 uses the path-derived area |
+| 1106 | Time period | 0 to 4; 0 uses the path-derived period |
+| 1107 | Bouncy tile 12 | 0 off, 1 on |
+
+Changing world/area/time updates the active level configuration, music, title,
+and time-period tint. Theme changes update the background; wrap changes update
+collision and rendering. These are the existing numeric level settings, not new
+physics controls. Level dimensions, names, and the file format version are not
+runtime parameters.
+
+The level remains `DFLVL4`. Its `OBJ` section keeps the original ID/X/Y triples,
+followed by an optional versioned extension:
+
+```text
+OBJ 2
+1106 128 256
+1102 192 256
+OBJPARAM1 2
+0 3
+1 1
+```
+
+Each extension row contains the zero-based index in `OBJ`, then its integer
+value. This example sets time period 3 and enables horizontal wrapping. Readers
+must reject unsupported `OBJPARAM` versions, duplicate/out-of-range indices,
+truncated values, and values outside a known setter's range. Unknown object IDs
+and their numeric values are retained by the editor for future extensions.
+
+Older clients can enumerate the reserved IDs using their existing `OBJ` reader;
+they ignore the trailing value extension and do not execute setters. This does
+not add a warning to already-released clients. Saving with an older editor can
+strip the extension; a setter without its value is inert in newer clients rather
+than silently applying zero. Save games preserve setter values and changed level
+settings.

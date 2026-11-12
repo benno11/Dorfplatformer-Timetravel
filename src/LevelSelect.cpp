@@ -27,6 +27,7 @@
 #include "TextRenderer.h"
 #include "GameSupport.h"
 #include "LevelLoader.h"
+#include "LevelParameterObjects.h"
 #include "LocalLevelEdits.h"
 #include "ObjectIds.h"
 #include "InputSystem.h"
@@ -71,6 +72,7 @@ std::string editorObjectLabelFromType(const std::string& type, int id) {
 
 std::vector<int> loadEditorObjectPalette(std::unordered_map<int, std::string>& objectTypeById) {
     objectTypeById = defaultEditorObjectTypes();
+    for (const auto& d : LevelParameters::definitions) objectTypeById[d.id] = d.label;
     std::vector<int> palette{31, 46, 57, 58, 59, 60, 61, 67};
 
     const std::string text = ReadTextFile("object_type_map.json");
@@ -110,6 +112,8 @@ std::vector<int> loadEditorObjectPalette(std::unordered_map<int, std::string>& o
             palette.push_back(id);
         }
     }
+    // Keep the established first choices, then put all additional IDs in a stable order.
+    std::sort(palette.begin() + 8, palette.end());
     return palette;
 }
 
@@ -191,7 +195,8 @@ void drawChromeButton(SDL_Renderer* ren, const SDL_Rect& rect, bool active) {
 }
 
 std::string localLevelsFolderPath();
-std::string RunLocalLevelRenamePrompt(SDL_Window* win, SDL_Renderer* ren, const std::string& initialName);
+std::string RunLocalLevelRenamePrompt(SDL_Window* win, SDL_Renderer* ren, const std::string& initialName,
+    const std::string& title = "RENAME LOCAL LEVEL", const std::string& fieldLabel = "NAME: ");
 struct GrowLevelPromptResult {
     bool accepted = false;
     int width = 30;
@@ -255,28 +260,7 @@ std::string writeLocalLevelFile(const std::vector<unsigned short>& rowMajorGrid,
         }
         data.push_back('\n');
     }
-    std::vector<const ObjectInstance*> validObjects;
-    validObjects.reserve(objects.size());
-    for (const auto& obj : objects) {
-        int objectId = 0;
-        try { objectId = std::stoi(obj.id); } catch (...) { objectId = 0; }
-        if (objectId <= 0) continue;
-        validObjects.push_back(&obj);
-    }
-    data += "OBJ ";
-    data += std::to_string((int)validObjects.size());
-    data.push_back('\n');
-    for (const ObjectInstance* obj : validObjects) {
-        int objectId = 0;
-        try { objectId = std::stoi(obj->id); } catch (...) { objectId = 0; }
-        if (objectId <= 0) continue;
-        data += std::to_string(objectId);
-        data.push_back(' ');
-        data += std::to_string((int)std::lround(obj->x));
-        data.push_back(' ');
-        data += std::to_string((int)std::lround(obj->y));
-        data.push_back('\n');
-    }
+    data += SerializeLevelObjects(objects);
 
     std::filesystem::path outPath;
     if (!targetPath.empty()) {
@@ -903,16 +887,35 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
     };
     auto placeObjectAt = [&](int cx, int cy, bool erase) {
         if (cx < 0 || cy < 0 || cx >= gridW || cy >= gridH) return;
-        const bool removedExisting = eraseObjectAt(cx, cy);
-        if (erase) return;
-        // In object mode, tapping an occupied cell removes the object.
-        // Tap again on the same cell to place a new one.
-        if (removedExisting) return;
-        ObjectInstance obj;
+        if (erase) { eraseObjectAt(cx, cy); return; }
         if (selectedObjectPalette < 0 || selectedObjectPalette >= (int)objectPalette.size()) return;
-        obj.id = std::to_string(objectPalette[selectedObjectPalette]);
+        const int id = objectPalette[selectedObjectPalette];
+        ObjectInstance obj;
+        obj.id = std::to_string(id);
         obj.x = (float)(cx * kEditorTileSize + kEditorTileSize / 2);
         obj.y = (float)(cy * kEditorTileSize + kEditorTileSize / 2);
+        if (const auto* parameter = LevelParameters::definition(id)) {
+            int initial = parameter->initial;
+            for (const auto& existing : placedObjects)
+                if (objectCellX(existing) == cx && objectCellY(existing) == cy && existing.id == obj.id && existing.parameterValue)
+                    initial = *existing.parameterValue;
+            const auto number = RunLocalLevelRenamePrompt(win, ren, std::to_string(initial),
+                parameter->label, "VALUE (" + std::to_string(parameter->minimum) + "-" +
+                std::to_string(parameter->maximum) + "): ");
+            editorFingerActive = fingerPainting = false;
+            if (number.empty()) return;
+            try {
+                size_t end = 0;
+                const int value = std::stoi(number, &end);
+                if (end != number.size() || value < parameter->minimum || value > parameter->maximum) throw std::out_of_range("parameter");
+                obj.parameterValue = value;
+            } catch (...) {
+                statusText = "INVALID PARAMETER VALUE";
+                statusUntil = SDL_GetTicks() + 2500;
+                return;
+            }
+            eraseObjectAt(cx, cy);
+        } else if (eraseObjectAt(cx, cy)) return;
         placedObjects.push_back(obj);
     };
     auto applyAt = [&](int cx, int cy, bool erase) {
@@ -1577,7 +1580,8 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             SDL_SetRenderDrawColor(ren, r, g, b, 200);
             SDL_Rect in{rc.x + std::max(2, cell / 6), rc.y + std::max(2, cell / 6), std::max(4, cell - std::max(4, cell / 3)), std::max(4, cell - std::max(4, cell / 3))};
             SDL_RenderFillRect(ren, &in);
-            DrawText(ren, rc.x + 3, rc.y + 3, std::max(1, cell / 24), std::to_string(id));
+            const std::string valueTag = obj.parameterValue ? std::to_string(id) + "=" + std::to_string(*obj.parameterValue) : std::to_string(id);
+            DrawText(ren, rc.x + 3, rc.y + 3, std::max(1, cell / 24), valueTag);
             const char* tag = objectTag(id);
             if (tag[0] != '\0') {
                 const int tagScale = std::max(1, cell / 24);
@@ -1815,7 +1819,8 @@ bool ResizeLocalLevelForMenu(SDL_Window* win, SDL_Renderer* ren, const std::stri
 
 namespace {
 
-std::string RunLocalLevelRenamePrompt(SDL_Window* win, SDL_Renderer* ren, const std::string& initialName) {
+std::string RunLocalLevelRenamePrompt(SDL_Window* win, SDL_Renderer* ren, const std::string& initialName,
+    const std::string& title, const std::string& fieldLabel) {
     std::string name = initialName;
     bool accepted = false;
     bool running = true;
@@ -1913,12 +1918,13 @@ std::string RunLocalLevelRenamePrompt(SDL_Window* win, SDL_Renderer* ren, const 
         SDL_RenderFillRect(ren, &panel);
         SDL_SetRenderDrawColor(ren, 200, 210, 230, 255);
         SDL_RenderDrawRect(ren, &panel);
-        DrawText(ren, panel.x + 20, panel.y + 20, 3, "RENAME LOCAL LEVEL");
+        const int titleScale = MeasureTextWidth(3, title) <= panel.w - 40 ? 3 : 2;
+        DrawText(ren, panel.x + 20, panel.y + 20, titleScale, title);
         SDL_SetRenderDrawColor(ren, 68, 98, 158, 255);
         SDL_RenderFillRect(ren, &rowName);
         SDL_SetRenderDrawColor(ren, 220, 225, 235, 255);
         SDL_RenderDrawRect(ren, &rowName);
-        DrawText(ren, rowName.x + 10, rowName.y + 11, 2, std::string("NAME: ") + name);
+        DrawText(ren, rowName.x + 10, rowName.y + 11, 2, fieldLabel + name);
         SDL_SetRenderDrawColor(ren, 55, 95, 70, 255);
         SDL_RenderFillRect(ren, &okBtn);
         SDL_SetRenderDrawColor(ren, 205, 235, 210, 255);

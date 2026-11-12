@@ -1,11 +1,14 @@
 #pragma once
 #include <string>
 #include <vector>
+#include <optional>
 #include "TileMap.h"
 
 struct ObjectInstance {
     std::string id;
     float x=0,y=0;
+    // Present only for versioned parameter objects; old clients retain the ID/position.
+    std::optional<int> parameterValue;
 };
 
 struct LevelMeta {
@@ -25,3 +28,5 @@ struct LevelMeta {
 
 bool loadLevelBNNLVL(const std::string& path, TileMap& map, std::vector<ObjectInstance>& objects, LevelMeta& meta);
 std::string SerializeLevelMetaHeader(const LevelMeta& meta);
+
+std::string SerializeLevelObjects(const std::vector<ObjectInstance>& objects);

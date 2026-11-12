@@ -1,4 +1,7 @@
 #include "LevelLoader.h"
+#include "LevelParameterObjects.h"
+#include <iomanip>
+#include <limits>
 #include "AssetPath.h"
 
 #include <SDL3/SDL.h>
@@ -246,6 +249,33 @@ std::string SerializeLevelMetaHeader(const LevelMeta& meta) {
         << " world=" << std::clamp(meta.world, 0, 7) << " area=" << std::clamp(meta.area, 0, 3)
         << " time=" << std::clamp(meta.time, 0, 4) << " bouncy_tile_12=" << (meta.bouncyTile12 ? 1 : 0)
         << " ENDMETA\n";
+    return out.str();
+}
+
+// The legacy triples remain intact. Older readers stop after OBJ's count;
+// the reserved IDs identify setters, while this extension carries their values.
+std::string SerializeLevelObjects(const std::vector<ObjectInstance>& objects) {
+    std::vector<const ObjectInstance*> valid;
+    for (const auto& obj : objects) {
+        try {
+            size_t end = 0;
+            const int id = std::stoi(obj.id, &end);
+            if (id > 0 && end == obj.id.size() && std::isfinite(obj.x) && std::isfinite(obj.y)) valid.push_back(&obj);
+        } catch (...) {}
+    }
+    std::ostringstream out;
+    out << std::setprecision(std::numeric_limits<float>::max_digits10);
+    out << "OBJ " << valid.size() << "\n";
+    size_t properties = 0;
+    for (const auto* obj : valid) {
+        out << obj->id << ' ' << obj->x << ' ' << obj->y << "\n";
+        if (obj->parameterValue) ++properties;
+    }
+    if (properties) {
+        out << "OBJPARAM1 " << properties << "\n";
+        for (size_t i = 0; i < valid.size(); ++i)
+            if (valid[i]->parameterValue) out << i << ' ' << *valid[i]->parameterValue << "\n";
+    }
     return out.str();
 }
 
@@ -535,6 +565,26 @@ bool loadLevelBNNLVL(const std::string& path,
                         objects.push_back(obj);
                     }
                 }
+            }
+        }
+        std::string extension;
+        if (in >> extension) {
+            if (extension.rfind("OBJPARAM", 0) == 0) {
+                if (extension != "OBJPARAM1") return false;
+                int count = 0;
+                if (!(in >> count) || count < 0 || count > (int)objects.size()) return false;
+                std::vector<bool> seen(objects.size(), false);
+                std::vector<std::optional<int>> values(objects.size());
+                for (int i = 0; i < count; ++i) {
+                    int index = 0, value = 0;
+                    if (!(in >> index >> value) || index < 0 || index >= (int)objects.size() || seen[index]) return false;
+                    seen[index] = true;
+                    ObjectInstance candidate = objects[index];
+                    candidate.parameterValue = value;
+                    if (LevelParameters::definition(candidate) && !LevelParameters::valid(candidate)) return false;
+                    values[index] = value;
+                }
+                for (size_t i = 0; i < objects.size(); ++i) objects[i].parameterValue = values[i];
             }
         }
         if (meta.name.empty()) meta.name = magic;

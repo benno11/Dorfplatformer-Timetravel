@@ -66,6 +66,7 @@
 #include "LevelManager.h"
 #include "GameProgression.h"
 #include "LevelWrap.h"
+#include "LevelParameterObjects.h"
 #include "FrontendMenu.h"
 #include "GameSupport.h"
 #include "ButtonAnimation.h"
@@ -2935,6 +2936,7 @@ int RunGameApp(int argc, char** argv) {
             bool fatal = false;
         } spikeImpact;
         LevelMeta meta;
+        std::vector<bool> parameterContacts;
         Player player;
         CharacterCreator::PartPhysics characterParts;
         CharacterCreator::HairMouseInteraction hairMouse;
@@ -3441,6 +3443,7 @@ int RunGameApp(int argc, char** argv) {
             bumperSparks.clear();
             playerWaterState = {};
             levelManager.reloadLevel(map, objects, meta, player);
+            parameterContacts.clear();
             if (hardmodeRun) {
                 const int reached = HardmodeLevelFromPath(levelManager.levelPath());
                 if (reached > progression.hardmodeFurthestLevel) {
@@ -3645,6 +3648,11 @@ int RunGameApp(int argc, char** argv) {
             if (savedGameRoot.contains("meta") && savedGameRoot["meta"].is_object()) {
                 const auto& mj = savedGameRoot["meta"];
                 meta.name = mj.value("name", meta.name);
+                meta.levelId = std::max(0, mj.value("level_id", meta.levelId));
+                meta.themeOverride = std::clamp(mj.value("theme_override", meta.themeOverride), 0, 7);
+                meta.wrapX = mj.value("wrap_x", meta.wrapX);
+                meta.wrapY = mj.value("wrap_y", meta.wrapY);
+                currentLevelThemeOverride = meta.themeOverride;
                 meta.world = std::clamp(mj.value("world", meta.world), 0, 7);
                 meta.area = std::clamp(mj.value("area", meta.area), 0, 3);
                 meta.time = std::clamp(mj.value("time", meta.time), 0, 4);
@@ -3664,6 +3672,8 @@ int RunGameApp(int argc, char** argv) {
                     obj.id = objj.value("id", std::string());
                     obj.x = objj.value("x", 0.0f);
                     obj.y = objj.value("y", 0.0f);
+                    if (objj.contains("parameter_value") && objj["parameter_value"].is_number_integer())
+                        obj.parameterValue = objj["parameter_value"].get<int>();
                     objects.push_back(std::move(obj));
                     MovingPlatform::State platform;
                     platform.elapsed = std::clamp(objj.value("platform_elapsed", 0.0f), 0.0f, MovingPlatform::kDuration);
@@ -3673,6 +3683,12 @@ int RunGameApp(int argc, char** argv) {
             }
             refreshObjectIdCache();
             resetLevelWrapTriggerState();
+            if (savedGameRoot.contains("meta") && savedGameRoot["meta"].is_object()) {
+                const auto& savedMeta = savedGameRoot["meta"];
+                wrapTriggerXActive = savedMeta.value("wrap_x", wrapTriggerXActive);
+                wrapTriggerYActive = savedMeta.value("wrap_y", wrapTriggerYActive);
+            }
+            syncWorldBackground();
             if (savedGameRoot.contains("checkpoint") && savedGameRoot["checkpoint"].is_object()) {
                 const auto& cj = savedGameRoot["checkpoint"];
                 checkpointActive = cj.value("active", false);
@@ -4196,6 +4212,7 @@ int RunGameApp(int argc, char** argv) {
             j["id"] = obj.id;
             j["x"] = obj.x;
             j["y"] = obj.y;
+            if (obj.parameterValue) j["parameter_value"] = *obj.parameterValue;
             return j;
         };
         auto savePlayerJson = [](const Player& p) {
@@ -4322,6 +4339,8 @@ int RunGameApp(int argc, char** argv) {
                 root["player"] = savePlayerJson(player);
                 root["meta"] = {
                     {"name", meta.name},
+                    {"level_id", meta.levelId}, {"theme_override", meta.themeOverride},
+                    {"wrap_x", wrapTriggerXActive}, {"wrap_y", wrapTriggerYActive},
                     {"world", meta.world}, {"area", meta.area}, {"time", meta.time},
                     {"bouncy_tile_12", meta.bouncyTile12},
                     {"entity_spawn_pos", meta.entitySpawnPos},
@@ -4832,6 +4851,24 @@ int RunGameApp(int argc, char** argv) {
                 updateFpsDisplay = (int)std::lround(updateFpsDisplayValue);
                 updateFpsAccumSec = std::fmod(updateFpsAccumSec, kFpsDisplayUpdatePeriodSec);
                 updateFpsAccumFrames = 0;
+            }
+            if (!paused && !deathSequenceActive && !levelCompleteActive && !lowPowerSuspendActive) {
+                const auto activated = LevelParameters::update(player, map, objects, parameterContacts,
+                    meta, wrapTriggerXActive, wrapTriggerYActive);
+                if (!activated.empty()) {
+                    for (int id : activated) {
+                        if (id == 1102) wrapTriggerXActive = meta.wrapX;
+                        if (id == 1103) wrapTriggerYActive = meta.wrapY;
+                    }
+                    const auto previousMusic = levelManager.musicPath();
+                    levelManager.applyLevelConfig(meta);
+                    map.bouncyTile12 = meta.bouncyTile12;
+                    currentLevelThemeOverride = meta.themeOverride;
+                    currentLevelId = loadedLevelId();
+                    syncWorldBackground();
+                    refreshLevelTitle();
+                    if (levelManager.musicPath() != previousMusic) audio.loadLevelMusic(levelManager.musicPath());
+                }
             }
             bool temp1TouchedThisFrame = false;
             wrapTriggerXActive = UpdateLevelWrapTriggerState(player, objects, objectIds, 62, 69, wrapTriggerXActive);
@@ -6431,7 +6468,7 @@ int RunGameApp(int argc, char** argv) {
                 for (size_t index = 0; index < objects.size(); ++index) {
                     // Editor triggers and spawn markers have no physical water interaction.
                     const int id = objectIds[index];
-                    if (id < 0 || (id >= 57 && id <= 63) || id == 69 || id == 70) continue;
+                    if (id < 0 || (id >= 57 && id <= 63) || id == 69 || id == 70 || LevelParameters::definition(id)) continue;
                     emitWaterInteraction({objects[index].x - 16.0f, objects[index].y - 16.0f, 32.0f, 32.0f},
                         objectWaterStates[index], dt);
                 }
@@ -7193,6 +7230,7 @@ int RunGameApp(int argc, char** argv) {
                 bumperImpacts.swap(shiftedBumperImpacts);
                 if (index < (int)objectWaterStates.size()) objectWaterStates.erase(objectWaterStates.begin() + index);
                 if (index < (int)objectIds.size()) objectIds.erase(objectIds.begin() + index);
+                if (index < (int)parameterContacts.size()) parameterContacts.erase(parameterContacts.begin() + index);
                 if (index < (int)shellChrakerStates.size()) shellChrakerStates.erase(shellChrakerStates.begin() + index);
                 if (index < (int)movingPlatformStates.size()) movingPlatformStates.erase(movingPlatformStates.begin() + index);
                 if (endSignState.objectIndex > index) --endSignState.objectIndex;
@@ -7904,7 +7942,7 @@ int RunGameApp(int argc, char** argv) {
             // Wrap controls affect wrap state through levelWrap*Enabled(). They
             // are editor-only triggers and must not borrow an entity frame (or
             // the fallback frame) during gameplay.
-            if (isWrapControl) continue;
+            if (isWrapControl || LevelParameters::definition(objId)) continue;
             float entityBaseX = obj.x - 16.0f;
             float entityBaseY = obj.y - 16.0f;
             if (renderWrapX && !isEndSign) {
