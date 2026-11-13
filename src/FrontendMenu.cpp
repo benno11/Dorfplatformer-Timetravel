@@ -838,21 +838,21 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx, bool settingsOnly) {
                     const std::string label = mainMenuLabelForIndex(i);
                     const int tw = MeasureTextWidth(2, label);
                     const int ty = menuBtns[i].y + (int)std::lround((float)menuBtns[i].h * 0.73f);
-                    DrawText(ctx.ren, menuBtns[i].x + (menuBtns[i].w - tw) / 2, ty, 2, label);
+                    DrawGameText(ctx.ren, menuBtns[i].x + (menuBtns[i].w - tw) / 2, ty, 2, label);
                 }
             }
             if (!mainLogoTex || !mainLogo) {
                 const std::string title = levelSelectEnabled ? "Dorfplatformer Timetravel" : "Dorfplatformer Timetravel Lite";
                 const int titleY = (int)std::lround(menuCanvasOriginY() + 84.0f * menuCanvasScale());
-                DrawText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(3, title) / 2, titleY, 3, title);
+                DrawGameText(ctx.ren, ctx.baseScreenW / 2 - MeasureTextWidth(3, title) / 2, titleY, 3, title);
             }
             std::string versionText = std::string("v") + (ctx.versionString.empty() ? "dev" : ctx.versionString);
             const std::string copyrightText = "Copyright (c) Benno111 2024 - 2026";
             const int footerScale = std::max(2, (int)std::lround(2.0f * menuCanvasScale() * mainMenuScale()));
             const int footerY = (int)std::lround(menuCanvasOriginY() + 496.0f * menuCanvasScale());
             const int edgePad = std::max(8, (int)std::lround(12.0f * menuCanvasScale()));
-            DrawText(ctx.ren, edgePad, footerY, footerScale, versionText);
-            DrawText(ctx.ren, ctx.baseScreenW - edgePad - MeasureTextWidth(footerScale, copyrightText), footerY, footerScale, copyrightText);
+            DrawGameText(ctx.ren, edgePad, footerY, footerScale, versionText);
+            DrawGameText(ctx.ren, ctx.baseScreenW - edgePad - MeasureTextWidth(footerScale, copyrightText), footerY, footerScale, copyrightText);
             if (closeMenuOpen) {
                 constexpr Uint8 kQuitDimAlpha = 150;
                 constexpr Uint8 kQuitWindowAlpha = 236;
@@ -879,7 +879,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx, bool settingsOnly) {
                     SDL_RenderDrawRect(ctx.ren, &modal);
                 }
                 BeginNativeTextOverlay(ctx.ren, ctx.baseScreenW, ctx.baseScreenH, presentDst);
-                DrawText(ctx.ren, modal.x + (modal.w - MeasureTextWidth(2, "CLOSE GAME?")) / 2, modal.y + (int)std::lround(18.0f * uiButtonScale()), 2, "CLOSE GAME?");
+                DrawGameText(ctx.ren, modal.x + (modal.w - MeasureTextWidth(2, "CLOSE GAME?")) / 2, modal.y + (int)std::lround(18.0f * uiButtonScale()), 2, "CLOSE GAME?");
 
                 SDL_Rect resumeBtn = buttonAnimations.drawRect(10, quitResumeBtnRect(modal), closeMenuSel == 0,
                     ctx.win, ctx.baseScreenW, ctx.baseScreenH);
@@ -909,8 +909,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx, bool settingsOnly) {
                 SDL_RenderRect(ctx.ren, &resumeBtn);
                 SDL_RenderRect(ctx.ren, &closeBtn);
                 const int labelLineH = std::max(10, (int)std::lround(16.0f * uiButtonScale()));
-                DrawText(ctx.ren, resumeBtn.x + (resumeBtn.w - MeasureTextWidth(2, "RESUME")) / 2, resumeBtn.y + (resumeBtn.h - labelLineH) / 2, 2, "RESUME");
-                DrawText(ctx.ren, closeBtn.x + (closeBtn.w - MeasureTextWidth(2, "CLOSE")) / 2, closeBtn.y + (closeBtn.h - labelLineH) / 2, 2, "CLOSE");
+                DrawGameText(ctx.ren, resumeBtn.x + (resumeBtn.w - MeasureTextWidth(2, "RESUME")) / 2, resumeBtn.y + (resumeBtn.h - labelLineH) / 2, 2, "RESUME");
+                DrawGameText(ctx.ren, closeBtn.x + (closeBtn.w - MeasureTextWidth(2, "CLOSE")) / 2, closeBtn.y + (closeBtn.h - labelLineH) / 2, 2, "CLOSE");
             }
         }
         if (defaultShowFpsCounter) {
@@ -932,7 +932,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx, bool settingsOnly) {
             SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_NONE);
             SDL_SetRenderDrawColor(ctx.ren, 176, 198, 230, 255);
             SDL_RenderRect(ctx.ren, &fpsBadge);
-            DrawText(ctx.ren, fpsBadge.x + fpsPadX, fpsBadge.y + fpsPadY, fpsScale, fpsText);
+            DrawGameText(ctx.ren, fpsBadge.x + fpsPadX, fpsBadge.y + fpsPadY, fpsScale, fpsText);
         }
 
         if (ctx.drawNotifications) ctx.drawNotifications(ctx.baseScreenW, ctx.baseScreenH);

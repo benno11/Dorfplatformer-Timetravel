@@ -917,7 +917,7 @@ int RunGameApp(int argc, char** argv) {
         SDL_SetRenderDrawColor(ren, 20, 26, 34, 255);
         SDL_RenderClear(ren);
         const std::string label = "Loading game assets...";
-        DrawText(ren, (width - MeasureTextWidth(2, label)) / 2, height / 2 - 30, 2, label);
+        DrawGameText(ren, (width - MeasureTextWidth(2, label)) / 2, height / 2 - 30, 2, label);
         const SDL_FRect track{width * 0.25f, height * 0.5f + 12, width * 0.5f, 10};
         SDL_SetRenderDrawColor(ren, 45, 65, 84, 255);
         SDL_RenderFillRect(ren, &track);
@@ -2447,7 +2447,7 @@ int RunGameApp(int argc, char** argv) {
                 const int worldX = introWorldNameStyle.x - worldW / 2;
                 const int areaW = MeasureTextWidth(introAreaIdStyle.scale, currentAreaIdText);
                 const int areaX = introAreaIdStyle.x - areaW / 2;
-                DrawText(ren, worldX, introWorldNameStyle.y, titleScale, title);
+                DrawGameText(ren, worldX, introWorldNameStyle.y, titleScale, title);
                 DrawTextColored(ren, areaX, introAreaIdStyle.y, introAreaIdStyle.scale, currentAreaIdText, SDL_Color{50, 210, 70, 255});
             }
             if (fadeAlpha > 0) {
@@ -8259,7 +8259,7 @@ int RunGameApp(int argc, char** argv) {
                 const int idScale = 1;
                 auto drawVisibleObjectId = [&](const SDL_FRect& rect) {
                     if (debugRectIsVisible(rect)) {
-                        DrawText(ren, (int)std::lround(rect.x), (int)std::lround(rect.y) - 10, idScale, obj.id);
+                        DrawGameText(ren, (int)std::lround(rect.x), (int)std::lround(rect.y) - 10, idScale, obj.id);
                     }
                 };
                 drawVisibleObjectId(ehb);
@@ -8317,7 +8317,7 @@ int RunGameApp(int argc, char** argv) {
                 }
                 if (showDebugView) {
                     const std::string hpText = std::string("BOSS HP: ") + std::to_string(bossState.health) + "/" + std::to_string(bossState.maxHealth);
-                    DrawText(ren, std::max(8, dst.x - 8), std::max(8, dst.y - 18), 1, hpText);
+                    DrawGameText(ren, std::max(8, dst.x - 8), std::max(8, dst.y - 18), 1, hpText);
                 }
             }
         }
@@ -8424,7 +8424,7 @@ int RunGameApp(int argc, char** argv) {
                 SDL_RenderDrawRectF(ren, &wpRect);
             }
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
-            DrawText(ren, 12, 82, 2, "PATH S->F");
+            DrawGameText(ren, 12, 82, 2, "PATH S->F");
         }
 
         SDL_FRect pr{ player.x - camX, player.y - camY, (float)player.w, (float)player.h };
@@ -8794,13 +8794,13 @@ int RunGameApp(int argc, char** argv) {
         const int hudLineGap = 64;
         const int hudBottomMargin = 64 + uiEdgeOffset;
         const int hudSlideOutX = -(int)std::lround(levelCompleteUiLerp * 520.0f);
-        DrawText(ren, hudLeftX + hudSlideOutX, hudTopY, hudScale, "COINS");
-        DrawText(ren, hudValueX + hudSlideOutX, hudTopY, hudScale, std::to_string(levelManager.coinCount()));
-        DrawText(ren, hudLeftX + hudSlideOutX, hudTopY + hudLineGap, hudScale, "TIME");
-        DrawText(ren, hudValueX + hudSlideOutX, hudTopY + hudLineGap, hudScale, timerText.str());
+        DrawGameText(ren, hudLeftX + hudSlideOutX, hudTopY, hudScale, "COINS");
+        DrawGameText(ren, hudValueX + hudSlideOutX, hudTopY, hudScale, std::to_string(levelManager.coinCount()));
+        DrawGameText(ren, hudLeftX + hudSlideOutX, hudTopY + hudLineGap, hudScale, "TIME");
+        DrawGameText(ren, hudValueX + hudSlideOutX, hudTopY + hudLineGap, hudScale, timerText.str());
         if (Edition::scoresEnabled) {
-            DrawText(ren, hudLeftX + hudSlideOutX, hudTopY + hudLineGap * 2, hudScale, "SCORE");
-            DrawText(ren, hudValueX + hudSlideOutX, hudTopY + hudLineGap * 2, hudScale, std::to_string(scoreCount));
+            DrawGameText(ren, hudLeftX + hudSlideOutX, hudTopY + hudLineGap * 2, hudScale, "SCORE");
+            DrawGameText(ren, hudValueX + hudSlideOutX, hudTopY + hudLineGap * 2, hudScale, std::to_string(scoreCount));
         }
 
         if ((player.inWater || player.drownTimer > 0.0f) && !player.freeMove &&
@@ -8829,8 +8829,8 @@ int RunGameApp(int argc, char** argv) {
 
         if (livesSystemEnabled) {
             // HUD: lives counter (bottom-left).
-            DrawText(ren, hudLeftX + hudSlideOutX, screenH - hudBottomMargin, hudScale, "LIVES");
-            DrawText(ren, hudValueX + hudSlideOutX, screenH - hudBottomMargin, hudScale, std::to_string(livesCount));
+            DrawGameText(ren, hudLeftX + hudSlideOutX, screenH - hudBottomMargin, hudScale, "LIVES");
+            DrawGameText(ren, hudValueX + hudSlideOutX, screenH - hudBottomMargin, hudScale, std::to_string(livesCount));
         }
         if (paused || pauseMenuAnim > 0.001f) {
             const float pauseEase = pauseMenuAnim * pauseMenuAnim * (3.0f - 2.0f * pauseMenuAnim);
@@ -8992,8 +8992,8 @@ int RunGameApp(int argc, char** argv) {
             int bottomW = MeasureTextWidth(titleScale, titleBottom);
             const int titleTopY = centerY - 260;
             const int titleBottomY = centerY - 220;
-            DrawText(ren, screenW / 2 - topW / 2 + completeSlideInXForY(titleTopY), titleTopY, titleScale, titleTop);
-            DrawText(ren, screenW / 2 - bottomW / 2 + completeSlideInXForY(titleBottomY), titleBottomY, titleScale, titleBottom);
+            DrawGameText(ren, screenW / 2 - topW / 2 + completeSlideInXForY(titleTopY), titleTopY, titleScale, titleTop);
+            DrawGameText(ren, screenW / 2 - bottomW / 2 + completeSlideInXForY(titleBottomY), titleBottomY, titleScale, titleBottom);
 
             if (Edition::scoresEnabled) {
                 const int bonusScale = 4;
@@ -9002,9 +9002,9 @@ int RunGameApp(int argc, char** argv) {
                 const std::string bonusLine1 = std::string("COIN BONUS: ") + std::to_string(levelCompleteCoinBonus);
                 const std::string bonusLine2 = std::string("TIME BONUS: ") + std::to_string(levelCompleteTimeScore);
                 const std::string bonusLine3 = std::string("TOTAL SCORE: ") + std::to_string(levelCompleteAccountedScore);
-                DrawText(ren, screenW / 2 - MeasureTextWidth(bonusScale, bonusLine1) / 2 + completeSlideInXForY(bonusStartY), bonusStartY, bonusScale, bonusLine1);
-                DrawText(ren, screenW / 2 - MeasureTextWidth(bonusScale, bonusLine2) / 2 + completeSlideInXForY(bonusStartY + bonusLineGap), bonusStartY + bonusLineGap, bonusScale, bonusLine2);
-                DrawText(ren, screenW / 2 - MeasureTextWidth(bonusScale, bonusLine3) / 2 + completeSlideInXForY(bonusStartY + bonusLineGap * 2), bonusStartY + bonusLineGap * 2, bonusScale, bonusLine3);
+                DrawGameText(ren, screenW / 2 - MeasureTextWidth(bonusScale, bonusLine1) / 2 + completeSlideInXForY(bonusStartY), bonusStartY, bonusScale, bonusLine1);
+                DrawGameText(ren, screenW / 2 - MeasureTextWidth(bonusScale, bonusLine2) / 2 + completeSlideInXForY(bonusStartY + bonusLineGap), bonusStartY + bonusLineGap, bonusScale, bonusLine2);
+                DrawGameText(ren, screenW / 2 - MeasureTextWidth(bonusScale, bonusLine3) / 2 + completeSlideInXForY(bonusStartY + bonusLineGap * 2), bonusStartY + bonusLineGap * 2, bonusScale, bonusLine3);
             }
         }
         auto formatFpsValue = [&](double value) -> std::string {
@@ -9017,17 +9017,17 @@ int RunGameApp(int argc, char** argv) {
             const std::string rfpsText = std::string("RFPS: ") + formatFpsValue(renderFpsDisplayValue);
             const int fpsScale = 2;
             const int fpsX = screenW - 10 - std::max(MeasureTextWidth(fpsScale, ufpsText), MeasureTextWidth(fpsScale, rfpsText));
-            DrawText(ren, fpsX, 10, fpsScale, ufpsText);
-            DrawText(ren, fpsX, 34, fpsScale, rfpsText);
+            DrawGameText(ren, fpsX, 10, fpsScale, ufpsText);
+            DrawGameText(ren, fpsX, 34, fpsScale, rfpsText);
         }
         if (demoState.enabled) {
-            DrawText(ren, 12, 10, 2, "DEMO");
+            DrawGameText(ren, 12, 10, 2, "DEMO");
         }
         if (replayRecorder.enabled) {
-            DrawText(ren, 12, 34, 2, "REC");
+            DrawGameText(ren, 12, 34, 2, "REC");
         }
         if (replayPlayback.active) {
-            DrawText(ren, 12, 58, 2, "PBK");
+            DrawGameText(ren, 12, 58, 2, "PBK");
         }
         if (replayRecorder.enabled && replayRecorder.out.is_open()) {
             try {
@@ -9104,7 +9104,7 @@ int RunGameApp(int argc, char** argv) {
             SDL_RenderDrawRect(ren, &dbgPanel);
 
             SDL_SetRenderDrawColor(ren, 230, 230, 230, 255);
-            DrawText(ren, 18, 18, 2, "DEBUG");
+            DrawGameText(ren, 18, 18, 2, "DEBUG");
             DrawDebugNumber(ren, 18, 36, 2, "PX", (int)player.x);
             DrawDebugNumber(ren, 18, 50, 2, "PY", (int)player.y);
             DrawDebugNumber(ren, 18, 64, 2, "VX", (int)player.vx);
@@ -9123,11 +9123,11 @@ int RunGameApp(int argc, char** argv) {
             DrawDebugNumber(ren, 140, 120, 2, "CMAXY", (int)maxCamY);
             DrawDebugNumber(ren, 18, 134, 2, "UFPS", updateFpsDisplay);
             DrawDebugNumber(ren, 140, 134, 2, "RFPS", renderFpsDisplay);
-            DrawText(ren, 18, 148, 2, std::string("ANIM ") + debugAnimName);
+            DrawGameText(ren, 18, 148, 2, std::string("ANIM ") + debugAnimName);
             if (!renderFrameName.empty()) {
                 std::string id = renderFrameName;
                 if (id.size() > 4 && id.substr(id.size() - 4) == ".png") id.resize(id.size() - 4);
-                DrawText(ren, 18, 162, 2, std::string("ID ") + id);
+                DrawGameText(ren, 18, 162, 2, std::string("ID ") + id);
             }
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
 
@@ -9166,7 +9166,7 @@ int RunGameApp(int argc, char** argv) {
                     const int textW = MeasureTextWidth(idScale, idText);
                     const int textX = (int)std::lround(screenX + (displayedTileSize - textW) * 0.5f);
                     const int textY = (int)std::lround(screenY + (displayedTileSize - textHeight()) * 0.5f);
-                    DrawText(ren, textX, textY, idScale, idText);
+                    DrawGameText(ren, textX, textY, idScale, idText);
                 }
             }
         }
@@ -9192,7 +9192,7 @@ int RunGameApp(int argc, char** argv) {
                     int tw = MeasureTextWidth(touchLabelScale, text);
                     int tx = (int)std::lround(btn.x + (btn.w - tw) * 0.5f);
                     int ty = (int)std::lround(btn.y + (btn.h * 0.5f) - (10.0f * touchLabelScale));
-                    DrawText(ren, tx, ty, touchLabelScale, text);
+                    DrawGameText(ren, tx, ty, touchLabelScale, text);
                 };
                 drawBtnLabel(touchLeftBtn, "L");
                 drawBtnLabel(touchRightBtn, "R");
@@ -9210,7 +9210,7 @@ int RunGameApp(int argc, char** argv) {
             SDL_SetRenderDrawColor(ren, 180, 200, 230, 220);
             SDL_RenderDrawRect(ren, &panel);
 
-            DrawText(ren, 12, 10, 2, "DETAILED DEBUGGER (F5)");
+            DrawGameText(ren, 12, 10, 2, "DETAILED DEBUGGER (F5)");
             SDL_Rect tab0{12, 38, 104, 36};
             SDL_Rect tab1{120, 38, 104, 36};
             SDL_Rect tab2{228, 38, 104, 36};
@@ -9223,31 +9223,31 @@ int RunGameApp(int argc, char** argv) {
                 SDL_RenderFillRect(ren, &tabs[i]);
                 SDL_SetRenderDrawColor(ren, 180, 200, 230, 255);
                 SDL_RenderDrawRect(ren, &tabs[i]);
-                DrawText(ren, tabs[i].x + 8, tabs[i].y + 8, 2, tabNames[i]);
+                DrawGameText(ren, tabs[i].x + 8, tabs[i].y + 8, 2, tabNames[i]);
             }
             SDL_Rect closeBtn{500, 8, 52, 24};
             SDL_SetRenderDrawColor(ren, 85, 55, 55, 210);
             SDL_RenderFillRect(ren, &closeBtn);
             SDL_SetRenderDrawColor(ren, 220, 180, 180, 255);
             SDL_RenderDrawRect(ren, &closeBtn);
-            DrawText(ren, 514, 12, 2, "X");
+            DrawGameText(ren, 514, 12, 2, "X");
 
             int y = 88;
             if (detailedDebugSubmenu == 0) {
-                DrawText(ren, 12, y, 2, std::string("UFPS/RFPS: ") + formatFpsValue(updateFpsDisplayValue) + "/" + formatFpsValue(renderFpsDisplayValue)); y += 20;
+                DrawGameText(ren, 12, y, 2, std::string("UFPS/RFPS: ") + formatFpsValue(updateFpsDisplayValue) + "/" + formatFpsValue(renderFpsDisplayValue)); y += 20;
                 {
                     std::ostringstream frameMs;
                     frameMs << std::fixed << std::setprecision(3) << (dtPrecise * 1000.0);
-                    DrawText(ren, 12, y, 2, std::string("Frame ms: ") + frameMs.str()); y += 20;
+                    DrawGameText(ren, 12, y, 2, std::string("Frame ms: ") + frameMs.str()); y += 20;
                 }
-                DrawText(ren, 12, y, 2, std::string("Player X/Y: ") + std::to_string((int)player.x) + ", " + std::to_string((int)player.y)); y += 20;
-                DrawText(ren, 12, y, 2, std::string("Player VX/VY: ") + std::to_string((int)player.vx) + ", " + std::to_string((int)player.vy)); y += 20;
-                DrawText(ren, 12, y, 2, std::string("OnGround/InWater: ") + (player.onGround ? "1" : "0") + "/" + (player.inWater ? "1" : "0")); y += 20;
-                DrawText(ren, 12, y, 2, std::string("Objects: ") + std::to_string((int)objects.size())); y += 20;
+                DrawGameText(ren, 12, y, 2, std::string("Player X/Y: ") + std::to_string((int)player.x) + ", " + std::to_string((int)player.y)); y += 20;
+                DrawGameText(ren, 12, y, 2, std::string("Player VX/VY: ") + std::to_string((int)player.vx) + ", " + std::to_string((int)player.vy)); y += 20;
+                DrawGameText(ren, 12, y, 2, std::string("OnGround/InWater: ") + (player.onGround ? "1" : "0") + "/" + (player.inWater ? "1" : "0")); y += 20;
+                DrawGameText(ren, 12, y, 2, std::string("Objects: ") + std::to_string((int)objects.size())); y += 20;
             } else if (detailedDebugSubmenu == 1) {
                 if (objects.empty()) {
                     detailedDebugObjectIndex = 0;
-                    DrawText(ren, 12, y, 2, "No objects in current level");
+                    DrawGameText(ren, 12, y, 2, "No objects in current level");
                 } else {
                     detailedDebugObjectIndex = std::clamp(detailedDebugObjectIndex, 0, (int)objects.size() - 1);
                     SDL_Rect prevBtn{12, 92, 120, 34};
@@ -9258,32 +9258,32 @@ int RunGameApp(int argc, char** argv) {
                     SDL_SetRenderDrawColor(ren, 180, 200, 230, 255);
                     SDL_RenderDrawRect(ren, &prevBtn);
                     SDL_RenderDrawRect(ren, &nextBtn);
-                    DrawText(ren, prevBtn.x + 12, prevBtn.y + 7, 2, "PREV");
-                    DrawText(ren, nextBtn.x + 12, nextBtn.y + 7, 2, "NEXT");
+                    DrawGameText(ren, prevBtn.x + 12, prevBtn.y + 7, 2, "PREV");
+                    DrawGameText(ren, nextBtn.x + 12, nextBtn.y + 7, 2, "NEXT");
                     y = 134;
                     const ObjectInstance& sel = objects[detailedDebugObjectIndex];
-                    DrawText(ren, 12, y, 2, std::string("Selected: ") + std::to_string(detailedDebugObjectIndex)); y += 20;
-                    DrawText(ren, 12, y, 2, std::string("ID: ") + sel.id); y += 20;
-                    DrawText(ren, 12, y, 2, std::string("Pos: ") + std::to_string((int)sel.x) + ", " + std::to_string((int)sel.y)); y += 20;
+                    DrawGameText(ren, 12, y, 2, std::string("Selected: ") + std::to_string(detailedDebugObjectIndex)); y += 20;
+                    DrawGameText(ren, 12, y, 2, std::string("ID: ") + sel.id); y += 20;
+                    DrawGameText(ren, 12, y, 2, std::string("Pos: ") + std::to_string((int)sel.x) + ", " + std::to_string((int)sel.y)); y += 20;
                 }
             } else if (detailedDebugSubmenu == 2) {
                 {
                     std::ostringstream frameMs;
                     frameMs << std::fixed << std::setprecision(3) << (dtPrecise * 1000.0);
-                    DrawText(ren, 12, y, 2, std::string("Frame ms: ") + frameMs.str()); y += 20;
+                    DrawGameText(ren, 12, y, 2, std::string("Frame ms: ") + frameMs.str()); y += 20;
                 }
-                DrawText(ren, 12, y, 2, "Target: <16ms (60 FPS)"); y += 20;
-                DrawText(ren, 12, y, 2, "Use submenu for full perf details on desktop"); y += 20;
+                DrawGameText(ren, 12, y, 2, "Target: <16ms (60 FPS)"); y += 20;
+                DrawGameText(ren, 12, y, 2, "Use submenu for full perf details on desktop"); y += 20;
             } else if (detailedDebugSubmenu == 3) {
-                DrawText(ren, 12, y, 2, std::string("Position: ") + std::to_string((int)player.x) + ", " + std::to_string((int)player.y)); y += 20;
-                DrawText(ren, 12, y, 2, std::string("Velocity: ") + std::to_string((int)player.vx) + ", " + std::to_string((int)player.vy)); y += 20;
-                DrawText(ren, 12, y, 2, std::string("Facing: ") + (player.facing < 0 ? "LEFT" : "RIGHT")); y += 20;
-                DrawText(ren, 12, y, 2, std::string("Anim: ") + std::to_string(player.anim)); y += 20;
+                DrawGameText(ren, 12, y, 2, std::string("Position: ") + std::to_string((int)player.x) + ", " + std::to_string((int)player.y)); y += 20;
+                DrawGameText(ren, 12, y, 2, std::string("Velocity: ") + std::to_string((int)player.vx) + ", " + std::to_string((int)player.vy)); y += 20;
+                DrawGameText(ren, 12, y, 2, std::string("Facing: ") + (player.facing < 0 ? "LEFT" : "RIGHT")); y += 20;
+                DrawGameText(ren, 12, y, 2, std::string("Anim: ") + std::to_string(player.anim)); y += 20;
             } else {
                 auto entries = makeTextureInspectorEntries();
                 if (entries.empty()) {
                     detailedDebugTextureIndex = 0;
-                    DrawText(ren, 12, y, 2, "No texture entries");
+                    DrawGameText(ren, 12, y, 2, "No texture entries");
                 } else {
                     detailedDebugTextureIndex = std::clamp(detailedDebugTextureIndex, 0, (int)entries.size() - 1);
                     SDL_Rect prevBtn{12, 92, 120, 34};
@@ -9294,18 +9294,18 @@ int RunGameApp(int argc, char** argv) {
                     SDL_SetRenderDrawColor(ren, 180, 200, 230, 255);
                     SDL_RenderDrawRect(ren, &prevBtn);
                     SDL_RenderDrawRect(ren, &nextBtn);
-                    DrawText(ren, prevBtn.x + 12, prevBtn.y + 7, 2, "PREV");
-                    DrawText(ren, nextBtn.x + 12, nextBtn.y + 7, 2, "NEXT");
+                    DrawGameText(ren, prevBtn.x + 12, prevBtn.y + 7, 2, "PREV");
+                    DrawGameText(ren, nextBtn.x + 12, nextBtn.y + 7, 2, "NEXT");
                     y = 134;
                     const DebugTextureEntry& sel = entries[detailedDebugTextureIndex];
-                    DrawText(ren, 12, y, 2, std::string("Selected: ") + std::to_string(detailedDebugTextureIndex + 1) + "/" + std::to_string((int)entries.size())); y += 20;
-                    DrawText(ren, 12, y, 2, std::string("Name: ") + sel.name); y += 20;
-                    DrawText(ren, 12, y, 2, std::string("Loaded: ") + (sel.tex ? "1" : "0")); y += 20;
+                    DrawGameText(ren, 12, y, 2, std::string("Selected: ") + std::to_string(detailedDebugTextureIndex + 1) + "/" + std::to_string((int)entries.size())); y += 20;
+                    DrawGameText(ren, 12, y, 2, std::string("Name: ") + sel.name); y += 20;
+                    DrawGameText(ren, 12, y, 2, std::string("Loaded: ") + (sel.tex ? "1" : "0")); y += 20;
                     float tw = 0.0f, th = 0.0f;
                     if (sel.tex) SDL_GetTextureSize(sel.tex, &tw, &th);
-                    DrawText(ren, 12, y, 2, std::string("Texture Size: ") + std::to_string((int)std::lround(tw)) + "x" + std::to_string((int)std::lround(th))); y += 20;
-                    DrawText(ren, 12, y, 2, std::string("Frames: ") + std::to_string(sel.frameCount)); y += 20;
-                    DrawText(ren, 12, y, 2, std::string("Sample Frame: ") + std::to_string(sel.sampleW) + "x" + std::to_string(sel.sampleH)); y += 20;
+                    DrawGameText(ren, 12, y, 2, std::string("Texture Size: ") + std::to_string((int)std::lround(tw)) + "x" + std::to_string((int)std::lround(th))); y += 20;
+                    DrawGameText(ren, 12, y, 2, std::string("Frames: ") + std::to_string(sel.frameCount)); y += 20;
+                    DrawGameText(ren, 12, y, 2, std::string("Sample Frame: ") + std::to_string(sel.sampleW) + "x" + std::to_string(sel.sampleH)); y += 20;
 
                     SDL_Rect previewRect{350, 92, 196, 196};
                     SDL_SetRenderDrawColor(ren, 36, 44, 58, 255);
@@ -9363,7 +9363,7 @@ int RunGameApp(int argc, char** argv) {
             SDL_RenderClear(debugRen);
 
             int y = 10;
-            DrawText(debugRen, 12, y, 2, "DETAILED DEBUGGER (F5)"); y += 24;
+            DrawGameText(debugRen, 12, y, 2, "DETAILED DEBUGGER (F5)"); y += 24;
             SDL_Rect tab0{12, 38, 104, 36};
             SDL_Rect tab1{120, 38, 104, 36};
             SDL_Rect tab2{228, 38, 104, 36};
@@ -9378,36 +9378,36 @@ int RunGameApp(int argc, char** argv) {
                 SDL_SetRenderDrawBlendMode(debugRen, SDL_BLENDMODE_NONE);
                 SDL_SetRenderDrawColor(debugRen, 180, 200, 230, 255);
                 SDL_RenderDrawRect(debugRen, &tabs[i]);
-                DrawText(debugRen, tabs[i].x + (tabs[i].w - MeasureTextWidth(2, tabNames[i])) / 2, tabs[i].y + 8, 2, tabNames[i]);
+                DrawGameText(debugRen, tabs[i].x + (tabs[i].w - MeasureTextWidth(2, tabNames[i])) / 2, tabs[i].y + 8, 2, tabNames[i]);
             }
             y = 84;
             const char* submenuNames[kDetailedDebugTabCount] = {"OVERVIEW", "OBJECT INDEX", "PERFORMANCE", "PLAYER STATUS", "TEXTURE INSPECTOR"};
-            DrawText(debugRen, 12, y, 2, std::string("SUBMENU (F4): ") + submenuNames[detailedDebugSubmenu]); y += 20;
+            DrawGameText(debugRen, 12, y, 2, std::string("SUBMENU (F4): ") + submenuNames[detailedDebugSubmenu]); y += 20;
             if (detailedDebugSubmenu == 0) {
                 long rssKB = -1, vmKB = -1;
                 readProcessMemoryKB(rssKB, vmKB);
-                DrawText(debugRen, 12, y, 2, std::string("UFPS: ") + formatFpsValue(updateFpsDisplayValue)); y += 20;
-                DrawText(debugRen, 12, y, 2, std::string("RFPS: ") + formatFpsValue(renderFpsDisplayValue)); y += 20;
+                DrawGameText(debugRen, 12, y, 2, std::string("UFPS: ") + formatFpsValue(updateFpsDisplayValue)); y += 20;
+                DrawGameText(debugRen, 12, y, 2, std::string("RFPS: ") + formatFpsValue(renderFpsDisplayValue)); y += 20;
                 {
                     std::ostringstream frameMs;
                     frameMs << std::fixed << std::setprecision(3) << (dtPrecise * 1000.0);
-                    DrawText(debugRen, 12, y, 2, std::string("Frame ms: ") + frameMs.str()); y += 20;
+                    DrawGameText(debugRen, 12, y, 2, std::string("Frame ms: ") + frameMs.str()); y += 20;
                 }
-                DrawText(debugRen, 12, y, 2, std::string("Memory RSS MB: ") + (rssKB >= 0 ? std::to_string((int)(rssKB / 1024)) : "N/A")); y += 20;
-                DrawText(debugRen, 12, y, 2, std::string("Memory VM MB: ") + (vmKB >= 0 ? std::to_string((int)(vmKB / 1024)) : "N/A")); y += 20;
-                DrawText(debugRen, 12, y, 2, std::string("Player X/Y: ") + std::to_string((int)player.x) + ", " + std::to_string((int)player.y)); y += 20;
-                DrawText(debugRen, 12, y, 2, std::string("Player VX/VY: ") + std::to_string((int)player.vx) + ", " + std::to_string((int)player.vy)); y += 20;
-                DrawText(debugRen, 12, y, 2, std::string("OnGround/InWater: ") + (player.onGround ? "1" : "0") + "/" + (player.inWater ? "1" : "0")); y += 20;
-                DrawText(debugRen, 12, y, 2, std::string("Cam X/Y: ") + std::to_string((int)camX) + ", " + std::to_string((int)camY)); y += 20;
-                DrawText(debugRen, 12, y, 2, std::string("Map W/H: ") + std::to_string(map.w) + " x " + std::to_string(map.h)); y += 20;
-                DrawText(debugRen, 12, y, 2, std::string("TileSize: ") + std::to_string(map.tileSize)); y += 20;
+                DrawGameText(debugRen, 12, y, 2, std::string("Memory RSS MB: ") + (rssKB >= 0 ? std::to_string((int)(rssKB / 1024)) : "N/A")); y += 20;
+                DrawGameText(debugRen, 12, y, 2, std::string("Memory VM MB: ") + (vmKB >= 0 ? std::to_string((int)(vmKB / 1024)) : "N/A")); y += 20;
+                DrawGameText(debugRen, 12, y, 2, std::string("Player X/Y: ") + std::to_string((int)player.x) + ", " + std::to_string((int)player.y)); y += 20;
+                DrawGameText(debugRen, 12, y, 2, std::string("Player VX/VY: ") + std::to_string((int)player.vx) + ", " + std::to_string((int)player.vy)); y += 20;
+                DrawGameText(debugRen, 12, y, 2, std::string("OnGround/InWater: ") + (player.onGround ? "1" : "0") + "/" + (player.inWater ? "1" : "0")); y += 20;
+                DrawGameText(debugRen, 12, y, 2, std::string("Cam X/Y: ") + std::to_string((int)camX) + ", " + std::to_string((int)camY)); y += 20;
+                DrawGameText(debugRen, 12, y, 2, std::string("Map W/H: ") + std::to_string(map.w) + " x " + std::to_string(map.h)); y += 20;
+                DrawGameText(debugRen, 12, y, 2, std::string("TileSize: ") + std::to_string(map.tileSize)); y += 20;
                 const std::string totals = Edition::scoresEnabled
                     ? std::string("Coins/Score/Lives: ") + std::to_string(levelManager.coinCount()) + "/" + std::to_string(scoreCount) + "/" + std::to_string(livesCount)
                     : std::string("Coins/Lives: ") + std::to_string(levelManager.coinCount()) + "/" + std::to_string(livesCount);
-                DrawText(debugRen, 12, y, 2, totals); y += 20;
-                DrawText(debugRen, 12, y, 2, std::string("Objects: ") + std::to_string((int)objects.size())); y += 20;
-                DrawText(debugRen, 12, y, 2, std::string("Level IDs (W/P/T): ") + std::to_string(levelManager.worldId()) + "/" + std::to_string(levelManager.levelPartId()) + "/" + std::to_string(levelManager.timeId())); y += 20;
-                DrawText(debugRen, 12, y, 2, std::string("TimeWarpId: ") + std::string(1, levelManager.timeWarpId())); y += 20;
+                DrawGameText(debugRen, 12, y, 2, totals); y += 20;
+                DrawGameText(debugRen, 12, y, 2, std::string("Objects: ") + std::to_string((int)objects.size())); y += 20;
+                DrawGameText(debugRen, 12, y, 2, std::string("Level IDs (W/P/T): ") + std::to_string(levelManager.worldId()) + "/" + std::to_string(levelManager.levelPartId()) + "/" + std::to_string(levelManager.timeId())); y += 20;
+                DrawGameText(debugRen, 12, y, 2, std::string("TimeWarpId: ") + std::string(1, levelManager.timeWarpId())); y += 20;
                 {
                     const std::vector<int> activeButtons = levelManager.activeButtonWorldAreas();
                     std::string line = "Buttons Active: ";
@@ -9422,9 +9422,9 @@ int RunGameApp(int argc, char** argv) {
                             line += std::to_string(w) + "." + std::to_string(a);
                         }
                     }
-                    DrawText(debugRen, 12, y, 2, line); y += 20;
+                    DrawGameText(debugRen, 12, y, 2, line); y += 20;
                 }
-                DrawText(debugRen, 12, y, 2, "Button Editor (U/O=World J/L=Area +=Add -=Remove 0=Clear)"); y += 18;
+                DrawGameText(debugRen, 12, y, 2, "Button Editor (U/O=World J/L=Area +=Add -=Remove 0=Clear)"); y += 18;
                 SDL_Rect worldMinusBtn{};
                 SDL_Rect worldPlusBtn{};
                 SDL_Rect areaMinusBtn{};
@@ -9461,37 +9461,37 @@ int RunGameApp(int argc, char** argv) {
                 SDL_RenderDrawRect(debugRen, &clearBtn);
                 SDL_RenderDrawRect(debugRen, &worldValueBox);
                 SDL_RenderDrawRect(debugRen, &areaValueBox);
-                DrawText(debugRen, worldMinusBtn.x + 14, worldMinusBtn.y + 6, 2, "-");
-                DrawText(debugRen, worldPlusBtn.x + 14, worldPlusBtn.y + 6, 2, "+");
-                DrawText(debugRen, areaMinusBtn.x + 14, areaMinusBtn.y + 6, 2, "-");
-                DrawText(debugRen, areaPlusBtn.x + 14, areaPlusBtn.y + 6, 2, "+");
-                DrawText(debugRen, addBtn.x + 14, addBtn.y + 8, 2, "ADD");
-                DrawText(debugRen, removeBtn.x + 6, removeBtn.y + 8, 2, "REMOVE");
-                DrawText(debugRen, clearBtn.x + 12, clearBtn.y + 8, 2, "CLEAR");
+                DrawGameText(debugRen, worldMinusBtn.x + 14, worldMinusBtn.y + 6, 2, "-");
+                DrawGameText(debugRen, worldPlusBtn.x + 14, worldPlusBtn.y + 6, 2, "+");
+                DrawGameText(debugRen, areaMinusBtn.x + 14, areaMinusBtn.y + 6, 2, "-");
+                DrawGameText(debugRen, areaPlusBtn.x + 14, areaPlusBtn.y + 6, 2, "+");
+                DrawGameText(debugRen, addBtn.x + 14, addBtn.y + 8, 2, "ADD");
+                DrawGameText(debugRen, removeBtn.x + 6, removeBtn.y + 8, 2, "REMOVE");
+                DrawGameText(debugRen, clearBtn.x + 12, clearBtn.y + 8, 2, "CLEAR");
                 const std::string worldText = (debugButtonEditField == DebugButtonEditField::World)
                     ? std::string("WORLD: ") + debugButtonEditBuffer + "_"
                     : std::string("WORLD: ") + std::to_string(detailedDebugButtonWorld);
                 const std::string areaText = (debugButtonEditField == DebugButtonEditField::Area)
                     ? std::string("AREA: ") + debugButtonEditBuffer + "_"
                     : std::string("AREA: ") + std::to_string(detailedDebugButtonArea);
-                DrawText(debugRen, worldValueBox.x + 6, worldValueBox.y + 6, 2, worldText);
-                DrawText(debugRen, areaValueBox.x + 6, areaValueBox.y + 6, 2, areaText);
+                DrawGameText(debugRen, worldValueBox.x + 6, worldValueBox.y + 6, 2, worldText);
+                DrawGameText(debugRen, areaValueBox.x + 6, areaValueBox.y + 6, 2, areaText);
                 y += 104;
-                DrawText(debugRen, 12, y, 2, std::string("Flags H/P/D/FPS: ") +
+                DrawGameText(debugRen, 12, y, 2, std::string("Flags H/P/D/FPS: ") +
                                             (showHitboxes ? "1" : "0") + "/" +
                                             (showPlayerHitbox ? "1" : "0") + "/" +
                                             (showDebugView ? "1" : "0") + "/" +
                                             (showFpsCounter ? "1" : "0")); y += 20;
-                DrawText(debugRen, 12, y, 2, std::string("Paused/Death/Complete: ") +
+                DrawGameText(debugRen, 12, y, 2, std::string("Paused/Death/Complete: ") +
                                             (paused ? "1" : "0") + "/" +
                                             (deathSequenceActive ? "1" : "0") + "/" +
                                             (levelCompleteActive ? "1" : "0")); y += 20;
-                DrawText(debugRen, 12, y, 2, "Guideline: target <16ms for 60 FPS"); y += 20;
-                DrawText(debugRen, 12, y, 2, "Guideline: keep RSS stable during play"); y += 20;
+                DrawGameText(debugRen, 12, y, 2, "Guideline: target <16ms for 60 FPS"); y += 20;
+                DrawGameText(debugRen, 12, y, 2, "Guideline: keep RSS stable during play"); y += 20;
             } else if (detailedDebugSubmenu == 1) {
                 if (objects.empty()) {
                     detailedDebugObjectIndex = 0;
-                    DrawText(debugRen, 12, y, 2, "No objects in current level");
+                    DrawGameText(debugRen, 12, y, 2, "No objects in current level");
                 } else {
                     if (detailedDebugObjectIndex < 0) detailedDebugObjectIndex = 0;
                     if (detailedDebugObjectIndex >= (int)objects.size()) detailedDebugObjectIndex = (int)objects.size() - 1;
@@ -9505,15 +9505,15 @@ int RunGameApp(int argc, char** argv) {
                     SDL_SetRenderDrawColor(debugRen, 180, 200, 230, 255);
                     SDL_RenderDrawRect(debugRen, &prevBtn);
                     SDL_RenderDrawRect(debugRen, &nextBtn);
-                    DrawText(debugRen, prevBtn.x + 12, prevBtn.y + 7, 2, "PREV");
-                    DrawText(debugRen, nextBtn.x + 12, nextBtn.y + 7, 2, "NEXT");
+                    DrawGameText(debugRen, prevBtn.x + 12, prevBtn.y + 7, 2, "PREV");
+                    DrawGameText(debugRen, nextBtn.x + 12, nextBtn.y + 7, 2, "NEXT");
                     y = 134;
-                    DrawText(debugRen, 12, y, 2, "Use UP/DOWN to select object index"); y += 20;
+                    DrawGameText(debugRen, 12, y, 2, "Use UP/DOWN to select object index"); y += 20;
                     const ObjectInstance& sel = objects[detailedDebugObjectIndex];
-                    DrawText(debugRen, 12, y, 2, std::string("Selected Index: ") + std::to_string(detailedDebugObjectIndex)); y += 20;
-                    DrawText(debugRen, 12, y, 2, std::string("ID: ") + sel.id); y += 20;
-                    DrawText(debugRen, 12, y, 2, std::string("Pos X/Y: ") + std::to_string((int)sel.x) + ", " + std::to_string((int)sel.y)); y += 20;
-                    DrawText(debugRen, 12, y, 2, std::string("Screen X/Y: ") + std::to_string((int)(sel.x - camX)) + ", " + std::to_string((int)(sel.y - camY))); y += 24;
+                    DrawGameText(debugRen, 12, y, 2, std::string("Selected Index: ") + std::to_string(detailedDebugObjectIndex)); y += 20;
+                    DrawGameText(debugRen, 12, y, 2, std::string("ID: ") + sel.id); y += 20;
+                    DrawGameText(debugRen, 12, y, 2, std::string("Pos X/Y: ") + std::to_string((int)sel.x) + ", " + std::to_string((int)sel.y)); y += 20;
+                    DrawGameText(debugRen, 12, y, 2, std::string("Screen X/Y: ") + std::to_string((int)(sel.x - camX)) + ", " + std::to_string((int)(sel.y - camY))); y += 24;
 
                     // Decoded object map from level data.
                     const int mapPanelX = 360;
@@ -9523,7 +9523,7 @@ int RunGameApp(int argc, char** argv) {
                     SDL_Rect objMapRect{mapPanelX, mapPanelY, mapPanelW, mapPanelH};
                     SDL_SetRenderDrawColor(debugRen, 36, 44, 58, 255);
                     SDL_RenderDrawRect(debugRen, &objMapRect);
-                    DrawText(debugRen, mapPanelX + 8, mapPanelY + 8, 2, "OBJECT MAP (DECODED)");
+                    DrawGameText(debugRen, mapPanelX + 8, mapPanelY + 8, 2, "OBJECT MAP (DECODED)");
 
                     const float worldW = std::max(1.0f, (float)(map.w * map.tileSize));
                     const float worldH = std::max(1.0f, (float)(map.h * map.tileSize));
@@ -9555,7 +9555,7 @@ int RunGameApp(int argc, char** argv) {
                     SDL_RenderDrawLine(debugRen, ppx, ppy - 3, ppx, ppy + 3);
 
                     int typeY = mapPanelY + mapPanelH - 82;
-                    DrawText(debugRen, mapPanelX + 8, typeY, 2, "ENTITY SPAWN POS:");
+                    DrawGameText(debugRen, mapPanelX + 8, typeY, 2, "ENTITY SPAWN POS:");
                     typeY += 18;
                     std::string posLine;
                     const int maxShowPos = std::min((int)meta.entitySpawnPos.size(), 12);
@@ -9565,10 +9565,10 @@ int RunGameApp(int argc, char** argv) {
                     }
                     if ((int)meta.entitySpawnPos.size() > maxShowPos) posLine += "...";
                     if (posLine.empty()) posLine = "(empty)";
-                    DrawText(debugRen, mapPanelX + 8, typeY, 2, posLine);
+                    DrawGameText(debugRen, mapPanelX + 8, typeY, 2, posLine);
 
                     typeY += 18;
-                    DrawText(debugRen, mapPanelX + 8, typeY, 2, "ENTITY SPAWN TYPE:");
+                    DrawGameText(debugRen, mapPanelX + 8, typeY, 2, "ENTITY SPAWN TYPE:");
                     typeY += 18;
                     std::string typesLine;
                     const int maxShow = std::min((int)meta.entitySpawnType.size(), 12);
@@ -9578,7 +9578,7 @@ int RunGameApp(int argc, char** argv) {
                     }
                     if ((int)meta.entitySpawnType.size() > maxShow) typesLine += "...";
                     if (typesLine.empty()) typesLine = "(empty)";
-                    DrawText(debugRen, mapPanelX + 8, typeY, 2, typesLine);
+                    DrawGameText(debugRen, mapPanelX + 8, typeY, 2, typesLine);
 
                     int start = std::max(0, detailedDebugObjectIndex - 10);
                     int end = std::min((int)objects.size(), start + 20);
@@ -9588,7 +9588,7 @@ int RunGameApp(int argc, char** argv) {
                                            + std::to_string(i) + " id=" + o.id
                                            + " x=" + std::to_string((int)o.x)
                                            + " y=" + std::to_string((int)o.y);
-                        DrawText(debugRen, 12, y, 2, line);
+                        DrawGameText(debugRen, 12, y, 2, line);
                         y += 18;
                     }
                 }
@@ -9603,13 +9603,13 @@ int RunGameApp(int argc, char** argv) {
                 SDL_SetRenderDrawColor(debugRen, 36, 44, 58, 255);
                 SDL_RenderDrawRect(debugRen, &guideRect);
                 int gy = panelY + 10;
-                DrawText(debugRen, panelX + 8, gy, 2, "GUIDELINES"); gy += 22;
-                DrawText(debugRen, panelX + 8, gy, 2, "- target <16ms @60fps"); gy += 18;
-                DrawText(debugRen, panelX + 8, gy, 2, "- >33ms causes drops"); gy += 18;
-                DrawText(debugRen, panelX + 8, gy, 2, "- keep RSS stable"); gy += 18;
-                DrawText(debugRen, panelX + 8, gy, 2, "- rising RSS => leaks"); gy += 22;
-                DrawText(debugRen, panelX + 8, gy, 2, std::string("RSS MB: ") + (rssKB >= 0 ? std::to_string((int)(rssKB / 1024)) : "N/A")); gy += 18;
-                DrawText(debugRen, panelX + 8, gy, 2, std::string("VM MB: ") + (vmKB >= 0 ? std::to_string((int)(vmKB / 1024)) : "N/A"));
+                DrawGameText(debugRen, panelX + 8, gy, 2, "GUIDELINES"); gy += 22;
+                DrawGameText(debugRen, panelX + 8, gy, 2, "- target <16ms @60fps"); gy += 18;
+                DrawGameText(debugRen, panelX + 8, gy, 2, "- >33ms causes drops"); gy += 18;
+                DrawGameText(debugRen, panelX + 8, gy, 2, "- keep RSS stable"); gy += 18;
+                DrawGameText(debugRen, panelX + 8, gy, 2, "- rising RSS => leaks"); gy += 22;
+                DrawGameText(debugRen, panelX + 8, gy, 2, std::string("RSS MB: ") + (rssKB >= 0 ? std::to_string((int)(rssKB / 1024)) : "N/A")); gy += 18;
+                DrawGameText(debugRen, panelX + 8, gy, 2, std::string("VM MB: ") + (vmKB >= 0 ? std::to_string((int)(vmKB / 1024)) : "N/A"));
 
                 const int graphX = panelX + panelW + 12;
                 const int graphY = panelY;
@@ -9626,12 +9626,12 @@ int RunGameApp(int argc, char** argv) {
                     int hPx = (int)std::lround(norm * (graphH - 2));
                     SDL_RenderDrawLine(debugRen, graphX + i, graphY + graphH - 1, graphX + i, graphY + graphH - 1 - hPx);
                 }
-                DrawText(debugRen, graphX + 8, graphY + 8, 2, "Frame Time History (0-50ms)");
-                DrawText(debugRen, graphX + 8, graphY + 28, 2, std::string("Samples: ") + std::to_string((int)frameMsHistory.size()));
+                DrawGameText(debugRen, graphX + 8, graphY + 8, 2, "Frame Time History (0-50ms)");
+                DrawGameText(debugRen, graphX + 8, graphY + 28, 2, std::string("Samples: ") + std::to_string((int)frameMsHistory.size()));
                 {
                     std::ostringstream currentMs;
                     currentMs << std::fixed << std::setprecision(3) << (dtPrecise * 1000.0);
-                    DrawText(debugRen, graphX + 8, graphY + 48, 2, std::string("Current ms: ") + currentMs.str());
+                    DrawGameText(debugRen, graphX + 8, graphY + 48, 2, std::string("Current ms: ") + currentMs.str());
                 }
 
                 const int memGraphY = graphY + graphH + 12;
@@ -9649,26 +9649,26 @@ int RunGameApp(int argc, char** argv) {
                     int hPx = (int)std::lround(norm * (memGraphH - 2));
                     SDL_RenderDrawLine(debugRen, graphX + i, memGraphY + memGraphH - 1, graphX + i, memGraphY + memGraphH - 1 - hPx);
                 }
-                DrawText(debugRen, graphX + 8, memGraphY + 8, 2, "Memory RSS History");
-                DrawText(debugRen, graphX + 8, memGraphY + 28, 2, std::string("Peak MB: ") + std::to_string((int)std::lround(maxMem)));
+                DrawGameText(debugRen, graphX + 8, memGraphY + 8, 2, "Memory RSS History");
+                DrawGameText(debugRen, graphX + 8, memGraphY + 28, 2, std::string("Peak MB: ") + std::to_string((int)std::lround(maxMem)));
             } else if (detailedDebugSubmenu == 3) {
-                DrawText(debugRen, 12, y, 2, "PLAYER STATUS"); y += 24;
-                DrawText(debugRen, 12, y, 2, std::string("Position: ") + std::to_string((int)player.x) + ", " + std::to_string((int)player.y)); y += 20;
-                DrawText(debugRen, 12, y, 2, std::string("Velocity: ") + std::to_string((int)player.vx) + ", " + std::to_string((int)player.vy)); y += 20;
-                DrawText(debugRen, 12, y, 2, std::string("Facing: ") + (player.facing < 0 ? "LEFT" : "RIGHT")); y += 20;
-                DrawText(debugRen, 12, y, 2, std::string("Anim: ") + std::to_string(player.anim) + " (" + debugAnimName + ")"); y += 20;
-                DrawText(debugRen, 12, y, 2, std::string("Hitbox W/H: ") + std::to_string(player.w) + "/" + std::to_string(player.h)); y += 20;
-                DrawText(debugRen, 12, y, 2, std::string("OnGround: ") + (player.onGround ? "1" : "0")); y += 20;
-                DrawText(debugRen, 12, y, 2, std::string("InWater: ") + (player.inWater ? "1" : "0")); y += 20;
-                DrawText(debugRen, 12, y, 2, std::string("FreeMove: ") + (player.freeMove ? "1" : "0")); y += 20;
-                DrawText(debugRen, 12, y, 2, std::string("JumpHeld/WasDown: ") + (player.jumpHeld ? "1" : "0") + "/" + (player.jumpWasDown ? "1" : "0")); y += 20;
-                DrawText(debugRen, 12, y, 2, std::string("JumpHoldTime: ") + std::to_string((int)std::lround(player.jumpHoldTime * 1000.0f)) + "ms"); y += 20;
-                DrawText(debugRen, 12, y, 2, std::string("DrownTimer: ") + std::to_string((int)std::lround(player.drownTimer * 1000.0f)) + "ms"); y += 20;
+                DrawGameText(debugRen, 12, y, 2, "PLAYER STATUS"); y += 24;
+                DrawGameText(debugRen, 12, y, 2, std::string("Position: ") + std::to_string((int)player.x) + ", " + std::to_string((int)player.y)); y += 20;
+                DrawGameText(debugRen, 12, y, 2, std::string("Velocity: ") + std::to_string((int)player.vx) + ", " + std::to_string((int)player.vy)); y += 20;
+                DrawGameText(debugRen, 12, y, 2, std::string("Facing: ") + (player.facing < 0 ? "LEFT" : "RIGHT")); y += 20;
+                DrawGameText(debugRen, 12, y, 2, std::string("Anim: ") + std::to_string(player.anim) + " (" + debugAnimName + ")"); y += 20;
+                DrawGameText(debugRen, 12, y, 2, std::string("Hitbox W/H: ") + std::to_string(player.w) + "/" + std::to_string(player.h)); y += 20;
+                DrawGameText(debugRen, 12, y, 2, std::string("OnGround: ") + (player.onGround ? "1" : "0")); y += 20;
+                DrawGameText(debugRen, 12, y, 2, std::string("InWater: ") + (player.inWater ? "1" : "0")); y += 20;
+                DrawGameText(debugRen, 12, y, 2, std::string("FreeMove: ") + (player.freeMove ? "1" : "0")); y += 20;
+                DrawGameText(debugRen, 12, y, 2, std::string("JumpHeld/WasDown: ") + (player.jumpHeld ? "1" : "0") + "/" + (player.jumpWasDown ? "1" : "0")); y += 20;
+                DrawGameText(debugRen, 12, y, 2, std::string("JumpHoldTime: ") + std::to_string((int)std::lround(player.jumpHoldTime * 1000.0f)) + "ms"); y += 20;
+                DrawGameText(debugRen, 12, y, 2, std::string("DrownTimer: ") + std::to_string((int)std::lround(player.drownTimer * 1000.0f)) + "ms"); y += 20;
             } else {
                 auto entries = makeTextureInspectorEntries();
                 if (entries.empty()) {
                     detailedDebugTextureIndex = 0;
-                    DrawText(debugRen, 12, y, 2, "No texture entries");
+                    DrawGameText(debugRen, 12, y, 2, "No texture entries");
                 } else {
                     detailedDebugTextureIndex = std::clamp(detailedDebugTextureIndex, 0, (int)entries.size() - 1);
                     SDL_Rect prevBtn{12, 92, 120, 34};
@@ -9681,19 +9681,19 @@ int RunGameApp(int argc, char** argv) {
                     SDL_SetRenderDrawColor(debugRen, 180, 200, 230, 255);
                     SDL_RenderDrawRect(debugRen, &prevBtn);
                     SDL_RenderDrawRect(debugRen, &nextBtn);
-                    DrawText(debugRen, prevBtn.x + 12, prevBtn.y + 7, 2, "PREV");
-                    DrawText(debugRen, nextBtn.x + 12, nextBtn.y + 7, 2, "NEXT");
+                    DrawGameText(debugRen, prevBtn.x + 12, prevBtn.y + 7, 2, "PREV");
+                    DrawGameText(debugRen, nextBtn.x + 12, nextBtn.y + 7, 2, "NEXT");
                     y = 134;
                     const DebugTextureEntry& sel = entries[detailedDebugTextureIndex];
-                    DrawText(debugRen, 12, y, 2, std::string("Selected: ") + std::to_string(detailedDebugTextureIndex + 1) + "/" + std::to_string((int)entries.size())); y += 20;
-                    DrawText(debugRen, 12, y, 2, std::string("Name: ") + sel.name); y += 20;
-                    DrawText(debugRen, 12, y, 2, std::string("Loaded: ") + (sel.tex ? "1" : "0")); y += 20;
+                    DrawGameText(debugRen, 12, y, 2, std::string("Selected: ") + std::to_string(detailedDebugTextureIndex + 1) + "/" + std::to_string((int)entries.size())); y += 20;
+                    DrawGameText(debugRen, 12, y, 2, std::string("Name: ") + sel.name); y += 20;
+                    DrawGameText(debugRen, 12, y, 2, std::string("Loaded: ") + (sel.tex ? "1" : "0")); y += 20;
                     float tw = 0.0f, th = 0.0f;
                     if (sel.tex) SDL_GetTextureSize(sel.tex, &tw, &th);
-                    DrawText(debugRen, 12, y, 2, std::string("Texture Size: ") + std::to_string((int)std::lround(tw)) + "x" + std::to_string((int)std::lround(th))); y += 20;
-                    DrawText(debugRen, 12, y, 2, std::string("Frames: ") + std::to_string(sel.frameCount)); y += 20;
-                    DrawText(debugRen, 12, y, 2, std::string("Sample Frame: ") + std::to_string(sel.sampleW) + "x" + std::to_string(sel.sampleH)); y += 20;
-                    DrawText(debugRen, 12, y, 2, "Keys: UP/DOWN or LEFT/RIGHT"); y += 20;
+                    DrawGameText(debugRen, 12, y, 2, std::string("Texture Size: ") + std::to_string((int)std::lround(tw)) + "x" + std::to_string((int)std::lround(th))); y += 20;
+                    DrawGameText(debugRen, 12, y, 2, std::string("Frames: ") + std::to_string(sel.frameCount)); y += 20;
+                    DrawGameText(debugRen, 12, y, 2, std::string("Sample Frame: ") + std::to_string(sel.sampleW) + "x" + std::to_string(sel.sampleH)); y += 20;
+                    DrawGameText(debugRen, 12, y, 2, "Keys: UP/DOWN or LEFT/RIGHT"); y += 20;
 
                     const int previewX = 320;
                     const int previewY = 98;

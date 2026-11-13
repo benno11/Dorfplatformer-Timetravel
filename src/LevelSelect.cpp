@@ -524,21 +524,21 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
         SDL_RenderFillRect(ren, &panel);
         SDL_SetRenderDrawColor(ren, 200, 210, 230, 255);
         SDL_RenderDrawRect(ren, &panel);
-        DrawText(ren, panel.x + 20, panel.y + 20, 3, "CREATE NEW LEVEL");
+        DrawGameText(ren, panel.x + 20, panel.y + 20, 3, "CREATE NEW LEVEL");
 
         auto drawRow = [&](const SDL_Rect& r, bool selected, const std::string& text) {
             SDL_SetRenderDrawColor(ren, selected ? 68 : 50, selected ? 98 : 72, selected ? 158 : 108, 255);
             SDL_RenderFillRect(ren, &r);
             SDL_SetRenderDrawColor(ren, 220, 225, 235, 255);
             SDL_RenderDrawRect(ren, &r);
-            DrawText(ren, r.x + 10, r.y + 10, 2, text);
+            DrawGameText(ren, r.x + 10, r.y + 10, 2, text);
         };
         auto drawAdjustButton = [&](const SDL_Rect& r, const char* label) {
             SDL_SetRenderDrawColor(ren, 44, 60, 92, 255);
             SDL_RenderFillRect(ren, &r);
             SDL_SetRenderDrawColor(ren, 220, 225, 235, 255);
             SDL_RenderDrawRect(ren, &r);
-            DrawText(ren, r.x + 12, r.y + 6, 2, label);
+            DrawGameText(ren, r.x + 12, r.y + 6, 2, label);
         };
         drawRow(rowName, selectedRow == 0, std::string("NAME: ") + out.name);
         drawRow(rowW, selectedRow == 1, std::string("WIDTH: ") + std::to_string(out.width));
@@ -552,14 +552,14 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
         SDL_RenderFillRect(ren, &createBtn);
         SDL_SetRenderDrawColor(ren, 205, 235, 210, 255);
         SDL_RenderDrawRect(ren, &createBtn);
-        DrawText(ren, createBtn.x + 38, createBtn.y + 12, 2, "CREATE");
+        DrawGameText(ren, createBtn.x + 38, createBtn.y + 12, 2, "CREATE");
 
         SDL_SetRenderDrawColor(ren, selectedRow == 4 ? 110 : 80, selectedRow == 4 ? 70 : 55, selectedRow == 4 ? 90 : 70, 255);
         SDL_RenderFillRect(ren, &cancelBtn);
         SDL_SetRenderDrawColor(ren, 235, 205, 210, 255);
         SDL_RenderDrawRect(ren, &cancelBtn);
-        DrawText(ren, cancelBtn.x + 38, cancelBtn.y + 12, 2, "CANCEL");
-        DrawText(ren, panel.x + 20, panel.y + panel.h - 24, 2, "Touch +/- or use arrows. ENTER confirms.");
+        DrawGameText(ren, cancelBtn.x + 38, cancelBtn.y + 12, 2, "CANCEL");
+        DrawGameText(ren, panel.x + 20, panel.y + panel.h - 24, 2, "Touch +/- or use arrows. ENTER confirms.");
 
         SDL_RenderPresent(ren);
         SDL_Delay(16);
@@ -673,7 +673,7 @@ bool RunLevelConfigMenu(SDL_Window* win, SDL_Renderer* ren, LevelMeta& config) {
         SDL_SetRenderDrawColor(ren, 20, 29, 42, 255);
         SDL_RenderClear(ren);
         skin.draw(ren, SDL_Rect{48, 8, 544, 448}, false, true);
-        DrawText(ren, 320 - MeasureTextWidth(3, "Level Config") / 2, 24, 3, "Level Config");
+        DrawGameText(ren, 320 - MeasureTextWidth(3, "Level Config") / 2, 24, 3, "Level Config");
         const int values[] = {draft.world, draft.area, draft.time};
         const char* names[] = {"World", "Area", "Time"};
         for (int row = 0; row < 6; ++row) {
@@ -683,13 +683,13 @@ bool RunLevelConfigMenu(SDL_Window* win, SDL_Renderer* ren, LevelMeta& config) {
             SDL_RenderRect(ren, &rows[row]);
             const std::string label = row < 3 ? std::string(names[row]) + ": " + (values[row] ? std::to_string(values[row]) : "Auto") :
                 (row == 3 ? std::string("Bouncy tile 12: ") + (draft.bouncyTile12 ? "ON" : "OFF") : (row == 4 ? "Apply" : "Cancel"));
-            DrawText(ren, rows[row].x + (rows[row].w - MeasureTextWidth(2, label)) / 2, rows[row].y + 14, 2, label);
+            DrawGameText(ren, rows[row].x + (rows[row].w - MeasureTextWidth(2, label)) / 2, rows[row].y + 14, 2, label);
             if (row < 3) {
-                DrawText(ren, rows[row].x + 20, rows[row].y + 14, 2, "-");
-                DrawText(ren, rows[row].x + rows[row].w - 32, rows[row].y + 14, 2, "+");
+                DrawGameText(ren, rows[row].x + 20, rows[row].y + 14, 2, "-");
+                DrawGameText(ren, rows[row].x + rows[row].w - 32, rows[row].y + 14, 2, "+");
             }
         }
-        DrawText(ren, 80, 345, 1, "Auto keeps the original level setting. Jump overrides tile 12.");
+        DrawGameText(ren, 80, 345, 1, "Auto keeps the original level setting. Jump overrides tile 12.");
         SDL_RenderPresent(ren);
         SDL_Delay(16);
     }
@@ -1625,13 +1625,13 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 }
             } else if (!drawObjectTexture(id, in, obj.layer != activeLayer)) SDL_RenderFillRect(ren, &in);
             const std::string valueTag = (obj.parameterValue ? std::to_string(id) + "=" + std::to_string(*obj.parameterValue) : std::to_string(id)) + " L" + std::to_string(obj.layer);
-            DrawText(ren, rc.x + 3, rc.y + 3, std::max(1, cell / 24), valueTag);
+            DrawGameText(ren, rc.x + 3, rc.y + 3, std::max(1, cell / 24), valueTag);
             const char* tag = objectTag(id);
             if (tag[0] != '\0') {
                 const int tagScale = std::max(1, cell / 24);
                 const int tx = rc.x + rc.w - 4 - MeasureTextWidth(tagScale, tag);
                 const int ty = rc.y + rc.h - 12;
-                DrawText(ren, tx, ty, tagScale, tag);
+                DrawGameText(ren, tx, ty, tagScale, tag);
             }
         }
         // Draw grid lines after tiles so visual cells align exactly with paint hitboxes.
@@ -1662,64 +1662,64 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         SDL_RenderDrawRect(ren, &border);
 
         const int helpScale = 1;
-        DrawText(ren, panelX + 4, objectConfigBtn.y - 40, helpScale,
+        DrawGameText(ren, panelX + 4, objectConfigBtn.y - 40, helpScale,
             configureObjects ? "TAP OBJECT TO CONFIGURE" : (touchPanMode ? "DRAG TO PAN" : (touchEraseMode ? "DELETE MODE" : "PLACE / OVERRIDE")));
-        DrawText(ren, panelX + 4, objectConfigBtn.y - 24, helpScale, "F2: LEVEL  F3: OBJECT  ESC: MENU");
+        DrawGameText(ren, panelX + 4, objectConfigBtn.y - 24, helpScale, "F2: LEVEL  F3: OBJECT  ESC: MENU");
         if (!statusText.empty() && SDL_GetTicks() < statusUntil)
-            DrawText(ren, panelX + 4, objectConfigBtn.y - 56, 1, statusText);
+            DrawGameText(ren, panelX + 4, objectConfigBtn.y - 56, 1, statusText);
         skin.draw(ren, configBtn);
-        DrawText(ren, configBtn.x + (configBtn.w - MeasureTextWidth(2, "LEVEL CONFIG")) / 2, configBtn.y + 12, 2, "LEVEL CONFIG");
+        DrawGameText(ren, configBtn.x + (configBtn.w - MeasureTextWidth(2, "LEVEL CONFIG")) / 2, configBtn.y + 12, 2, "LEVEL CONFIG");
         skin.draw(ren, objectConfigBtn, configureObjects);
-        DrawText(ren, objectConfigBtn.x + (objectConfigBtn.w - MeasureTextWidth(2, "CONFIGURE OBJECT")) / 2, objectConfigBtn.y + 12, 2, "CONFIGURE OBJECT");
+        DrawGameText(ren, objectConfigBtn.x + (objectConfigBtn.w - MeasureTextWidth(2, "CONFIGURE OBJECT")) / 2, objectConfigBtn.y + 12, 2, "CONFIGURE OBJECT");
         skin.draw(ren, brushDownBtn);
         skin.draw(ren, brushUpBtn);
         const std::string brushLabel = "BRUSH " + std::to_string(brushSize) + "x" + std::to_string(brushSize);
-        DrawText(ren, brushDownBtn.x + 8, brushDownBtn.y + 14, 2, "-");
-        DrawText(ren, brushUpBtn.x + brushUpBtn.w - 20, brushUpBtn.y + 14, 2, "+");
-        DrawText(ren, panelX + (sideW - MeasureTextWidth(2, brushLabel)) / 2, brushDownBtn.y + 14, 2, brushLabel);
+        DrawGameText(ren, brushDownBtn.x + 8, brushDownBtn.y + 14, 2, "-");
+        DrawGameText(ren, brushUpBtn.x + brushUpBtn.w - 20, brushUpBtn.y + 14, 2, "+");
+        DrawGameText(ren, panelX + (sideW - MeasureTextWidth(2, brushLabel)) / 2, brushDownBtn.y + 14, 2, brushLabel);
         skin.draw(ren, layerDownBtn);
         skin.draw(ren, layerUpBtn);
         const std::string layerLabel = "LAYER " + std::to_string(activeLayer);
-        DrawText(ren, layerDownBtn.x + 8, layerDownBtn.y + 14, 2, "-");
-        DrawText(ren, layerUpBtn.x + layerUpBtn.w - 20, layerUpBtn.y + 14, 2, "+");
-        DrawText(ren, panelX + (sideW - MeasureTextWidth(2, layerLabel)) / 2, layerDownBtn.y + 14, 2, layerLabel);
+        DrawGameText(ren, layerDownBtn.x + 8, layerDownBtn.y + 14, 2, "-");
+        DrawGameText(ren, layerUpBtn.x + layerUpBtn.w - 20, layerUpBtn.y + 14, 2, "+");
+        DrawGameText(ren, panelX + (sideW - MeasureTextWidth(2, layerLabel)) / 2, layerDownBtn.y + 14, 2, layerLabel);
 
         SDL_SetRenderDrawColor(ren, objectMode ? 50 : 90, objectMode ? 70 : 110, objectMode ? 90 : 170, 255);
         skin.draw(ren, tileModeBtn, !objectMode);
         SDL_SetRenderDrawColor(ren, 220, 220, 230, 255);
         SDL_RenderDrawRect(ren, &tileModeBtn);
         const char* tileModeLabel = controlW < 105 ? "TILE" : "TILES";
-        DrawText(ren, tileModeBtn.x + std::max(4, (tileModeBtn.w - MeasureTextWidth(2, tileModeLabel)) / 2), tileModeBtn.y + 13, 2, tileModeLabel);
+        DrawGameText(ren, tileModeBtn.x + std::max(4, (tileModeBtn.w - MeasureTextWidth(2, tileModeLabel)) / 2), tileModeBtn.y + 13, 2, tileModeLabel);
         SDL_SetRenderDrawColor(ren, objectMode ? 90 : 50, objectMode ? 110 : 70, objectMode ? 170 : 90, 255);
         skin.draw(ren, objectModeBtn, objectMode);
         SDL_SetRenderDrawColor(ren, 220, 220, 230, 255);
         SDL_RenderDrawRect(ren, &objectModeBtn);
         const char* objectModeLabel = controlW < 120 ? "OBJ" : "OBJECTS";
-        DrawText(ren, objectModeBtn.x + std::max(4, (objectModeBtn.w - MeasureTextWidth(2, objectModeLabel)) / 2), objectModeBtn.y + 13, 2, objectModeLabel);
+        DrawGameText(ren, objectModeBtn.x + std::max(4, (objectModeBtn.w - MeasureTextWidth(2, objectModeLabel)) / 2), objectModeBtn.y + 13, 2, objectModeLabel);
 
         SDL_SetRenderDrawColor(ren, touchPanMode ? 90 : 50, touchPanMode ? 120 : 70, touchPanMode ? 170 : 90, 255);
         skin.draw(ren, panModeBtn, touchPanMode);
         SDL_SetRenderDrawColor(ren, 220, 220, 230, 255);
         SDL_RenderDrawRect(ren, &panModeBtn);
-        DrawText(ren, panModeBtn.x + std::max(4, (panModeBtn.w - MeasureTextWidth(2, "PAN")) / 2), panModeBtn.y + 13, 2, "PAN");
+        DrawGameText(ren, panModeBtn.x + std::max(4, (panModeBtn.w - MeasureTextWidth(2, "PAN")) / 2), panModeBtn.y + 13, 2, "PAN");
         SDL_SetRenderDrawColor(ren, touchEraseMode ? 150 : 50, touchEraseMode ? 75 : 70, touchEraseMode ? 75 : 90, 255);
         skin.draw(ren, eraseModeBtn, touchEraseMode);
         SDL_SetRenderDrawColor(ren, 220, 220, 230, 255);
         SDL_RenderDrawRect(ren, &eraseModeBtn);
-        DrawText(ren, eraseModeBtn.x + std::max(4, (eraseModeBtn.w - MeasureTextWidth(2, "DELETE")) / 2), eraseModeBtn.y + 13, 2, "DELETE");
+        DrawGameText(ren, eraseModeBtn.x + std::max(4, (eraseModeBtn.w - MeasureTextWidth(2, "DELETE")) / 2), eraseModeBtn.y + 13, 2, "DELETE");
 
         SDL_SetRenderDrawColor(ren, 55, 65, 90, 255);
         skin.draw(ren, zoomOutBtn, false);
         SDL_SetRenderDrawColor(ren, 220, 220, 230, 255);
         SDL_RenderDrawRect(ren, &zoomOutBtn);
-        DrawText(ren, zoomOutBtn.x + std::max(4, (zoomOutBtn.w - MeasureTextWidth(2, "-")) / 2), zoomOutBtn.y + 13, 2, "-");
+        DrawGameText(ren, zoomOutBtn.x + std::max(4, (zoomOutBtn.w - MeasureTextWidth(2, "-")) / 2), zoomOutBtn.y + 13, 2, "-");
         SDL_SetRenderDrawColor(ren, 55, 65, 90, 255);
         skin.draw(ren, zoomInBtn, false);
         SDL_SetRenderDrawColor(ren, 220, 220, 230, 255);
         SDL_RenderDrawRect(ren, &zoomInBtn);
-        DrawText(ren, zoomInBtn.x + std::max(4, (zoomInBtn.w - MeasureTextWidth(2, "+")) / 2), zoomInBtn.y + 13, 2, "+");
+        DrawGameText(ren, zoomInBtn.x + std::max(4, (zoomInBtn.w - MeasureTextWidth(2, "+")) / 2), zoomInBtn.y + 13, 2, "+");
         const std::string zoomLabel = std::to_string(editorZoomPercent) + "%";
-        DrawText(ren, panelX + std::max(4, (sideW - MeasureTextWidth(1, zoomLabel)) / 2), zoomOutBtn.y + zoomOutBtn.h - 13, 1, zoomLabel);
+        DrawGameText(ren, panelX + std::max(4, (sideW - MeasureTextWidth(1, zoomLabel)) / 2), zoomOutBtn.y + zoomOutBtn.h - 13, 1, zoomLabel);
 
         const int paletteCount = objectMode ? (int)objectPalette.size() : (int)palette.size();
         int& paletteScroll = objectMode ? objectPaletteScroll : tilePaletteScroll;
@@ -1747,11 +1747,11 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                     SDL_RenderFillRect(ren, &sw);
                 }
                 if (pid == 7) {
-                    DrawText(ren, r.x + 38, r.y + 8, 2, "Main Ground Tiles");
+                    DrawGameText(ren, r.x + 38, r.y + 8, 2, "Main Ground Tiles");
                 } else if (pid == TileIds::BossBarrier) {
-                    DrawText(ren, r.x + 38, r.y + 8, 2, "Boss Barrier (98)");
+                    DrawGameText(ren, r.x + 38, r.y + 8, 2, "Boss Barrier (98)");
                 } else {
-                    DrawText(ren, r.x + 38, r.y + 8, 2, std::string("Tile ") + std::to_string((int)pid));
+                    DrawGameText(ren, r.x + 38, r.y + 8, 2, std::string("Tile ") + std::to_string((int)pid));
                 }
             } else {
                 const int oid = objectPalette[i];
@@ -1762,7 +1762,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 if (!drawObjectTexture(oid, sw, false)) SDL_RenderFillRect(ren, &sw);
                 const std::string label = objectLabel(oid);
                 const int textScale = MeasureTextWidth(2, label) <= r.w - 42 ? 2 : 1;
-                DrawText(ren, r.x + 38, r.y + (r.h - textScale * 10) / 2, textScale, label);
+                DrawGameText(ren, r.x + 38, r.y + (r.h - textScale * 10) / 2, textScale, label);
             }
         }
         if (paletteCount > paletteViewRows) {
@@ -1785,15 +1785,15 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
 
             skin.draw(ren, pausePanel, false, true);
-            DrawText(ren, pausePanel.x + (pausePanel.w - MeasureTextWidth(3, "PAUSED")) / 2, pausePanel.y + 16, 3, "PAUSED");
+            DrawGameText(ren, pausePanel.x + (pausePanel.w - MeasureTextWidth(3, "PAUSED")) / 2, pausePanel.y + 16, 3, "PAUSED");
             const std::string notice = SDL_GetTicks() < statusUntil ? statusText : "AUTO SAVE EVERY 15 SECONDS";
-            DrawText(ren, pausePanel.x + (pausePanel.w - MeasureTextWidth(1, notice)) / 2, pausePanel.y + 52, 1, notice);
+            DrawGameText(ren, pausePanel.x + (pausePanel.w - MeasureTextWidth(1, notice)) / 2, pausePanel.y + 52, 1, notice);
             const char* labels[4] = {"RESUME", "SAVE & RESUME", "SAVE & EXIT", "EXIT"};
             for (int i = 0; i < 4; ++i) {
                 const SDL_Rect rect = editorAnimations.drawRect(i, pauseBtns[i], i == pauseSel, win, winW, winH);
                 skin.draw(ren, rect, i == pauseSel);
                 const int labelScale = pauseButtonW < 200 ? 1 : 2;
-                DrawText(ren, rect.x + (rect.w - MeasureTextWidth(labelScale, labels[i])) / 2,
+                DrawGameText(ren, rect.x + (rect.w - MeasureTextWidth(labelScale, labels[i])) / 2,
                     rect.y + (rect.h - labelScale * 10) / 2, labelScale, labels[i]);
             }
         }
@@ -1980,22 +1980,22 @@ std::string RunLocalLevelRenamePrompt(SDL_Window* win, SDL_Renderer* ren, const 
         SDL_SetRenderDrawColor(ren, 200, 210, 230, 255);
         SDL_RenderDrawRect(ren, &panel);
         const int titleScale = MeasureTextWidth(3, title) <= panel.w - 40 ? 3 : 2;
-        DrawText(ren, panel.x + 20, panel.y + 20, titleScale, title);
+        DrawGameText(ren, panel.x + 20, panel.y + 20, titleScale, title);
         SDL_SetRenderDrawColor(ren, 68, 98, 158, 255);
         skin.draw(ren, rowName, true);
         SDL_SetRenderDrawColor(ren, 220, 225, 235, 255);
         SDL_RenderDrawRect(ren, &rowName);
-        DrawText(ren, rowName.x + 10, rowName.y + 11, 2, fieldLabel + name);
+        DrawGameText(ren, rowName.x + 10, rowName.y + 11, 2, fieldLabel + name);
         SDL_SetRenderDrawColor(ren, 55, 95, 70, 255);
         skin.draw(ren, okBtn);
         SDL_SetRenderDrawColor(ren, 205, 235, 210, 255);
         SDL_RenderDrawRect(ren, &okBtn);
-        DrawText(ren, okBtn.x + 48, okBtn.y + 12, 2, "OK");
+        DrawGameText(ren, okBtn.x + 48, okBtn.y + 12, 2, "OK");
         SDL_SetRenderDrawColor(ren, 80, 55, 70, 255);
         skin.draw(ren, cancelBtn);
         SDL_SetRenderDrawColor(ren, 235, 205, 210, 255);
         SDL_RenderDrawRect(ren, &cancelBtn);
-        DrawText(ren, cancelBtn.x + 34, cancelBtn.y + 12, 2, "CANCEL");
+        DrawGameText(ren, cancelBtn.x + 34, cancelBtn.y + 12, 2, "CANCEL");
         SDL_RenderPresent(ren);
         SDL_Delay(16);
     }
@@ -2075,20 +2075,20 @@ GrowLevelPromptResult RunGrowLevelPrompt(SDL_Window* win, SDL_Renderer* ren, int
         SDL_RenderFillRect(ren, &panel);
         SDL_SetRenderDrawColor(ren, 200, 210, 230, 255);
         SDL_RenderDrawRect(ren, &panel);
-        DrawText(ren, panel.x + 20, panel.y + 20, 3, allowShrink ? "RESIZE LOCAL LEVEL" : "GROW LOCAL LEVEL");
+        DrawGameText(ren, panel.x + 20, panel.y + 20, 3, allowShrink ? "RESIZE LOCAL LEVEL" : "GROW LOCAL LEVEL");
         auto drawRow = [&](const SDL_Rect& r, bool selected, const std::string& text) {
             SDL_SetRenderDrawColor(ren, selected ? 68 : 50, selected ? 98 : 72, selected ? 158 : 108, 255);
             SDL_RenderFillRect(ren, &r);
             SDL_SetRenderDrawColor(ren, 220, 225, 235, 255);
             SDL_RenderDrawRect(ren, &r);
-            DrawText(ren, r.x + 10, r.y + 10, 2, text);
+            DrawGameText(ren, r.x + 10, r.y + 10, 2, text);
         };
         auto drawAdjust = [&](const SDL_Rect& r, const char* label) {
             SDL_SetRenderDrawColor(ren, 44, 60, 92, 255);
             SDL_RenderFillRect(ren, &r);
             SDL_SetRenderDrawColor(ren, 220, 225, 235, 255);
             SDL_RenderDrawRect(ren, &r);
-            DrawText(ren, r.x + 12, r.y + 6, 2, label);
+            DrawGameText(ren, r.x + 12, r.y + 6, 2, label);
         };
         drawRow(rowW, selectedRow == 0, std::string("WIDTH: ") + std::to_string(out.width));
         drawRow(rowH, selectedRow == 1, std::string("HEIGHT: ") + std::to_string(out.height));
@@ -2096,17 +2096,17 @@ GrowLevelPromptResult RunGrowLevelPrompt(SDL_Window* win, SDL_Renderer* ren, int
         drawAdjust(rowWPlus, "+");
         drawAdjust(rowHMinus, "-");
         drawAdjust(rowHPlus, "+");
-        if (allowShrink) DrawText(ren, panel.x + 20, panel.y + 174, 2, "5-400 TILES; KEEPS TOP-LEFT AREA");
+        if (allowShrink) DrawGameText(ren, panel.x + 20, panel.y + 174, 2, "5-400 TILES; KEEPS TOP-LEFT AREA");
         SDL_SetRenderDrawColor(ren, 55, 95, 70, 255);
         SDL_RenderFillRect(ren, &growBtn);
         SDL_SetRenderDrawColor(ren, 205, 235, 210, 255);
         SDL_RenderDrawRect(ren, &growBtn);
-        DrawText(ren, growBtn.x + 42, growBtn.y + 12, 2, allowShrink ? "APPLY" : "GROW");
+        DrawGameText(ren, growBtn.x + 42, growBtn.y + 12, 2, allowShrink ? "APPLY" : "GROW");
         SDL_SetRenderDrawColor(ren, 80, 55, 70, 255);
         SDL_RenderFillRect(ren, &cancelBtn);
         SDL_SetRenderDrawColor(ren, 235, 205, 210, 255);
         SDL_RenderDrawRect(ren, &cancelBtn);
-        DrawText(ren, cancelBtn.x + 34, cancelBtn.y + 12, 2, "CANCEL");
+        DrawGameText(ren, cancelBtn.x + 34, cancelBtn.y + 12, 2, "CANCEL");
         SDL_RenderPresent(ren);
         SDL_Delay(16);
     }

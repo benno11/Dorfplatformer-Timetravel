@@ -376,7 +376,7 @@ void CancelNativeTextOverlay(SDL_Renderer* ren) {
     it->second.active = false;
 }
 
-void DrawText(SDL_Renderer* ren, int x, int y, int scale, const std::string& text) {
+void DrawGameText(SDL_Renderer* ren, int x, int y, int scale, const std::string& text) {
     DrawTextColored(ren, x, y, scale, text, SDL_Color{255, 255, 255, 255});
 }
 
@@ -414,11 +414,11 @@ int MeasureTextWidth(int scale, const std::string& text) {
 void DrawNumberCentered(SDL_Renderer* ren, int x, int y, int scale, int value) {
     std::string s = std::to_string(value);
     int textW = MeasureTextWidth(scale, s);
-    DrawText(ren, x - textW / 2, y, scale, s);
+    DrawGameText(ren, x - textW / 2, y, scale, s);
 }
 
 void DrawDebugNumber(SDL_Renderer* ren, int x, int y, int scale, const std::string& label, int value) {
-    DrawText(ren, x, y, scale, label);
+    DrawGameText(ren, x, y, scale, label);
     std::string cacheKey = std::to_string(scale) + "|" + label;
     int labelW = 0;
     auto it = gDebugLabelWidthCache.find(cacheKey);
@@ -428,6 +428,6 @@ void DrawDebugNumber(SDL_Renderer* ren, int x, int y, int scale, const std::stri
         labelW = MeasureTextWidth(scale, label);
         gDebugLabelWidthCache[cacheKey] = labelW;
     }
-    DrawText(ren, x + labelW + 8, y, scale, std::to_string(value));
+    DrawGameText(ren, x + labelW + 8, y, scale, std::to_string(value));
 }
 

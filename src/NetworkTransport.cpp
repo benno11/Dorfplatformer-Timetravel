@@ -124,7 +124,7 @@ void NetworkBusyScreen::frame(std::atomic<bool>& cancelled) {
     SDL_RenderFillRect(ren, &strip);
     const std::string label = cancelled.load() ? "Cancelling..." :
         "Connecting" + std::string((SDL_GetTicks() / 250) % 4, '.') + "  (Esc to cancel)";
-    DrawText(ren, 20, std::max(0, height - 46), 2, label);
+    DrawGameText(ren, 20, std::max(0, height - 46), 2, label);
     SDL_RenderPresent(ren);
 
 }

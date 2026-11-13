@@ -27,7 +27,7 @@ bool randomBytes(unsigned char* out, size_t size) {
     int fd=open("/dev/urandom",O_RDONLY|O_CLOEXEC);
     if(fd<0) return false;
     size_t pos=0;
-    while(pos<size) { auto n=read(fd,out+pos,size-pos); if(n<0&&errno==EINTR)continue; if(n<=0)break; pos+=n; }
+    while(pos<size) { auto n=::read(fd,out+pos,size-pos); if(n<0&&errno==EINTR)continue; if(n<=0)break; pos+=n; }
     close(fd); return pos==size;
 #endif
 }
@@ -85,7 +85,7 @@ bool deviceKey(const std::filesystem::path& root,bool create,Key& key) {
             struct stat st{};
             bool ok=fstat(fd,&st)==0&&S_ISREG(st.st_mode)&&st.st_uid==geteuid()&&(st.st_mode&077)==0&&st.st_size==32;
             size_t pos=0;
-            while(ok&&pos<32){auto n=read(fd,key.data()+pos,32-pos);if(n<0&&errno==EINTR)continue;if(n<=0){ok=false;break;}pos+=n;}
+            while(ok&&pos<32){auto n=::read(fd,key.data()+pos,32-pos);if(n<0&&errno==EINTR)continue;if(n<=0){ok=false;break;}pos+=n;}
             close(fd);return ok;
 #else
             if(std::filesystem::file_size(path)>4096)return false;

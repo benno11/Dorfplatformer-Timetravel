@@ -15,7 +15,7 @@ namespace SecretData {
 namespace {
 constexpr size_t limit = 1024 * 1024;
 constexpr char magic[] = "DFSEC001";
-std::string read(const std::filesystem::path& p) {
+std::string readSecretFile(const std::filesystem::path& p) {
     if (std::filesystem::file_size(p) > limit) throw std::runtime_error("Secret save too large");
     std::ifstream in(p, std::ios::binary);
     if (!in) throw std::runtime_error("Cannot read secret save");
@@ -103,7 +103,7 @@ Store::Result Store::load(nlohmann::json& value) {
         const auto status=std::filesystem::symlink_status(path_);
         if(status.type()==std::filesystem::file_type::not_found)return Result::Missing;
         if(!std::filesystem::is_regular_file(status)){blocked_=true;return Result::Error;}
-        if (!keys(false) || !decode(read(path_),value)) { blocked_=true; return Result::Error; }
+        if (!keys(false) || !decode(readSecretFile(path_),value)) { blocked_=true; return Result::Error; }
         return Result::Loaded;
     } catch (...) { blocked_=true; return Result::Error; }
 }
@@ -115,7 +115,7 @@ bool Store::save(const nlohmann::json& value) {
         if(exists&&!std::filesystem::is_regular_file(status)){blocked_=true;return false;}
         if (!keys(!exists)) return false;
         nlohmann::json old;
-        if (exists && !decode(read(path_),old)) { blocked_=true; return false; }
+        if (exists && !decode(readSecretFile(path_),old)) { blocked_=true; return false; }
         std::string plain = value.dump();
         if (plain.size() > limit-112) { crypto_wipe(plain.data(),plain.size()); return false; }
         std::vector<uint8_t> bytes(plain.size()+112);

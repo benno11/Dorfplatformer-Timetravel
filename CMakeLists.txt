@@ -1128,6 +1128,9 @@ if(BUILD_TESTING AND NOT ANDROID AND NOT IOS)
   endif()
   add_test(NAME sandbox_pointers COMMAND sandbox_pointers_test)
   add_executable(secret_save_test tests/SecretSaveTest.cpp src/SecretSave.cpp src/DeviceSecretKey.cpp)
+  # Exercise the same combined translation unit as production unity builds,
+  # even when a developer's main game build has unity disabled.
+  set_target_properties(secret_save_test PROPERTIES UNITY_BUILD ON UNITY_BUILD_BATCH_SIZE 3)
   target_include_directories(secret_save_test PRIVATE src)
   target_link_libraries(secret_save_test PRIVATE secret_crypto nlohmann_json::nlohmann_json ${SDL3_LINK_TARGET})
   if(WIN32)

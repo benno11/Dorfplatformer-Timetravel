@@ -46,8 +46,8 @@
 #include "CharacterFile.h"
 #include "CharacterSpriteImport.h"
 
-#if defined(DrawText)
-#undef DrawText
+#if defined(DrawGameText)
+#undef DrawGameText
 #endif
 
 #include "TextRenderer.h"
@@ -55,8 +55,8 @@
 #if defined(HAVE_CURL) && HAVE_CURL
 #include <curl/curl.h>
 #endif
-#ifdef DrawText
-#undef DrawText
+#ifdef DrawGameText
+#undef DrawGameText
 #endif
 
 namespace {
@@ -1933,7 +1933,7 @@ void renderDifficultyPopup(SlimRuntime& runtime, const SlimMenuContext& ctx) {
     SDL_RenderRect(ctx.ren, &layout.panel);
     auto centered = [&](const std::string& text, int y, int scale) {
         while (scale > 1 && MeasureTextWidth(scale, text) > layout.panel.w - 24) --scale;
-        DrawText(ctx.ren, layout.panel.x + (layout.panel.w - MeasureTextWidth(scale, text)) / 2, y, scale, text);
+        DrawGameText(ctx.ren, layout.panel.x + (layout.panel.w - MeasureTextWidth(scale, text)) / 2, y, scale, text);
     };
     centered("Select Difficulty", layout.panel.y + 12, layout.panel.h < 300 ? 2 : 3);
     centered("1-3 Easy   4-6 Medium   7-9 Hard", layout.panel.y + layout.panel.h * 15 / 100, 1);
@@ -1960,14 +1960,14 @@ void renderDifficultyPopup(SlimRuntime& runtime, const SlimMenuContext& ctx) {
                 }
                 if (i == 0) {
                     const int scale = MeasureTextWidth(2, "Unrated") < rect.w - size - 24 ? 2 : 1;
-                    DrawText(ctx.ren, rect.x + size + 16, rect.y + (rect.h - scale * 10) / 2, scale, "Unrated");
+                    DrawGameText(ctx.ren, rect.x + size + 16, rect.y + (rect.h - scale * 10) / 2, scale, "Unrated");
                 }
                 continue;
             }
         }
         const std::string text = i == 0 ? "Unrated" : (i == 10 ? "Apply" : (i == 11 ? "Cancel" : std::to_string(i)));
         const int scale = MeasureTextWidth(2, text) < rect.w - 12 ? 2 : 1;
-        DrawText(ctx.ren, rect.x + (rect.w - MeasureTextWidth(scale, text)) / 2,
+        DrawGameText(ctx.ren, rect.x + (rect.w - MeasureTextWidth(scale, text)) / 2,
             rect.y + (rect.h - scale * 10) / 2, scale, text);
     }
     if (runtime.difficultySaving) centered("Saving...", layout.panel.y + layout.panel.h * 80 / 100, 1);
@@ -2006,7 +2006,7 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
     int titleScale = 4;
     const int titleWidth = std::min(panel.w - 40 - previewSpace, (int)(ctx.baseScreenW / layout.scale) - 224);
     while (titleScale > 1 && MeasureTextWidth(titleScale, title) > titleWidth) --titleScale;
-    DrawText(ctx.ren, panel.x + (panel.w - previewSpace - MeasureTextWidth(titleScale, title)) / 2, panel.y + 22, titleScale, title);
+    DrawGameText(ctx.ren, panel.x + (panel.w - previewSpace - MeasureTextWidth(titleScale, title)) / 2, panel.y + 22, titleScale, title);
     if (characterPreview) {
         const Uint64 ticks = SDL_GetTicksNS();
         const float time = (float)(ticks / 1000000000.0);
@@ -2040,7 +2040,7 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
                 (runtime.hairMouse.dragging() || SlimMenuLayout::contains(card, gameX / layout.scale, gameY / layout.scale)));
         CharacterCreator::render(ctx.ren, *ctx.characterAppearance, sprite, poses[scene], time,
             1, 255, &runtime.characterParts);
-        DrawText(ctx.ren, card.x + (card.w - MeasureTextWidth(1, names[scene])) / 2,
+        DrawGameText(ctx.ren, card.x + (card.w - MeasureTextWidth(1, names[scene])) / 2,
             card.y + 64, 1, names[scene]);
     } else {
         runtime.characterPreviewTicks = 0;
@@ -2052,7 +2052,7 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
         const std::string status = runtime.waitingBind.empty()
             ? "Loading" + std::string((SDL_GetTicks() / 250) % 4, '.')
             : "Press a key for " + runtime.waitingBind;
-        DrawText(ctx.ren, panel.x + (panel.w - MeasureTextWidth(1, status)) / 2, panel.y + 70, 1, status);
+        DrawGameText(ctx.ren, panel.x + (panel.w - MeasureTextWidth(1, status)) / 2, panel.y + 70, 1, status);
     }
 
     SDL_SetRenderClipRect(ctx.ren, &layout.body);
@@ -2065,7 +2065,7 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
         if (r.y + r.h <= layout.body.y || r.y >= layout.body.y + layout.body.h) continue;
         if (item.type == MenuItem::Type::Text) {
             if (item.command == "updater_progress") {
-                DrawText(ctx.ren, r.x + (r.w - MeasureTextWidth(2, label)) / 2, r.y, 2, label);
+                DrawGameText(ctx.ren, r.x + (r.w - MeasureTextWidth(2, label)) / 2, r.y, 2, label);
                 const SDL_Rect track{r.x, r.y + 28, r.w, 12};
                 SDL_SetRenderDrawColor(ctx.ren, 35, 48, 62, 255);
                 SDL_RenderFillRect(ctx.ren, &track);
@@ -2077,13 +2077,13 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
             if (item.command == "difficulty_badge") {
                 if (!drawDifficultyBadge(runtime, ctx.ren, r, label)) {
                     const std::string fallback = "Difficulty: " + runtime.vars["detail_difficulty"];
-                    DrawText(ctx.ren, r.x + (r.w - MeasureTextWidth(2, fallback)) / 2,
+                    DrawGameText(ctx.ren, r.x + (r.w - MeasureTextWidth(2, fallback)) / 2,
                         r.y + (r.h - 20) / 2, 2, fallback);
                 }
                 continue;
             }
             const int textScale = MeasureTextWidth(2, label) <= r.w ? 2 : 1;
-            DrawText(ctx.ren, r.x + SlimMenuLayout::offset(r.w - MeasureTextWidth(textScale, label), item.labelHorizontal),
+            DrawGameText(ctx.ren, r.x + SlimMenuLayout::offset(r.w - MeasureTextWidth(textScale, label), item.labelHorizontal),
                      r.y + SlimMenuLayout::offset(r.h - textScale * 10, item.labelVertical), textScale, label);
             continue;
         }
@@ -2099,7 +2099,7 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
             SDL_SetRenderDrawColor(ctx.ren, isSelected ? 220 : 130, isSelected ? 235 : 155, 255, 255);
             SDL_RenderRect(ctx.ren, &r);
             const int textScale = MeasureTextWidth(2, sliderLabel) <= r.w - 16 ? 2 : 1;
-            DrawText(ctx.ren, r.x + (r.w - MeasureTextWidth(textScale, sliderLabel)) / 2, r.y + 8, textScale, sliderLabel);
+            DrawGameText(ctx.ren, r.x + (r.w - MeasureTextWidth(textScale, sliderLabel)) / 2, r.y + 8, textScale, sliderLabel);
             const SDL_Rect track = audioSliderTrack(r);
             SDL_SetRenderDrawColor(ctx.ren, 24, 35, 48, 255);
             SDL_RenderFillRect(ctx.ren, &track);
@@ -2148,7 +2148,7 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
                 }
             } else {
                 SDL_SetRenderDrawColor(ctx.ren, 75, 140, 175, 255); SDL_RenderFillRect(ctx.ren, &artwork);
-                DrawText(ctx.ren, artwork.x + 4, artwork.y + 4, 2, "M");
+                DrawGameText(ctx.ren, artwork.x + 4, artwork.y + 4, 2, "M");
             }
             hasIcon = true;
         } else if (item.command == "toggle") {
@@ -2162,7 +2162,7 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
         const int labelWidth = std::max(1, r.w - (hasIcon ? 2 * (iconSize + 16) : 16));
         const int labelScale = MeasureTextWidth(2, label) <= labelWidth ? 2 : 1;
         const int textInset = hasIcon ? iconSize + 16 : 8;
-        DrawText(ctx.ren, r.x + textInset + SlimMenuLayout::offset(labelWidth - MeasureTextWidth(labelScale, label), item.labelHorizontal),
+        DrawGameText(ctx.ren, r.x + textInset + SlimMenuLayout::offset(labelWidth - MeasureTextWidth(labelScale, label), item.labelHorizontal),
                  r.y + 4 + SlimMenuLayout::offset(r.h - 8 - labelScale * 10, item.labelVertical), labelScale, label);
         if (item.command == "updater" && !runtime.updater.canAct()) {
             SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_BLEND);

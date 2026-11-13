@@ -3,10 +3,6 @@
 #include <string>
 #include <SDL3/SDL.h>
 
-#if defined(DrawText)
-#undef DrawText
-#endif
-
 // All game text uses the bundled assets/Fonts/Main.ttf font.
 bool InitTextRenderer();
 void ShutdownTextRenderer();
@@ -20,7 +16,7 @@ void BeginNativeTextOverlay(SDL_Renderer* ren, int logicalW, int logicalH, const
 void FlushNativeTextOverlay(SDL_Renderer* ren);
 void CancelNativeTextOverlay(SDL_Renderer* ren);
 
-void DrawText(SDL_Renderer* ren, int x, int y, int scale, const std::string& text);
+void DrawGameText(SDL_Renderer* ren, int x, int y, int scale, const std::string& text);
 void DrawTextColored(SDL_Renderer* ren, int x, int y, int scale, const std::string& text, const SDL_Color& color);
 void DrawNumberCentered(SDL_Renderer* ren, int x, int y, int scale, int value);
 void DrawDebugNumber(SDL_Renderer* ren, int x, int y, int scale, const std::string& label, int value);
