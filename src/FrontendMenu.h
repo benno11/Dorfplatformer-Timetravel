@@ -5,6 +5,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 struct SlimMenuSession;
 namespace NativeMods { class Loader; }
@@ -78,6 +79,12 @@ struct FrontendMenuContext {
     std::function<void()> applyMenuMusicToggle;
     std::function<void()> updateDynamicResolution;
     std::function<void()> saveClientSettings;
+    std::function<void()> restartGame;
+    bool* gameLogEnabled = nullptr;
+    bool* saveLogcatToFile = nullptr;
+    std::function<void()> applyLoggingSettings;
+    std::function<std::vector<std::string>()> getLogLines;
+    std::function<std::string()> getLogPath, getLogcatStatus;
     std::function<void(int, int)> drawNotifications;
     std::function<bool()> launchUpdater;
     std::function<std::string()> getUpdaterStatusText;

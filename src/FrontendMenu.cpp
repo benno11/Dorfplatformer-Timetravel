@@ -528,6 +528,10 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx, bool settingsOnly) {
         slim.applyRenderVsync = [&]() { applyRenderVsync(); };
         slim.updateDynamicResolution = ctx.updateDynamicResolution;
         slim.saveClientSettings = ctx.saveClientSettings;
+        slim.restartGame = ctx.restartGame;
+        slim.gameLogEnabled = ctx.gameLogEnabled; slim.saveLogcatToFile = ctx.saveLogcatToFile;
+        slim.applyLoggingSettings = ctx.applyLoggingSettings;
+        slim.getLogLines = ctx.getLogLines; slim.getLogPath = ctx.getLogPath; slim.getLogcatStatus = ctx.getLogcatStatus;
         slim.drawNotifications = ctx.drawNotifications;
         slim.achievements = ctx.achievements;
         slim.signIn = [&](const std::string& email, const std::string& password, std::string& error) {

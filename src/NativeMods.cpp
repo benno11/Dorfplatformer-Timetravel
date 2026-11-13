@@ -76,6 +76,10 @@ struct Loader::Impl {
     DFHostAPI host{};
     DFPlayerState* player = nullptr;
     const DFLevelState* level = nullptr;
+    DFRunState* run = nullptr;
+    const TileAccess* tiles = nullptr;
+    Menu* menu = nullptr;
+    Entry* editing = nullptr;
     uint64_t generation = std::numeric_limits<uint64_t>::max();
     bool started = false;
     explicit Impl(const std::string& saveRoot) : root((fs::u8path(saveRoot) / "mods").u8string()), prefsPath(fs::u8path(root) / "enabled.json") {
@@ -97,6 +101,29 @@ struct Loader::Impl {
             auto* self = static_cast<Impl*>(context);
             if (!self->level || !out || out->struct_size < sizeof(DFLevelState)) return 0;
             *out = *self->level; return 1;
+        };
+        host.get_run_state = [](void* context, DFRunState* out) -> int32_t {
+            auto& self = *static_cast<Impl*>(context);
+            if (!self.run || !out || out->struct_size < sizeof(DFRunState)) return 0;
+            *out = *self.run; return 1;
+        };
+        host.set_run_state = [](void* context, const DFRunState* in) -> int32_t {
+            auto& self = *static_cast<Impl*>(context);
+            if (!self.run || !in || in->struct_size < sizeof(DFRunState) || in->coins < 0 || in->coins > 1000000 ||
+                in->lives < 0 || in->lives > 999 || in->score < 0) return 0;
+            *self.run = *in; self.run->struct_size = sizeof(DFRunState); return 1;
+        };
+        host.get_tile = [](void* context, int32_t x, int32_t y, int32_t* out) -> int32_t {
+            auto& self = *static_cast<Impl*>(context);
+            if (!out || !self.tiles || !self.tiles->get || !self.level || x < 0 || y < 0 ||
+                x >= self.level->width_tiles || y >= self.level->height_tiles) return 0;
+            *out = self.tiles->get(x, y); return 1;
+        };
+        host.set_tile = [](void* context, int32_t x, int32_t y, int32_t id) -> int32_t {
+            auto& self = *static_cast<Impl*>(context);
+            if (!self.tiles || !self.tiles->set || !self.level || x < 0 || y < 0 ||
+                x >= self.level->width_tiles || y >= self.level->height_tiles || id < 0 || id > 65535) return 0;
+            self.tiles->set(x, y, id); return 1;
         };
         if (Edition::lite) return;
         try { fs::create_directories(fs::u8path(root)); std::ifstream in(prefsPath); if (in) { in >> prefs; if (!prefs.is_object()) prefs = Json::object(); } }
@@ -126,6 +153,14 @@ struct Loader::Impl {
                 e.desired = prefs.contains(e.info.id) && prefs[e.info.id].is_boolean() ? prefs[e.info.id].get<bool>() : true;
                 e.info.enabled = e.desired;
                 e.info.name = j.value("name", e.info.id); e.info.version = j.at("version").get<std::string>();
+                // Bad/missing artwork never prevents an otherwise valid mod loading.
+                try {
+                    const auto icon = j.value("icon", std::string());
+                    if (!icon.empty()) {
+                        const auto image = contained(path, path / fs::u8path(icon));
+                        if (fs::is_regular_file(image) && fs::file_size(image) <= 2 * 1024 * 1024) e.info.icon = image.u8string();
+                    }
+                } catch (...) {}
                 const auto& api = j.at("api");
                 if (!api.at("major").is_number_integer() || (api.contains("minor") && !api["minor"].is_number_integer()))
                     throw std::runtime_error("API versions must be integers");
@@ -184,6 +219,8 @@ struct Loader::Impl {
             if (e.callbacks.struct_size < offsetof(DFModCallbacks, on_level_start) + sizeof(e.callbacks.on_level_start)) e.callbacks.on_level_start = nullptr;
             if (e.callbacks.struct_size < offsetof(DFModCallbacks, on_update) + sizeof(e.callbacks.on_update)) e.callbacks.on_update = nullptr;
             if (e.callbacks.struct_size < offsetof(DFModCallbacks, on_unload) + sizeof(e.callbacks.on_unload)) e.callbacks.on_unload = nullptr;
+            if (e.callbacks.struct_size < offsetof(DFModCallbacks, on_menu_load) + sizeof(e.callbacks.on_menu_load)) e.callbacks.on_menu_load = nullptr;
+            if (e.callbacks.struct_size < offsetof(DFModCallbacks, on_menu_action) + sizeof(e.callbacks.on_menu_action)) e.callbacks.on_menu_action = nullptr;
             e.info.loaded = true; e.info.status = "Loaded"; loadOrder.push_back(&e); return true;
         } catch (const std::exception& error) { e.info.status = error.what(); }
         catch (...) { e.info.status = "Mod threw during initialization"; }
@@ -203,7 +240,7 @@ void Loader::start() {
     for (auto& e : impl->entries) { std::set<Impl::Entry*> visiting; impl->load(*e, visiting); }
 }
 void Loader::shutdown() {
-    impl->player = nullptr; impl->level = nullptr;
+    impl->player = nullptr; impl->level = nullptr; impl->run = nullptr; impl->tiles = nullptr;
     for (auto it = impl->loadOrder.rbegin(); it != impl->loadOrder.rend(); ++it) {
         auto& e = **it;
         try { if (e.callbacks.on_unload) e.callbacks.on_unload(e.callbacks.userdata); } catch (...) {}
@@ -237,8 +274,9 @@ bool Loader::toggle(const std::string& id, std::string& status) {
     }
     status = "This mod cannot be enabled. Check its API and native library."; return false;
 }
-void Loader::tick(double seconds, DFPlayerState& player, const DFLevelState& level, uint64_t generation) {
-    impl->player = &player; impl->level = &level;
+void Loader::tick(double seconds, DFPlayerState& player, const DFLevelState& level, uint64_t generation,
+                  DFRunState* run, const TileAccess* tiles) {
+    impl->player = &player; impl->level = &level; impl->run = run; impl->tiles = tiles;
     const bool newLevel = impl->generation != generation; impl->generation = generation;
     for (auto* e : impl->loadOrder) if (e->info.loaded) {
         try {
@@ -246,6 +284,73 @@ void Loader::tick(double seconds, DFPlayerState& player, const DFLevelState& lev
             if (e->callbacks.on_update) e->callbacks.on_update(e->callbacks.userdata, std::clamp(seconds, 0.0, 0.25));
         } catch (...) { e->info.loaded = false; e->info.status = "Disabled after callback exception; restart required"; }
     }
-    impl->player = nullptr; impl->level = nullptr;
+    impl->player = nullptr; impl->level = nullptr; impl->run = nullptr; impl->tiles = nullptr;
 }
+void Loader::editMenu(Menu& menu) {
+    if (Edition::lite) return;
+    impl->menu = &menu;
+    DFMenuAPI api{}; api.struct_size = sizeof(api); api.context = impl.get(); api.menu_id = menu.id.c_str();
+    api.count = [](void* c) -> uint32_t { auto* self = static_cast<Impl*>(c); return self->menu ? static_cast<uint32_t>(self->menu->items.size()) : 0; };
+    api.get = [](void* c, uint32_t index, DFMenuItem* out) -> int32_t {
+        auto* self = static_cast<Impl*>(c);
+        if (!self->menu || !out || out->struct_size < sizeof(DFMenuItem) || index >= self->menu->items.size()) return 0;
+        const auto& row = self->menu->items[index]; *out = {}; out->struct_size = sizeof(*out); out->type = row.type;
+        auto copy = [](char* to, size_t size, const std::string& from) { std::memcpy(to, from.data(), std::min(size - 1, from.size())); };
+        copy(out->label, sizeof(out->label), row.label); copy(out->command, sizeof(out->command), row.command);
+        copy(out->argument, sizeof(out->argument), row.argument); return 1;
+    };
+    auto row = [](Impl* self, const DFMenuItem* in, MenuItem& out) {
+        if (!self->menu || !self->editing || !in || in->struct_size < sizeof(DFMenuItem) ||
+            in->type < DF_MENU_TEXT || in->type > DF_MENU_SLIDER) return false;
+        auto text = [](const char* p, size_t capacity, std::string& value) {
+            const auto* end = static_cast<const char*>(std::memchr(p, 0, capacity));
+            if (!end) return false; value.assign(p, end); return true;
+        };
+        out.type = in->type;
+        if (!text(in->label, sizeof(in->label), out.label) || !text(in->command, sizeof(in->command), out.command) ||
+            !text(in->argument, sizeof(in->argument), out.argument)) return false;
+        if (out.command == "mod_action" && out.argument.find(':') == std::string::npos)
+            out.argument = self->editing->info.id + ":" + out.argument;
+        return true;
+    };
+    // Noncapturing functions share the validated converter through a local static.
+    using Converter = bool (*)(Impl*, const DFMenuItem*, MenuItem&);
+    static const Converter convert = row;
+    api.set = [](void* c, uint32_t index, const DFMenuItem* in) -> int32_t {
+        auto* self = static_cast<Impl*>(c); MenuItem item;
+        if (!self->menu || index >= self->menu->items.size() || !convert(self, in, item)) return 0;
+        item.originalIndex = self->menu->items[index].originalIndex;
+        self->menu->items[index] = std::move(item); return 1;
+    };
+    api.insert = [](void* c, uint32_t index, const DFMenuItem* in) -> int32_t {
+        auto* self = static_cast<Impl*>(c); MenuItem item;
+        if (!self->menu || self->menu->items.size() >= 512 || index > self->menu->items.size() || !convert(self, in, item)) return 0;
+        self->menu->items.insert(self->menu->items.begin() + index, std::move(item)); return 1;
+    };
+    api.remove = [](void* c, uint32_t index) -> int32_t {
+        auto* self = static_cast<Impl*>(c);
+        if (!self->menu || index >= self->menu->items.size()) return 0;
+        self->menu->items.erase(self->menu->items.begin() + index); return 1;
+    };
+    api.set_title = [](void* c, const char* title) -> int32_t {
+        auto* self = static_cast<Impl*>(c); if (!self->menu || !title) return 0;
+        size_t length = 0; while (length < 256 && title[length]) ++length;
+        if (length == 256) return 0; self->menu->title.assign(title, length); return 1;
+    };
+    for (auto* entry : impl->loadOrder) if (entry->info.loaded && entry->callbacks.on_menu_load) {
+        impl->editing = entry;
+        try { entry->callbacks.on_menu_load(entry->callbacks.userdata, &api); }
+        catch (...) { entry->info.loaded = false; entry->info.status = "Disabled after menu callback exception"; }
+    }
+    impl->editing = nullptr; impl->menu = nullptr;
+}
+void Loader::menuAction(const std::string& menu, const std::string& action) {
+    const auto separator = action.find(':'); if (separator == std::string::npos || Edition::lite) return;
+    for (auto* entry : impl->loadOrder) if (entry->info.loaded && entry->info.id == action.substr(0, separator) && entry->callbacks.on_menu_action) {
+        try { entry->callbacks.on_menu_action(entry->callbacks.userdata, menu.c_str(), action.substr(separator + 1).c_str()); }
+        catch (...) { entry->info.loaded = false; entry->info.status = "Disabled after menu action exception"; }
+        break;
+    }
+}
+
 }

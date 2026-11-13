@@ -70,6 +70,7 @@ struct MenuItem {
     std::string label;
     std::string command;
     std::string arg;
+    std::string iconPath;
     SlimMenuLayout::Align horizontal = SlimMenuLayout::Align::Center;
     SlimMenuLayout::Align vertical = SlimMenuLayout::Align::Center;
     SlimMenuLayout::Align labelHorizontal = SlimMenuLayout::Align::Center;
@@ -136,6 +137,7 @@ struct SlimRuntime {
     SDL_Texture* menuTexture = nullptr;
     bool ownsMenuTexture = true;
     std::unordered_map<std::string, Frame> menuFrames;
+    std::unordered_map<std::string, SDL_Texture*> modIcons;
     SDL_Texture* difficultyTexture = nullptr;
     Frame difficultyFrame{};
     bool difficultyAssetLoaded = false;
@@ -168,6 +170,7 @@ struct SlimRuntime {
         if (accountInputWindow) SDL_StopTextInput(accountInputWindow);
         if (menuTexture && ownsMenuTexture) SDL_DestroyTexture(menuTexture);
         if (difficultyTexture) SDL_DestroyTexture(difficultyTexture);
+        for (const auto& icon : modIcons) if (icon.second) SDL_DestroyTexture(icon.second);
     }
 };
 
@@ -277,6 +280,8 @@ std::string saveSlotStatus(int slotIndex, const SlimMenuContext& ctx) {
 }
 
 bool* boolSettingPtr(const std::string& var, SlimMenuContext& ctx) {
+    if (var == "game_log_enabled") return ctx.gameLogEnabled;
+    if (var == "save_logcat_to_file") return ctx.saveLogcatToFile;
     if (var == "fullscreen") return ctx.fullscreen;
     if (var == "vsync_enabled") return ctx.vsyncEnabled;
     if (var == "camera_clamp_x") return ctx.clampCamX;
@@ -421,7 +426,7 @@ bool varIsTruthy(const std::string& name, const SlimRuntime& runtime, const Slim
 
 std::string expandVars(std::string text, const SlimRuntime& runtime, const SlimMenuContext& ctx) {
     if (text.find("${") == std::string::npos) return text;
-    for (const char* name : {"account_email", "account_password", "about_game_name", "clipboard_status"})
+    for (const char* name : {"account_email", "account_password", "about_game_name", "clipboard_status", "game_log_enabled", "save_logcat_to_file"})
         text = replaceAll(text, "${" + std::string(name) + "}", contextVarValue(name, runtime, ctx));
     for (const char* var : {"world_select_unlocked", "hardmode_unlocked", "hardmode_complete", "hardmode_furthest_level", "hardmode_save_exists"}) {
         const std::string placeholder = "${" + std::string(var) + "}";
@@ -584,6 +589,39 @@ UpdaterMenu::State readUpdaterState(const SlimMenuContext& ctx) {
 
 SlimMenu loadMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuContext& ctx) {
     if (!Edition::menuAllowed(name)) return loadMenu("mainsetting", runtime, ctx);
+    if (name == "settingslogging" || name == "gamelog") {
+        SlimMenu menu; menu.name = name; menu.title = name == "gamelog" ? "Game Log" : "Logging";
+        auto text = [&](const std::string& label) { MenuItem item; item.label = label; menu.items.push_back(item); };
+        auto button = [&](const std::string& label, const std::string& command, const std::string& arg) {
+            MenuItem item; item.type = MenuItem::Type::Button; item.label = label; item.command = command; item.arg = arg; menu.items.push_back(item);
+        };
+        if (name == "settingslogging") {
+            button("Game Logging: ${game_log_enabled}", "toggle", "game_log_enabled");
+#ifdef __ANDROID__
+            button("Save Logcat to File: ${save_logcat_to_file}", "toggle", "save_logcat_to_file");
+            if (ctx.getLogcatStatus) text(ctx.getLogcatStatus());
+#endif
+            button("View Game Log", "menu", "gamelog");
+        } else {
+            button("Refresh", "menu", "gamelog");
+            if (ctx.getLogPath) button("Copy Log File Path", "copy", ctx.getLogPath());
+            button("Back", "menu", "settingslogging");
+            text("Recent messages (logging must be enabled).");
+            const auto lines = ctx.getLogLines ? ctx.getLogLines() : std::vector<std::string>{};
+            const size_t first = lines.size() > 50 ? lines.size() - 50 : 0;
+            for (size_t i = first; i < lines.size(); ++i) {
+                auto line = lines[i].substr(0, 160);
+                std::replace(line.begin(), line.end(), '\n', ' '); std::replace(line.begin(), line.end(), '\r', ' ');
+                text(line); menu.items.back().command = "literal_log";
+            }
+            if (lines.empty()) text("No log messages recorded.");
+        }
+        if (name == "settingslogging") {
+            if (ctx.getLogPath) button("Copy Log File Path", "copy", ctx.getLogPath());
+            button("Back", "menu", "mainsetting");
+        }
+        return menu;
+    }
     if (name == "achievements") {
         SlimMenu menu; menu.name = name; menu.title = "Achievements";
         auto text = [&](const std::string& label) { MenuItem item; item.label = label; menu.items.push_back(item); };
@@ -611,11 +649,12 @@ SlimMenu loadMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuC
         auto button = [&](const std::string& label, const std::string& command, const std::string& arg = "") {
             MenuItem item; item.type = MenuItem::Type::Button; item.label = label; item.command = command; item.arg = arg; menu.items.push_back(item);
         };
-        text("Mod API 1.0 - " + NativeMods::Loader::platform());
+        text("Mod API 1.1 - " + NativeMods::Loader::platform());
         text(runtime.vars.count("mod_status") ? runtime.vars["mod_status"] : "Changes apply after restarting the game.");
         if (ctx.mods) {
             for (const auto& mod : ctx.mods->list()) {
                 button(mod.name + " " + mod.version + (mod.enabled ? " [ON]" : " [OFF]"), "mod_toggle", mod.id);
+                menu.items.back().iconPath = mod.icon;
                 text(mod.status);
             }
             if (ctx.mods->list().empty()) text("No mods installed. Add a folder containing mod.json.");
@@ -626,6 +665,7 @@ SlimMenu loadMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuC
 #endif
             button("Copy Mods Folder Path", "mod_path");
             button("Scan for Installed Mods", "mod_scan");
+            button("Restart Game", "mod_restart");
         } else text("Native mod loader is unavailable.");
         button("Back", "menu", "mainsetting");
         return menu;
@@ -1771,7 +1811,7 @@ SlimMenuLayout::Layout layoutFor(const SlimMenu& menu, const SlimRuntime& runtim
             items.push_back({buttonWidth, 44, item.horizontal, item.vertical});
             continue;
         }
-        items.push_back({button ? buttonWidth : MeasureTextWidth(2, expandVars(item.label, runtime, ctx)),
+        items.push_back({button ? buttonWidth : MeasureTextWidth(2, item.command == "literal_log" ? item.label : expandVars(item.label, runtime, ctx)),
                          item.type == MenuItem::Type::Slider ? 80 : (button ? 54 : 24), item.horizontal, item.vertical});
     }
     return SlimMenuLayout::build(ctx.baseScreenW, ctx.baseScreenH, menu.scale, menu.horizontal, menu.vertical, items);
@@ -2019,7 +2059,7 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
     int buttonIndex = 0;
     for (size_t index = 0; index < menu.items.size(); ++index) {
         const auto& item = menu.items[index];
-        const std::string label = expandVars(item.label, runtime, ctx);
+        const std::string label = item.command == "literal_log" ? item.label : expandVars(item.label, runtime, ctx);
         SDL_Rect r = SlimMenuLayout::scrolled(layout.items[index], runtime.scrollY);
         const bool isSelected = item.type != MenuItem::Type::Text && buttonIndex++ == selected;
         if (r.y + r.h <= layout.body.y || r.y >= layout.body.y + layout.body.h) continue;
@@ -2087,7 +2127,31 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
         const int iconSize = std::max(12, std::min(36, r.h - 6));
         const SDL_Rect icon{r.x + r.w - iconSize - 8, r.y + (r.h - iconSize) / 2, iconSize, iconSize};
         bool hasIcon = false;
-        if (item.command == "toggle") {
+        if (item.command == "mod_toggle") {
+            SDL_Rect artwork{r.x + 8, r.y + (r.h - iconSize) / 2, iconSize, iconSize};
+            SDL_Texture* texture = nullptr;
+            if (!item.iconPath.empty()) {
+                auto found = runtime.modIcons.find(item.iconPath);
+                if (found == runtime.modIcons.end()) {
+                    SDL_Surface* surface = IMG_Load(item.iconPath.c_str());
+                    if (surface && surface->w <= 1024 && surface->h <= 1024) texture = SDL_CreateTextureFromSurface(ctx.ren, surface);
+                    if (surface) SDL_DestroySurface(surface);
+                    runtime.modIcons[item.iconPath] = texture;
+                } else texture = found->second;
+            }
+            if (texture) {
+                float width = 0, height = 0; SDL_GetTextureSize(texture, &width, &height);
+                if (width > 0 && height > 0) {
+                    const float fit = std::min(artwork.w / width, artwork.h / height);
+                    SDL_FRect dst{artwork.x + (artwork.w - width * fit) / 2, artwork.y + (artwork.h - height * fit) / 2, width * fit, height * fit};
+                    SDL_RenderTexture(ctx.ren, texture, nullptr, &dst);
+                }
+            } else {
+                SDL_SetRenderDrawColor(ctx.ren, 75, 140, 175, 255); SDL_RenderFillRect(ctx.ren, &artwork);
+                DrawText(ctx.ren, artwork.x + 4, artwork.y + 4, 2, "M");
+            }
+            hasIcon = true;
+        } else if (item.command == "toggle") {
             const std::string value = boolSettingValue(normalizeVarName(expandVars(item.arg, runtime, ctx)), ctx);
             if (!value.empty()) {
                 hasIcon = drawMenuSprite(runtime, ctx.ren, value == "ON" ? "checkbox_active" : "checkbox_disabled", icon);
@@ -2169,6 +2233,7 @@ bool toggleBool(const std::string& name, SlimMenuContext& ctx) {
         if (!ctx.applyFullscreen(next)) return false;
     }
     *target = next;
+    if ((var == "game_log_enabled" || var == "save_logcat_to_file") && ctx.applyLoggingSettings) ctx.applyLoggingSettings();
     if (var == "vsync_enabled" && ctx.applyRenderVsync) ctx.applyRenderVsync();
     if (var == "native_text_resolution_enabled") SetNativeTextResolutionEnabled(*target);
     if (var == "menu_music_enabled" && ctx.applyMenuMusicToggle) ctx.applyMenuMusicToggle();
@@ -2227,6 +2292,10 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
     const std::string arg = expandVars(item.arg, runtime, ctx);
     if (!Edition::commandAllowed(command, arg)) return SlimMenuExit::Continue;
     if (command.rfind("mod_", 0) == 0 && ctx.mods) {
+        if (command == "mod_action") {
+            ctx.mods->menuAction(currentMenu, arg); runtime.vars["__reload_menu"] = "1";
+        }
+        if (command == "mod_restart" && ctx.restartGame) ctx.restartGame();
         if (command == "mod_toggle") ctx.mods->toggle(arg, runtime.vars["mod_status"]);
         if (command == "mod_scan") { ctx.mods->rescan(); runtime.vars["mod_status"] = "Scan complete. Restart to load newly installed mods."; }
         if (command == "mod_path") runtime.vars["mod_status"] = SDL_SetClipboardText(ctx.mods->folder().c_str()) ? "Mods folder path copied." : "Could not copy folder path.";
@@ -2769,6 +2838,22 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
         }
         runtime.buttonAnimations.clear();
         SlimMenu menu = loadMenu(currentMenu, runtime, ctx);
+        if (ctx.mods && !Edition::lite) {
+            NativeMods::Menu extension{menu.name, menu.title, {}};
+            for (size_t i = 0; i < menu.items.size(); ++i) {
+                const auto& item = menu.items[i];
+                extension.items.push_back({static_cast<int>(item.type), item.label, item.command, item.arg, static_cast<int>(i)});
+            }
+            ctx.mods->editMenu(extension);
+            const auto original = menu.items;
+            menu.title = extension.title; menu.items.clear();
+            for (const auto& row : extension.items) {
+                MenuItem item;
+                if (row.originalIndex >= 0 && row.originalIndex < static_cast<int>(original.size())) item = original[row.originalIndex];
+                item.type = static_cast<MenuItem::Type>(row.type); item.label = row.label; item.command = row.command; item.arg = row.argument;
+                menu.items.push_back(std::move(item));
+            }
+        }
         if (Edition::lite) {
             menu.items.erase(std::remove_if(menu.items.begin(), menu.items.end(), [](const MenuItem& item) {
                 return !Edition::commandAllowed(item.command, item.arg) ||

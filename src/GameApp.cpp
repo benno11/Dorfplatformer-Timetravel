@@ -1,5 +1,7 @@
+#include "GameApp.h"
 #include "EditionPolicy.h"
 #include "NativeMods.h"
+#include "GameLog.h"
 #include "ScoreSystem.h"
 #include <SDL3/SDL.h>
 #include <SDL3_image/SDL_image.h>
@@ -223,23 +225,21 @@ int RunGameApp(int argc, char** argv) {
             allowDevTools = true;
         }
     }
-#if defined(_WIN32)
-    if (enableGameLog) {
-        std::filesystem::create_directories("build");
-        FILE* out = nullptr;
-        FILE* err = nullptr;
-        freopen_s(&out, "build\\game.log", "a", stdout);
-        freopen_s(&err, "build\\game.log", "a", stderr);
-    }
-#endif
-    if (!enableGameLog) {
-        SDL_LogSetAllPriority(SDL_LOG_PRIORITY_CRITICAL);
-        SDL_SetLogOutputFunction(
-            +[](void*, int, SDL_LogPriority, const char*) {
-                // Normal GUI launches should stay silent even when started from cmd.exe.
-            },
-            nullptr);
-    }
+    bool saveLogcatToFile = false;
+    const std::string earlySaveRoot = GetAppSaveRootPath();
+    try {
+        const auto path = earlySaveRoot.empty() ? std::filesystem::path(Edition::lite ? "client_settings_lite.json" : "client_settings.json") :
+            std::filesystem::u8path(earlySaveRoot) / "client_settings.json";
+        std::ifstream settings(path); nlohmann::json document;
+        if (settings) {
+            settings >> document;
+            if (document.contains("logging") && document["logging"].is_object()) {
+                enableGameLog = enableGameLog || document["logging"].value("game_log_enabled", false);
+                saveLogcatToFile = document["logging"].value("save_logcat_to_file", false);
+            }
+        }
+    } catch (...) {}
+    GameLog gameLog(earlySaveRoot, enableGameLog);
     const std::string buildUuid = makeBuildUuid();
     auto reportStartupError = [](const char* title, const std::string& msg, SDL_Window* parent) {
 #if PLATFORMER_MOBILE
@@ -1676,6 +1676,7 @@ int RunGameApp(int argc, char** argv) {
     int sfxVolume = 96;   // 0..128
     const std::string localClientSettingsPath = Edition::lite ? "client_settings_lite.json" : "client_settings.json";
     const std::string appSaveRootPath = GetAppSaveRootPath();
+    bool restartRequested = false;
     NativeMods::Loader nativeMods(appSaveRootPath);
     nativeMods.start();
     constexpr const char* kSavedGameSelectionToken = "__DF_SAVEGAME_CONTINUE__";
@@ -1693,8 +1694,31 @@ int RunGameApp(int argc, char** argv) {
     };
     Achievements achievements;
     bool serverSwapNoticeShown = false;
+    std::string logcatStatus;
+    auto applyLoggingSettings = [&]() {
+        gameLog.setEnabled(enableGameLog);
+#ifdef __ANDROID__
+        auto* env = static_cast<JNIEnv*>(SDL_GetAndroidJNIEnv());
+        auto activity = static_cast<jobject>(SDL_GetAndroidActivity());
+        bool ok = false;
+        if (env && activity) {
+            const auto cls = env->GetObjectClass(activity);
+            const auto method = env->GetMethodID(cls, "setLogcatSaving", "(ZLjava/lang/String;)Z");
+            const auto path = (std::filesystem::u8path(appSaveRootPath) / "logs/logcat.txt").u8string();
+            auto value = env->NewStringUTF(path.c_str());
+            if (method) ok = env->CallBooleanMethod(activity, method, saveLogcatToFile, value);
+            if (env->ExceptionCheck()) { env->ExceptionClear(); ok = false; }
+            env->DeleteLocalRef(value); env->DeleteLocalRef(cls); env->DeleteLocalRef(activity);
+        }
+        logcatStatus = !saveLogcatToFile ? "OFF" : (ok ? "Saving to logs/logcat.txt" : "Could not start logcat capture");
+#else
+        logcatStatus = "Android only";
+#endif
+    };
+    applyLoggingSettings();
     auto saveClientSettings = [&]() {
         nlohmann::json j;
+        j["logging"] = {{"game_log_enabled", enableGameLog}, {"save_logcat_to_file", saveLogcatToFile}};
         j["achievements"] = achievements.save();
         j["custom_character"] = CharacterCreator::save(characterAppearance);
         j["build_uuid"] = buildUuid;
@@ -2412,6 +2436,13 @@ int RunGameApp(int argc, char** argv) {
     uint64_t modLevelGeneration = 0;
     FrontendMenuContext frontendCtx{};
     frontendCtx.mods = &nativeMods;
+    frontendCtx.restartGame = [&]() { saveClientSettings(); restartRequested = true; running = false; };
+    frontendCtx.gameLogEnabled = &enableGameLog;
+    frontendCtx.saveLogcatToFile = &saveLogcatToFile;
+    frontendCtx.applyLoggingSettings = applyLoggingSettings;
+    frontendCtx.getLogLines = [&]() { return gameLog.lines(); };
+    frontendCtx.getLogPath = [&]() { return gameLog.path(); };
+    frontendCtx.getLogcatStatus = [&]() { return logcatStatus; };
     frontendCtx.drawNotifications = drawAchievementToast;
     frontendCtx.achievements = &achievements;
     MigrateLegacyGameProgression(activeSaveSlotIndex);
@@ -7414,7 +7445,13 @@ int RunGameApp(int argc, char** argv) {
                 player.onGround ? 1 : 0, player.facing, player.hasShield ? 1 : 0};
             const DFLevelState modLevel{sizeof(DFLevelState), loadedLevelId(), levelManager.worldId(),
                 levelManager.levelPartId(), levelManager.timeId(), map.w, map.h, map.tileSize};
-            nativeMods.tick(dtPrecise, modPlayer, modLevel, modLevelGeneration);
+            DFRunState modRun{sizeof(DFRunState), levelManager.coinCount(), livesCount, scoreCount};
+            NativeMods::TileAccess tiles;
+            tiles.get = [&](int x, int y) { return static_cast<int>(map.tileIds[y * map.w + x]); };
+            tiles.set = [&](int x, int y, int id) { levelManager.setTileAt(map, y * map.w + x, static_cast<unsigned short>(id)); };
+            nativeMods.tick(dtPrecise, modPlayer, modLevel, modLevelGeneration, &modRun, &tiles);
+            levelManager.resetCoinCount(); levelManager.addCoins(modRun.coins);
+            livesCount = modRun.lives; scoreCount = modRun.score;
             player.x = modPlayer.x; player.y = modPlayer.y; player.vx = modPlayer.velocity_x; player.vy = modPlayer.velocity_y;
             player.onGround = modPlayer.on_ground != 0; player.facing = modPlayer.facing < 0 ? -1 : 1; player.hasShield = modPlayer.has_shield != 0;
         }
@@ -9624,6 +9661,7 @@ int RunGameApp(int argc, char** argv) {
             SDL_RenderPresent(debugRen);
         }
         }
+        if (restartRequested && saveGameToDisk) (void)saveGameToDisk();
         clearCheckpoint();
         if (!running) break;
         stopReplayRecording(returnToSelect ? "return_to_select" : "level_end");
@@ -9667,5 +9705,5 @@ int RunGameApp(int argc, char** argv) {
     SDL_Log("Shutting down");
     CrashReporter::stop();
     SDL_Quit();
-    return 0;
+    return restartRequested ? kGameRestartExitCode : 0;
 }

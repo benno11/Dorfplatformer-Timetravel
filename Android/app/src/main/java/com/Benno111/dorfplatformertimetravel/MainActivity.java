@@ -25,6 +25,18 @@ import java.nio.charset.StandardCharsets;
 
 public class MainActivity extends SDLActivity {
     private static final int NATIVE_MOD_IMPORT = 0x4d31;
+    private final LogcatRecorder logcatRecorder = new LogcatRecorder();
+    // Called from the native Logging settings; all logcat input is PID-filtered.
+    public boolean setLogcatSaving(boolean enabled, String path) {
+        getSharedPreferences("diagnostics", MODE_PRIVATE).edit().putBoolean("save_logcat", enabled)
+            .putString("logcat_path", path).apply();
+        return logcatRecorder.setEnabled(enabled, new java.io.File(path), Integer.toString(android.os.Process.myPid()));
+    }
+    @Override
+    protected void onDestroy() {
+        logcatRecorder.stop();
+        super.onDestroy();
+    }
     private String nativeModImportRoot;
 
     // Called by the native Mods menu; Android's document picker grants access
@@ -409,6 +421,10 @@ public class MainActivity extends SDLActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        android.content.SharedPreferences diagnostics = getSharedPreferences("diagnostics", MODE_PRIVATE);
+        final String logcatPath = diagnostics.getString("logcat_path", "");
+        if (diagnostics.getBoolean("save_logcat", false) && !logcatPath.isEmpty())
+            logcatRecorder.setEnabled(true, new java.io.File(logcatPath), Integer.toString(android.os.Process.myPid()));
         preloadNativeLibraries();
         // Guard against stale recreate flags before SDL native thread exists.
         if (mSDLThread == null) {

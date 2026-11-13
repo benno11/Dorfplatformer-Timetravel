@@ -25,7 +25,7 @@ int main(int argc, char** argv) {
             {"libraries", {{NativeMods::Loader::platform(), lib.string()}}}, {"dependencies", dependencies}};
         std::ofstream(folder / "mod.json") << j;
     };
-    manifest("good"); manifest("minimal.prefix"); manifest("disabled"); manifest("wrong.major", 2); manifest("future.minor", 1, 1);
+    manifest("good"); manifest("minimal.prefix"); manifest("disabled"); manifest("wrong.major", 2); manifest("future.minor", 1, 2);
     manifest("missing.dependency", 1, 0, {"not.installed"});
     manifest("cycle.a", 1, 0, {"cycle.b"}); manifest("cycle.b", 1, 0, {"cycle.a"});
     manifest("overflow.major");
@@ -59,6 +59,33 @@ int main(int argc, char** argv) {
         for (const auto& mod : loader.list()) if (mod.id == "good") assert(!mod.loaded && !mod.enabled);
         else if (mod.id == "disabled") assert(mod.loaded && mod.enabled);
     }
+    fs::remove_all(root / "mods");
+    manifest("enhanced", 1, 1);
+    { auto path = root / "mods/enhanced/mod.json"; std::ifstream in(path); nlohmann::json j; in >> j;
+      j["icon"] = "icon.png"; std::ofstream(path) << j;
+      std::ofstream(root / "mods/enhanced/icon.png") << "fixture artwork"; }
+    {
+        NativeMods::Loader loader(root.string()); loader.start();
+        assert(loader.list().size() == 1 && loader.list()[0].loaded && !loader.list()[0].icon.empty());
+        DFPlayerState p{sizeof(p), 1, 2, 0, 0, 1, 1, 0};
+        DFLevelState level{sizeof(level), 1, 1, 1, 1, 3, 3, 32};
+        DFRunState run{sizeof(run), 2, 5, 100}; int tile = 2, writes = 0;
+        NativeMods::TileAccess tiles;
+        tiles.get = [&](int x, int y) { assert(x == 1 && y == 1); return tile; };
+        tiles.set = [&](int x, int y, int id) { assert(x == 1 && y == 1); tile = id; ++writes; };
+        loader.tick(.1, p, level, 1, &run, &tiles);
+        assert(run.coins == 5 && run.lives == 6 && run.score == 150 && tile == 7 && writes == 1);
+        NativeMods::Menu menu{"mainsetting", "Settings", {{DF_MENU_BUTTON, "Original", "back", "", 0}}};
+        loader.editMenu(menu);
+        assert(menu.title == "Modified by mod" && menu.items.size() == 2 && menu.items[0].label == "Edited row");
+        assert(menu.items[0].originalIndex == 0 && menu.items[1].originalIndex == -1 && menu.items[1].argument == "enhanced:press");
+        loader.menuAction(menu.id, menu.items[1].argument);
+        std::ifstream action(root / "mods/.config/enhanced/action"); std::string text; std::getline(action, text);
+        assert(text == "mainsetting|press");
+    }
+    { auto path = root / "mods/enhanced/mod.json"; std::ifstream in(path); nlohmann::json j; in >> j;
+      j["icon"] = "../../outside.png"; std::ofstream(path) << j; }
+    { NativeMods::Loader loader(root.string()); loader.start(); assert(loader.list()[0].loaded && loader.list()[0].icon.empty()); }
     fs::remove_all(root / "mods");
     manifest("a.dependent", 1, 0, {"z.base"}); manifest("z.base");
     {

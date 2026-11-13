@@ -1,4 +1,4 @@
-# Native mod SDK — API 1.0
+# Native mod SDK — API 1.1
 
 Full-edition Windows, Linux, macOS, and Android builds can load native mods.
 Settings → Mods lists installed mods, API/platform errors, and loaded state.
@@ -108,7 +108,7 @@ or level structures. Stop/join any worker threads in `on_unload`.
 - `on_unload` runs in reverse load order at shutdown, followed by library unload.
   Toggle changes are deferred until restart; loaded native code is not hot-swapped.
 
-API 1.0 intentionally exposes gameplay state instead of private C++ pointers.
+The API exposes gameplay state instead of private C++ pointers.
 Additional supported hooks can be added under the compatibility rules above.
 
 ## Verification
@@ -124,3 +124,59 @@ The Android archive extractor has a standalone Java regression test:
 javac -d archive-tests Android/app/src/main/java/com/Benno111/dorfplatformertimetravel/NativeModArchive.java tests/NativeModArchiveTest.java
 java -cp archive-tests NativeModArchiveTest
 ```
+
+## API 1.1: game features and menus
+
+The host now appends `get_run_state`, `set_run_state`, `get_tile`, and `set_tile`
+to `DFHostAPI`. Check `api_minor >= 1` and `struct_size` before accessing them.
+Use `DFRunState` to read/write coins, lives, and score during gameplay callbacks.
+Values must be nonnegative, lives at most 999 and coins at most 1,000,000.
+Tiles use zero-based coordinates and IDs 0–65535. Tile edits update gameplay
+collision/attributes through the normal game tile setter. Invalid calls return
+0 without changing the game. These functions return 0 outside gameplay callbacks.
+
+Optional `on_menu_load(userdata, menu)` runs after a Slim menu is loaded/generated,
+before its first frame. Mods run in dependency/load order. The `DFMenuAPI` can
+read, replace, insert, and remove rows, and replace the title. `DFMenuItem` carries
+fixed-size, null-terminated UTF-8 buffers. New insertions are limited to 512 rows.
+Original alignment/icons are retained for existing rows. Use `DF_MENU_TEXT`,
+`DF_MENU_BUTTON`, or `DF_MENU_SLIDER` and existing game command/argument strings.
+
+For a mod-owned button, set `command` to `mod_action` and `argument` to a local
+action name. The loader namespaces it with your mod ID and calls
+`on_menu_action(userdata, menu_id, action)` only for that loaded mod. Update your
+mod's own state in that callback; gameplay host access is unavailable in menus.
+The menu reloads after the action, so its labels can reflect the new state.
+Do not retain the menu API pointer or call its functions after `on_menu_load`.
+See `example/auto_hop.c` for an optional Mods-menu toggle: it checks callback
+capacity and continues to work on API 1.0 hosts without its optional menu hooks.
+The previously exported API 1.0 ZIP remains compatible with the new loader.
+
+## Icons, restart, and diagnostics
+
+Add optional `"icon": "icon.png"` to `mod.json`. The path must stay inside the
+mod folder, the file must be at most 2 MiB, and decoded dimensions at most
+1024×1024. The menu preserves aspect ratio. Missing/invalid artwork uses the
+standard mod icon and does not stop the native mod from loading.
+
+**Settings → Mods → Restart Game** saves settings/current campaign area and
+reinitializes the game, renderer, audio, networking and native mod loader. Mod
+unload callbacks run before libraries unload; pending enable/disable choices
+apply on restart. This works within the existing application on desktop and
+Android, without spawning a second game process. Mods must clean up threads and
+resources in `on_unload`.
+
+**Settings → Logging** enables the game log live and persists the choice. The
+in-game viewer shows recent messages; full output is in `logs/game.log` under
+the game's user-data directory. The viewer can copy the file path. Logging is
+off by default; `--enable-game-log` still enables it at startup. Logs rotate at
+8 MiB to a single `.previous` file, and the viewer retains 200 messages (showing
+the most recent 50).
+
+Android also offers **Save Logcat to File**. It captures only this app's PID to
+`logs/logcat.txt`, including Java and SDL/native output allowed by the device.
+The choice is mirrored in Activity preferences to begin capture before native
+startup on subsequent launches. Disable/destroy stops the child process; logs
+rotate at 8 MiB. No `READ_LOGS` permission or access to other apps' logs is used.
+Game logging and Android logcat capture are independently selectable, including
+in Lite (native mods remain Full-only).

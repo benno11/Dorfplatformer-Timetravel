@@ -21,7 +21,7 @@ inline bool menuAllowed(const std::string& menu) {
     if (!lite) return true;
     for (const auto* allowed : {"mainsetting", "mainplay", "saveplay", "worldselect", "savesettings", "savedelete",
         "settingsgeneral", "settingsdisplay", "settingsaudio", "settingscontrols", "settingsdebug",
-        "settingsabout", "settingsaboutrevision", "settingsupdater", "achievements"})
+        "settingsabout", "settingsaboutrevision", "settingsupdater", "achievements", "settingslogging", "gamelog"})
         if (menu == allowed) return true;
     return false;
 }
@@ -32,7 +32,7 @@ inline bool commandAllowed(const std::string& command, const std::string& arg) {
         for (const auto* setting : {"fullscreen", "vsync_enabled", "camera_clamp_x", "power_management_enabled",
             "low_power_mode_enabled", "native_text_resolution_enabled", "water_effects_enabled", "menu_music_enabled",
             "mute_all_audio", "show_fps_counter", "show_detailed_debugger", "show_hitboxes", "show_player_hitbox",
-            "show_debug_view", "hide_unknown_object_types"})
+            "show_debug_view", "hide_unknown_object_types", "game_log_enabled", "save_logcat_to_file"})
             if (arg == setting) return true;
         return false;
     }

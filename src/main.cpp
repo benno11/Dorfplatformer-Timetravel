@@ -40,7 +40,9 @@ static int runMainImpl(int argc, char** argv) {
 #endif
         // Android launches a shared library and reads assets through SDL's APK
         // asset loader. Desktop executable/partition checks cannot run there.
-        return RunGameApp(argc, argv);
+        int result;
+        do { result = RunGameApp(argc, argv); } while (result == kGameRestartExitCode);
+        return result;
     } catch (const std::exception& e) {
         std::fprintf(stderr, "FATAL: uncaught std::exception: %s\n", e.what());
         return 1;

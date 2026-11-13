@@ -5,6 +5,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 #include <unordered_map>
 
 struct Frame;
@@ -81,6 +82,12 @@ struct SlimMenuContext {
     std::function<void()> applyRenderVsync;
     std::function<void()> updateDynamicResolution;
     std::function<void()> saveClientSettings;
+    std::function<void()> restartGame;
+    bool* gameLogEnabled = nullptr;
+    bool* saveLogcatToFile = nullptr;
+    std::function<void()> applyLoggingSettings;
+    std::function<std::vector<std::string>()> getLogLines;
+    std::function<std::string()> getLogPath, getLogcatStatus;
     std::function<void(int, int)> drawNotifications;
     std::function<bool(const std::string&, const std::string&, std::string&)> signIn;
     std::function<std::string()> getUpdaterStatusText;
