@@ -48,6 +48,7 @@
 #include "WaterEffects.h"
 #include "LevelLoader.h"
 #include "ObjectIds.h"
+#include "CameraExclusion.h"
 #include "ShellChrakerRenderer.h"
 #include "Shield.h"
 #include "ShieldRenderer.h"
@@ -2966,6 +2967,7 @@ int RunGameApp(int argc, char** argv) {
         TileMap map;
         std::vector<ObjectInstance> objects;
         std::vector<int> objectIds;
+        std::vector<CameraExclusion::Rect> cameraExclusions;
         std::vector<ShellChraker::State> shellChrakerStates;
         std::vector<MovingPlatform::State> movingPlatformStates;
         struct SpikeImpact {
@@ -3051,9 +3053,14 @@ int RunGameApp(int argc, char** argv) {
             shellChrakerStates.assign(objects.size(), ShellChraker::State{});
             objectWaterStates.assign(objects.size(), WaterVisuals::InteractionState{});
             objectIds.clear();
+            cameraExclusions.clear();
             objectIds.reserve(objects.size());
             for (const auto& obj : objects) {
-                objectIds.push_back(parseObjectId(obj.id));
+                const int id = parseObjectId(obj.id);
+                objectIds.push_back(id);
+                if (id == ObjectIds::CameraExclusion)
+                    cameraExclusions.push_back({obj.x - map.tileSize * 0.5f, obj.y - map.tileSize * 0.5f,
+                        static_cast<float>(map.tileSize), static_cast<float>(map.tileSize)});
             }
         };
         enum class EndSignPhase {
@@ -6440,7 +6447,7 @@ int RunGameApp(int argc, char** argv) {
                 for (size_t index = 0; index < objects.size(); ++index) {
                     // Editor triggers and spawn markers have no physical water interaction.
                     const int id = objectIds[index];
-                    if (id < 0 || (id >= 57 && id <= 63) || id == 69 || id == 70 || LevelParameters::definition(id)) continue;
+                    if (id < 0 || (id >= 57 && id <= 63) || id == 69 || id == 70 || id == ObjectIds::CameraExclusion || LevelParameters::definition(id)) continue;
                     emitWaterInteraction({objects[index].x - 16.0f, objects[index].y - 16.0f, 32.0f, 32.0f},
                         objectWaterStates[index], dt);
                 }
@@ -7606,6 +7613,10 @@ int RunGameApp(int argc, char** argv) {
         if (deathSequenceActive) { camX = lastRenderCamX; camY = lastRenderCamY; }
         camX = std::round(camX);
         camY = std::round(camY);
+        const auto excludedCamera = CameraExclusion::resolve(camX, camY, worldViewW, worldViewH, cameraExclusions,
+            cameraWrapX ? static_cast<float>(map.w * map.tileSize) : 0.0f,
+            cameraWrapY ? static_cast<float>(map.h * map.tileSize) : 0.0f);
+        if (excludedCamera.resolved) { camX = excludedCamera.x; camY = excludedCamera.y; }
         previousCameraX = camX;
         previousCameraY = camY;
         if (!deathSequenceActive) { lastRenderCamX = camX; lastRenderCamY = camY; }
@@ -7928,7 +7939,7 @@ int RunGameApp(int argc, char** argv) {
             // Wrap controls affect wrap state through levelWrap*Enabled(). They
             // are editor-only triggers and must not borrow an entity frame (or
             // the fallback frame) during gameplay.
-            if (isWrapControl || LevelParameters::definition(objId)) continue;
+            if (isWrapControl || objId == ObjectIds::CameraExclusion || LevelParameters::definition(objId)) continue;
             float entityBaseX = obj.x - 16.0f;
             float entityBaseY = obj.y - 16.0f;
             if (renderWrapX && !isEndSign) {

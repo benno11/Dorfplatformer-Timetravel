@@ -16,6 +16,7 @@
   "95": "shell_chraker",
   "96": "moving_platform",
   "97": "shield",
+  "99": "camera_exclusion",
   "1001": "pickup",
   "1002": "goal"
 }

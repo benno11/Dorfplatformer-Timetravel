@@ -61,6 +61,7 @@ std::unordered_map<int, std::string> defaultEditorObjectTypes() {
         {ObjectIds::ShellChraker, "shell_chraker"},
         {ObjectIds::MovingPlatform, "moving_platform"},
         {ObjectIds::Shield, "shield"},
+        {ObjectIds::CameraExclusion, "camera_exclusion"},
     };
 }
 
@@ -1559,6 +1560,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             if (id == ObjectIds::ShellChraker) { r = 220; g = 45; b = 35; return; }
             if (id == ObjectIds::MovingPlatform) { r = 130; g = 155; b = 185; return; }
             if (id == ObjectIds::Shield) { r = 90; g = 160; b = 255; return; }
+            if (id == ObjectIds::CameraExclusion) { r = 255; g = 70; b = 180; return; }
             r = 220; g = 220; b = 240;
         };
         auto objectLabel = [&](int id) -> std::string {
@@ -1575,6 +1577,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             return std::string("Obj ") + std::to_string(id);
         };
         auto objectTag = [](int id) -> const char* {
+            if (id == ObjectIds::CameraExclusion) return "CAM";
             if (id == 57) return "UP";
             if (id == 58) return "DN";
             if (id == 59) return "LT";
