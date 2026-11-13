@@ -6,7 +6,7 @@
 #include <string>
 #include <nlohmann/json.hpp>
 
-// Shared by all save slots; serialize in the global client settings, never a slot.
+// Shared by all save slots; serialize in the encrypted global savedata_secret, never a slot.
 class Achievements {
 public:
     struct Definition { const char* id; const char* title; };

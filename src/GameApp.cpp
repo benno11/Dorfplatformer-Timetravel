@@ -84,6 +84,8 @@
 #include "ParallaxRenderer.h"
 #include "BackgroundCamera.h"
 #include "CrashReporter.h"
+#include "SecretSave.h"
+#include "GameSandbox.h"
 #include "AudioSystem.h"
 #include "InputSystem.h"
 #include "Platform.h"
@@ -1678,7 +1680,7 @@ int RunGameApp(int argc, char** argv) {
     const std::string appSaveRootPath = GetAppSaveRootPath();
     bool restartRequested = false;
     NativeMods::Loader nativeMods(appSaveRootPath);
-    nativeMods.start();
+
     constexpr const char* kSavedGameSelectionToken = "__DF_SAVEGAME_CONTINUE__";
     constexpr int kSaveSlotCount = 3;
     int activeSaveSlotIndex = 0;
@@ -1693,6 +1695,17 @@ int RunGameApp(int argc, char** argv) {
         return saveGameRootPath / ("save_slot_" + std::to_string(slot + 1) + ".json");
     };
     Achievements achievements;
+    SecretData::Store secretSave(appSaveRootPath, Edition::storageName);
+    bool secretSaveErrorShown = false;
+    std::string privateServer, privateToken;
+    auto reportSecretSaveError = [&]() {
+        if (secretSaveErrorShown) return;
+        secretSaveErrorShown = true;
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Private save unavailable; existing data preserved");
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Private save unavailable",
+            "The encrypted savedata_secret or its device key could not be read or written. Existing files have been preserved. "
+            "Achievements and account changes cannot be saved until this is resolved.", nullptr);
+    };
     bool serverSwapNoticeShown = false;
     std::string logcatStatus;
     auto applyLoggingSettings = [&]() {
@@ -1717,9 +1730,16 @@ int RunGameApp(int argc, char** argv) {
     };
     applyLoggingSettings();
     auto saveClientSettings = [&]() {
+        if (!privateServer.empty() && privateServer != levelServerUrl && privateToken == levelServerAuthToken) {
+            levelServerAuthToken.clear(); levelServerAccountUsername.clear();
+            SetLevelServerAuthToken(""); SetLevelServerAccountUsername("");
+        }
+        const nlohmann::json secret = {{"version", 1}, {"achievements", achievements.save()},
+            {"account", {{"server_url", levelServerUrl}, {"username", levelServerAccountUsername}, {"auth_token", levelServerAuthToken}}}};
+        if (!secretSave.save(secret)) { reportSecretSaveError(); return; }
+        privateServer = levelServerUrl; privateToken = levelServerAuthToken;
         nlohmann::json j;
         j["logging"] = {{"game_log_enabled", enableGameLog}, {"save_logcat_to_file", saveLogcatToFile}};
-        j["achievements"] = achievements.save();
         j["custom_character"] = CharacterCreator::save(characterAppearance);
         j["build_uuid"] = buildUuid;
         const bool savedFullscreen = PLATFORMER_MOBILE ? true : fullscreen;
@@ -1773,9 +1793,7 @@ int RunGameApp(int argc, char** argv) {
         };
         settings["network"] = {
             {"server_migration_notice_shown", serverSwapNoticeShown},
-            {"level_server_url", levelServerUrl},
-            {"level_server_auth_token", levelServerAuthToken},
-            {"level_server_account_username", levelServerAccountUsername}
+            {"level_server_url", levelServerUrl}
         };
         {
             nlohmann::json extra = nlohmann::json::array();
@@ -1814,8 +1832,6 @@ int RunGameApp(int argc, char** argv) {
         j["extra_settings"] = j["settings"]["extra_settings"];
         j["telemetry_webhook_url"] = telemetryWebhookUrl;
         j["level_server_url"] = levelServerUrl;
-        j["level_server_auth_token"] = levelServerAuthToken;
-        j["level_server_account_username"] = levelServerAccountUsername;
         j["fast_travel_delay"] = fastTravelChangeDelay;
         j["active_save_slot_index"] = activeSaveSlotIndex;
         j["music_volume"] = musicVolume;
@@ -1849,7 +1865,25 @@ int RunGameApp(int argc, char** argv) {
             }
         };
         if (!tryWriteSettings(clientSettingsPath)) {
-            (void)tryWriteSettings(localClientSettingsPath);
+            if (!tryWriteSettings(localClientSettingsPath)) reportSecretSaveError();
+        }
+        // Remove legacy private values from the edition's old local config as
+        // well, even when a newer primary config supplied the current settings.
+        if (localClientSettingsPath != clientSettingsPath) {
+            try {
+                const std::string oldText = ReadTextFile(localClientSettingsPath);
+                if (!oldText.empty() && std::filesystem::is_regular_file(std::filesystem::symlink_status(localClientSettingsPath))) {
+                    auto old = nlohmann::json::parse(oldText);
+                    auto scrubbed = old; SecretData::scrubLegacy(scrubbed);
+                    if (scrubbed != old) {
+                        // Only this existing file is writable beside the executable.
+                        // The encrypted save is durable before plaintext cleanup.
+                        std::ofstream legacy(localClientSettingsPath, std::ios::binary | std::ios::trunc);
+                        if (legacy) { legacy << scrubbed.dump(2); legacy.flush(); }
+                        if (!legacy.good()) reportSecretSaveError();
+                    }
+                }
+            } catch (...) { reportSecretSaveError(); }
         }
     };
     {
@@ -2062,7 +2096,24 @@ int RunGameApp(int argc, char** argv) {
                 SDL_Log("Initialized client settings from placeholder: %s", placeholderPath.c_str());
             }
         }
-        //showExperimentalFeatures = false;
+        nlohmann::json privateData;
+        const auto privateResult = secretSave.load(privateData);
+        if (privateResult == SecretData::Store::Result::Loaded) {
+            achievements.load(privateData["achievements"]);
+            const auto& account = privateData["account"];
+            privateServer = account["server_url"].get<std::string>();
+            privateToken = account["auth_token"].get<std::string>();
+            levelServerAuthToken.clear(); levelServerAccountUsername.clear();
+            if (privateServer == levelServerUrl) {
+                levelServerAuthToken = privateToken;
+                levelServerAccountUsername = account["username"].get<std::string>();
+            }
+        } else if (privateResult == SecretData::Store::Result::Error) {
+            // Never fall back to unauthenticated legacy values if a private save exists.
+            achievements = Achievements{};
+            levelServerAuthToken.clear(); levelServerAccountUsername.clear();
+            reportSecretSaveError();
+        }
         saveClientSettings();
     }
 #if PLATFORMER_MOBILE
@@ -2100,8 +2151,13 @@ int RunGameApp(int argc, char** argv) {
         SDL_Log("Level server auth token configured");
     }
     if (!levelServerAccountUsername.empty()) {
-        SDL_Log("Level server account username: %s", levelServerAccountUsername.c_str());
+        SDL_Log("Level server account configured");
     }
+    if (!GameSandbox::sealRuntime()) {
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_WARNING, "Limited process protection",
+            "Local IPC restrictions could not be enabled. Native mods are disabled.", nullptr);
+    }
+    if (GameSandbox::nativeModsAllowed()) nativeMods.start();
     bool debuggerAttachedDebugOverride = false;
     bool effectiveDevToolsEnabled = allowDevTools;
     auto refreshDebuggerDebugOverride = [&]() {

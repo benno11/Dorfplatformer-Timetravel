@@ -24,6 +24,9 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
 public class MainActivity extends SDLActivity {
+    public byte[] protectSavedataKey(byte[] key) throws Exception { return SavedataKey.transform(key, true); }
+    public byte[] unprotectSavedataKey(byte[] key) throws Exception { return SavedataKey.transform(key, false); }
+
     private static final int NATIVE_MOD_IMPORT = 0x4d31;
     private final LogcatRecorder logcatRecorder = new LogcatRecorder();
     // Called from the native Logging settings; all logcat input is PID-filtered.

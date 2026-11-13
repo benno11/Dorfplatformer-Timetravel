@@ -1,4 +1,5 @@
 #include "NativeMods.h"
+#include "SandboxPointers.h"
 #include "EditionPolicy.h"
 #include <SDL3/SDL.h>
 #ifdef _WIN32
@@ -65,6 +66,7 @@ struct Loader::Impl {
         std::vector<std::string> dependencies;
         SDL_SharedObject* object = nullptr;
         DFModCallbacks callbacks{};
+        SandboxPointers::Handle callbackHandle;
         DFModContext context{};
         bool compatible = false, desired = true;
     };
@@ -215,12 +217,15 @@ struct Loader::Impl {
             if (!entry) throw std::runtime_error("Missing df_mod_load export");
             e.callbacks.struct_size = sizeof(e.callbacks);
             e.context = {sizeof(DFModContext), &host, e.directory.c_str(), e.config.c_str()};
-            if (!entry(&e.context, &e.callbacks) || e.callbacks.struct_size < offsetof(DFModCallbacks, userdata) + sizeof(void*)) throw std::runtime_error("Mod initialization failed");
+            SandboxPointers::Handle loadHandle(SandboxPointers::api().register_mod_load(entry));
+            if (!SandboxPointers::api().call_mod_load(loadHandle.get(), &e.context, &e.callbacks) || e.callbacks.struct_size < offsetof(DFModCallbacks, userdata) + sizeof(void*)) throw std::runtime_error("Mod initialization failed");
             if (e.callbacks.struct_size < offsetof(DFModCallbacks, on_level_start) + sizeof(e.callbacks.on_level_start)) e.callbacks.on_level_start = nullptr;
             if (e.callbacks.struct_size < offsetof(DFModCallbacks, on_update) + sizeof(e.callbacks.on_update)) e.callbacks.on_update = nullptr;
             if (e.callbacks.struct_size < offsetof(DFModCallbacks, on_unload) + sizeof(e.callbacks.on_unload)) e.callbacks.on_unload = nullptr;
             if (e.callbacks.struct_size < offsetof(DFModCallbacks, on_menu_load) + sizeof(e.callbacks.on_menu_load)) e.callbacks.on_menu_load = nullptr;
             if (e.callbacks.struct_size < offsetof(DFModCallbacks, on_menu_action) + sizeof(e.callbacks.on_menu_action)) e.callbacks.on_menu_action = nullptr;
+            e.callbackHandle.reset(SandboxPointers::api().register_mod_callbacks(&e.callbacks));
+            e.callbacks = {}; // Jump targets live only in the sandbox's authenticated table.
             e.info.loaded = true; e.info.status = "Loaded"; loadOrder.push_back(&e); return true;
         } catch (const std::exception& error) { e.info.status = error.what(); }
         catch (...) { e.info.status = "Mod threw during initialization"; }
@@ -243,7 +248,8 @@ void Loader::shutdown() {
     impl->player = nullptr; impl->level = nullptr; impl->run = nullptr; impl->tiles = nullptr;
     for (auto it = impl->loadOrder.rbegin(); it != impl->loadOrder.rend(); ++it) {
         auto& e = **it;
-        try { if (e.callbacks.on_unload) e.callbacks.on_unload(e.callbacks.userdata); } catch (...) {}
+        try { SandboxPointers::api().mod_unload(e.callbackHandle.get()); } catch (...) {}
+        e.callbackHandle.reset();
         if (e.object) SDL_UnloadObject(e.object);
         e.object = nullptr; e.info.loaded = false;
     }
@@ -280,8 +286,8 @@ void Loader::tick(double seconds, DFPlayerState& player, const DFLevelState& lev
     const bool newLevel = impl->generation != generation; impl->generation = generation;
     for (auto* e : impl->loadOrder) if (e->info.loaded) {
         try {
-            if (newLevel && e->callbacks.on_level_start) e->callbacks.on_level_start(e->callbacks.userdata, &level);
-            if (e->callbacks.on_update) e->callbacks.on_update(e->callbacks.userdata, std::clamp(seconds, 0.0, 0.25));
+            if (newLevel) SandboxPointers::api().mod_level_start(e->callbackHandle.get(), &level);
+            SandboxPointers::api().mod_update(e->callbackHandle.get(), std::clamp(seconds, 0.0, 0.25));
         } catch (...) { e->info.loaded = false; e->info.status = "Disabled after callback exception; restart required"; }
     }
     impl->player = nullptr; impl->level = nullptr; impl->run = nullptr; impl->tiles = nullptr;
@@ -337,17 +343,17 @@ void Loader::editMenu(Menu& menu) {
         size_t length = 0; while (length < 256 && title[length]) ++length;
         if (length == 256) return 0; self->menu->title.assign(title, length); return 1;
     };
-    for (auto* entry : impl->loadOrder) if (entry->info.loaded && entry->callbacks.on_menu_load) {
+    for (auto* entry : impl->loadOrder) if (entry->info.loaded) {
         impl->editing = entry;
-        try { entry->callbacks.on_menu_load(entry->callbacks.userdata, &api); }
+        try { SandboxPointers::api().mod_menu_load(entry->callbackHandle.get(), &api); }
         catch (...) { entry->info.loaded = false; entry->info.status = "Disabled after menu callback exception"; }
     }
     impl->editing = nullptr; impl->menu = nullptr;
 }
 void Loader::menuAction(const std::string& menu, const std::string& action) {
     const auto separator = action.find(':'); if (separator == std::string::npos || Edition::lite) return;
-    for (auto* entry : impl->loadOrder) if (entry->info.loaded && entry->info.id == action.substr(0, separator) && entry->callbacks.on_menu_action) {
-        try { entry->callbacks.on_menu_action(entry->callbacks.userdata, menu.c_str(), action.substr(separator + 1).c_str()); }
+    for (auto* entry : impl->loadOrder) if (entry->info.loaded && entry->info.id == action.substr(0, separator)) {
+        try { SandboxPointers::api().mod_menu_action(entry->callbackHandle.get(), menu.c_str(), action.substr(separator + 1).c_str()); }
         catch (...) { entry->info.loaded = false; entry->info.status = "Disabled after menu action exception"; }
         break;
     }

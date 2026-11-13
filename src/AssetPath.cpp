@@ -1,3 +1,4 @@
+#include "GameSandbox.h"
 #include "EditionPolicy.h"
 #include "BuildInfo.h"
 #include "AssetPath.h"
@@ -294,6 +295,7 @@ bool FileExists(const std::string& path) {
 }
 
 std::string GetAppSaveRootPath() {
+    if (auto root = GameSandbox::saveRootOverride(); !root.empty()) return root;
 #if defined(__ANDROID__)
     const char* ext = SDL_GetAndroidExternalStoragePath();
     if (ext && *ext) {

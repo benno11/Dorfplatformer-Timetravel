@@ -1,12 +1,18 @@
 #include "GameApp.h"
 #include "CustomBootLoader.h"
 #include "Platform.h"
+#include "GameSandbox.h"
+#include "SandboxPointers.h"
+#include <SDL3/SDL.h>
+#include "AssetPath.h"
+#include <filesystem>
 #if PLATFORMER_APPLE_SDL_MAIN
 #include <SDL3/SDL_main.h>
 #endif
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
+#include <new>
 #if defined(__linux__) && !defined(__ANDROID__)
 #include <limits.h>
 #include <unistd.h>
@@ -30,6 +36,10 @@ static void useExecutableDirectoryAsWorkingDirectory() {
 static int runMainImpl(int argc, char** argv) {
 #if defined(__linux__) && !defined(__ANDROID__)
     useExecutableDirectoryAsWorkingDirectory();
+#elif defined(__APPLE__) && !PLATFORMER_IOS
+    if(const char* base=SDL_GetBasePath()) {
+        std::error_code error;std::filesystem::current_path(std::filesystem::u8path(base),error);
+    }
 #endif
     try {
 #if !defined(__ANDROID__)
@@ -38,11 +48,24 @@ static int runMainImpl(int argc, char** argv) {
             return boot.exitCode;
         }
 #endif
+        std::string sandboxStatus;
+        GameSandbox::install(std::filesystem::current_path(), std::filesystem::u8path(GetAppSaveRootPath()), sandboxStatus);
+        SDL_Log("%s", sandboxStatus.c_str());
+        if (!GameSandbox::nativeModsAllowed()) {
+            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_WARNING, "Limited process protection", sandboxStatus.c_str(), nullptr);
+        }
         // Android launches a shared library and reads assets through SDL's APK
         // asset loader. Desktop executable/partition checks cannot run there.
+#if defined(__ANDROID__) || PLATFORMER_IOS
         int result;
         do { result = RunGameApp(argc, argv); } while (result == kGameRestartExitCode);
         return result;
+#else
+        // The broker starts a fresh restricted process for Restart Game.
+        return RunGameApp(argc, argv);
+#endif
+    } catch (const std::bad_alloc&) {
+        std::terminate();
     } catch (const std::exception& e) {
         std::fprintf(stderr, "FATAL: uncaught std::exception: %s\n", e.what());
         return 1;
@@ -52,90 +75,15 @@ static int runMainImpl(int argc, char** argv) {
     }
 }
 
-int main(int argc, char** argv) {
+#if defined(_WIN32) && defined(PLATFORMER_GAME_LIBRARY)
+extern "C" __declspec(dllexport) int DFGameMain(int argc, char** argv, const DFSandboxAPI* api) {
+    SandboxPointers::bind(api);
     return runMainImpl(argc, argv);
 }
-
-#if defined(_WIN32)
-#include <windows.h>
-#include <shellapi.h>
-#include <shobjidl.h>
-#include <tlhelp32.h>
-
-static HANDLE gSingleInstanceMutex = nullptr;
-static constexpr const wchar_t* kLauncherAppUserModelId = L"Benno111.DorfplatformerTimetravel.Launcher";
-
-static DWORD getParentProcessId() {
-    const DWORD currentPid = GetCurrentProcessId();
-    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (snapshot == INVALID_HANDLE_VALUE) {
-        return 0;
-    }
-
-    PROCESSENTRY32 entry{};
-    entry.dwSize = sizeof(entry);
-    if (!Process32First(snapshot, &entry)) {
-        CloseHandle(snapshot);
-        return 0;
-    }
-
-    do {
-        if (entry.th32ProcessID == currentPid) {
-            CloseHandle(snapshot);
-            return entry.th32ParentProcessID;
-        }
-    } while (Process32Next(snapshot, &entry));
-
-    CloseHandle(snapshot);
-    return 0;
+#else
+int main(int argc, char** argv) {
+    return GameSandbox::supervise(argc, argv, runMainImpl);
 }
 
-static void rebindConsoleStream(FILE* target, const char* device, const char* mode) {
-    FILE* rebound = nullptr;
-    if (freopen_s(&rebound, device, mode, target) == 0 && rebound != nullptr) {
-        std::clearerr(target);
-    }
-}
 
-static void attachToParentConsoleIfAvailable() {
-    if (GetConsoleWindow() != nullptr) {
-        return;
-    }
-
-    bool attached = AttachConsole(ATTACH_PARENT_PROCESS) != FALSE;
-    if (!attached) {
-        const DWORD parentPid = getParentProcessId();
-        if (parentPid != 0) {
-            attached = AttachConsole(parentPid) != FALSE;
-        }
-    }
-    if (!attached) {
-        return;
-    }
-
-    rebindConsoleStream(stdin, "CONIN$", "r");
-    rebindConsoleStream(stdout, "CONOUT$", "w");
-    rebindConsoleStream(stderr, "CONOUT$", "w");
-}
-
-int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
-    SetCurrentProcessExplicitAppUserModelID(kLauncherAppUserModelId);
-    attachToParentConsoleIfAvailable();
-    gSingleInstanceMutex = CreateMutexW(nullptr, TRUE, L"Local\\DFNewGameSingleInstance");
-    if (!gSingleInstanceMutex || GetLastError() == ERROR_ALREADY_EXISTS) {
-        if (gSingleInstanceMutex) {
-            CloseHandle(gSingleInstanceMutex);
-            gSingleInstanceMutex = nullptr;
-        }
-        return 0;
-    }
-
-    const int rc = runMainImpl(__argc, __argv);
-    if (gSingleInstanceMutex) {
-        ReleaseMutex(gSingleInstanceMutex);
-        CloseHandle(gSingleInstanceMutex);
-        gSingleInstanceMutex = nullptr;
-    }
-    return rc;
-}
-#endif
+#endif // standalone entry points

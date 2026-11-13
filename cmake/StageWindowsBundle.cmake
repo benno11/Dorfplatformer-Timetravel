@@ -1,3 +1,10 @@
+# A protected Windows build always ships the broker and its matching game DLL.
+foreach(_required IN ITEMS PLATFORMER_EXE PLATFORMER_DLL)
+  if(NOT DEFINED ${_required} OR NOT EXISTS "${${_required}}")
+    message(FATAL_ERROR "Windows package is missing ${_required}")
+  endif()
+endforeach()
+
 if(NOT DEFINED ROOT_DIR OR NOT DEFINED APP_DIR OR NOT DEFINED ASSETS_DIR OR NOT DEFINED VERSION_ID)
   message(FATAL_ERROR "StageWindowsBundle.cmake requires ROOT_DIR, APP_DIR, ASSETS_DIR, and VERSION_ID.")
 endif()
@@ -15,6 +22,7 @@ endif()
 
 foreach(_pair
     "${PLATFORMER_EXE}|${APP_DIR}"
+    "${PLATFORMER_DLL}|${APP_DIR}"
     "${SHEET_CONFIG_EXE}|${APP_DIR}"
     "${LAUNCHER_EXE}|${ROOT_DIR}"
     "${TRAY_EXE}|${APP_DIR}"
