@@ -8,4 +8,5 @@ inline constexpr int ShellChraker = 95;
 inline constexpr int MovingPlatform = 96;
 inline constexpr int Shield = 97;
 inline constexpr int CameraExclusion = 99;
+inline constexpr int DiagonalCameraExclusion = 100;
 }

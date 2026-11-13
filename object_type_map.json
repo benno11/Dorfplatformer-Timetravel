@@ -17,6 +17,7 @@
   "96": "moving_platform",
   "97": "shield",
   "99": "camera_exclusion",
+  "100": "diagonal_camera_exclusion",
   "1001": "pickup",
   "1002": "goal"
 }

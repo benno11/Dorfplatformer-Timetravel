@@ -1,5 +1,6 @@
 #pragma once
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <optional>
@@ -9,21 +10,60 @@
 #include <vector>
 
 namespace CameraExclusion {
-struct Rect { float x, y, w, h; };
+struct Rect { float x, y, w, h; int diagonal = 0; };
+struct Plane { float x, y, limit; };
 struct Result { float x, y; bool resolved; };
 inline bool valid(const Rect& r) {
     return std::isfinite(r.x) && std::isfinite(r.y) && std::isfinite(r.x + r.w) &&
-        std::isfinite(r.y + r.h) && r.w > 0 && r.h > 0;
+        std::isfinite(r.y + r.h) && r.w > 0 && r.h > 0 && r.diagonal >= 0 && r.diagonal <= 4;
 }
-// Return an actual overlapping periodic copy, without enumerating a whole world.
+// Configuration-space planes for a viewport against a rectangle or triangle.
+struct Planes {
+    std::array<Plane, 5> items{};
+    int count = 4;
+    const Plane* begin() const { return items.data(); }
+    const Plane* end() const { return items.data() + count; }
+    const Plane& back() const { return items[count - 1]; }
+};
+inline Planes planes(const Rect& r, float w, float h) {
+    Planes result{{{{-1, 0, w - r.x}, {1, 0, r.x + r.w},
+        {0, -1, h - r.y}, {0, 1, r.y + r.h}, {0, 0, 0}}}, 4};
+    if (r.diagonal) {
+        const float nx = (r.diagonal == 1 || r.diagonal == 4) ? -r.h : r.h;
+        const float ny = (r.diagonal == 1 || r.diagonal == 2) ? -r.w : r.w;
+        float limit = nx * r.x + ny * r.y;
+        if (r.diagonal == 1) limit -= r.w * r.h;
+        if (r.diagonal == 3) limit += r.w * r.h;
+        limit += std::max(0.0f, -nx * w) + std::max(0.0f, -ny * h);
+        const float length = std::hypot(nx, ny);
+        result.items[result.count++] = {nx / length, ny / length, limit / length};
+    }
+    return result;
+}
+template<class Visit> inline void copies(const Rect& r, float x, float y, float w, float h,
+                                         float dx, float dy, float wrapW, float wrapH, Visit visit) {
+    const int firstX = wrapW > 0 ? static_cast<int>(std::floor((std::min(x, x + dx) - r.x - r.w) / wrapW)) : 0;
+    const int lastX = wrapW > 0 ? static_cast<int>(std::ceil((std::max(x, x + dx) + w - r.x) / wrapW)) : 0;
+    const int firstY = wrapH > 0 ? static_cast<int>(std::floor((std::min(y, y + dy) - r.y - r.h) / wrapH)) : 0;
+    const int lastY = wrapH > 0 ? static_cast<int>(std::ceil((std::max(y, y + dy) + h - r.y) / wrapH)) : 0;
+    for (int iy = firstY; iy <= lastY; ++iy) for (int ix = firstX; ix <= lastX; ++ix) {
+        auto copy = r; copy.x += ix * wrapW; copy.y += iy * wrapH;
+        if (!visit(copy)) return;
+    }
+}
 inline std::optional<Rect> overlap(float x, float y, float w, float h,
                                    const std::vector<Rect>& zones, float wrapW = 0, float wrapH = 0) {
-    for (auto zone : zones) {
+    for (const auto& zone : zones) {
         if (!valid(zone)) continue;
-        if (wrapW > 0) zone.x += (std::floor((x - zone.x - zone.w) / wrapW) + 1) * wrapW;
-        if (wrapH > 0) zone.y += (std::floor((y - zone.y - zone.h) / wrapH) + 1) * wrapH;
-        if (x < zone.x + zone.w && x + w > zone.x && y < zone.y + zone.h && y + h > zone.y)
-            return zone;
+        std::optional<Rect> found;
+        copies(zone, x, y, w, h, 0, 0, wrapW, wrapH, [&](const Rect& copy) {
+            bool inside = true;
+            for (const auto& plane : planes(copy, w, h))
+                if (plane.x * x + plane.y * y >= plane.limit) { inside = false; break; }
+            if (inside) found = copy;
+            return !inside;
+        });
+        if (found) return found;
     }
     return std::nullopt;
 }
@@ -56,6 +96,11 @@ inline Result resolve(float x, float y, float w, float h, const std::vector<Rect
         push(std::ceil(hit->x + hit->w) + 1, point.y);
         push(point.x, std::floor(hit->y - h) - 1);
         push(point.x, std::ceil(hit->y + hit->h) + 1);
+        if (hit->diagonal) {
+            const auto diagonal = planes(*hit, w, h).back();
+            const float distance = diagonal.limit - diagonal.x * point.x - diagonal.y * point.y + 1;
+            push(point.x + diagonal.x * distance, point.y + diagonal.y * distance);
+        }
     }
     // A dense set still has a safe exterior on any non-wrapping axis. Exclusion
     // has priority over level bounds, so these positions must not be clamped back.
@@ -77,59 +122,82 @@ inline Result resolve(float x, float y, float w, float h, const std::vector<Rect
     // stable rather than looping or allowing unbounded camera movement.
     return best;
 }
-// Sweep the viewport as a point against each region expanded by its dimensions.
-// All regions participate in the same earliest-contact calculation.
-inline float travel(float x, float y, float dx, float dy, float w, float h,
-                    const std::vector<Rect>& zones, float wrapW = 0, float wrapH = 0) {
-    float allowed = 1;
-    auto axis = [](float p, float delta, float low, float high, float& enter, float& leave) {
-        if (std::fabs(delta) < 0.000001f) {
-            // Moving along a boundary is legal, including at adjacent tile seams.
-            return p > low + 0.0001f && p < high - 0.0001f;
-        }
-        float a = (low - p) / delta, b = (high - p) / delta;
-        if (a > b) std::swap(a, b);
-        enter = std::max(enter, a); leave = std::min(leave, b);
-        return enter <= leave;
-    };
+struct Hit {
+    float time = 1;
+    std::array<Plane, 8> normals{};
+    int count = 0;
+    void add(const Plane& normal) {
+        for (int i = 0; i < count; ++i)
+            if (std::fabs(normals[i].x - normal.x) + std::fabs(normals[i].y - normal.y) < 0.0001f) return;
+        if (count < static_cast<int>(normals.size())) normals[count++] = normal;
+    }
+};
+inline Hit sweep(float x, float y, float dx, float dy, float w, float h,
+                 const std::vector<Rect>& zones, float wrapW = 0, float wrapH = 0) {
+    Hit result;
     for (const auto& zone : zones) {
         if (!valid(zone)) continue;
-        const int firstX = wrapW > 0 ? static_cast<int>(std::floor((std::min(x, x + dx) - zone.x - zone.w) / wrapW)) : 0;
-        const int lastX = wrapW > 0 ? static_cast<int>(std::ceil((std::max(x, x + dx) + w - zone.x) / wrapW)) : 0;
-        const int firstY = wrapH > 0 ? static_cast<int>(std::floor((std::min(y, y + dy) - zone.y - zone.h) / wrapH)) : 0;
-        const int lastY = wrapH > 0 ? static_cast<int>(std::ceil((std::max(y, y + dy) + h - zone.y) / wrapH)) : 0;
-        for (int iy = firstY; iy <= lastY; ++iy) for (int ix = firstX; ix <= lastX; ++ix) {
-            const float left = zone.x + ix * wrapW - w, right = zone.x + ix * wrapW + zone.w;
-            const float top = zone.y + iy * wrapH - h, bottom = zone.y + iy * wrapH + zone.h;
+        copies(zone, x, y, w, h, dx, dy, wrapW, wrapH, [&](const Rect& copy) {
             float enter = -std::numeric_limits<float>::infinity(), leave = std::numeric_limits<float>::infinity();
-            if (!axis(x, dx, left, right, enter, leave) || !axis(y, dy, top, bottom, enter, leave)) continue;
-            if (leave < 0 || enter < -0.0001f || enter > allowed) continue;
-            allowed = std::max(0.0f, enter);
-        }
+            Hit contact;
+            for (const auto& plane : planes(copy, w, h)) {
+                const float distance = plane.limit - plane.x * x - plane.y * y;
+                const float speed = plane.x * dx + plane.y * dy;
+                if (std::fabs(speed) < 0.000001f) {
+                    if (distance <= 0.0001f) return true; // A tangent does not enter the region.
+                    continue;
+                }
+                const float t = distance / speed;
+                if (speed > 0) leave = std::min(leave, t);
+                else {
+                    if (t > enter + 0.00001f) { enter = t; contact.count = 0; contact.add(plane); }
+                    else if (std::fabs(t - enter) <= 0.00001f) contact.add(plane);
+                }
+                if (enter > leave) return true;
+            }
+            if (leave < 0 || enter < -0.0001f || enter > result.time + 0.00001f) return true;
+            if (enter < result.time - 0.00001f) { result.time = std::max(0.0f, enter); result.count = 0; }
+            for (int i = 0; i < contact.count; ++i) result.add(contact.normals[i]);
+            return true;
+        });
     }
-    return allowed;
+    return result;
+}
+inline float travel(float x, float y, float dx, float dy, float w, float h,
+                    const std::vector<Rect>& zones, float wrapW = 0, float wrapH = 0) {
+    return sweep(x, y, dx, dy, w, h, zones, wrapW, wrapH).time;
 }
 inline Result slide(float x, float y, float dx, float dy, float w, float h,
                     const std::vector<Rect>& zones, float wrapW = 0, float wrapH = 0) {
-    auto permitted = [&](float mx, float my) {
-        const float fraction = travel(x, y, mx, my, w, h, zones, wrapW, wrapH);
+    auto safeFraction = [&](float fraction, float mx, float my) {
         const float magnitude = std::max(std::fabs(mx), std::fabs(my));
         const float slop = 0.0005f + 2 * std::numeric_limits<float>::epsilon() * (std::fabs(x) + std::fabs(y) + w + h);
         return fraction < 1 && magnitude > 0 ? std::max(0.0f, fraction - slop / magnitude) : fraction;
     };
-    for (int contact = 0; contact < 8; ++contact) {
+    for (int iteration = 0; iteration < 8; ++iteration) {
         if (std::fabs(dx) + std::fabs(dy) < 0.0001f) break;
-        const float fraction = permitted(dx, dy);
+        const auto hit = sweep(x, y, dx, dy, w, h, zones, wrapW, wrapH);
+        const float fraction = safeFraction(hit.time, dx, dy);
         x += dx * fraction; y += dy * fraction;
         if (fraction >= 1) break;
         dx *= 1 - fraction; dy *= 1 - fraction;
-        // Test tangent movement against the entire union. Internal corners of
-        // neighboring objects must not add a second, artificial blocking normal.
-        const float alongX = dx * permitted(dx, 0);
-        const float alongY = dy * permitted(0, dy);
-        if (std::max(std::fabs(alongX), std::fabs(alongY)) < 0.0001f) break;
-        if (std::fabs(alongX) > std::fabs(alongY)) { x += alongX; dx -= alongX; }
-        else { y += alongY; dy -= alongY; }
+        float bestX = 0, bestY = 0, bestProgress = 0.000001f;
+        auto consider = [&](float mx, float my) {
+            const float allowed = safeFraction(travel(x, y, mx, my, w, h, zones, wrapW, wrapH), mx, my);
+            mx *= allowed; my *= allowed;
+            const float progress = mx * dx + my * dy;
+            if (progress > bestProgress) { bestProgress = progress; bestX = mx; bestY = my; }
+        };
+        // Candidate tangents include slanted edges, and every candidate is swept
+        // against the whole union to reject internal faces and blocked corners.
+        for (int i = 0; i < hit.count; ++i) {
+            const auto& n = hit.normals[i];
+            const float normal = n.x * dx + n.y * dy;
+            consider(dx - n.x * normal, dy - n.y * normal);
+        }
+        consider(dx, 0); consider(0, dy);
+        if (bestX == 0 && bestY == 0) break;
+        x += bestX; y += bestY; dx -= bestX; dy -= bestY;
     }
     return {x, y, !overlap(x, y, w, h, zones, wrapW, wrapH)};
 }
@@ -148,6 +216,10 @@ public:
             zone.x -= 1; zone.y -= 1; zone.w += 2; zone.h += 2;
             padded.push_back(zone);
         }
+        // A wrap toggle changes the set of visible copies immediately. Rebase
+        // onto the new target before it can retain an invalid old camera image.
+        if (initialized_ && (wrapW != wrapW_ || wrapH != wrapH_)) reset();
+        wrapW_ = wrapW; wrapH_ = wrapH;
         // Static recovery is only for initialization or a newly invalid view
         // (e.g. a resized viewport), never for choosing a new side every frame.
         if (!initialized_ || overlap(x_, y_, w, h, padded, wrapW, wrapH)) {
@@ -158,7 +230,7 @@ public:
         }
         if (wrapW > 0) targetX = x_ + std::remainder(targetX - x_, wrapW);
         if (wrapH > 0) targetY = y_ + std::remainder(targetY - y_, wrapH);
-        const float alpha = std::isfinite(dt) && dt > 0 ? -std::expm1(-12.0f * std::min(dt, 0.05f)) : 0;
+        const float alpha = std::isfinite(dt) && dt > 0 ? 1.0f : 0.0f;
         const auto moved = slide(x_, y_, (targetX - x_) * alpha, (targetY - y_) * alpha,
             w, h, padded, wrapW, wrapH);
         if (moved.resolved) { x_ = moved.x; y_ = moved.y; }
@@ -167,6 +239,7 @@ public:
 private:
     bool initialized_ = false;
     float x_ = 0, y_ = 0;
+    float wrapW_ = 0, wrapH_ = 0;
 };
 
 }

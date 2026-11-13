@@ -1,4 +1,6 @@
 #include "CameraExclusion.h"
+#include "CameraBounds.h"
+#include "WrappedView.h"
 #include <iostream>
 #include <stdexcept>
 #include <limits>
@@ -121,6 +123,92 @@ int main() {
         moving.reset();
         result = moving.update(0, 0, 100, 100, {}, 1.0f / 60);
         require(result.x == 0 && result.y == 0, "Reloads and levels without exclusions keep normal camera behavior");
+        Controller immediate;
+        const std::vector<Rect> distant{{10000, 10000, 32, 32}};
+        immediate.update(0, 0, 100, 100, distant, 0);
+        result = immediate.update(123, 45, 100, 100, distant, 1.0f / 120);
+        require(result.x == 123 && result.y == 45, "Unblocked follow reaches the player target in the same frame");
+        require(CameraBounds::target(-40, 32, 900, false) == 32 && CameraBounds::target(-40, 32, 900, true) == -40,
+            "Wrap enable/disable switches the clamp immediately");
+        require(CameraBounds::target(1000, 32, 900, false) == 900 && CameraBounds::target(1000, 32, 900, true) == 1000,
+            "Right edge also switches without a blended out-of-bounds view");
+        require(CameraBounds::target(0, 32, -20, false) == 32, "Small maps still have valid clamp limits");
+        Controller toggled;
+        const std::vector<Rect> wrapping{{390, 390, 32, 32, 1}};
+        for (int flags : {0, 1, 3, 2, 0, 3, 0}) {
+            const float ww = (flags & 1) ? 400.0f : 0, wh = (flags & 2) ? 400.0f : 0;
+            const float tx = CameraBounds::target(-30, 32, 300, ww > 0), ty = CameraBounds::target(-30, 32, 300, wh > 0);
+            result = toggled.update(tx, ty, 100, 100, wrapping, 1.0f / 60, ww, wh);
+            require(result.resolved && !overlap(result.x, result.y, 100, 100, wrapping, ww, wh),
+                "Wrap toggles revalidate the current set of visible copies");
+            if (!flags) require(result.x == 32 && result.y == 32, "Unwrapping cannot retain stale off-map camera coordinates");
+        }
+        const float solidX[]{85, 0, 0, 85}, solidY[]{85, 85, 0, 0};
+        const float emptyX[]{0, 85, 85, 0}, emptyY[]{0, 0, 85, 85};
+        for (int rotation = 1; rotation <= 4; ++rotation) {
+            const std::vector<Rect> triangle{{0, 0, 100, 100, rotation}};
+            require(overlap(solidX[rotation - 1], solidY[rotation - 1], 10, 10, triangle).has_value(), "All triangle rotations block their filled half");
+            require(!overlap(emptyX[rotation - 1], emptyY[rotation - 1], 10, 10, triangle), "Empty triangle halves are not rectangular blockers");
+            const std::vector<Rect> slope{{120, 120, 100, 100, rotation}};
+            const bool flipX = rotation == 2 || rotation == 3, flipY = rotation == 3 || rotation == 4;
+            auto px = [&](float value) { return flipX ? 240 - value : value; };
+            auto py = [&](float value) { return flipY ? 240 - value : value; };
+            Controller diagonal; diagonal.update(px(0), py(0), 100, 100, slope, 0);
+            previous = diagonal.update(px(90), py(90), 100, 100, slope, 1.0f / 60);
+            for (int frame = 1; frame <= 50; ++frame) {
+                result = diagonal.update(px(90 + frame), py(90), 100, 100, slope, 1.0f / 60);
+                const float mx = (result.x - previous.x) * (flipX ? -1 : 1), my = (result.y - previous.y) * (flipY ? -1 : 1);
+                require(result.resolved && !overlap(result.x, result.y, 100, 100, slope), "Diagonal sliding never exposes the triangular region");
+                require(mx > 0.1f && my < -0.1f && std::fabs(mx + my) < 0.02f, "Camera moves along the diagonal rather than a staircase");
+                previous = result;
+            }
+        }
+        const std::vector<Rect> mixed{{120, 120, 100, 100, 1}, {180, -30, 32, 140}};
+        auto mixedReverse = mixed; std::reverse(mixedReverse.begin(), mixedReverse.end());
+        Controller mixedFirst, mixedSecond;
+        mixedFirst.update(0, 0, 100, 100, mixed, 0); mixedSecond.update(0, 0, 100, 100, mixedReverse, 0);
+        for (int frame = 0; frame < 100; ++frame) {
+            const auto first = mixedFirst.update(90 + frame, 100, 100, 100, mixed, 1.0f / 60);
+            const auto second = mixedSecond.update(90 + frame, 100, 100, 100, mixedReverse, 1.0f / 60);
+            require(!overlap(first.x, first.y, 100, 100, mixed) && std::fabs(first.x - second.x) < 0.01f &&
+                std::fabs(first.y - second.y) < 0.01f, "Mixed diagonal/rectangular corners work together in any order");
+        }
+        result = mixedFirst.update(200, -200, 100, 100, mixed, 1.0f / 60);
+        require(!overlap(result.x, result.y, 100, 100, mixed), "Camera can move out of a mixed corner without clipping");
+        std::vector<Rect> diagonalWall;
+        for (int i = -6; i <= 6; ++i) diagonalWall.push_back({120.0f + i * 32, 120.0f - i * 32, 32, 32, 1});
+        auto backward = diagonalWall; std::reverse(backward.begin(), backward.end());
+        Controller diagonalFirst, diagonalReverse;
+        diagonalFirst.update(0, 0, 100, 100, diagonalWall, 0); diagonalReverse.update(0, 0, 100, 100, backward, 0);
+        for (int frame = 0; frame < 80; ++frame) {
+            const auto first = diagonalFirst.update(60 + frame, 60, 100, 100, diagonalWall, 1.0f / 60);
+            const auto second = diagonalReverse.update(60 + frame, 60, 100, 100, backward, 1.0f / 60);
+            require(!overlap(first.x, first.y, 100, 100, diagonalWall) && std::fabs(first.x - second.x) < 0.01f &&
+                std::fabs(first.y - second.y) < 0.01f, "Joined diagonal objects are independent of placement order");
+        }
+        for (float cameraImage : {-400.0f, 400.0f, 800.0f}) {
+            const auto bosses = WrappedView::copies(-4, 20, 28, 28, cameraImage, 0, 100, 100, 400, 0);
+            require(bosses.size() == 1 && bosses[0].x == -4 && bosses[0].y == 20,
+                "Normal boss remains visible in the camera's wrapped world image");
+        }
+        const auto finalBoss = WrappedView::copies(-18, -18, 56, 56, 400, -400, 100, 100, 400, 400);
+        require(finalBoss.size() == 1 && finalBoss[0].x == -18 && finalBoss[0].y == -18,
+            "Final boss remains visible across both wrapped axes");
+        require(WrappedView::copies(-4, 20, 28, 28, 0, 0, 400, 100, 400, 0).size() == 2,
+            "Bosses crossing a seam render both visible sprite halves");
+        require(WrappedView::copies(-4, 20, 28, 28, 400, 0, 100, 100).empty(),
+            "Unwrapping removes obsolete boss copies immediately");
+        require(WrappedView::copies(-4, 20, 28, 28, 0, 0, 900, 100, 400, 0).size() == 3,
+            "Wide views render every visible boss image");
+        const auto coins = WrappedView::copies(12, 12, 16, 16, 400, -400, 100, 100, 400, 400);
+        require(coins.size() == 1 && coins[0].x == 12 && coins[0].y == 12,
+            "Dropped coins remain visible in shifted horizontal and vertical camera images");
+        require(WrappedView::copies(-8, 12, 16, 16, 0, 0, 400, 100, 400, 0).size() == 2,
+            "Coin sprites crossing a seam render both halves");
+        require(!WrappedView::copies(392, 20, 16, 16, 0, 10, 28, 28, 400, 0).empty(),
+            "Dropped coins can be picked up through a horizontal wrap seam");
+        require(WrappedView::copies(392, 20, 16, 16, 0, 10, 28, 28).empty(),
+            "Non-wrapping coin pickup cannot collect a distant image");
         std::cout << "Camera exclusion directions, multi-region, zoom and wrapping checks passed\n";
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

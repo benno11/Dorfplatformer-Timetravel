@@ -36,10 +36,12 @@ int main() {
     // Camera exclusion is a regular object, so editor saves keep its position/layer.
     ObjectInstance exclusion; exclusion.id = std::to_string(ObjectIds::CameraExclusion);
     exclusion.x = 48; exclusion.y = 80; exclusion.layer = 4;
-    files["camera_exclusion.bin"] = "DFLVL4 1 1\n2\n" + SerializeLevelObjects({exclusion});
+    ObjectInstance diagonal = exclusion; diagonal.id = std::to_string(ObjectIds::DiagonalCameraExclusion);
+    diagonal.parameterValue = 3;
+    files["camera_exclusion.bin"] = "DFLVL4 1 1\n2\n" + SerializeLevelObjects({exclusion, diagonal});
     { TileMap cameraMap; LevelMeta cameraMeta; std::vector<ObjectInstance> cameraObjects;
       assert(loadLevelBNNLVL("camera_exclusion.bin", cameraMap, cameraObjects, cameraMeta));
-      assert(cameraObjects.size() == 1 && cameraObjects[0].id == "99" && cameraObjects[0].x == 48 &&
+      assert(cameraObjects.size() == 2 && cameraObjects[1].id == "100" && cameraObjects[1].parameterValue == 3 && cameraObjects[0].id == "99" && cameraObjects[0].x == 48 &&
           cameraObjects[0].y == 80 && cameraObjects[0].layer == 4); }
 
     // Boss barriers survive level loading and runtime edits without becoming

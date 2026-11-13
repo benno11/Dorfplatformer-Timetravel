@@ -62,6 +62,7 @@ std::unordered_map<int, std::string> defaultEditorObjectTypes() {
         {ObjectIds::MovingPlatform, "moving_platform"},
         {ObjectIds::Shield, "shield"},
         {ObjectIds::CameraExclusion, "camera_exclusion"},
+        {ObjectIds::DiagonalCameraExclusion, "diagonal_camera_exclusion"},
     };
 }
 
@@ -985,6 +986,11 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             if (!inputNumber(value, parameter->minimum, parameter->maximum, parameter->label, value)) return;
             draft.parameterValue = value;
         }
+        if (draft.id == std::to_string(ObjectIds::DiagonalCameraExclusion)) {
+            int rotation = std::clamp(draft.parameterValue.value_or(0), 0, 3);
+            if (!inputNumber(rotation, 0, 3, "DIAGONAL ROTATION (0-3)", rotation)) return;
+            draft.parameterValue = rotation;
+        }
         if (!inputNumber(draft.layer, 0, EditorObjects::maxLayer, "OBJECT LAYER", draft.layer)) return;
         placedObjects.erase(placedObjects.begin() + index);
         EditorObjects::replace(placedObjects, draft);
@@ -1003,6 +1009,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         const int existing = EditorObjects::find(placedObjects, cx, cy, activeLayer);
         if (existing >= 0 && placedObjects[existing].id == obj.id) return;
         if (const auto* parameter = LevelParameters::definition(obj)) obj.parameterValue = parameter->initial;
+        if (obj.id == std::to_string(ObjectIds::DiagonalCameraExclusion)) obj.parameterValue = 0;
         EditorObjects::replace(placedObjects, obj);
     };
     auto applyAt = [&](int cx, int cy, bool erase) {
@@ -1561,6 +1568,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             if (id == ObjectIds::MovingPlatform) { r = 130; g = 155; b = 185; return; }
             if (id == ObjectIds::Shield) { r = 90; g = 160; b = 255; return; }
             if (id == ObjectIds::CameraExclusion) { r = 255; g = 70; b = 180; return; }
+            if (id == ObjectIds::DiagonalCameraExclusion) { r = 255; g = 150; b = 70; return; }
             r = 220; g = 220; b = 240;
         };
         auto objectLabel = [&](int id) -> std::string {
@@ -1578,6 +1586,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         };
         auto objectTag = [](int id) -> const char* {
             if (id == ObjectIds::CameraExclusion) return "CAM";
+            if (id == ObjectIds::DiagonalCameraExclusion) return "DIA";
             if (id == 57) return "UP";
             if (id == 58) return "DN";
             if (id == 59) return "LT";
@@ -1606,7 +1615,15 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             if (obj.layer != activeLayer) { r /= 3; g /= 3; b /= 3; }
             SDL_SetRenderDrawColor(ren, r, g, b, 200);
             SDL_Rect in{rc.x + std::max(2, cell / 6), rc.y + std::max(2, cell / 6), std::max(4, cell - std::max(4, cell / 3)), std::max(4, cell - std::max(4, cell / 3))};
-            if (!drawObjectTexture(id, in, obj.layer != activeLayer)) SDL_RenderFillRect(ren, &in);
+            if (id == ObjectIds::DiagonalCameraExclusion) {
+                const int rotation = std::clamp(obj.parameterValue.value_or(0), 0, 3);
+                for (int row = 0; row < in.h; ++row) {
+                    const float t = static_cast<float>(row) / std::max(1, in.h - 1);
+                    const float left = (rotation == 0 ? 1 - t : rotation == 3 ? t : 0) * (in.w - 1);
+                    const float right = (rotation == 1 ? t : rotation == 2 ? 1 - t : 1) * (in.w - 1);
+                    SDL_RenderLine(ren, in.x + left, in.y + row, in.x + right, in.y + row);
+                }
+            } else if (!drawObjectTexture(id, in, obj.layer != activeLayer)) SDL_RenderFillRect(ren, &in);
             const std::string valueTag = (obj.parameterValue ? std::to_string(id) + "=" + std::to_string(*obj.parameterValue) : std::to_string(id)) + " L" + std::to_string(obj.layer);
             DrawText(ren, rc.x + 3, rc.y + 3, std::max(1, cell / 24), valueTag);
             const char* tag = objectTag(id);

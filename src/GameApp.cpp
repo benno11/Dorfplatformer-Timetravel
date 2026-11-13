@@ -49,6 +49,8 @@
 #include "LevelLoader.h"
 #include "ObjectIds.h"
 #include "CameraExclusion.h"
+#include "CameraBounds.h"
+#include "WrappedView.h"
 #include "ShellChrakerRenderer.h"
 #include "Shield.h"
 #include "ShieldRenderer.h"
@@ -3059,9 +3061,10 @@ int RunGameApp(int argc, char** argv) {
             for (const auto& obj : objects) {
                 const int id = parseObjectId(obj.id);
                 objectIds.push_back(id);
-                if (id == ObjectIds::CameraExclusion)
+                if (id == ObjectIds::CameraExclusion || id == ObjectIds::DiagonalCameraExclusion)
                     cameraExclusions.push_back({obj.x - map.tileSize * 0.5f, obj.y - map.tileSize * 0.5f,
-                        static_cast<float>(map.tileSize), static_cast<float>(map.tileSize)});
+                        static_cast<float>(map.tileSize), static_cast<float>(map.tileSize),
+                        id == ObjectIds::DiagonalCameraExclusion ? std::clamp(obj.parameterValue.value_or(0), 0, 3) + 1 : 0});
             }
         };
         enum class EndSignPhase {
@@ -3950,8 +3953,6 @@ int RunGameApp(int argc, char** argv) {
 #endif
         }
         bool verticalWrapActive = false;
-        float camXClampBlend = 1.0f; // 1 = fully clamped, 0 = free-follow.
-        float camYClampBlend = 1.0f; // 1 = fully clamped, 0 = free-follow.
         constexpr int kDetailedDebugTabCount = 5;
         int detailedDebugSubmenu = 0; // 0 Overview, 1 Objects, 2 Performance, 3 Player Status, 4 Texture Inspector
         int detailedDebugObjectIndex = 0;
@@ -4920,15 +4921,14 @@ int RunGameApp(int argc, char** argv) {
                     }
                     c.vx *= std::exp(-2.0f * dt);
                 }
-                const float px1 = player.x;
-                const float px2 = player.x + player.w;
-                const float py1 = player.y;
-                const float py2 = player.y + player.h;
                 droppedCoins.erase(std::remove_if(droppedCoins.begin(), droppedCoins.end(), [&](const DroppedCoin& c) {
                     if (c.life <= 0.0f) return true;
                     if (c.y - coinR > (float)(map.h * map.tileSize) + 128.0f) return true;
-                    const bool touched = (c.noPickupTimer <= 0.0f) &&
-                                         (c.x + coinR > px1 && c.x - coinR < px2 && c.y + coinR > py1 && c.y - coinR < py2);
+                    const bool touched = c.noPickupTimer <= 0.0f && !WrappedView::copies(
+                        c.x - coinR, c.y - coinR, coinR * 2, coinR * 2,
+                        player.x, player.y, static_cast<float>(player.w), static_cast<float>(player.h),
+                        gameplayWrapX ? static_cast<float>(map.w * map.tileSize) : 0.0f,
+                        gameplayWrapY ? static_cast<float>(map.h * map.tileSize) : 0.0f).empty();
                     if (!touched) return false;
                     levelManager.addCoins(std::max(1, c.value));
                     audio.playCoinSfx();
@@ -6449,7 +6449,7 @@ int RunGameApp(int argc, char** argv) {
                 for (size_t index = 0; index < objects.size(); ++index) {
                     // Editor triggers and spawn markers have no physical water interaction.
                     const int id = objectIds[index];
-                    if (id < 0 || (id >= 57 && id <= 63) || id == 69 || id == 70 || id == ObjectIds::CameraExclusion || LevelParameters::definition(id)) continue;
+                    if (id < 0 || (id >= 57 && id <= 63) || id == 69 || id == 70 || id == ObjectIds::CameraExclusion || id == ObjectIds::DiagonalCameraExclusion || LevelParameters::definition(id)) continue;
                     emitWaterInteraction({objects[index].x - 16.0f, objects[index].y - 16.0f, 32.0f, 32.0f},
                         objectWaterStates[index], dt);
                 }
@@ -7556,24 +7556,8 @@ int RunGameApp(int argc, char** argv) {
         const float minCamX = (minCamXOverride >= 0.0f)
             ? std::max((float)map.tileSize, minCamXOverride)
             : (float)map.tileSize;
-        const float clampedCamX = std::clamp(freeCamX, minCamX, std::max(minCamX, maxCamX));
-        const float clampXTarget = cameraWrapX ? 0.0f : 1.0f;
-        const float clampLerpSpeed = 7.5f;
-        const float clampBlendStep = 1.0f - std::exp(-clampLerpSpeed * std::max(0.0f, dt));
-        if (cameraSmoothingSuppressTimer > 0.0f) {
-            camXClampBlend = clampXTarget;
-        } else {
-            camXClampBlend += (clampXTarget - camXClampBlend) * clampBlendStep;
-        }
-        camX = freeCamX * (1.0f - camXClampBlend) + clampedCamX * camXClampBlend;
-        const float clampedCamY = std::clamp(freeCamY, (float)map.tileSize, std::max((float)map.tileSize, maxCamY));
-        const float clampTarget = cameraWrapY ? 0.0f : 1.0f;
-        if (cameraSmoothingSuppressTimer > 0.0f) {
-            camYClampBlend = clampTarget;
-        } else {
-            camYClampBlend += (clampTarget - camYClampBlend) * clampBlendStep;
-        }
-        camY = freeCamY * (1.0f - camYClampBlend) + clampedCamY * camYClampBlend;
+        camX = CameraBounds::target(freeCamX, minCamX, maxCamX, cameraWrapX);
+        camY = CameraBounds::target(freeCamY, static_cast<float>(map.tileSize), maxCamY, cameraWrapY);
 
         if (lockCameraToEndSign) {
             if (!endSignCameraLocked) {
@@ -7613,6 +7597,10 @@ int RunGameApp(int argc, char** argv) {
         }
         // Round the base target; exclusion sliding retains subpixel continuity.
         if (deathSequenceActive) { camX = lastRenderCamX; camY = lastRenderCamY; }
+        // Stored camera locks may refer to an image from the previous wrap mode.
+        // Apply today's render bounds after every lock, before exclusions.
+        camX = CameraBounds::target(camX, minCamX, maxCamX, cameraWrapX);
+        camY = CameraBounds::target(camY, static_cast<float>(map.tileSize), maxCamY, cameraWrapY);
         camX = std::round(camX);
         camY = std::round(camY);
         const auto excludedCamera = exclusionCamera.update(camX, camY, worldViewW, worldViewH, cameraExclusions, dt,
@@ -7941,7 +7929,7 @@ int RunGameApp(int argc, char** argv) {
             // Wrap controls affect wrap state through levelWrap*Enabled(). They
             // are editor-only triggers and must not borrow an entity frame (or
             // the fallback frame) during gameplay.
-            if (isWrapControl || objId == ObjectIds::CameraExclusion || LevelParameters::definition(objId)) continue;
+            if (isWrapControl || objId == ObjectIds::CameraExclusion || objId == ObjectIds::DiagonalCameraExclusion || LevelParameters::definition(objId)) continue;
             float entityBaseX = obj.x - 16.0f;
             float entityBaseY = obj.y - 16.0f;
             if (renderWrapX && !isEndSign) {
@@ -8211,13 +8199,12 @@ int RunGameApp(int argc, char** argv) {
                 dstW = std::max(56, (int)std::lround(safeW * scale));
                 dstH = std::max(56, (int)std::lround(safeH * scale));
             }
-            SDL_Rect dst{
-                (int)std::lround((bossState.x - dstW * 0.5f) - camX),
-                (int)std::lround((bossState.y - dstH * 0.5f) - camY),
-                dstW,
-                dstH
-            };
-            if (!(dst.x + dst.w <= 0 || dst.y + dst.h <= 0 || dst.x >= worldViewW || dst.y >= worldViewH)) {
+            const auto bossCopies = WrappedView::copies(bossState.x - dstW * 0.5f, bossState.y - dstH * 0.5f,
+                static_cast<float>(dstW), static_cast<float>(dstH), camX, camY, worldViewW, worldViewH,
+                renderWrapX ? static_cast<float>(map.w * map.tileSize) : 0.0f,
+                renderWrapY ? static_cast<float>(map.h * map.tileSize) : 0.0f);
+            for (const auto& copy : bossCopies) {
+                SDL_Rect dst{static_cast<int>(std::lround(copy.x)), static_cast<int>(std::lround(copy.y)), dstW, dstH};
                 if (bossState.sourceWorld == 4 && bossState.rainbowTimer > 0.0f) {
                     const float t = (float)((double)SDL_GetTicksNS() / 1000000000.0 * 6.5);
                     const int r = (int)std::lround(127.0 + 128.0 * std::sin(t));
@@ -8233,32 +8220,6 @@ int RunGameApp(int argc, char** argv) {
                     SDL_SetRenderDrawColor(ren, 255, 60, 60, 255);
                     SDL_FRect hb{(float)dst.x, (float)dst.y, (float)dst.w, (float)dst.h};
                     SDL_RenderDrawRectF(ren, &hb);
-                    if (renderWrapY) {
-                        const float wrapH = (float)(map.h * map.tileSize);
-                        SDL_FRect top{hb.x, hb.y - wrapH, hb.w, hb.h};
-                        SDL_FRect bottom{hb.x, hb.y + wrapH, hb.w, hb.h};
-                        SDL_RenderDrawRectF(ren, &top);
-                        SDL_RenderDrawRectF(ren, &bottom);
-                    }
-                    if (renderWrapX) {
-                        const float wrapW = (float)(map.w * map.tileSize);
-                        SDL_FRect left{hb.x - wrapW, hb.y, hb.w, hb.h};
-                        SDL_FRect right{hb.x + wrapW, hb.y, hb.w, hb.h};
-                        SDL_RenderDrawRectF(ren, &left);
-                        SDL_RenderDrawRectF(ren, &right);
-                    }
-                    if (renderWrapY && renderWrapX) {
-                        const float wrapW = (float)(map.w * map.tileSize);
-                        const float wrapH = (float)(map.h * map.tileSize);
-                        SDL_FRect tl{hb.x - wrapW, hb.y - wrapH, hb.w, hb.h};
-                        SDL_FRect tr{hb.x + wrapW, hb.y - wrapH, hb.w, hb.h};
-                        SDL_FRect bl{hb.x - wrapW, hb.y + wrapH, hb.w, hb.h};
-                        SDL_FRect br{hb.x + wrapW, hb.y + wrapH, hb.w, hb.h};
-                        SDL_RenderDrawRectF(ren, &tl);
-                        SDL_RenderDrawRectF(ren, &tr);
-                        SDL_RenderDrawRectF(ren, &bl);
-                        SDL_RenderDrawRectF(ren, &br);
-                    }
                 }
                 if (showDebugView) {
                     const std::string hpText = std::string("BOSS HP: ") + std::to_string(bossState.health) + "/" + std::to_string(bossState.maxHealth);
@@ -8268,30 +8229,28 @@ int RunGameApp(int argc, char** argv) {
         }
         if (!secretFireballs.empty() || !secretExplosions.empty()) {
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+            const float bossWrapW = renderWrapX ? static_cast<float>(map.w * map.tileSize) : 0.0f;
+            const float bossWrapH = renderWrapY ? static_cast<float>(map.h * map.tileSize) : 0.0f;
             for (const auto& fb : secretFireballs) {
-                const SDL_FRect r{
-                    fb.x - camX - 5.0f,
-                    fb.y - camY - 5.0f,
-                    10.0f,
-                    10.0f
-                };
                 SDL_SetRenderDrawColor(ren, 255, 110, 20, 255);
-                SDL_RenderFillRectF(ren, &r);
+                for (const auto& copy : WrappedView::copies(fb.x - 5, fb.y - 5, 10, 10,
+                    camX, camY, worldViewW, worldViewH, bossWrapW, bossWrapH)) {
+                    const SDL_FRect r{copy.x, copy.y, copy.w, copy.h};
+                    SDL_RenderFillRectF(ren, &r);
+                }
             }
             for (const auto& ex : secretExplosions) {
                 const float d = ex.radius * 2.0f;
-                const SDL_FRect r{
-                    ex.x - camX - ex.radius,
-                    ex.y - camY - ex.radius,
-                    d,
-                    d
-                };
                 const float t = std::clamp(ex.life / 0.24f, 0.0f, 1.0f);
                 const Uint8 a = (Uint8)std::lround(200.0f * t);
-                SDL_SetRenderDrawColor(ren, 255, 170, 70, a);
-                SDL_RenderFillRectF(ren, &r);
-                SDL_SetRenderDrawColor(ren, 255, 235, 130, a);
-                SDL_RenderDrawRectF(ren, &r);
+                for (const auto& copy : WrappedView::copies(ex.x - ex.radius, ex.y - ex.radius, d, d,
+                    camX, camY, worldViewW, worldViewH, bossWrapW, bossWrapH)) {
+                    const SDL_FRect r{copy.x, copy.y, copy.w, copy.h};
+                    SDL_SetRenderDrawColor(ren, 255, 170, 70, a);
+                    SDL_RenderFillRectF(ren, &r);
+                    SDL_SetRenderDrawColor(ren, 255, 235, 130, a);
+                    SDL_RenderDrawRectF(ren, &r);
+                }
             }
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
         }
@@ -8299,18 +8258,18 @@ int RunGameApp(int argc, char** argv) {
         if (!droppedCoins.empty()) {
             const int cycleIndex = (int)((SDL_GetTicks() / 300) % 8);
             const Frame* coinFrame = cycleFrames[cycleIndex];
+            const float coinWrapW = renderWrapX ? static_cast<float>(map.w * map.tileSize) : 0.0f;
+            const float coinWrapH = renderWrapY ? static_cast<float>(map.h * map.tileSize) : 0.0f;
             for (const auto& c : droppedCoins) {
-                SDL_Rect dst{
-                    (int)std::lround(c.x - 8.0f - camX),
-                    (int)std::lround(c.y - 8.0f - camY),
-                    16, 16
-                };
-                if (dst.x + dst.w <= 0 || dst.y + dst.h <= 0 || dst.x >= worldViewW || dst.y >= worldViewH) continue;
-                if (blocksTex && coinFrame) {
-                    renderFrame(ren, blocksTex, *coinFrame, dst);
-                } else {
-                    SDL_SetRenderDrawColor(ren, 255, 220, 40, 255);
-                    SDL_RenderFillRect(ren, &dst);
+                for (const auto& copy : WrappedView::copies(c.x - 8, c.y - 8, 16, 16,
+                    camX, camY, worldViewW, worldViewH, coinWrapW, coinWrapH)) {
+                    SDL_Rect dst{static_cast<int>(std::lround(copy.x)), static_cast<int>(std::lround(copy.y)), 16, 16};
+                    if (blocksTex && coinFrame) {
+                        renderFrame(ren, blocksTex, *coinFrame, dst);
+                    } else {
+                        SDL_SetRenderDrawColor(ren, 255, 220, 40, 255);
+                        SDL_RenderFillRect(ren, &dst);
+                    }
                 }
             }
         }
