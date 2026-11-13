@@ -16,7 +16,8 @@ public:
     bool setLevelPath(const std::string& path);
     const std::string& levelPath() const;
 
-    void reloadLevel(TileMap& map, std::vector<ObjectInstance>& objects, LevelMeta& meta, Player& player);
+    void reloadLevel(TileMap& map, std::vector<ObjectInstance>& objects, LevelMeta& meta, Player& player,
+                     bool preserveButtons = false);
     void resetButtonsForLevelStart(TileMap& map);
     void applyLevelConfig(const LevelMeta& meta);
     std::string nextLevelPath() const;

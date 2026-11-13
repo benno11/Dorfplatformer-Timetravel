@@ -159,9 +159,21 @@ int main() {
     manager.reloadLevel(map, objects, loaded, player);
     assert(map.tileIds[5] == 66 && map.tileIds[6] == 66 && map.tileIds[9] == 66);
     assert(!areaActive(21) && areaActive(22));
+    manager.reloadLevel(map, objects, loaded, player, true);
+    assert(!areaActive(21) && areaActive(22) && map.tileIds[5] == 66);
     player.x = 32; player.y = 32; player.w = player.h = 30;
     assert(manager.activateButtonsAtPlayer(map, player) == 1 && areaActive(21));
     assert(map.tileIds[9] == 66); // The first press sets the flag with another button untouched.
+    // Death reloads keep the shared area flag and pressed visuals; alternatives
+    // must not award another press after respawning.
+    manager.reloadLevel(map, objects, loaded, player, true);
+    assert(areaActive(21) && areaActive(22));
+    assert(map.tileIds[5] == 67 && map.tileIds[6] == 67 && map.tileIds[9] == 67);
+    player.x = 32; player.y = 32; player.w = player.h = 30;
+    assert(manager.activateButtonsAtPlayer(map, player) == 0);
+    manager.reloadLevel(map, objects, loaded, player);
+    player.x = 32; player.y = 32; player.w = player.h = 30;
+    assert(manager.activateButtonsAtPlayer(map, player) == 1);
     player.y = 64;
     assert(manager.activateButtonsAtPlayer(map, player) == 1 && areaActive(21));
     manager.reloadLevel(map, objects, loaded, player);

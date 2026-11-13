@@ -3470,7 +3470,7 @@ int RunGameApp(int argc, char** argv) {
             }
             currentAreaIdText = buildAreaIdText();
         };
-        auto reloadLevel = [&](bool showIntroCard = true) {
+        auto reloadLevel = [&](bool showIntroCard = true, bool preserveButtons = false) {
             hairMouse.release(characterParts);
             characterParts = CharacterCreator::PartPhysics{};
             spikeImpact.remaining = 0;
@@ -3480,7 +3480,7 @@ int RunGameApp(int argc, char** argv) {
             bumperImpacts.clear();
             bumperSparks.clear();
             playerWaterState = {};
-            levelManager.reloadLevel(map, objects, meta, player);
+            levelManager.reloadLevel(map, objects, meta, player, preserveButtons);
             ++modLevelGeneration;
             parameterContacts.clear();
             if (hardmodeRun) {
@@ -5424,7 +5424,7 @@ int RunGameApp(int argc, char** argv) {
                 }
                 if (!livesSystemEnabled || livesCount > 0) {
                     droppedCoins.clear();
-                    reloadLevel();
+                    reloadLevel(true, true);
                     continue;
                 } else {
                     returnToSelect = true;

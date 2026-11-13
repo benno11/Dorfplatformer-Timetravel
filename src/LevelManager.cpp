@@ -27,7 +27,10 @@ const std::string& LevelManager::levelPath() const {
     return levelPath_;
 }
 
-void LevelManager::reloadLevel(TileMap& map, std::vector<ObjectInstance>& objects, LevelMeta& meta, Player& player) {
+void LevelManager::reloadLevel(TileMap& map, std::vector<ObjectInstance>& objects, LevelMeta& meta, Player& player,
+                               bool preserveButtons) {
+    const int previousWorld = worldId_, previousArea = levelPartId_;
+    const bool wasActive = activeButtonWorldAreas_.count(previousWorld * 10 + previousArea) != 0;
     loadLevelBNNLVL(levelPath_, map, objects, meta);
     applyLevelConfig(meta);
     coinCount_ = 0;
@@ -70,6 +73,11 @@ void LevelManager::reloadLevel(TileMap& map, std::vector<ObjectInstance>& object
         }
     }
     resetButtonsForLevelStart(map);
+    // Respawning restores the area's shared button flag and its pressed visuals.
+    if (preserveButtons && wasActive && worldId_ == previousWorld && levelPartId_ == previousArea) {
+        activeButtonWorldAreas_.insert(worldId_ * 10 + levelPartId_);
+        for (const auto& button : levelStartButtons_) setTileAt(map, button.first, 67);
+    }
 
     const bool shield = player.hasShield;
     player = Player{};
