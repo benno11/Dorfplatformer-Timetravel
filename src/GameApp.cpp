@@ -2937,8 +2937,8 @@ int RunGameApp(int argc, char** argv) {
             savedGameRoot = LoadGameSnapshot(activeSaveSlotIndex, continueHardmode);
             if (savedGameRoot.contains("resume_world") && savedGameRoot.value("resume_world", 0) > 0) {
                 const int level = savedGameRoot.value("resume_level", 1) - 1;
-                savedGameRoot["level_path"] = levelManager.levelPathByCode(
-                    savedGameRoot.value("resume_world", 1) * 100 + (level / 4 + 1) * 10 + level % 4 + 1);
+                savedGameRoot["level_path"] = levelManager.levelPathForSavedArea(
+                    savedGameRoot.value("resume_world", 1), level / 4 + 1, LoadGameButtonStates(activeSaveSlotIndex));
             }
             if (!savedGameRoot.is_object() || !savedGameRoot.contains("level_path")) {
                 SDL_Log("SAVE: no playable snapshot in slot %d", activeSaveSlotIndex + 1);

@@ -42,6 +42,7 @@ public:
     std::string musicPath() const;
     bool hasLevelCode(int code) const;
     std::string levelPathByCode(int code) const;
+    std::string levelPathForSavedArea(int world, int area, const std::vector<int>& buttons) const;
     std::string levelPathByWorldAreaTime(int world, int area, int time) const;
     std::vector<int> activeButtonWorldAreas() const;
     void setButtonAreaActiveForDebug(int world, int area, bool active);

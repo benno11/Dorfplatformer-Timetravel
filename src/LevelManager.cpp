@@ -431,6 +431,22 @@ std::string LevelManager::levelPathByCode(int code) const {
     return "";
 }
 
+std::string LevelManager::levelPathForSavedArea(int world, int area, const std::vector<int>& buttons) const {
+    if (world < 1 || world > 7 || area < 1 || area > 3 || (world == 7 && area != 1)) return "";
+    int time = (world >= 6 || area == 3) ? 3 : 1;
+    // World 6's route depends on earlier areas, not the current area's button.
+    // Use this save's flags directly; runtime flags may belong to another slot.
+    if (world == 6) {
+        bool qualified = true;
+        for (int previous = 1; previous < area; ++previous)
+            qualified = qualified && std::find(buttons.begin(), buttons.end(), 60 + previous) != buttons.end();
+        if (qualified) time = 4;
+    }
+    auto path = levelPathByCode(world * 100 + area * 10 + time);
+    if (path.empty() && time == 4) path = levelPathByCode(world * 100 + area * 10 + 3);
+    return path;
+}
+
 std::string LevelManager::levelPathByWorldAreaTime(int world, int area, int time) const {
     if (world <= 0 || area <= 0 || time <= 0) return "";
     int routedTime = time;

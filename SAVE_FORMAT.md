@@ -20,8 +20,9 @@ Campaign world IDs are 1–7, with area IDs 1–3 (world 7 has only area 1).
 Hardmode uses world groups 1–2 and area IDs 1–10 for its twenty levels.
 
 Continue restarts the saved campaign area in its initial time period: period 1
-for areas 1–2 in worlds 1–5; period 3 for area 3 and worlds 6–7. Saved button
-flags are restored. Hardmode continues at the saved level's start; a death saves
+for areas 1–2 in worlds 1–5; period 3 for area 3 and world 7. World 6
+uses period 4 when every earlier area button is saved as active (area 1
+always qualifies), otherwise period 3. Saved button flags are restored. Hardmode continues at the saved level's start; a death saves
 level 1. Historical best Hardmode level has no dedicated storage: it is derived
 from the saved run or completion flag.
 

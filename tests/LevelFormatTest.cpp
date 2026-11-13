@@ -5,6 +5,7 @@
 #include "LevelManager.h"
 #include "ObjectIds.h"
 #include "GameProgression.h"
+#include "SaveFormat.h"
 #include "Shield.h"
 
 #ifdef NDEBUG
@@ -421,6 +422,29 @@ int main() {
             assert(std::any_of(objects.begin(), objects.end(), [](const ObjectInstance& object) { return object.id == "67"; }));
         }
     }
+    // Loading a save must select the qualified World 6 variant before spawning.
+    manager.setButtonAreaActiveForDebug(6, 1, true);
+    manager.setButtonAreaActiveForDebug(6, 2, true);
+    for (int mask = 0; mask < 4; ++mask) {
+        std::vector<int> savedButtons{11, 12}; // Other worlds never satisfy World 6.
+        if (mask & 1) savedButtons.push_back(61);
+        if (mask & 2) savedButtons.push_back(62);
+        for (int area = 1; area <= 3; ++area) {
+            const bool qualified = area == 1 || (area == 2 ? (mask & 1) != 0 : mask == 3);
+            const int time = qualified ? 4 : 3;
+            const auto path = manager.levelPathForSavedArea(6, area, savedButtons);
+            assert(!path.empty() && path == manager.levelPathByCode(600 + area * 10 + time));
+            const auto bytes = SaveFormat::encode({{"resume_world", 6}, {"resume_level", (area - 1) * 4 + 3},
+                {"active_button_world_areas", savedButtons}});
+            const auto decoded = SaveFormat::decode(bytes);
+            assert(decoded && manager.levelPathForSavedArea((*decoded)["resume_world"],
+                ((*decoded)["resume_level"].get<int>() - 1) / 4 + 1,
+                (*decoded)["active_button_world_areas"].get<std::vector<int>>()) == path);
+        }
+    }
+    assert(manager.levelPathForSavedArea(1, 1, {61, 62}) == manager.levelPathByCode(111));
+    assert(manager.levelPathForSavedArea(0, 1, {}).empty());
+    assert(manager.levelPathForSavedArea(7, 2, {}).empty());
     assert(manager.levelPathByCode(613) == "assets/levels/level_051.txt");
     assert(manager.levelPathByCode(713) == "assets/levels/level_057.txt");
     return 0;
