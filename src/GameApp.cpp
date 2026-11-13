@@ -1,4 +1,5 @@
 #include "GameApp.h"
+#include "ProcessEnvironment.h"
 #include "EditionPolicy.h"
 #include "NativeMods.h"
 #include "GameLog.h"
@@ -271,8 +272,8 @@ int RunGameApp(int argc, char** argv) {
         logStartup("=== startup begin ===");
     }
     auto envOrUnset = [](const char* name) -> std::string {
-        const char* v = std::getenv(name);
-        return (v && *v) ? std::string(v) : std::string("<unset>");
+        const auto value = ProcessEnvironment::get(name);
+        return value.empty() ? std::string("<unset>") : value;
     };
     auto configuredAudioDriver = [&]() -> std::string {
         const char* hintDriver = SDL_GetHint(SDL_HINT_AUDIO_DRIVER);
@@ -1670,7 +1671,7 @@ int RunGameApp(int argc, char** argv) {
     extraSettings[44] = true; // PRIVACY+ -> SEND ANONYMOUS METRICS
     const std::string defaultTelemetryWebhook = "https://discord.com/api/webhooks/1471610164829356085/at2iXFzt7euIGzvIaN8iQEgNS6m1RfKUShwq6RPyIUUefIO7Id-uWxdB9Mo4wP1WKVWj";
     std::string telemetryWebhookUrl = defaultTelemetryWebhook;
-    if (const char* envHook = std::getenv("DF_DISCORD_WEBHOOK"); envHook && *envHook) {
+    if (const auto envHook = ProcessEnvironment::get("DF_DISCORD_WEBHOOK"); !envHook.empty()) {
         telemetryWebhookUrl = envHook;
     }
     float fastTravelChangeDelay = 0.0f;

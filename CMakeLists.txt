@@ -224,11 +224,13 @@ endif()
 if(WIN32)
   set_target_properties(platformer PROPERTIES PREFIX "" OUTPUT_NAME "platformer" PDB_NAME "platformer-game" COMPILE_PDB_NAME "platformer-game")
   target_compile_definitions(platformer PRIVATE PLATFORMER_GAME_LIBRARY=1)
-  target_sources(platformer PRIVATE src/GameEntry.def)
-  add_executable(platformer_sandbox WIN32 src/SandboxMain.cpp src/GameSandbox.cpp src/SandboxPointers.cpp src/SandboxPointerRuntime.cpp)
-  set_target_properties(platformer_sandbox PROPERTIES OUTPUT_NAME "platformer")
+  target_sources(platformer PRIVATE src/GameEntry.def src/BuildPairSection.cpp)
+  add_executable(platformer_sandbox WIN32 src/SandboxMain.cpp src/GameSandbox.cpp src/SandboxPointers.cpp src/SandboxPointerRuntime.cpp src/BuildPairSection.cpp src/BuildPairIntegrity.cpp)
+  set_target_properties(platformer_sandbox PROPERTIES OUTPUT_NAME "platformer" ARCHIVE_OUTPUT_NAME "platformer-sandbox")
   target_compile_definitions(platformer_sandbox PRIVATE PLATFORMER_LITE_EDITION=$<BOOL:${PLATFORMER_LITE_EDITION}> _WIN32_WINNT=0x0A00 NOMINMAX WIN32_LEAN_AND_MEAN)
   add_dependencies(platformer platformer_sandbox)
+  target_include_directories(platformer_sandbox PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/build-pair")
+  set_property(TARGET platformer APPEND PROPERTY LINK_DEPENDS "$<TARGET_FILE:platformer_sandbox>")
 endif()
 target_include_directories(platformer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 target_compile_definitions(platformer PRIVATE PLATFORMER_LITE_EDITION=$<BOOL:${PLATFORMER_LITE_EDITION}>)
@@ -830,6 +832,43 @@ endif()
 add_library(secret_crypto STATIC third_party/monocypher/monocypher.c third_party/monocypher/monocypher-ed25519.c)
 set_target_properties(secret_crypto PROPERTIES POSITION_INDEPENDENT_CODE ON UNITY_BUILD OFF)
 target_include_directories(secret_crypto PUBLIC third_party/monocypher)
+if(NOT ANDROID AND NOT IOS)
+  add_executable(build_pair_signer tools/BuildPairSigner.cpp src/BuildPairIntegrity.cpp)
+  target_include_directories(build_pair_signer PRIVATE src)
+  target_link_libraries(build_pair_signer PRIVATE secret_crypto)
+  if(WIN32)
+    target_compile_definitions(build_pair_signer PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_link_libraries(build_pair_signer PRIVATE bcrypt)
+  endif()
+endif()
+if(WIN32)
+  set(_pair_private_key "${CMAKE_CURRENT_BINARY_DIR}/build-pair/signing.key")
+  set(_pair_public_header "${CMAKE_CURRENT_BINARY_DIR}/build-pair/BuildPairTrust.h")
+  add_custom_command(OUTPUT "${_pair_private_key}" "${_pair_public_header}"
+    COMMAND $<TARGET_FILE:build_pair_signer> keygen "${_pair_private_key}" "${_pair_public_header}"
+    DEPENDS build_pair_signer
+    COMMENT "Generating private build signing key and public launcher trust key"
+    VERBATIM)
+  add_custom_target(build_pair_trust DEPENDS "${_pair_private_key}" "${_pair_public_header}")
+  add_dependencies(platformer_sandbox build_pair_trust)
+  target_sources(platformer_sandbox PRIVATE "${_pair_public_header}")
+  set(_pair_edition full)
+  if(PLATFORMER_LITE_EDITION)
+    set(_pair_edition lite)
+  endif()
+  add_custom_command(TARGET platformer POST_BUILD
+    COMMAND $<TARGET_FILE:build_pair_signer> seal "${_pair_private_key}"
+      $<TARGET_FILE:platformer_sandbox> $<TARGET_FILE:platformer> ${_pair_edition}
+    COMMENT "Signing matching EXE and DLL build sections"
+    VERBATIM)
+  # Also covers an EXE-only relink before packaging. A valid pair is unchanged.
+  add_custom_target(platformer-seal ALL
+    COMMAND $<TARGET_FILE:build_pair_signer> seal "${_pair_private_key}"
+      $<TARGET_FILE:platformer_sandbox> $<TARGET_FILE:platformer> ${_pair_edition}
+    DEPENDS platformer platformer_sandbox build_pair_signer build_pair_trust
+    VERBATIM)
+endif()
+
 target_link_libraries(platformer PRIVATE secret_crypto)
 if(WIN32)
   target_link_libraries(platformer_sandbox PRIVATE secret_crypto bcrypt)
@@ -1072,6 +1111,13 @@ if(BUILD_TESTING AND NOT ANDROID AND NOT IOS)
     add_test(NAME windows_installer_rebuild
       COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/WindowsInstallerBuildTest.py")
   endif()
+  add_executable(process_environment_test tests/ProcessEnvironmentTest.cpp)
+  target_include_directories(process_environment_test PRIVATE src)
+  add_test(NAME process_environment COMMAND process_environment_test)
+  add_executable(build_pair_integrity_test tests/BuildPairIntegrityTest.cpp src/BuildPairIntegrity.cpp)
+  target_include_directories(build_pair_integrity_test PRIVATE src)
+  target_link_libraries(build_pair_integrity_test PRIVATE secret_crypto)
+  add_test(NAME build_pair_integrity COMMAND build_pair_integrity_test)
   add_executable(sandbox_pointers_test tests/SandboxPointersTest.cpp src/SandboxPointers.cpp src/SandboxPointerRuntime.cpp)
   target_include_directories(sandbox_pointers_test PRIVATE src)
   target_link_libraries(sandbox_pointers_test PRIVATE secret_crypto)
@@ -1393,6 +1439,7 @@ if(WIN32)
   set(PLATFORMER_WINDOWS_INSTALLER_OUTPUT "${PLATFORMER_WINDOWS_DIST_DIR}/output/df-platformer-windows-installer${_platformer_installer_suffix}.exe")
 
   set(_platformer_windows_stage_deps
+    platformer-seal
     platformer
     sheet_config
     df-launcher

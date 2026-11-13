@@ -53,3 +53,6 @@ Thumbs.db
 __pycache__/
 
 /server/releases/
+
+# Generated build signing material; private seeds must never be committed.
+build-pair/

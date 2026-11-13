@@ -104,3 +104,40 @@ do not allocate, log, save, wait, or call UI code. A healthy desktop broker
 shows the notification after the game exits. Mobile shows a notice on the next
 launch because the crashed app process cannot safely show one itself. These
 checks cannot detect every memory bug or guarantee its detection before damage.
+
+## Windows build-pair signature
+
+Both PE files contain a dedicated read-only `.dfpair` section, with a fixed
+256-byte record: `DFPAIR01` magic (8), little-endian format version (4), edition
+(4), random build ID (32), launcher BLAKE2b-512 digest (64), game DLL digest
+(64), Ed25519 signature (64), and reserved zero bytes (16). The signature covers
+the first 176 bytes, including both hashes and the build ID. Hashes cover the
+complete files, normalizing only the 256-byte signature slot and the four-byte
+PE checksum to zero. Section headers, imports, executable code, resources,
+padding, and any appended data are included. The checksum is recalculated
+after sealing and is not executable data.
+
+The build tool generates a private Ed25519 seed in
+`<build>/build-pair/signing.key` and a generated public-key header for the
+launcher. Neither the seed nor the signing tool is included in packages. Keep
+the seed private; do not upload the entire build directory as a public artifact.
+Each changed binary pair receives a fresh random ID. An already valid pair is
+left unchanged on incremental builds. Building `platformer` signs after linking;
+the normal build and Windows packaging also depend on `platformer-seal`, so an
+EXE-only relink is sealed before shipping. Sealing must run after any binary
+rewriting/optimization. A later Authenticode signing or other file rewrite would
+invalidate this format and requires explicit integration before enabling it.
+
+Before `LoadLibraryExW` can execute any game DLL initializers, the restricted
+launcher locks both files against write/delete sharing, validates their PE
+sections, compares both signed records (and the loaded EXE's record), verifies
+the signature using its embedded public key, and recomputes both file hashes.
+Wrong builds, editions, architectures, missing signatures, and modified files
+are rejected with an error. The DLL file remains locked until it is unloaded,
+preventing ordinary modification or replacement between verification and load.
+
+The launcher is the trust anchor. This detects a replaced or damaged DLL when
+the launcher is trusted; it cannot stop someone who replaces/patches the launcher
+and its checks too. The per-build key is not a publisher certificate or remote
+attestation. Only the two game binaries are covered, not every dependency,
+native mod, asset, or changes made to process memory after verification.

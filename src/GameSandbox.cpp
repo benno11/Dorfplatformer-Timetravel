@@ -1,4 +1,5 @@
 #include "GameSandbox.h"
+#include "ProcessEnvironment.h"
 #include "EditionPolicy.h"
 #include <SDL3/SDL.h>
 #include <cstdlib>
@@ -52,11 +53,11 @@ bool safeRoots(const std::filesystem::path& game,const std::filesystem::path& sa
     auto g=std::filesystem::canonical(game,error);if(error||same(g,g.root_path()))return false;
     auto s=std::filesystem::canonical(save,error);if(error||same(s,s.root_path())||same(s,g))return false;
 #ifdef _WIN32
-    const char* home=std::getenv("USERPROFILE");
+    const auto home=ProcessEnvironment::get("USERPROFILE");
 #else
-    const char* home=std::getenv("HOME");
+    const auto home=ProcessEnvironment::get("HOME");
 #endif
-    if(home) {
+    if(!home.empty()) {
         auto h=std::filesystem::weakly_canonical(std::filesystem::u8path(home),error);
         if(!error)for(;;) {
             // Never grant the whole home directory, or one of its ancestors.
@@ -333,7 +334,7 @@ int windowsLaunch() {
     ok=ok&&initialized;
     if(ok)ok=UpdateProcThreadAttribute(attributes,0,PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES,&security,sizeof(security),nullptr,nullptr)!=FALSE;
     // The broker chooses the save directory; the child may use it only with an actual AppContainer token.
-    std::wstring oldRoot; if(auto len=GetEnvironmentVariableW(L"DF_SANDBOX_SAVE_ROOT",nullptr,0)) {oldRoot.resize(len);GetEnvironmentVariableW(L"DF_SANDBOX_SAVE_ROOT",oldRoot.data(),len);oldRoot.resize(len-1);}
+    const auto oldRoot=ProcessEnvironment::wide(L"DF_SANDBOX_SAVE_ROOT");
     SetEnvironmentVariableW(L"DF_SANDBOX_SAVE_ROOT",save.c_str());
     STARTUPINFOEXW startup{};startup.StartupInfo.cb=sizeof(startup);startup.lpAttributeList=attributes;
     std::wstring command=GetCommandLineW(); std::vector<wchar_t> mutableCommand(command.begin(),command.end());mutableCommand.push_back(0);
@@ -365,7 +366,7 @@ int windowsLaunch() {
 #endif
 std::string saveRootOverride() {
 #ifdef _WIN32
-    if(containerToken()) { if(auto p=std::getenv("DF_SANDBOX_SAVE_ROOT"))return p; }
+    if(containerToken()) return ProcessEnvironment::get("DF_SANDBOX_SAVE_ROOT");
 #endif
     return {};
 }

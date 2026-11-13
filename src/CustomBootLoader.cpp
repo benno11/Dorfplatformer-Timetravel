@@ -1,4 +1,5 @@
 #include "CustomBootLoader.h"
+#include "ProcessEnvironment.h"
 
 #include <SDL3/SDL_power.h>
 #include <SDL3/SDL_timer.h>
@@ -105,9 +106,7 @@ static std::filesystem::path executablePath(char** argv) {
 }
 
 static bool parseBoolEnv(const char* name) {
-    const char* value = std::getenv(name);
-    if (!value) return false;
-    std::string text(value);
+    std::string text = ProcessEnvironment::get(name);
     std::transform(text.begin(), text.end(), text.begin(), [](unsigned char ch) {
         return static_cast<char>(std::tolower(ch));
     });
@@ -168,8 +167,8 @@ static bool readBootConfiguration(BootConfig& config, std::string& error) {
 static StartupKeys collectStartupKeys(int argc, char** argv) {
     StartupKeys keys;
     keys.ctrlBPressed = parseBoolEnv("DF_BOOT_CTRL_B");
-    const char* envPartition = std::getenv("DF_BOOT_PARTITION");
-    if (envPartition && *envPartition) {
+    const auto envPartition = ProcessEnvironment::get("DF_BOOT_PARTITION");
+    if (!envPartition.empty()) {
         keys.ctrlBPressed = true;
         keys.requestedPartition = envPartition;
     }
@@ -188,8 +187,8 @@ static StartupKeys collectStartupKeys(int argc, char** argv) {
         }
     }
 
-    const char* envOptions = std::getenv("DF_BOOT_OPTIONS");
-    if (envOptions && *envOptions) {
+    const auto envOptions = ProcessEnvironment::get("DF_BOOT_OPTIONS");
+    if (!envOptions.empty()) {
         std::stringstream ss(envOptions);
         std::string item;
         while (std::getline(ss, item, ',')) {
