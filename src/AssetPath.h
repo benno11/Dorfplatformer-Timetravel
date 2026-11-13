@@ -5,6 +5,8 @@
 
 std::string ResolveAssetPath(const std::string& path);
 std::string ReadTextFile(const std::string& path);
+// Updater-only transport; available in Lite without enabling online levels.
+std::string ReadUpdateManifest(const std::string& url);
 // Poll the returned future from a game/menu update; do not block on get().
 std::future<std::string> ReadTextFileAsync(std::string path);
 bool FileExists(const std::string& path);

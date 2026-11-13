@@ -29,6 +29,7 @@ struct Options {
     std::filesystem::path statusFile;
     DWORD waitPid = 0;
     bool silent = false;
+    bool relaunch = false;
 };
 
 bool isCheckLikeMode(const std::string& mode) {
@@ -232,7 +233,8 @@ bool httpGetText(const std::string& url, std::string& out, std::string& err) {
 bool httpDownloadFile(const std::string& url,
                       const std::filesystem::path& outPath,
                       std::string& err,
-                      DownloadProgressContext* progressCtx = nullptr) {
+                      DownloadProgressContext* progressCtx = nullptr,
+                      bool httpsOnly = false) {
     std::ofstream out(outPath, std::ios::binary);
     if (!out.is_open()) {
         err = "could not open download target";
@@ -246,6 +248,15 @@ bool httpDownloadFile(const std::string& url,
     long code = 0;
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    if (httpsOnly) {
+#if LIBCURL_VERSION_NUM >= 0x075500
+        curl_easy_setopt(curl, CURLOPT_PROTOCOLS_STR, "https");
+        curl_easy_setopt(curl, CURLOPT_REDIR_PROTOCOLS_STR, "https");
+#else
+        curl_easy_setopt(curl, CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
+        curl_easy_setopt(curl, CURLOPT_REDIR_PROTOCOLS, CURLPROTO_HTTPS);
+#endif
+    }
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 0L);
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
@@ -348,7 +359,9 @@ bool parseArgs(int argc, wchar_t** argv, Options& out) {
             target = utf8;
             return true;
         };
-        if (arg == L"--silent") {
+        if (arg == L"--relaunch") {
+            out.relaunch = true;
+        } else if (arg == L"--silent") {
             out.silent = true;
         } else if (arg == L"--manifest-url") {
             if (!nextValue(out.manifestUrl)) return false;
@@ -432,6 +445,14 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
                     options.currentVersion, options.currentVersionId);
         return 1;
     }
+    struct CompletionNotice {
+        const Options& options;
+        bool complete = false;
+        ~CompletionNotice() {
+            if (options.relaunch && !complete)
+                showMessage(MB_ICONERROR, "Sandbox updater", "The update did not complete. Open the game again to retry, or reinstall the latest complete package.");
+        }
+    } outcome{options};
     if (options.currentVersionId.empty()) {
         options.currentVersionId = options.currentVersion;
     }
@@ -513,7 +534,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         manifest,
         -1
     };
-    if (!httpDownloadFile(manifest.installerUrl, installerPath, err, &progressCtx)) {
+    if (!httpDownloadFile(manifest.installerUrl, installerPath, err, &progressCtx, options.relaunch)) {
         writeStatus(options.statusFile, "error", "Could not download the new installer.",
                     options.currentVersion, options.currentVersionId, manifest);
         curl_global_cleanup();
@@ -556,6 +577,20 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         writeStatus(options.statusFile, "error", "Installer failed.",
                     options.currentVersion, options.currentVersionId, manifest, 1.0);
         return 1;
+    }
+    if (options.relaunch) {
+        std::filesystem::path launcher;
+        for (const auto& candidate : {options.appDir / "df-launcher.exe",
+                options.appDir.parent_path() / "df-launcher.exe",
+                options.appDir.parent_path().parent_path() / "df-launcher.exe"}) {
+            if (std::filesystem::is_regular_file(candidate)) { launcher = candidate; break; }
+        }
+        if (launcher.empty()) return 1;
+        SHELLEXECUTEINFOW launch{}; launch.cbSize = sizeof(launch);
+        launch.lpVerb = L"open"; launch.lpFile = launcher.c_str(); launch.nShow = SW_SHOWNORMAL;
+        if (!ShellExecuteExW(&launch)) return 1;
+        outcome.complete = true;
+        return 0;
     }
     if (options.waitPid != 0) {
         writeStatus(options.statusFile, "installing", "Update installed. Closing running game...",

@@ -2,6 +2,7 @@
 #include "CustomBootLoader.h"
 #include "Platform.h"
 #include "GameSandbox.h"
+#include "SandboxUpdates.h"
 #include "SandboxPointers.h"
 #include <SDL3/SDL.h>
 #include "AssetPath.h"
@@ -82,6 +83,10 @@ extern "C" __declspec(dllexport) int DFGameMain(int argc, char** argv, const DFS
 }
 #else
 int main(int argc, char** argv) {
+#if !defined(_WIN32) && !PLATFORMER_MOBILE
+    if (const char* base = SDL_GetBasePath())
+        SandboxUpdates::configureFile(std::filesystem::u8path(base) / "assets/config.json", ReadUpdateManifest);
+#endif
     return GameSandbox::supervise(argc, argv, runMainImpl);
 }
 

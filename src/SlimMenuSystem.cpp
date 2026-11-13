@@ -2,6 +2,7 @@
 #include "NativeMods.h"
 #include "Achievements.h"
 #include "BuildInfo.h"
+#include "SandboxVersion.h"
 #include "SlimMenuSystem.h"
 #include "SlimMenuLayout.h"
 #include "ButtonAnimation.h"
@@ -332,6 +333,7 @@ std::string fallbackText(const std::string& value, const std::string& fallback =
 }
 
 std::string aboutVarValue(const std::string& var, const SlimMenuContext& ctx) {
+    if (var == "about_sandbox_version") return GameSandbox::version;
     if (var == "about_game_name") return Edition::name;
     if (var == "about_version") return fallbackText(ctx.versionString, "dev");
     if (var == "about_version_id") return fallbackText(ctx.versionIdString, "dev");
@@ -426,7 +428,7 @@ bool varIsTruthy(const std::string& name, const SlimRuntime& runtime, const Slim
 
 std::string expandVars(std::string text, const SlimRuntime& runtime, const SlimMenuContext& ctx) {
     if (text.find("${") == std::string::npos) return text;
-    for (const char* name : {"account_email", "account_password", "about_game_name", "clipboard_status", "game_log_enabled", "save_logcat_to_file"})
+    for (const char* name : {"account_email", "account_password", "about_game_name", "about_sandbox_version", "clipboard_status", "game_log_enabled", "save_logcat_to_file"})
         text = replaceAll(text, "${" + std::string(name) + "}", contextVarValue(name, runtime, ctx));
     for (const char* var : {"world_select_unlocked", "hardmode_unlocked", "hardmode_complete", "hardmode_furthest_level", "hardmode_save_exists"}) {
         const std::string placeholder = "${" + std::string(var) + "}";
@@ -700,6 +702,7 @@ SlimMenu loadMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuC
             }
         };
         text("Current Version: " + fallbackText(ctx.versionString, "dev") + " (" + fallbackText(ctx.versionIdString, "dev") + ")");
+        text("Sandbox Version: " + std::string(GameSandbox::version));
         text("Status: " + state.status);
         menu.items.push_back(MenuItem{MenuItem::Type::Button, state.actionLabel(), "updater", {}});
         menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back", "menu", "mainsetting"});

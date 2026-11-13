@@ -157,9 +157,9 @@ std::string ResolveAssetPath(const std::string& path) {
     return path;
 }
 
-std::string ReadTextFile(const std::string& path) {
+static std::string readTextContent(const std::string& path, bool updateManifest) {
     const std::string resolved = ResolveAssetPath(path);
-    if (Edition::lite && isHttpUrl(resolved)) return {};
+    if (Edition::lite && isHttpUrl(resolved) && !updateManifest) return {};
 #if defined(HAVE_CURL) && HAVE_CURL
     if (isHttpUrl(resolved)) {
         const auto t0 = std::chrono::steady_clock::now();
@@ -175,13 +175,17 @@ std::string ReadTextFile(const std::string& path) {
         curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
         curl_easy_setopt(curl, CURLOPT_USERAGENT, PLATFORMER_CLIENT_USER_AGENT);
+        struct TextResponse { std::string* body; bool update; } response{&body, updateManifest};
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,
                          +[](char* ptr, size_t size, size_t nmemb, void* userdata) -> size_t {
-                             std::string* out = static_cast<std::string*>(userdata);
-                             out->append(ptr, size * nmemb);
-                             return size * nmemb;
+                             auto& response = *static_cast<TextResponse*>(userdata);
+                             if (size != 0 && nmemb > SIZE_MAX / size) return 0;
+                             const size_t bytes = size * nmemb;
+                             if (response.update && bytes > 1024 * 1024 - response.body->size()) return 0;
+                             response.body->append(ptr, bytes);
+                             return bytes;
                          });
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &body);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
         const CURLcode rc = PerformNetworkRequest(curl);
         long code = 0;
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
@@ -279,6 +283,14 @@ std::string ReadTextFile(const std::string& path) {
         return std::string(data.begin(), data.end());
     }
     return {};
+}
+
+std::string ReadTextFile(const std::string& path) { return readTextContent(path, false); }
+
+std::string ReadUpdateManifest(const std::string& url) {
+    if (!isHttpUrl(url)) return {};
+    auto body = readTextContent(url, true);
+    return body.size() <= 1024 * 1024 ? body : std::string();
 }
 
 std::future<std::string> ReadTextFileAsync(std::string path) {

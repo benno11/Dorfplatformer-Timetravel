@@ -2,6 +2,7 @@
 #define DF_SANDBOX_POINTER_API_H
 #include <stdint.h>
 #include <stddef.h>
+#include "SandboxUpdateAPI.h"
 #include "../sdk/include/df_mod.h"
 #ifdef __cplusplus
 extern "C" {
@@ -28,6 +29,9 @@ typedef struct DFSandboxAPI {
     void (*mod_unload)(DFSandboxHandle);
     void (*mod_menu_load)(DFSandboxHandle, const DFMenuAPI*);
     void (*mod_menu_action)(DFSandboxHandle, const char* menu, const char* action);
+    /* Append-only sandbox service API; no caller-supplied URLs or programs. */
+    int32_t (*update_action)(uint32_t action);
+    int32_t (*update_status)(DFSandboxUpdateStatus* status);
 } DFSandboxAPI;
 #ifdef __cplusplus
 }

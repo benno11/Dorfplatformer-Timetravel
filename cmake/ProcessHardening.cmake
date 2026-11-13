@@ -2,17 +2,26 @@
 # not turn a native mod into an untrusted plugin or authenticate all pointers.
 include(CheckCXXCompilerFlag)
 include(CheckCXXSourceCompiles)
+include(CMakePushCheckState)
 function(platformer_harden_process target)
   if(MSVC)
     target_compile_options(${target} PRIVATE /GS /sdl)
-    # XFG adds function-type hashes at indirect calls on supporting MSVC/OSes;
-    # CFG remains the baseline on all Windows builds.
-    check_cxx_compiler_flag("/guard:xfg" PLATFORMER_COMPILER_XFG)
-    if(PLATFORMER_COMPILER_XFG)
-      target_compile_options(${target} PRIVATE /guard:xfg)
-      target_link_options(${target} PRIVATE /guard:xfg)
-    endif()
+    # MSVC accepts /guard:xfg when compiling x86 but its linker rejects it.
+    # Only consider 64-bit targets, and verify the complete compile/link path.
+    # Use a fresh cache key so old compiler-only successes cannot enable XFG.
     if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+      cmake_push_check_state(RESET)
+      set(CMAKE_TRY_COMPILE_TARGET_TYPE EXECUTABLE)
+      set(CMAKE_REQUIRED_FLAGS "/guard:cf /guard:xfg")
+      set(CMAKE_REQUIRED_LINK_OPTIONS /guard:cf /guard:xfg /INCREMENTAL:NO)
+      check_cxx_source_compiles("int f(int x){return x;} int main(){int (*volatile p)(int)=f;return p(0);}"
+        PLATFORMER_TOOLCHAIN_XFG)
+      cmake_pop_check_state()
+      if(PLATFORMER_TOOLCHAIN_XFG)
+        target_compile_options(${target} PRIVATE /guard:xfg)
+        target_link_options(${target} PRIVATE /guard:xfg /INCREMENTAL:NO)
+      endif()
+      # CFG is retained independently on every Windows architecture.
       set(CMAKE_REQUIRED_LINK_OPTIONS /CETCOMPAT)
       check_cxx_source_compiles("int main(){return 0;}" PLATFORMER_LINKER_CET)
       unset(CMAKE_REQUIRED_LINK_OPTIONS)

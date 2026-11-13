@@ -1,6 +1,7 @@
 // Windows broker: this binary does not link the game or its mod loader.
 #include "GameSandbox.h"
 #include "SandboxPointers.h"
+#include "SandboxUpdates.h"
 #include "EditionPolicy.h"
 #include "BuildPairIntegrity.h"
 #include "BuildPairTrust.h"
@@ -70,6 +71,7 @@ static int loadGame(int argc, char** argv) {
         MessageBoxW(nullptr,L"platformer.dll or one of its dependencies could not be loaded. Reinstall the complete game package.",L"Game startup failed",MB_OK|MB_ICONERROR);
         if(directory)RemoveDllDirectory(directory);return 1;
     }
+    SandboxUpdates::configureWindows(root);
     using Entry=DFSandboxGameEntry;
     auto entry=reinterpret_cast<Entry>(GetProcAddress(game,"DFGameMain"));
     int result=1;
@@ -78,6 +80,7 @@ static int loadGame(int argc, char** argv) {
         result=SandboxPointers::api().call_game(handle.get(),argc,argv);
     }
     if(!entry)MessageBoxW(nullptr,L"The game DLL has an incompatible entry point.",L"Game startup failed",MB_OK|MB_ICONERROR);
+    SandboxUpdates::shutdown();
     FreeLibrary(game);if(directory)RemoveDllDirectory(directory);return result;
 }
 static int launch(int argc,char** argv) {

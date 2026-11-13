@@ -20,6 +20,8 @@ int main(int argc,char** argv){
     std::string invalidStatus;
     assert(!GameSandbox::install("/",save,invalidStatus));
     assert(!GameSandbox::install(game,game,invalidStatus));
+    std::filesystem::create_directories(save/"installation");
+    assert(!GameSandbox::install(save/"installation",save,invalidStatus));
     auto pid=fork();assert(pid>=0);
     if(!pid){
         std::string status;bool active=GameSandbox::install(game,save,status);

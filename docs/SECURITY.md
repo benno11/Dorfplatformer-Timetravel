@@ -141,3 +141,37 @@ the launcher is trusted; it cannot stop someone who replaces/patches the launche
 and its checks too. The per-build key is not a publisher certificate or remote
 attestation. Only the two game binaries are covered, not every dependency,
 native mod, asset, or changes made to process memory after verification.
+
+## Sandbox version and updater
+
+`src/SandboxVersion.h` is the independent sandbox component version. About and
+the updater menu display it in both editions; the About row copies it to the
+clipboard. It is separate from the game release number and pointer API version.
+
+Update checking now belongs to the sandbox runtime. On Windows, the EXE owns
+the endpoint, HTTP request, manifest parsing and version comparison; the game
+DLL only requests a check and reads a bounded status snapshot through appended
+`DFSandboxAPI` callbacks. Those callbacks accept no URLs, paths or commands.
+The native Windows transport uses system TLS verification, disallows HTTPS to
+HTTP redirects, and bounds manifest size/time. On mobile and other desktops,
+the same sandbox-owned checker uses the application's transport, including a
+scoped updater transport in Lite without enabling online user levels. Checking
+is asynchronous and duplicate in-flight requests are rejected.
+
+Manifests may add a string `sandbox_version`, such as `"1.1.0"`, alongside the
+existing `version`, `version_id`, `installer_urls` and `notes` fields. Either a
+newer game or a newer sandbox can offer the complete platform package. Bundles
+with explicit metadata that would downgrade either component are rejected.
+Old manifests without `sandbox_version` continue to use game-version checks.
+A publisher must ship the matching signed EXE/DLL pair in the package.
+
+Desktop install/download requests save progress and close the game. The healthy
+broker then re-reads its own configuration and re-checks the manifest; a mod
+cannot supply an executable path, download URL or command line for that handoff.
+On Windows it requires HTTPS and native user confirmation, starts the installed
+updater helper outside the one-process job, and exits to release the old EXE.
+The helper prohibits HTTPS downgrades, installs the complete package, and
+reopens the installed launcher. Cancellation/failure leaves no arbitrary game
+command executing in the broker; the user sees an error or the current game
+reopens. Other desktops open the platform download outside the restricted child.
+Mobile downloads continue through the OS browser. Update checks remain manual.

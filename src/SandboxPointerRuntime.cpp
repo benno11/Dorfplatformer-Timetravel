@@ -1,4 +1,5 @@
 #include "SandboxPointers.h"
+#include "SandboxUpdates.h"
 #include "monocypher.h"
 #include <array>
 #include <map>
@@ -119,7 +120,12 @@ const DFSandboxAPI apiValue={
     [](DFSandboxHandle h,double seconds){auto e=registry().function(h,ModCallbacks);if(e->callbacks.on_update)e->callbacks.on_update(e->callbacks.userdata,seconds);},
     [](DFSandboxHandle h){auto e=registry().function(h,ModCallbacks);if(e->callbacks.on_unload)e->callbacks.on_unload(e->callbacks.userdata);},
     [](DFSandboxHandle h,const DFMenuAPI* api){auto e=registry().function(h,ModCallbacks);if(e->callbacks.on_menu_load)e->callbacks.on_menu_load(e->callbacks.userdata,api);},
-    [](DFSandboxHandle h,const char* menu,const char* action){auto e=registry().function(h,ModCallbacks);if(e->callbacks.on_menu_action)e->callbacks.on_menu_action(e->callbacks.userdata,menu,action);}
+    [](DFSandboxHandle h,const char* menu,const char* action){auto e=registry().function(h,ModCallbacks);if(e->callbacks.on_menu_action)e->callbacks.on_menu_action(e->callbacks.userdata,menu,action);},
+    [](uint32_t action)->int32_t{return SandboxUpdates::request(action)?1:0;},
+    [](DFSandboxUpdateStatus* status)->int32_t{
+        if(!status||status->struct_size<sizeof(DFSandboxUpdateStatus))return 0;
+        *status=SandboxUpdates::snapshot();return 1;
+    }
 };
 }
 const DFSandboxAPI* runtimeAPI(){return &apiValue;}

@@ -1,7 +1,9 @@
 #pragma once
 #include <filesystem>
 #include <string>
+#include "SandboxVersion.h"
 namespace GameSandbox {
+inline constexpr int updateExitCode = 76;
 // Must run before SDL creates threads or any native mod is loaded.
 bool install(const std::filesystem::path& gameRoot, const std::filesystem::path& saveRoot, std::string& status);
 bool nativeModsAllowed();

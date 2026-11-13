@@ -1,4 +1,5 @@
 #include "GameSandbox.h"
+#include "SandboxUpdates.h"
 #include "ProcessEnvironment.h"
 #include "EditionPolicy.h"
 #include <SDL3/SDL.h>
@@ -52,6 +53,10 @@ bool safeRoots(const std::filesystem::path& game,const std::filesystem::path& sa
     std::error_code error;
     auto g=std::filesystem::canonical(game,error);if(error||same(g,g.root_path()))return false;
     auto s=std::filesystem::canonical(save,error);if(error||same(s,s.root_path())||same(s,g))return false;
+    for(auto ancestor=g.parent_path();!ancestor.empty();) {
+        if(same(ancestor,s))return false;
+        const auto parent=ancestor.parent_path();if(same(parent,ancestor))break;ancestor=parent;
+    }
 #ifdef _WIN32
     const auto home=ProcessEnvironment::get("USERPROFILE");
 #else
@@ -273,6 +278,7 @@ bool containerToken() {
     if(OpenProcessToken(GetCurrentProcess(),TOKEN_QUERY,&token)) { GetTokenInformation(token,TokenIsAppContainer,&yes,sizeof(yes),&size);CloseHandle(token); }
     return yes!=0;
 }
+#if !defined(PLATFORMER_GAME_LIBRARY)
 bool noReparsePoints(const std::filesystem::path& root) {
     std::error_code error;
     if(GetFileAttributesW(root.c_str())&FILE_ATTRIBUTE_REPARSE_POINT)return false;
@@ -362,6 +368,7 @@ int windowsLaunch() {
        code==0xC0000374UL||code==0xC0000409UL||code==0xC0000417UL||code==134||code==139)crashNotice();
     return static_cast<int>(code);
 }
+#endif // broker-only implementation
 }
 #endif
 std::string saveRootOverride() {
@@ -371,10 +378,15 @@ std::string saveRootOverride() {
     return {};
 }
 int supervise(int argc,char** argv,int (*entry)(int,char**)) {
-#ifdef _WIN32
+#if defined(_WIN32) && defined(PLATFORMER_GAME_LIBRARY)
+    return entry(argc,argv);
+#elif defined(_WIN32)
     if(containerToken())return entry(argc,argv);
     int result;
-    do { result=windowsLaunch(); } while(result==75);
+    do {
+        result=windowsLaunch();
+        if(result==updateExitCode)result=SandboxUpdates::handoff()?0:75;
+    } while(result==75);
     if(result==-1) {
         MessageBoxA(nullptr,"The protected game process could not start. Check that the game and save folders are writable. The game has not been started without protection.","Sandbox startup failed",MB_OK|MB_ICONERROR);
         return 1;
@@ -396,6 +408,7 @@ int supervise(int argc,char** argv,int (*entry)(int,char**)) {
     do {waited=waitpid(child,&status,0);}while(waited<0&&errno==EINTR);
     if(waited<0)return 1;
     int result=WIFEXITED(status)?WEXITSTATUS(status):128+WTERMSIG(status);
+    if(result==updateExitCode){if(SandboxUpdates::handoff())return 0;continue;}
     if(result==75)continue;
     if(result==128+SIGSEGV||result==128+SIGBUS||result==128+SIGABRT||result==128+SIGILL||result==128+SIGFPE
 #ifdef SIGSYS

@@ -87,6 +87,8 @@
 #include "CrashReporter.h"
 #include "SecretSave.h"
 #include "GameSandbox.h"
+#include "SandboxUpdates.h"
+#include "SandboxPointers.h"
 #include "AudioSystem.h"
 #include "InputSystem.h"
 #include "Platform.h"
@@ -1680,6 +1682,7 @@ int RunGameApp(int argc, char** argv) {
     const std::string localClientSettingsPath = Edition::lite ? "client_settings_lite.json" : "client_settings.json";
     const std::string appSaveRootPath = GetAppSaveRootPath();
     bool restartRequested = false;
+    bool updateRequested = false;
     NativeMods::Loader nativeMods(appSaveRootPath);
 
     constexpr const char* kSavedGameSelectionToken = "__DF_SAVEGAME_CONTINUE__";
@@ -2560,372 +2563,48 @@ int RunGameApp(int argc, char** argv) {
     frontendCtx.applyAudioVolumes = applyAudioVolumes;
     frontendCtx.applyMenuMusicToggle = applyMenuMusicToggle;
     frontendCtx.saveClientSettings = saveClientSettings;
-#if defined(_WIN32)
-    struct UpdaterStatusSnapshot {
-        std::filesystem::path path;
-        Uint64 lastReadTicks = 0;
-        std::string displayText;
-        std::string rawState;
-        std::string detail;
-        std::string latestVersion;
-        std::string latestVersionId;
-        std::string installerUrl;
-        std::string notes;
-        float progress01 = 0.0f;
-    };
-    auto updaterStatus = std::make_shared<UpdaterStatusSnapshot>();
-    auto writeUpdaterStatus = [updaterStatus, &appVersion, &appVersionId](const std::string& state,
-                                                                          const std::string& detail,
-                                                                          const std::string& latestVersion = std::string(),
-                                                                          const std::string& latestVersionId = std::string()) {
-        if (updaterStatus->path.empty()) return;
-        nlohmann::json json;
-        json["state"] = state;
-        json["detail"] = detail;
-        json["current_version"] = appVersion;
-        json["current_version_id"] = appVersionId;
-        json["latest_version"] = latestVersion;
-        json["latest_version_id"] = latestVersionId;
-        std::ofstream out(updaterStatus->path, std::ios::binary | std::ios::trunc);
-        if (out.is_open()) {
-            out << json.dump(2);
-        }
-        updaterStatus->displayText.clear();
-        updaterStatus->lastReadTicks = 0;
-    };
-    auto refreshUpdaterStatus = [updaterStatus, &updateManifestUrl]() -> std::string {
-        const Uint64 now = SDL_GetTicks();
-        if (now - updaterStatus->lastReadTicks < 250 && !updaterStatus->displayText.empty()) {
-            return updaterStatus->displayText;
-        }
-        updaterStatus->lastReadTicks = now;
-        updaterStatus->rawState.clear();
-        if (updaterStatus->path.empty() || !std::filesystem::exists(updaterStatus->path)) {
-            updaterStatus->displayText = updateManifestUrl.empty() ? "NOT CONFIGURED" : "READY";
-            return updaterStatus->displayText;
-        }
-        try {
-            const std::string text = ReadTextFile(updaterStatus->path.string());
-            if (text.empty()) {
-                updaterStatus->displayText = updateManifestUrl.empty() ? "NOT CONFIGURED" : "READY";
-                return updaterStatus->displayText;
-            }
-            const auto json = nlohmann::json::parse(text);
-            const std::string state = (json.contains("state") && json["state"].is_string())
-                ? json["state"].get<std::string>() : std::string();
-            const std::string detail = (json.contains("detail") && json["detail"].is_string())
-                ? json["detail"].get<std::string>() : std::string();
-            const std::string latestVersion = (json.contains("latest_version") && json["latest_version"].is_string())
-                ? json["latest_version"].get<std::string>() : std::string();
-            const std::string latestVersionId = (json.contains("latest_version_id") && json["latest_version_id"].is_string())
-                ? json["latest_version_id"].get<std::string>() : std::string();
-            const std::string installerUrl = (json.contains("installer_url") && json["installer_url"].is_string())
-                ? json["installer_url"].get<std::string>() : std::string();
-            const std::string notes = (json.contains("notes") && json["notes"].is_string())
-                ? json["notes"].get<std::string>() : std::string();
-            float progress01 = 0.0f;
-            if (json.contains("progress") && json["progress"].is_number()) {
-                progress01 = std::clamp((float)json["progress"].get<double>(), 0.0f, 1.0f);
-            }
-            updaterStatus->rawState = state;
-            updaterStatus->detail = detail;
-            updaterStatus->latestVersion = latestVersion;
-            updaterStatus->latestVersionId = latestVersionId;
-            updaterStatus->installerUrl = installerUrl;
-            updaterStatus->notes = notes;
-            updaterStatus->progress01 = progress01;
-            if (state == "checking") updaterStatus->displayText = "CHECKING";
-            else if (state == "update_available") {
-                updaterStatus->displayText = "UPDATE FOUND - PRESS ENTER";
-            }
-            else if (state == "downloading") {
-                const int percent = (int)std::lround(progress01 * 100.0f);
-                updaterStatus->displayText = "DOWNLOADING";
-                if (percent > 0) updaterStatus->displayText += " " + std::to_string(percent) + "%";
-            }
-            else if (state == "install_ready") updaterStatus->displayText = "STARTING INSTALLER";
-            else if (state == "awaiting_admin_approval") updaterStatus->displayText = "WAITING FOR WINDOWS PERMISSION";
-            else if (state == "installing") updaterStatus->displayText = "INSTALLING UPDATE";
-            else if (state == "installer_started") updaterStatus->displayText = "INSTALLER STARTED";
-            else if (state == "relaunch_ready") updaterStatus->displayText = "RESTARTING INTO UPDATE";
-            else if (state == "up_to_date") updaterStatus->displayText = "UP TO DATE";
-            else if (state == "cancelled") updaterStatus->displayText = "CANCELLED";
-            else if (state == "not_configured") updaterStatus->displayText = "NOT CONFIGURED";
-            else if (state == "error") updaterStatus->displayText = "ERROR";
-            else updaterStatus->displayText = detail.empty() ? (updateManifestUrl.empty() ? "NOT CONFIGURED" : "READY") : detail;
-            if (!latestVersion.empty() && (state == "downloading" || state == "install_ready")) {
-                updaterStatus->displayText += " -> " + latestVersion;
-            }
-            return updaterStatus->displayText;
-        } catch (...) {
-            updaterStatus->displayText = "STATUS ERROR";
-            updaterStatus->rawState = "error";
-            return updaterStatus->displayText;
-        }
-    };
-    frontendCtx.getUpdaterStatusText = [refreshUpdaterStatus]() {
-        return refreshUpdaterStatus();
-    };
-    frontendCtx.getUpdaterStatusDetail = [updaterStatus, refreshUpdaterStatus]() {
-        (void)refreshUpdaterStatus();
-        return updaterStatus->detail;
-    };
-    frontendCtx.getUpdaterLatestVersionText = [updaterStatus, refreshUpdaterStatus]() {
-        (void)refreshUpdaterStatus();
-        return updaterStatus->latestVersion;
-    };
-    frontendCtx.getUpdaterNotesText = [updaterStatus, refreshUpdaterStatus]() {
-        (void)refreshUpdaterStatus();
-        return updaterStatus->notes;
-    };
-    frontendCtx.getUpdaterProgress01 = [updaterStatus, refreshUpdaterStatus]() {
-        (void)refreshUpdaterStatus();
-        return updaterStatus->progress01;
-    };
-    frontendCtx.pollUpdaterAutoRelaunch = [&, updaterStatus, refreshUpdaterStatus, writeUpdaterStatus]() {
-        (void)refreshUpdaterStatus();
-        if (updaterStatus->rawState != "relaunch_ready") return;
-
-        wchar_t modulePathBuf[MAX_PATH] = {};
-        const DWORD moduleLen = GetModuleFileNameW(nullptr, modulePathBuf, (DWORD)std::size(modulePathBuf));
-        if (moduleLen == 0 || moduleLen >= std::size(modulePathBuf)) {
-            writeUpdaterStatus("error", "Could not resolve the current game path.");
-            return;
-        }
-
-        const std::filesystem::path modulePath(modulePathBuf);
-        const std::filesystem::path appDir = modulePath.parent_path();
-        std::vector<std::filesystem::path> candidates = {
-            appDir / "df-launcher.exe",
-            appDir.parent_path() / "df-launcher.exe",
-            appDir.parent_path().parent_path() / "df-launcher.exe"
-        };
-
-        std::filesystem::path launcherPath;
-        for (const auto& candidate : candidates) {
-            if (!candidate.empty() && std::filesystem::exists(candidate)) {
-                launcherPath = candidate;
-                break;
-            }
-        }
-        if (launcherPath.empty()) {
-            writeUpdaterStatus("error", "Installed launcher not found.");
-            return;
-        }
-
-        std::wstring cmdLine = quoteWindowsArg(launcherPath.wstring());
-        STARTUPINFOW si{};
-        si.cb = sizeof(si);
-        PROCESS_INFORMATION pi{};
-        std::vector<wchar_t> mutableCmd(cmdLine.begin(), cmdLine.end());
-        mutableCmd.push_back(L'\0');
-        const BOOL started = CreateProcessW(
-            launcherPath.c_str(),
-            mutableCmd.data(),
-            nullptr,
-            nullptr,
-            FALSE,
-            0,
-            nullptr,
-            launcherPath.parent_path().c_str(),
-            &si,
-            &pi);
-        if (!started) {
-            const DWORD err = GetLastError();
-            std::ostringstream oss;
-            oss << "Failed to relaunch updated game (Win32 error " << err << ").";
-            writeUpdaterStatus("error", oss.str());
-            return;
-        }
-        CloseHandle(pi.hThread);
-        CloseHandle(pi.hProcess);
-        writeUpdaterStatus("relaunching", "Launching updated game...");
-        running = false;
-    };
-    frontendCtx.launchUpdater = [&]() -> bool {
-        wchar_t modulePathBuf[MAX_PATH] = {};
-        const DWORD moduleLen = GetModuleFileNameW(nullptr, modulePathBuf, (DWORD)std::size(modulePathBuf));
-        if (moduleLen == 0 || moduleLen >= std::size(modulePathBuf)) {
-            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Updater Error",
-                                     "Could not resolve the game install path.", win);
-            return false;
-        }
-        const std::filesystem::path modulePath(modulePathBuf);
-        const std::filesystem::path appDir = modulePath.parent_path();
-        std::filesystem::path updaterPath;
-        for (const auto& candidate : {
-                 appDir / "df-updater.exe",
-                 appDir.parent_path() / "df-updater.exe",
-                 appDir.parent_path().parent_path() / "df-updater.exe" }) {
-            if (!candidate.empty() && std::filesystem::exists(candidate)) {
-                updaterPath = candidate;
-                break;
-            }
-        }
-        updaterStatus->path = appDir / "updater-status.json";
-        if (!std::filesystem::exists(updaterPath)) {
-            writeUpdaterStatus("error", "df-updater.exe is missing.");
-            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Updater Missing",
-                                     "df-updater.exe was not found beside the game executable or in the install root.", win);
-            return false;
-        }
-        if (updateManifestUrl.empty()) {
-            writeUpdaterStatus("not_configured", "No update manifest URL is configured.");
-            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "Updater Not Configured",
-                                     "No update manifest URL is configured in assets/config.json.", win);
-            return false;
-        }
-        (void)refreshUpdaterStatus();
-        if (updaterStatus->rawState == "checking" ||
-            updaterStatus->rawState == "downloading" ||
-            updaterStatus->rawState == "install_ready") {
-            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "Updater Busy",
-                                     "An update is already in progress.", win);
-            return false;
-        }
-
-        std::wstring cmdLine;
-        cmdLine += quoteWindowsArg(updaterPath.wstring());
-        cmdLine += L" --silent";
-        cmdLine += L" --current-version ";
-        cmdLine += quoteWindowsArg(utf8ToWide(appVersion));
-        cmdLine += L" --current-version-id ";
-        cmdLine += quoteWindowsArg(utf8ToWide(appVersionId));
-        cmdLine += L" --wait-pid ";
-        cmdLine += std::to_wstring(GetCurrentProcessId());
-        cmdLine += L" --app-dir ";
-        cmdLine += quoteWindowsArg(appDir.wstring());
-        cmdLine += L" --status-file ";
-        cmdLine += quoteWindowsArg(updaterStatus->path.wstring());
-
-        if (updaterStatus->rawState == "update_available" && !updaterStatus->installerUrl.empty()) {
-            writeUpdaterStatus("downloading", "Downloading installer...",
-                               updaterStatus->latestVersion, updaterStatus->latestVersionId);
-            cmdLine += L" --mode install";
-            cmdLine += L" --installer-url ";
-            cmdLine += quoteWindowsArg(utf8ToWide(updaterStatus->installerUrl));
-            cmdLine += L" --latest-version ";
-            cmdLine += quoteWindowsArg(utf8ToWide(updaterStatus->latestVersion));
-            cmdLine += L" --latest-version-id ";
-            cmdLine += quoteWindowsArg(utf8ToWide(updaterStatus->latestVersionId));
-            if (!updaterStatus->notes.empty()) {
-                cmdLine += L" --notes ";
-                cmdLine += quoteWindowsArg(utf8ToWide(updaterStatus->notes));
-            }
-        } else {
-            writeUpdaterStatus("checking", "Checking for updates...");
-            cmdLine += L" --mode check";
-            cmdLine += L" --manifest-url ";
-            cmdLine += quoteWindowsArg(utf8ToWide(updateManifestUrl));
-        }
-
-        STARTUPINFOW si{};
-        si.cb = sizeof(si);
-        si.dwFlags = STARTF_USESHOWWINDOW;
-        si.wShowWindow = SW_HIDE;
-        PROCESS_INFORMATION pi{};
-        std::vector<wchar_t> mutableCmd(cmdLine.begin(), cmdLine.end());
-        mutableCmd.push_back(L'\0');
-        const BOOL started = CreateProcessW(
-            updaterPath.c_str(),
-            mutableCmd.data(),
-            nullptr,
-            nullptr,
-            FALSE,
-            CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW,
-            nullptr,
-            appDir.c_str(),
-            &si,
-            &pi);
-        if (!started) {
-            const DWORD err = GetLastError();
-            std::ostringstream oss;
-            oss << "Failed to launch updater (Win32 error " << err << ").";
-            writeUpdaterStatus("error", oss.str());
-            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Updater Error", oss.str().c_str(), win);
-            return false;
-        }
-        CloseHandle(pi.hThread);
-        CloseHandle(pi.hProcess);
-        return true;
-    };
-#else
-    // Keep update checks in memory: app bundles and system installs may be read-only.
-    struct PortableUpdateState {
-        std::future<std::string> pending;
-        std::string status;
-        std::string detail;
-        std::string latestVersion;
-        std::string notes;
-        std::string url;
-    };
-    auto update = std::make_shared<PortableUpdateState>();
-    update->status = updateManifestUrl.empty() ? "NOT CONFIGURED" : "READY";
-    auto pollUpdate = [update, appVersionId]() {
-        if (!update->pending.valid() ||
-            update->pending.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) return;
-        try {
-            const auto body = update->pending.get();
-            if (body.empty()) throw std::runtime_error("Could not load the update manifest. Check your connection and update URL.");
-            const auto manifest = nlohmann::json::parse(body);
-            update->latestVersion = manifest.at("version").get<std::string>();
-            update->notes = manifest.value("notes", std::string());
-            if (AppUpdate::compareVersions(appVersionId, AppUpdate::versionId(manifest)) >= 0) {
-                update->status = "UP TO DATE";
-                update->detail = "Already on the latest version.";
-            } else {
-                update->url = AppUpdate::installerUrl(manifest);
-                update->status = "UPDATE FOUND - PRESS ENTER";
-                update->detail = "Open the update download and follow the installation instructions.";
-            }
-        } catch (const std::exception& ex) {
-            update->status = "ERROR";
-            update->detail = ex.what();
-            update->url.clear();
-        }
-    };
-    frontendCtx.getUpdaterStatusText = [update, pollUpdate]() { pollUpdate(); return update->status; };
-    frontendCtx.getUpdaterStatusDetail = [update, pollUpdate]() { pollUpdate(); return update->detail; };
-    frontendCtx.getUpdaterLatestVersionText = [update]() { return update->latestVersion; };
-    frontendCtx.getUpdaterNotesText = [update]() { return update->notes; };
-    frontendCtx.getUpdaterProgress01 = []() { return 0.0f; };
-    frontendCtx.pollUpdaterAutoRelaunch = pollUpdate;
-    frontendCtx.launchUpdater = [update, pollUpdate, updateManifestUrl]() -> bool {
-        pollUpdate();
-        if (update->pending.valid()) return false;
-        if (!update->url.empty()) {
-            if (!SDL_OpenURL(update->url.c_str())) {
-                update->status = "ERROR";
-                update->detail = std::string("Could not open update download: ") + SDL_GetError();
-                return false;
-            }
-            update->detail = "Update download opened. Finish installation, then restart the game.";
-            return true;
-        }
-        if (updateManifestUrl.empty()) {
-            update->status = "NOT CONFIGURED";
-            update->detail = "Set update_manifest_url in assets/config.json.";
-            return false;
-        }
-        if (!AppUpdate::isWebUrl(updateManifestUrl)) {
-            update->status = "ERROR";
-            update->detail = "The update manifest URL must use HTTP or HTTPS.";
-            return false;
-        }
-        try {
-            update->pending = ReadTextFileAsync(updateManifestUrl);
-            update->status = "CHECKING";
-            update->detail = "Checking for updates...";
-            update->latestVersion.clear();
-            update->notes.clear();
-            return true;
-        } catch (const std::exception& ex) {
-            update->status = "ERROR";
-            update->detail = ex.what();
-            return false;
-        }
-    };
+#if !defined(_WIN32)
+    SandboxUpdates::configure(updateManifestUrl, appVersionId, ReadUpdateManifest);
 #endif
+    auto sandboxUpdateStatus = []() {
+        DFSandboxUpdateStatus status{}; status.struct_size = sizeof(status);
+        if (!SandboxPointers::api().update_status(&status)) {
+            status.state = DF_UPDATE_ERROR;
+            SDL_strlcpy(status.detail, "Sandbox updater is unavailable.", sizeof(status.detail));
+        }
+        return status;
+    };
+    frontendCtx.getUpdaterStatusText = [sandboxUpdateStatus]() -> std::string {
+        switch (sandboxUpdateStatus().state) {
+            case DF_UPDATE_READY: return "READY";
+            case DF_UPDATE_CHECKING: return "CHECKING";
+            case DF_UPDATE_CURRENT: return "UP TO DATE";
+            case DF_UPDATE_AVAILABLE: return "UPDATE FOUND - PRESS ENTER";
+            case DF_UPDATE_NOT_CONFIGURED: return "NOT CONFIGURED";
+            default: return "ERROR";
+        }
+    };
+    frontendCtx.getUpdaterStatusDetail = [sandboxUpdateStatus]() { return std::string(sandboxUpdateStatus().detail); };
+    frontendCtx.getUpdaterLatestVersionText = [sandboxUpdateStatus]() {
+        const auto status = sandboxUpdateStatus();
+        std::string latest = status.latest_game;
+        if (status.latest_sandbox[0]) latest += " | Sandbox " + std::string(status.latest_sandbox);
+        return latest;
+    };
+    frontendCtx.getUpdaterNotesText = [sandboxUpdateStatus]() { return std::string(sandboxUpdateStatus().notes); };
+    frontendCtx.getUpdaterProgress01 = []() { return 0.0f; };
+    frontendCtx.pollUpdaterAutoRelaunch = [sandboxUpdateStatus]() { (void)sandboxUpdateStatus(); };
+    frontendCtx.launchUpdater = [&, sandboxUpdateStatus]() -> bool {
+        const auto status = sandboxUpdateStatus();
+        if (status.state != DF_UPDATE_AVAILABLE) return SandboxPointers::api().update_action(DF_UPDATE_CHECK) != 0;
+#if PLATFORMER_MOBILE
+        return SDL_OpenURL(SandboxUpdates::downloadUrl().c_str());
+#else
+        saveClientSettings();
+        updateRequested = true; restartRequested = true; running = false;
+        return true; // The healthy broker re-checks and performs the handoff.
+#endif
+    };
     auto applyDynamicResolutionFromWindow = [&](bool force) -> bool {
         int winW = 0, winH = 0;
         getWindowSizeInPixelsCompat(win, winW, winH);
@@ -9749,6 +9428,9 @@ int RunGameApp(int argc, char** argv) {
     if (debugWin && debugWin != win) SDL_DestroyWindow(debugWin);
     ShutdownTextRenderer();
     nativeMods.shutdown();
+#if !defined(_WIN32)
+    SandboxUpdates::shutdown();
+#endif
     audio.shutdown();
     sendDiscordTelemetry("shutdown", {
         {"build_uuid", buildUuid},
@@ -9762,5 +9444,5 @@ int RunGameApp(int argc, char** argv) {
     SDL_Log("Shutting down");
     CrashReporter::stop();
     SDL_Quit();
-    return restartRequested ? kGameRestartExitCode : 0;
+    return updateRequested ? GameSandbox::updateExitCode : (restartRequested ? kGameRestartExitCode : 0);
 }

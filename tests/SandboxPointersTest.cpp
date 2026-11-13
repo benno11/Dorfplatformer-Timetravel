@@ -11,6 +11,10 @@ static int updates=0;
 static int gameEntry(int argc,char**,const DFSandboxAPI* api){return argc+int(api->version);}
 int main(){
     auto& api=SandboxPointers::api();
+    DFSandboxUpdateStatus status{};status.struct_size=sizeof(status);
+    assert(api.update_status(&status)&&status.current_sandbox[0]);
+    status.struct_size=0;assert(!api.update_status(&status));
+    assert(!api.update_action(12345));
     SandboxPointers::Handle buffer(api.allocate(16));
     const char value[]="checked";char readback[sizeof(value)]{};
     api.write(buffer.get(),3,value,sizeof(value));api.read(buffer.get(),3,readback,sizeof(readback));assert(!std::strcmp(value,readback));
