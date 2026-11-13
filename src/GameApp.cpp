@@ -2968,6 +2968,7 @@ int RunGameApp(int argc, char** argv) {
         std::vector<ObjectInstance> objects;
         std::vector<int> objectIds;
         std::vector<CameraExclusion::Rect> cameraExclusions;
+        CameraExclusion::Controller exclusionCamera;
         std::vector<ShellChraker::State> shellChrakerStates;
         std::vector<MovingPlatform::State> movingPlatformStates;
         struct SpikeImpact {
@@ -3478,6 +3479,7 @@ int RunGameApp(int argc, char** argv) {
             currentAreaIdText = buildAreaIdText();
         };
         auto reloadLevel = [&](bool showIntroCard = true, bool preserveButtons = false) {
+            exclusionCamera.reset();
             hairMouse.release(characterParts);
             characterParts = CharacterCreator::PartPhysics{};
             spikeImpact.remaining = 0;
@@ -7609,11 +7611,11 @@ int RunGameApp(int argc, char** argv) {
                 bossEndCameraFreezeEligible = false;
             }
         }
-        // Snap render camera to pixel grid to avoid subpixel shimmer across all worlds.
+        // Round the base target; exclusion sliding retains subpixel continuity.
         if (deathSequenceActive) { camX = lastRenderCamX; camY = lastRenderCamY; }
         camX = std::round(camX);
         camY = std::round(camY);
-        const auto excludedCamera = CameraExclusion::resolve(camX, camY, worldViewW, worldViewH, cameraExclusions,
+        const auto excludedCamera = exclusionCamera.update(camX, camY, worldViewW, worldViewH, cameraExclusions, dt,
             cameraWrapX ? static_cast<float>(map.w * map.tileSize) : 0.0f,
             cameraWrapY ? static_cast<float>(map.h * map.tileSize) : 0.0f);
         if (excludedCamera.resolved) { camX = excludedCamera.x; camY = excludedCamera.y; }
