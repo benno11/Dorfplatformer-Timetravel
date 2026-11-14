@@ -6,6 +6,8 @@
 #include <chrono>
 #include <future>
 #include <thread>
+#include <SDL3/SDL.h>
+#include <fstream>
 using namespace SandboxUpdates;
 int main(){
     const std::string os=AppUpdate::platform(),arch=AppUpdate::architecture();
@@ -39,4 +41,31 @@ int main(){
     assert(!checker.check()&&checker.snapshot().state==DF_UPDATE_ERROR);
     checker.configure("","42",{});assert(!checker.check()&&checker.snapshot().state==DF_UPDATE_NOT_CONFIGURED);
     assert(!SandboxUpdates::request(12345));
+#ifndef _WIN32
+    // Use isolated preferences; selecting a channel survives reconfiguration.
+    const auto temporary=std::filesystem::temp_directory_path()/
+        ("df-channel-test-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::filesystem::create_directories(temporary);
+    SDL_setenv_unsafe("XDG_DATA_HOME",temporary.c_str(),1);
+    const auto configPath=temporary/"config.json";
+    {std::ofstream file(configPath);file << R"({"update_channel":"stable","update_manifest_url":"https://example.invalid/stable"})";}
+    std::string requested;
+    auto fetch=[&](const std::string& url){requested=url;return manifest.dump();};
+    configureFile(configPath,fetch);
+    assert(request(DF_UPDATE_IS_STABLE));
+    assert(request(DF_UPDATE_SELECT_PRERELEASE));
+    assert(request(DF_UPDATE_IS_PRERELEASE));
+    configureFile(configPath,fetch);
+    assert(request(DF_UPDATE_IS_PRERELEASE));
+    assert(request(DF_UPDATE_CHECK));
+    while(snapshot().state==DF_UPDATE_CHECKING)std::this_thread::yield();
+    assert(requested.find("prerelease-"+os+"-"+arch+"-full/")!=std::string::npos);
+    assert(request(DF_UPDATE_SELECT_NIGHTLY));
+    assert(request(DF_UPDATE_IS_NIGHTLY));
+    assert(request(DF_UPDATE_SELECT_STABLE));
+    assert(request(DF_UPDATE_CHECK));
+    while(snapshot().state==DF_UPDATE_CHECKING)std::this_thread::yield();
+    assert(requested=="https://example.invalid/stable");
+    shutdown();std::filesystem::remove_all(temporary);
+#endif
 }

@@ -1,3 +1,4 @@
+#include "UpdateChannelSettings.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_tray.h>
 
@@ -167,7 +168,8 @@ AppState readAppState(const std::filesystem::path& rootDir, const std::filesyste
     const auto configPath = installedVersionDir(rootDir, state.currentVersionId) / "assets" / "config.json";
     if (!configPath.empty() && std::filesystem::exists(configPath)) {
         try {
-            const auto json = nlohmann::json::parse(readTextFile(configPath));
+            auto json = nlohmann::json::parse(readTextFile(configPath));
+            AppUpdate::applySavedChannel(json);
             if (json.contains("version") && json["version"].is_string()) {
                 state.currentVersion = json["version"].get<std::string>();
             }
@@ -180,12 +182,7 @@ AppState readAppState(const std::filesystem::path& rootDir, const std::filesyste
                     state.currentVersionId = std::to_string(json["version_id"].get<unsigned long long>());
                 }
             }
-            if (json.contains("windows_update_manifest_url") && json["windows_update_manifest_url"].is_string()) {
-                state.updateManifestUrl = json["windows_update_manifest_url"].get<std::string>();
-            }
-            if (json.contains("update_manifest_url") && json["update_manifest_url"].is_string()) {
-                state.updateManifestUrl = json["update_manifest_url"].get<std::string>();
-            }
+            state.updateManifestUrl = AppUpdate::manifestUrl(json);
         } catch (...) {
         }
     }
