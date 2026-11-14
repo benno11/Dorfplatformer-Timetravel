@@ -86,6 +86,8 @@ struct FrontendMenuContext {
     std::function<std::vector<std::string>()> getLogLines;
     std::function<std::string()> getLogPath, getLogcatStatus;
     std::function<void(int, int)> drawNotifications;
+    std::function<std::string()> getUpdateChannel;
+    std::function<bool(const std::string&)> selectUpdateChannel;
     std::function<bool()> launchUpdater;
     std::function<std::string()> getUpdaterStatusText;
     std::function<std::string()> getUpdaterStatusDetail;

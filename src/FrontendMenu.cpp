@@ -547,6 +547,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx, bool settingsOnly) {
         };
         slim.getUpdaterStatusText = ctx.getUpdaterStatusText;
         slim.launchUpdater = ctx.launchUpdater;
+        slim.getUpdateChannel = ctx.getUpdateChannel;
+        slim.selectUpdateChannel = ctx.selectUpdateChannel;
         slim.getUpdaterStatusDetail = ctx.getUpdaterStatusDetail;
         slim.getUpdaterLatestVersionText = ctx.getUpdaterLatestVersionText;
         slim.getUpdaterNotesText = ctx.getUpdaterNotesText;

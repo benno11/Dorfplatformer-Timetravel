@@ -2,7 +2,7 @@ name: Build Game
 
 on:
   push:
-    branches: [main, develop, "agent/**"]
+    branches: [main, develop, nightly, prerelease, "agent/**"]
     tags:
       - "v*"
   pull_request:
@@ -81,6 +81,9 @@ jobs:
 
   desktop:
     name: Desktop (${{ matrix.triplet }}, ${{ matrix.edition }})
+    concurrency:
+      group: update-desktop-${{ matrix.platform }}-${{ matrix.edition }}
+      cancel-in-progress: false
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     permissions:
@@ -322,8 +325,19 @@ jobs:
           fail_on_unmatched_files: true
           files: release/*
 
+      - name: Publish successful platform update
+        if: github.event_name != 'pull_request' && (github.ref_name == 'main' || github.ref_name == 'nightly')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          python3 comp/update-channels.py publish --target "${{ matrix.platform }}" --edition "${{ matrix.edition }}" --package release/*
+
   android:
     name: Android APK (${{ matrix.edition }})
+    concurrency:
+      group: update-android-${{ matrix.edition }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:
@@ -511,8 +525,19 @@ jobs:
           fail_on_unmatched_files: true
           files: release/*.apk
 
+      - name: Publish successful platform update
+        if: github.event_name != 'pull_request' && (github.ref_name == 'main' || github.ref_name == 'nightly')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          python3 comp/update-channels.py publish --target android-universal --edition "${{ matrix.edition }}" --package release/*.apk
+
   ios:
     name: iOS Package (${{ matrix.sdk }})
+    concurrency:
+      group: update-ios-${{ matrix.sdk }}
+      cancel-in-progress: false
     runs-on: macos-latest
     timeout-minutes: 90
     permissions:
@@ -886,3 +911,11 @@ jobs:
           rm -f "$HOME/Library/MobileDevice/Provisioning Profiles"/platformer.mobileprovision
           rm -f "$HOME/Library/MobileDevice/Provisioning Profiles"/*.mobileprovision
           rm -rf "$RUNNER_TEMP/ios-signing"
+
+      - name: Publish successful platform update
+        if: github.event_name != 'pull_request' && (github.ref_name == 'main' || github.ref_name == 'nightly') && matrix.sdk == 'iphoneos'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          python3 comp/update-channels.py publish --target ios-arm64 --package release/platformer-ios-device.ipa

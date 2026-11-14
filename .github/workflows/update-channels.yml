@@ -1,0 +1,33 @@
+name: Weekly prerelease snapshot
+on:
+  pull_request:
+    paths: ['comp/*channels*.py', 'src/UpdateManifest.h', 'tests/UpdateManifestTest.cpp', '.github/workflows/*']
+  push:
+    paths: ['comp/*channels*.py', 'src/UpdateManifest.h', 'tests/UpdateManifestTest.cpp', '.github/workflows/update-channels.yml']
+  schedule:
+    - cron: '0 0 * * 2'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: weekly-prerelease
+  cancel-in-progress: false
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m unittest discover -s comp -p test_update_channels.py
+      - run: c++ -std=c++17 -Isrc -Ithird_party tests/UpdateManifestTest.cpp -o /tmp/update_manifest_test && /tmp/update_manifest_test
+  promote:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: test
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pin successful builds at the weekly boundary
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 comp/update-channels.py promote

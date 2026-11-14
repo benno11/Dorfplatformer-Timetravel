@@ -42,5 +42,14 @@ int main() {
     check(compareVersions("2.3.0", "2.3") == 0, "Trailing zero");
     check(compareVersions("2.3-beta", "2.3") < 0, "Prerelease");
     check(compareVersions("999999999999999999999", "1000000000000000000000") < 0, "Large build IDs");
+    check(manifestUrl(nlohmann::json{{"windows_update_manifest_url", "https://example.com/stable"}}) ==
+          "https://example.com/stable", "Stable remains compatible");
+    check(manifestUrl(nlohmann::json{{"update_channel", "nightly"}, {"update_edition", "lite"}}, "windows", "x86") ==
+          "https://github.com/benno11/Dorfplatformer-Timetravel/releases/download/nightly-windows-x86-lite/update-manifest.json",
+          "Nightly selects platform, architecture and edition");
+    check(manifestUrl(nlohmann::json{{"update_channel", "prerelease"}, {"update_edition", "full"}}, "android", "arm64").find(
+          "prerelease-android-universal-full/") != std::string::npos, "Android universal channel");
+    try { manifestUrl(nlohmann::json{{"update_channel", "typo"}}); check(false, "Reject unknown channels"); }
+    catch (const std::runtime_error&) {}
     return failures ? 1 : 0;
 }
