@@ -4,6 +4,7 @@ import argparse
 import datetime as dt
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -46,23 +47,53 @@ def read_manifest(tag):
     return json.loads(gh('api', asset['url'], '-H', 'Accept: application/octet-stream'))
 
 
-def publish(target, edition, package):
+def package_map(target, edition, packages):
+    """Validate all downloads before changing any release or channel."""
+    if isinstance(packages, Path):
+        packages = [packages]
+    if not packages or any(not package.is_file() for package in packages):
+        raise ValueError('Provide existing package files.')
+    os_name, arch = target.split('-')
+    if os_name != 'android':
+        if len(packages) != 1:
+            raise ValueError('Desktop and iOS targets require exactly one package.')
+        return {arch: packages[0]}
+    prefix = 'platformer-android-lite-' if edition == 'lite' else ''
+    pattern = re.compile(re.escape(prefix) + r'app-(arm64-v8a|armeabi-v7a|x86_64|x86)-release\.apk')
+    architectures = {'arm64-v8a': 'arm64', 'armeabi-v7a': 'arm', 'x86_64': 'x64', 'x86': 'x86'}
+    result = {}
+    for package in packages:
+        if package.name.endswith('-debug.apk'):
+            continue
+        match = pattern.fullmatch(package.name)
+        if not match:
+            raise ValueError(f'Unexpected {edition} Android release package: {package.name}')
+        arch = architectures[match[1]]
+        if arch in result:
+            raise ValueError(f'Duplicate Android architecture: {arch}')
+        result[arch] = package
+    if set(result) != set(architectures.values()):
+        raise ValueError('Android publication requires release APKs for arm64, arm, x64 and x86.')
+    return result
+
+
+def publish(target, edition, packages):
+    downloads = package_map(target, edition, packages)
     run = os.environ['GITHUB_RUN_NUMBER']
     commit = os.environ['GITHUB_SHA']
     key = f'{target}-{edition}'
     tag = f"build-{run}-{os.environ.get('GITHUB_RUN_ATTEMPT', '1')}-{key}"
     release(tag, commit)
-    gh('release', 'upload', tag, str(package), '--repo', REPO, '--clobber')
+    gh('release', 'upload', tag, *(str(package) for package in downloads.values()),
+       '--repo', REPO, '--clobber')
     os_name, arch = target.split('-')
     config = json.loads(Path('assets/config.json').read_text())
     manifest = {'version': config['version'], 'version_id': int(run),
                 'sandbox_version': Path('src/SandboxVersion.h').read_text().split('version[] = "')[1].split('"')[0], 'commit': commit,
                 'built_at': dt.datetime.now(UTC).isoformat(), 'target': target, 'edition': edition,
-                'installer_urls': {os_name: {arch: f'https://github.com/{REPO}/releases/download/{tag}/{package.name}'}},
+                'installer_urls': {os_name: {architecture: f'https://github.com/{REPO}/releases/download/{tag}/{package.name}'
+                                           for architecture, package in downloads.items()}},
                 'notes': f'{key}, build {run}'}
-    # Android APK contains all supported ABIs.
-    if os_name == 'android':
-        manifest['installer_urls'][os_name] = {'default': next(iter(manifest['installer_urls'][os_name].values()))}
     upload_manifest(tag, manifest)
     channel = f'nightly-{key}'
     release(channel, commit)
@@ -113,11 +144,14 @@ if __name__ == '__main__':
     parser.add_argument('mode', choices=['publish', 'promote'])
     parser.add_argument('--target', choices=TARGETS)
     parser.add_argument('--edition', choices=['full', 'lite'], default='full')
-    parser.add_argument('--package', type=Path)
+    parser.add_argument('--package', type=Path, nargs='+')
     args = parser.parse_args()
     if args.mode == 'publish':
-        if not args.target or not args.package or not args.package.is_file():
-            parser.error('publish needs --target and an existing --package')
-        publish(args.target, args.edition, args.package)
+        if not args.target or not args.package:
+            parser.error('publish needs --target and existing --package files')
+        try:
+            publish(args.target, args.edition, args.package)
+        except ValueError as error:
+            parser.error(str(error))
     else:
         promote(dt.datetime.now(UTC))
