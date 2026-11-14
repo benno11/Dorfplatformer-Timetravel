@@ -33,6 +33,15 @@ int main() {
     auto unsafe = nlohmann::json::parse(R"({"installer_urls":{"linux":"file:///tmp/update"}})");
     try { installerUrl(unsafe, "linux", "x64"); check(false, "Reject non-web downloads"); }
     catch (const std::runtime_error&) {}
+    const auto splitAndroid = nlohmann::json::parse(R"({"installer_urls":{"android":{
+        "arm64":"https://example.com/app-arm64-v8a-release.apk",
+        "arm":"https://example.com/app-armeabi-v7a-release.apk",
+        "x64":"https://example.com/app-x86_64-release.apk",
+        "x86":"https://example.com/app-x86-release.apk"}}})");
+    check(installerUrl(splitAndroid, "android", "arm64") == "https://example.com/app-arm64-v8a-release.apk", "Android ARM64 split");
+    check(installerUrl(splitAndroid, "android", "x64") == "https://example.com/app-x86_64-release.apk", "Android x64 split");
+    try { installerUrl(splitAndroid, "android", "unknown"); check(false, "No fallback to another Android ABI"); }
+    catch (const std::runtime_error&) {}
     check(versionId(manifest) == "24", "Numeric build ID");
     check(versionId(nlohmann::json{{"version", "2.3"}}) == "2.3", "Version fallback");
     check(compareVersions("23", "24") < 0, "New build");

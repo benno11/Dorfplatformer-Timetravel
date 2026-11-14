@@ -2,6 +2,7 @@ import datetime as dt
 import importlib.util
 from pathlib import Path
 import unittest
+import sys
 from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('channels', Path(__file__).with_name('update-channels.py'))
@@ -51,15 +52,63 @@ class ChannelsTest(unittest.TestCase):
     def test_failed_package_upload_does_not_advance_channel(self):
         import tempfile
         with tempfile.TemporaryDirectory() as directory:
-            package = Path(directory) / 'game.apk'
+            package = Path(directory) / 'installer.exe'
             package.write_bytes(b'package')
             with patch.dict(c.os.environ, GITHUB_RUN_NUMBER='12', GITHUB_SHA='commit'), \
                  patch.object(c, 'release'), \
                  patch.object(c, 'gh', side_effect=c.subprocess.CalledProcessError(1, 'gh')), \
                  patch.object(c, 'upload_manifest') as upload:
                 with self.assertRaises(c.subprocess.CalledProcessError):
-                    c.publish('android-universal', 'full', package)
+                    c.publish('windows-x64', 'full', package)
             upload.assert_not_called()
+
+    def android_packages(self, directory, edition):
+        prefix = 'platformer-android-lite-' if edition == 'lite' else ''
+        packages = []
+        for abi in ('arm64-v8a', 'armeabi-v7a', 'x86_64', 'x86'):
+            for mode in ('debug', 'release'):
+                package = Path(directory) / f'{prefix}app-{abi}-{mode}.apk'
+                package.write_bytes(b'apk')
+                packages.append(package)
+        return packages
+
+    def test_android_full_and_lite_publish_all_release_abis(self):
+        import tempfile
+        for edition in ('full', 'lite'):
+            with self.subTest(edition=edition), tempfile.TemporaryDirectory() as directory:
+                packages = self.android_packages(directory, edition)
+                with patch.dict(c.os.environ, GITHUB_RUN_NUMBER='400', GITHUB_SHA='commit'), \
+                     patch.object(c, 'release'), patch.object(c, 'gh') as gh, \
+                     patch.object(c, 'read_manifest', return_value={}), \
+                     patch.object(c, 'upload_manifest') as upload:
+                    c.publish('android-universal', edition, packages)
+                urls = upload.call_args.args[1]['installer_urls']['android']
+                self.assertEqual(set(urls), {'arm64', 'arm', 'x64', 'x86'})
+                self.assertTrue(all(url.endswith('-release.apk') for url in urls.values()))
+                self.assertEqual(sum(str(arg).endswith('.apk') for arg in gh.call_args.args), 4)
+                self.assertFalse(any(str(arg).endswith('-debug.apk') for arg in gh.call_args.args))
+
+    def test_invalid_android_packages_do_not_change_releases(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            packages = self.android_packages(directory, 'lite')
+            for invalid in (packages[:2], packages + [packages[1]]):
+                with patch.object(c, 'release') as release:
+                    with self.assertRaises(ValueError):
+                        c.publish('android-universal', 'lite', invalid)
+                    release.assert_not_called()
+            with self.assertRaises(ValueError):
+                c.package_map('android-universal', 'full', packages)
+
+    def test_cli_accepts_multiple_apks(self):
+        import subprocess
+        result = subprocess.run([sys.executable, str(Path(c.__file__)), 'publish',
+                                 '--target', 'android-universal', '--edition', 'lite',
+                                 '--package', 'missing-arm64.apk', 'missing-arm.apk'],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('Provide existing package files', result.stderr)
+        self.assertNotIn('unrecognized arguments', result.stderr)
 
     def test_existing_weekly_pin_is_reused(self):
         import json

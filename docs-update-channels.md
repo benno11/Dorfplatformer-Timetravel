@@ -12,7 +12,8 @@ Nightly selects the newest successfully packaged build from `main` or `nightly`
 for the current operating system, architecture and full/lite edition. Each
 platform job publishes independently, so a failed Windows build does not block
 an Android update. Pull requests and agent branches cannot publish channels.
-Android uses a universal APK; iOS uses the device IPA, never a simulator package.
+Android publishes ABI-specific release APKs under its shared `android-universal`
+channel tag; the manifest selects the matching architecture and excludes debug APKs; iOS uses the device IPA, never a simulator package.
 Platforms with no build have no channel download rather than another OS's file.
 
 Prerelease is a fixed weekly snapshot. The anchor is **2026-11-10 00:00 UTC**
