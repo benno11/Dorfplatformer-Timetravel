@@ -176,8 +176,8 @@ static void applyBlockDefsToMaps(TileMap& map,
     }
 }
 
-static void normalizeHorizontalOffset(TileMap& map) {
-    if (map.w <= 0 || map.h <= 0) return;
+static int normalizeHorizontalOffset(TileMap& map) {
+    if (map.w <= 0 || map.h <= 0) return 0;
     int firstCol = -1;
     for (int x = 0; x < map.w; ++x) {
         bool any = false;
@@ -188,7 +188,7 @@ static void normalizeHorizontalOffset(TileMap& map) {
         }
         if (any) { firstCol = x; break; }
     }
-    if (firstCol <= 0) return;
+    if (firstCol <= 0) return 0;
 
     for (int y = 0; y < map.h; ++y) {
         for (int x = 0; x < map.w; ++x) {
@@ -204,6 +204,7 @@ static void normalizeHorizontalOffset(TileMap& map) {
             }
         }
     }
+    return firstCol;
 }
 
 static bool shouldNormalizeHorizontalOffset(const std::string& path) {
@@ -702,9 +703,7 @@ bool loadLevelBNNLVL(const std::string& path,
 
     auto defs = loadBlockDefs("assets/blockdefined.txt");
     applyBlockDefsToMaps(map, map.tileIds, defs);
-    if (shouldNormalizeHorizontalOffset(path)) {
-        normalizeHorizontalOffset(map);
-    }
+    const int shiftedColumns = shouldNormalizeHorizontalOffset(path) ? normalizeHorizontalOffset(map) : 0;
     applyBlockDefsToMaps(map, map.tileIds, defs);
 
     // Legacy OBJ stream quirk: consume one extra token before object section.
@@ -757,6 +756,9 @@ bool loadLevelBNNLVL(const std::string& path,
         const int tileId = entitySpawnPos[temp22];
         ObjectInstance o;
         posToXY(tileId, h, o.x, o.y);
+        // Tile normalization changes the world's origin. Apply that exact
+        // translation to object centers before any wrapped copies are made.
+        o.x -= static_cast<float>(shiftedColumns * map.tileSize);
         // Keep POS/TYPE aligned by index during creation.
         const int objectId = std::max(1, entitySpawnType[temp22]);
         if (objectId == 61) {
