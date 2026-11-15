@@ -115,7 +115,7 @@ void NetworkBusyScreen::frame(std::atomic<bool>& cancelled) {
         float textureW = 0.0f, textureH = 0.0f;
         SDL_GetTextureSize(snapshot, &textureW, &textureH);
         if (textureW > 0.0f && textureH > 0.0f) {
-            const float fit = std::min(width / textureW, height / textureH);
+            const float fit = (std::min)(width / textureW, height / textureH);
             const SDL_FRect dst{(width - textureW * fit) / 2, (height - textureH * fit) / 2,
                                 textureW * fit, textureH * fit};
             SDL_RenderTexture(ren, snapshot, nullptr, &dst);
@@ -127,7 +127,7 @@ void NetworkBusyScreen::frame(std::atomic<bool>& cancelled) {
     SDL_RenderFillRect(ren, &strip);
     const std::string label = cancelled.load() ? "Cancelling..." :
         "Connecting" + std::string((SDL_GetTicks() / 250) % 4, '.') + "  (Esc to cancel)";
-    DrawGameText(ren, 20, std::max(0, height - 46), 2, label);
+    DrawGameText(ren, 20, (std::max)(0, height - 46), 2, label);
     AudioSystem::pumpEventSfx();
     SDL_RenderPresent(ren);
 
