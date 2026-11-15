@@ -62,6 +62,7 @@
 #include "CharacterHairCollision.h"
 #include "CharacterHairInteraction.h"
 #include "MovingPlatform.h"
+#include "CyclingBlock.h"
 #include "Bumper.h"
 #include "Player.h"
 #include "PlayerController.h"
@@ -2746,6 +2747,7 @@ int RunGameApp(int argc, char** argv) {
         CameraExclusion::Controller exclusionCamera;
         std::vector<ShellChraker::State> shellChrakerStates;
         std::vector<MovingPlatform::State> movingPlatformStates;
+        CyclingBlock::State cyclingBlocks;
         struct SpikeImpact {
             float x = 0, y = 0;
             float remaining = 0, duration = 0.28f;
@@ -3260,6 +3262,7 @@ int RunGameApp(int argc, char** argv) {
             characterParts = CharacterCreator::PartPhysics{};
             spikeImpact.remaining = 0;
             movingPlatformStates.clear();
+            cyclingBlocks = {};
             waterEffects.reset();
             waterParticles.clear();
             bumperImpacts.clear();
@@ -6147,6 +6150,25 @@ int RunGameApp(int argc, char** argv) {
                 touchJump = false;
                 inputMove = 1.0f;
                 inputDown = false;
+            }
+            if (!levelCompleteActive) {
+                std::vector<SDL_FRect> blockObstacles;
+                for (size_t i=0; i<objects.size(); ++i) {
+                    if (objectIds[i] == ObjectIds::MovingPlatform)
+                        blockObstacles.push_back({objects[i].x-map.tileSize*0.5f, objects[i].y-map.tileSize*0.5f,
+                            static_cast<float>(map.tileSize), static_cast<float>(map.tileSize)});
+                }
+                const bool crushed = CyclingBlock::advance(cyclingBlocks, dtPrecise, map, player,
+                    [&](int index, unsigned short id) { levelManager.setTileAt(map,index,id); },
+                    [&](const SDL_FRect& body) {
+                        if (RectHitsSolid(map,body.x,body.y,player.w,player.h)) return true;
+                        for (auto rect : blockObstacles) {
+                            rect=CyclingBlock::nearPlayer(rect,player,gameplayWrapX ? mapWrapW : 0,gameplayWrapY ? mapWrapH : 0);
+                            if (CyclingBlock::overlap(body,rect)) return true;
+                        }
+                        return false;
+                    }, blockObstacles, gameplayWrapX ? mapWrapW : 0, gameplayWrapY ? mapWrapH : 0);
+                if (crushed) { beginDeathSequence(); continue; }
             }
             PlayerUpdateResult upd = PlayerUpdateResult::RenderOnly;
             int platformRider = -1;
