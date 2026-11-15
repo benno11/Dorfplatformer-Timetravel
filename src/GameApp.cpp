@@ -8685,6 +8685,7 @@ int RunGameApp(int argc, char** argv) {
             } else {
                 DrawTextColored(ren, settingsDraw.x + (settingsDraw.w - MeasureTextWidth(2, "S")) / 2,
                     settingsDraw.y + (settingsDraw.h - 20) / 2, 2, "S", SDL_Color{255,255,255,pauseButtonAlpha});
+            }
         }
         if (levelCompleteUiLerp > 0.001f) {
             const int centerY = screenH / 2;
