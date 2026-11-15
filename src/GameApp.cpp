@@ -3879,7 +3879,7 @@ int RunGameApp(int argc, char** argv) {
         std::vector<SDL_FRect> semiHitboxes;
         std::vector<SDL_FRect> waterHitboxes;
         std::vector<SDL_FRect> airDebugHitboxes;
-        int pauseSelection = 0; // 0 = Resume, 1 = Restart, 2 = Quit
+        int pauseSelection = 0; // Visual order: 3 = Settings, 0 = Resume, 1 = Restart, 2 = Quit
         bool returnToSelect = false;
         std::unordered_map<SDL_FingerID, SDL_FPoint> activeTouches;
         bool hasTouchScreenDevice = false;
@@ -5068,10 +5068,10 @@ int RunGameApp(int argc, char** argv) {
                     if (e.key.key == SDLK_UP) pauseSelection = 3;
                     if (e.key.key == SDLK_DOWN && pauseSelection == 3) pauseSelection = 0;
                     if (e.key.key == SDLK_LEFT || e.key.key == SDLK_a) {
-                        pauseSelection = std::max(0, pauseSelection - 1);
+                        pauseSelection = pauseSelection == 3 || pauseSelection == 0 ? 3 : pauseSelection - 1;
                     }
                     if (e.key.key == SDLK_RIGHT || e.key.key == SDLK_d) {
-                        pauseSelection = std::min(3, pauseSelection + 1);
+                        pauseSelection = pauseSelection == 3 ? 0 : std::min(2, pauseSelection + 1);
                     }
                     if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) {
                         handlePauseSelect(pauseSelection);
@@ -5086,10 +5086,10 @@ int RunGameApp(int argc, char** argv) {
                 if (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_DOWN && pauseSelection == 3) pauseSelection = 0;
             }
             if (paused && InputSystem::isLeftEvent(e)) {
-                pauseSelection = std::max(0, pauseSelection - 1);
+                pauseSelection = pauseSelection == 3 || pauseSelection == 0 ? 3 : pauseSelection - 1;
             }
             if (paused && InputSystem::isRightEvent(e)) {
-                pauseSelection = std::min(3, pauseSelection + 1);
+                pauseSelection = pauseSelection == 3 ? 0 : std::min(2, pauseSelection + 1);
             }
             if (paused && InputSystem::isAcceptEvent(e)) {
                 handlePauseSelect(pauseSelection);
@@ -8560,7 +8560,6 @@ int RunGameApp(int argc, char** argv) {
             bool hasRestart = pauseTex && pauseFrames.count("Retartbtn") != 0;
             bool hasExit = pauseTex && pauseFrames.count("exitbtn") != 0;
 
-            SDL_Rect pauseWindow{};
             if (hasPanel && hasContinue && hasRestart && hasExit) {
                 const Frame& panelFrame = pauseFrames["Panel"];
                 SDL_Rect panelDst = scaleRectCentered(SDL_Rect{
@@ -8570,7 +8569,6 @@ int RunGameApp(int argc, char** argv) {
                     panelFrame.rect.h
                 });
                 panelDst.y += pauseSlideY;
-                pauseWindow = panelDst;
                 SDL_SetTextureAlphaMod(pauseTex, pausePanelAlpha);
                 renderFrame(ren, pauseTex, panelFrame, panelDst);
                 SDL_SetTextureAlphaMod(pauseTex, pauseButtonAlpha);
@@ -8579,18 +8577,22 @@ int RunGameApp(int argc, char** argv) {
                 const Frame& restartFrame = pauseFrames["Retartbtn"];
                 const Frame& exitFrame = pauseFrames["exitbtn"];
 
-                int contW = std::max(1, (int)std::lround((continueFrame.rotated ? continueFrame.rect.h : continueFrame.rect.w) * uiButtonScale));
-                int contH = std::max(1, (int)std::lround((continueFrame.rotated ? continueFrame.rect.w : continueFrame.rect.h) * uiButtonScale));
-                int restartW = std::max(1, (int)std::lround((restartFrame.rotated ? restartFrame.rect.h : restartFrame.rect.w) * uiButtonScale));
-                int restartH = std::max(1, (int)std::lround((restartFrame.rotated ? restartFrame.rect.w : restartFrame.rect.h) * uiButtonScale));
-                int exitW = std::max(1, (int)std::lround((exitFrame.rotated ? exitFrame.rect.h : exitFrame.rect.w) * uiButtonScale));
-                int exitH = std::max(1, (int)std::lround((exitFrame.rotated ? exitFrame.rect.w : exitFrame.rect.h) * uiButtonScale));
+                const float actionButtonScale = uiButtonScale * 0.75f;
+                int contW = std::max(1, (int)std::lround((continueFrame.rotated ? continueFrame.rect.h : continueFrame.rect.w) * actionButtonScale));
+                int contH = std::max(1, (int)std::lround((continueFrame.rotated ? continueFrame.rect.w : continueFrame.rect.h) * actionButtonScale));
+                int restartW = std::max(1, (int)std::lround((restartFrame.rotated ? restartFrame.rect.h : restartFrame.rect.w) * actionButtonScale));
+                int restartH = std::max(1, (int)std::lround((restartFrame.rotated ? restartFrame.rect.w : restartFrame.rect.h) * actionButtonScale));
+                int exitW = std::max(1, (int)std::lround((exitFrame.rotated ? exitFrame.rect.h : exitFrame.rect.w) * actionButtonScale));
+                int exitH = std::max(1, (int)std::lround((exitFrame.rotated ? exitFrame.rect.w : exitFrame.rect.h) * actionButtonScale));
 
-                int spacing = std::max(8, (int)std::lround(18.0f * uiButtonScale));
-                int totalW = contW + restartW + exitW + spacing * 2;
+                int spacing = std::max(8, (int)std::lround(18.0f * actionButtonScale));
+                const int settingsSize = std::max({contH, restartH, exitH});
+                int totalW = settingsSize + contW + restartW + exitW + spacing * 3;
                 int startX = screenW / 2 - totalW / 2;
-                int centerY = screenH / 2 + (int)std::lround(30.0f * uiButtonScale) + pauseSlideY;
+                int centerY = screenH / 2 + (int)std::lround(30.0f * actionButtonScale) + pauseSlideY;
 
+                pauseBtnSettings = {startX, centerY - settingsSize / 2, settingsSize, settingsSize};
+                startX += settingsSize + spacing;
                 SDL_Rect contDst{startX, centerY - contH / 2, contW, contH};
                 SDL_Rect restartDst{startX + contW + spacing, centerY - restartH / 2, restartW, restartH};
                 SDL_Rect exitDst{startX + contW + spacing + restartW + spacing, centerY - exitH / 2, exitW, exitH};
@@ -8613,7 +8615,6 @@ int RunGameApp(int argc, char** argv) {
             } else {
                 SDL_Rect panel = scaleRectCentered(SDL_Rect{screenW / 2 - 140, screenH / 2 - 90, 280, 180});
                 panel.y += pauseSlideY;
-                pauseWindow = panel;
                 SDL_SetRenderDrawColor(ren, 30, 30, 38, (Uint8)std::clamp((int)std::lround(230.0f * pauseEase), 0, 230));
                 SDL_RenderFillRect(ren, &panel);
                 SDL_SetRenderDrawColor(ren, 80, 90, 110, pausePanelAlpha);
@@ -8622,13 +8623,16 @@ int RunGameApp(int argc, char** argv) {
                 SDL_SetRenderDrawColor(ren, 230, 230, 230, pausePanelAlpha);
                 DrawTextColored(ren, screenW / 2 - MeasureTextWidth(3, "PAUSED") / 2, panel.y + (int)std::lround(22.0f * uiButtonScale), 3, "PAUSED", SDL_Color{255, 255, 255, pausePanelAlpha});
 
-                SDL_Rect resumeBtn = scaleRectCentered(SDL_Rect{screenW / 2 - 132, screenH / 2 + 10, 86, 36});
-                SDL_Rect restartBtn = scaleRectCentered(SDL_Rect{screenW / 2 - 43, screenH / 2 + 10, 86, 36});
-                SDL_Rect quitBtn = scaleRectCentered(SDL_Rect{screenW / 2 + 46, screenH / 2 + 10, 86, 36});
-                resumeBtn.y += pauseSlideY;
-                restartBtn.y += pauseSlideY;
-                quitBtn.y += pauseSlideY;
-                const int labelLineH = std::max(10, (int)std::lround(16.0f * uiButtonScale));
+                const int buttonW = std::max(1, (int)std::lround(70 * uiButtonScale));
+                const int buttonH = std::max(1, (int)std::lround(30 * uiButtonScale));
+                const int gap = std::max(4, (int)std::lround(8 * uiButtonScale));
+                const int startX = screenW / 2 - (buttonH + 3 * buttonW + 3 * gap) / 2;
+                const int buttonY = screenH / 2 + (int)std::lround(10 * uiButtonScale) + pauseSlideY;
+                pauseBtnSettings = {startX, buttonY, buttonH, buttonH};
+                SDL_Rect resumeBtn{startX + buttonH + gap, buttonY, buttonW, buttonH};
+                SDL_Rect restartBtn{resumeBtn.x + buttonW + gap, buttonY, buttonW, buttonH};
+                SDL_Rect quitBtn{restartBtn.x + buttonW + gap, buttonY, buttonW, buttonH};
+                const int labelLineH = std::max(10, (int)std::lround(8.0f * uiButtonScale));
                 pauseBtnContinue = resumeBtn;
                 pauseBtnRestart = restartBtn;
                 pauseBtnExit = quitBtn;
@@ -8639,17 +8643,17 @@ int RunGameApp(int argc, char** argv) {
                 SDL_SetRenderDrawColor(ren, pauseSelection == 0 ? 70 : 45, pauseSelection == 0 ? 120 : 70, pauseSelection == 0 ? 170 : 90, pauseButtonAlpha);
                 SDL_RenderFillRect(ren, &resumeBtn);
                 SDL_SetRenderDrawColor(ren, 200, 200, 200, pauseButtonAlpha);
-                DrawTextColored(ren, resumeBtn.x + (resumeBtn.w - MeasureTextWidth(2, "RESUME")) / 2, resumeBtn.y + (resumeBtn.h - labelLineH) / 2, 2, "RESUME", SDL_Color{255, 255, 255, pauseButtonAlpha});
+                DrawTextColored(ren, resumeBtn.x + (resumeBtn.w - MeasureTextWidth(1, "RESUME")) / 2, resumeBtn.y + (resumeBtn.h - labelLineH) / 2, 1, "RESUME", SDL_Color{255, 255, 255, pauseButtonAlpha});
 
                 SDL_SetRenderDrawColor(ren, pauseSelection == 1 ? 70 : 45, pauseSelection == 1 ? 120 : 70, pauseSelection == 1 ? 170 : 90, pauseButtonAlpha);
                 SDL_RenderFillRect(ren, &restartBtn);
                 SDL_SetRenderDrawColor(ren, 200, 200, 200, pauseButtonAlpha);
-                DrawTextColored(ren, restartBtn.x + (restartBtn.w - MeasureTextWidth(2, "RESTART")) / 2, restartBtn.y + (restartBtn.h - labelLineH) / 2, 2, "RESTART", SDL_Color{255, 255, 255, pauseButtonAlpha});
+                DrawTextColored(ren, restartBtn.x + (restartBtn.w - MeasureTextWidth(1, "RESTART")) / 2, restartBtn.y + (restartBtn.h - labelLineH) / 2, 1, "RESTART", SDL_Color{255, 255, 255, pauseButtonAlpha});
 
                 SDL_SetRenderDrawColor(ren, pauseSelection == 2 ? 120 : 70, pauseSelection == 2 ? 70 : 50, pauseSelection == 2 ? 70 : 60, pauseButtonAlpha);
                 SDL_RenderFillRect(ren, &quitBtn);
                 SDL_SetRenderDrawColor(ren, 200, 200, 200, pauseButtonAlpha);
-                DrawTextColored(ren, quitBtn.x + (quitBtn.w - MeasureTextWidth(2, "QUIT")) / 2, quitBtn.y + (quitBtn.h - labelLineH) / 2, 2, "QUIT", SDL_Color{255, 255, 255, pauseButtonAlpha});
+                DrawTextColored(ren, quitBtn.x + (quitBtn.w - MeasureTextWidth(1, "QUIT")) / 2, quitBtn.y + (quitBtn.h - labelLineH) / 2, 1, "QUIT", SDL_Color{255, 255, 255, pauseButtonAlpha});
             }
 
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
@@ -8659,24 +8663,26 @@ int RunGameApp(int argc, char** argv) {
                 pauseSettingsFrames = loadPlistFrames("assets/Sheets/DF_Main_menu-uhd.plist");
                 if (pauseSettingsTexture) SDL_SetTextureScaleMode(pauseSettingsTexture.get(), SDL_SCALEMODE_NEAREST);
             }
-            const int settingsSize = std::max(1, std::min({(int)std::lround(52 * uiButtonScale), pauseWindow.w / 5, pauseWindow.h / 4}));
-            const int settingsInset = std::max(4, (int)std::lround(12 * uiButtonScale));
-            pauseBtnSettings = {pauseWindow.x + pauseWindow.w - settingsInset - settingsSize,
-                pauseWindow.y + settingsInset, settingsSize, settingsSize};
             const auto settingsDraw = pauseButtonAnimations.drawRect(3, pauseBtnSettings, pauseSelection == 3, win, screenW, screenH);
-            const auto buttonFrame = pauseSettingsFrames.find("btn_sprite");
+            auto buttonFrame = pauseFrames.find("buttonbg");
+            if (buttonFrame == pauseFrames.end()) buttonFrame = pauseFrames.find("buttonbg.png");
             const auto gearFrame = pauseSettingsFrames.find("settings_btn_logo");
-            if (pauseSettingsTexture && buttonFrame != pauseSettingsFrames.end() && gearFrame != pauseSettingsFrames.end()) {
+            if (pauseTex && buttonFrame != pauseFrames.end()) {
+                SDL_SetTextureAlphaMod(pauseTex, pauseButtonAlpha);
+                renderFrame(ren, pauseTex, buttonFrame->second, settingsDraw);
+                SDL_SetTextureAlphaMod(pauseTex, 255);
+            } else {
+                SDL_SetRenderDrawColor(ren, 75, 85, 110, pauseButtonAlpha);
+                SDL_RenderFillRect(ren, &settingsDraw);
+            }
+            if (pauseSettingsTexture && gearFrame != pauseSettingsFrames.end()) {
                 SDL_SetTextureAlphaMod(pauseSettingsTexture.get(), pauseButtonAlpha);
-                renderFrame(ren, pauseSettingsTexture.get(), buttonFrame->second, settingsDraw);
                 const SDL_Rect gear{settingsDraw.x + (int)std::lround(settingsDraw.w * 0.18f),
                     settingsDraw.y + (int)std::lround(settingsDraw.h * 0.14f),
                     (int)std::lround(settingsDraw.w * 0.64f), (int)std::lround(settingsDraw.h * 0.64f)};
                 renderFrame(ren, pauseSettingsTexture.get(), gearFrame->second, gear);
                 SDL_SetTextureAlphaMod(pauseSettingsTexture.get(), 255);
             } else {
-                SDL_SetRenderDrawColor(ren, 75, 85, 110, pauseButtonAlpha);
-                SDL_RenderFillRect(ren, &settingsDraw);
                 DrawTextColored(ren, settingsDraw.x + (settingsDraw.w - MeasureTextWidth(2, "S")) / 2,
                     settingsDraw.y + (settingsDraw.h - 20) / 2, 2, "S", SDL_Color{255,255,255,pauseButtonAlpha});
             }
