@@ -8666,7 +8666,26 @@ int RunGameApp(int argc, char** argv) {
             const auto settingsDraw = pauseButtonAnimations.drawRect(3, pauseBtnSettings, pauseSelection == 3, win, screenW, screenH);
             auto buttonFrame = pauseFrames.find("buttonbg");
             if (buttonFrame == pauseFrames.end()) buttonFrame = pauseFrames.find("settingbtn.png");
-            const auto gearFrame = pauseSettingsFrames.find("settings_btn_logo");        }
+            const auto gearFrame = pauseSettingsFrames.find("settings_btn_logo");
+            if (pauseTex && buttonFrame != pauseFrames.end()) {
+                SDL_SetTextureAlphaMod(pauseTex, pauseButtonAlpha);
+                renderFrame(ren, pauseTex, buttonFrame->second, settingsDraw);
+                SDL_SetTextureAlphaMod(pauseTex, 255);
+            } else {
+                SDL_SetRenderDrawColor(ren, 75, 85, 110, pauseButtonAlpha);
+                SDL_RenderFillRect(ren, &settingsDraw);
+            }
+            if (pauseSettingsTexture && gearFrame != pauseSettingsFrames.end()) {
+                SDL_SetTextureAlphaMod(pauseSettingsTexture.get(), pauseButtonAlpha);
+                const SDL_Rect gear{settingsDraw.x + (int)std::lround(settingsDraw.w * 0.18f),
+                    settingsDraw.y + (int)std::lround(settingsDraw.h * 0.14f),
+                    (int)std::lround(settingsDraw.w * 0.64f), (int)std::lround(settingsDraw.h * 0.64f)};
+                renderFrame(ren, pauseSettingsTexture.get(), gearFrame->second, gear);
+                SDL_SetTextureAlphaMod(pauseSettingsTexture.get(), 255);
+            } else {
+                DrawTextColored(ren, settingsDraw.x + (settingsDraw.w - MeasureTextWidth(2, "S")) / 2,
+                    settingsDraw.y + (settingsDraw.h - 20) / 2, 2, "S", SDL_Color{255,255,255,pauseButtonAlpha});
+        }
         if (levelCompleteUiLerp > 0.001f) {
             const int centerY = screenH / 2;
             auto completeSlideInXForY = [&](int y) -> int {
