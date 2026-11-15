@@ -91,6 +91,8 @@ struct SlimMenuContext {
     std::function<void(int, int)> drawNotifications;
     std::function<bool(const std::string&, const std::string&, std::string&)> signIn;
     std::function<std::string()> getUpdaterStatusText;
+    std::function<std::string()> getUpdateChannel;
+    std::function<bool(const std::string&)> selectUpdateChannel;
     std::function<bool()> launchUpdater;
     std::function<std::string()> getUpdaterStatusDetail;
     std::function<std::string()> getUpdaterLatestVersionText;

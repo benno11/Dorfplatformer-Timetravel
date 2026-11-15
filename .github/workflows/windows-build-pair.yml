@@ -1,0 +1,26 @@
+name: Windows build pair signing
+on:
+  push:
+    paths: ['CMakeLists.txt', 'cmake/BuildPairLink.cmake', 'src/BuildPair*', 'tools/BuildPairSigner.cpp', 'tests/BuildPairIntegrityTest.cpp', 'tests/windows-build-pair/**', '.github/workflows/windows-build-pair.yml']
+  pull_request:
+    paths: ['CMakeLists.txt', 'cmake/BuildPairLink.cmake', 'src/BuildPair*', 'tools/BuildPairSigner.cpp', 'tests/BuildPairIntegrityTest.cpp', 'tests/windows-build-pair/**', '.github/workflows/windows-build-pair.yml']
+permissions:
+  contents: read
+jobs:
+  sign:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86, x64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.arch }}
+      - name: Configure real PE signing fixture
+        run: cmake -S tests/windows-build-pair -B build-pair-regression -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - name: Build fixture
+        run: cmake --build build-pair-regression --verbose
+      - name: Sign and verify PE pairs
+        run: ctest --test-dir build-pair-regression --output-on-failure

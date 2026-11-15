@@ -33,6 +33,15 @@ int main() {
     auto unsafe = nlohmann::json::parse(R"({"installer_urls":{"linux":"file:///tmp/update"}})");
     try { installerUrl(unsafe, "linux", "x64"); check(false, "Reject non-web downloads"); }
     catch (const std::runtime_error&) {}
+    const auto splitAndroid = nlohmann::json::parse(R"({"installer_urls":{"android":{
+        "arm64":"https://example.com/app-arm64-v8a-release.apk",
+        "arm":"https://example.com/app-armeabi-v7a-release.apk",
+        "x64":"https://example.com/app-x86_64-release.apk",
+        "x86":"https://example.com/app-x86-release.apk"}}})");
+    check(installerUrl(splitAndroid, "android", "arm64") == "https://example.com/app-arm64-v8a-release.apk", "Android ARM64 split");
+    check(installerUrl(splitAndroid, "android", "x64") == "https://example.com/app-x86_64-release.apk", "Android x64 split");
+    try { installerUrl(splitAndroid, "android", "unknown"); check(false, "No fallback to another Android ABI"); }
+    catch (const std::runtime_error&) {}
     check(versionId(manifest) == "24", "Numeric build ID");
     check(versionId(nlohmann::json{{"version", "2.3"}}) == "2.3", "Version fallback");
     check(compareVersions("23", "24") < 0, "New build");
@@ -42,5 +51,14 @@ int main() {
     check(compareVersions("2.3.0", "2.3") == 0, "Trailing zero");
     check(compareVersions("2.3-beta", "2.3") < 0, "Prerelease");
     check(compareVersions("999999999999999999999", "1000000000000000000000") < 0, "Large build IDs");
+    check(manifestUrl(nlohmann::json{{"windows_update_manifest_url", "https://example.com/stable"}}) ==
+          "https://example.com/stable", "Stable remains compatible");
+    check(manifestUrl(nlohmann::json{{"update_channel", "nightly"}, {"update_edition", "lite"}}, "windows", "x86") ==
+          "https://github.com/benno11/Dorfplatformer-Timetravel/releases/download/nightly-windows-x86-lite/update-manifest.json",
+          "Nightly selects platform, architecture and edition");
+    check(manifestUrl(nlohmann::json{{"update_channel", "prerelease"}, {"update_edition", "full"}}, "android", "arm64").find(
+          "prerelease-android-universal-full/") != std::string::npos, "Android universal channel");
+    try { manifestUrl(nlohmann::json{{"update_channel", "typo"}}); check(false, "Reject unknown channels"); }
+    catch (const std::runtime_error&) {}
     return failures ? 1 : 0;
 }

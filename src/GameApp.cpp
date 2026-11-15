@@ -1236,12 +1236,7 @@ int RunGameApp(int argc, char** argv) {
             if (cfg.contains("account_manager_url") && cfg["account_manager_url"].is_string()) {
                 accountManagerUrl = cfg["account_manager_url"].get<std::string>();
             }
-            if (cfg.contains("windows_update_manifest_url") && cfg["windows_update_manifest_url"].is_string()) {
-                updateManifestUrl = cfg["windows_update_manifest_url"].get<std::string>();
-            }
-            if (cfg.contains("update_manifest_url") && cfg["update_manifest_url"].is_string()) {
-                updateManifestUrl = cfg["update_manifest_url"].get<std::string>();
-            }
+            updateManifestUrl = AppUpdate::manifestUrl(cfg);
             if (cfg.contains("movement") && cfg["movement"].is_object()) {
                 const auto& m = cfg["movement"];
                 auto readMove = [&](const char* key, float& out) {
@@ -2564,7 +2559,7 @@ int RunGameApp(int argc, char** argv) {
     frontendCtx.applyMenuMusicToggle = applyMenuMusicToggle;
     frontendCtx.saveClientSettings = saveClientSettings;
 #if !defined(_WIN32)
-    SandboxUpdates::configure(updateManifestUrl, appVersionId, ReadUpdateManifest);
+    SandboxUpdates::configureFile(std::filesystem::u8path(ResolveAssetPath("assets/config.json")), ReadUpdateManifest);
 #endif
     auto sandboxUpdateStatus = []() {
         DFSandboxUpdateStatus status{}; status.struct_size = sizeof(status);
@@ -2573,6 +2568,17 @@ int RunGameApp(int argc, char** argv) {
             SDL_strlcpy(status.detail, "Sandbox updater is unavailable.", sizeof(status.detail));
         }
         return status;
+    };
+    frontendCtx.getUpdateChannel = []() -> std::string {
+        if(SandboxPointers::api().update_action(DF_UPDATE_IS_NIGHTLY))return "nightly";
+        if(SandboxPointers::api().update_action(DF_UPDATE_IS_PRERELEASE))return "prerelease";
+        return "stable";
+    };
+    frontendCtx.selectUpdateChannel = [](const std::string& channel) {
+        const auto action = channel=="stable" ? DF_UPDATE_SELECT_STABLE :
+            channel=="prerelease" ? DF_UPDATE_SELECT_PRERELEASE :
+            channel=="nightly" ? DF_UPDATE_SELECT_NIGHTLY : 0u;
+        return action && SandboxPointers::api().update_action(action)!=0;
     };
     frontendCtx.getUpdaterStatusText = [sandboxUpdateStatus]() -> std::string {
         switch (sandboxUpdateStatus().state) {

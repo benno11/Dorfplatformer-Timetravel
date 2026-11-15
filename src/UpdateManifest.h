@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Platform.h"
+#include "EditionPolicy.h"
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <cctype>
@@ -35,6 +36,22 @@ inline std::string architecture() {
 #else
     return "unknown";
 #endif
+}
+
+// Stable preserves operator-hosted manifests. Test channels use a platform/edition pin.
+inline std::string manifestUrl(const nlohmann::json& config,
+                               const std::string& os = platform(),
+                               const std::string& arch = architecture()) {
+    const auto channel = config.value("update_channel", std::string("stable"));
+    if (channel == "stable")
+        return config.value("update_manifest_url", config.value("windows_update_manifest_url", std::string()));
+    if (channel != "nightly" && channel != "prerelease")
+        throw std::runtime_error("Unknown update_channel: " + channel);
+    const auto edition = config.value("update_edition", std::string(Edition::lite ? "lite" : "full"));
+    if (edition != "full" && edition != "lite") throw std::runtime_error("Invalid update edition.");
+    const auto target = os + "-" + (os == "android" ? "universal" : arch);
+    return "https://github.com/benno11/Dorfplatformer-Timetravel/releases/download/" +
+        channel + "-" + target + "-" + edition + "/update-manifest.json";
 }
 
 inline bool isWebUrl(const std::string& url) {

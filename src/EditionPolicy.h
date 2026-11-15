@@ -36,6 +36,7 @@ inline bool commandAllowed(const std::string& command, const std::string& arg) {
             if (arg == setting) return true;
         return false;
     }
+    if (command == "update_channel") return arg == "stable" || arg == "prerelease" || arg == "nightly";
     if (command == "inc" || command == "dec")
         return arg == "music_volume" || arg == "sfx_volume" || arg == "ui_scale_percent" || arg == "ui_edge_padding";
     for (const auto* allowed : {"back", "quit", "world", "campaign", "saved", "save_slot", "select_save",

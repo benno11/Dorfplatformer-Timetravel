@@ -1,6 +1,7 @@
 #include "SandboxUpdates.h"
 #include "SandboxVersion.h"
 #include "UpdateManifest.h"
+#include "UpdateChannelSettings.h"
 #include "BuildInfo.h"
 #include <SDL3/SDL.h>
 #include <algorithm>
@@ -11,6 +12,9 @@
 #include <stdexcept>
 namespace SandboxUpdates {
 namespace {
+nlohmann::json activeConfig = nlohmann::json::object();
+Fetch activeFetch;
+std::string activeGameId;
 constexpr size_t maximumManifest = 1024*1024;
 void copy(char* destination,size_t capacity,const std::string& text) {
     const size_t count=std::min(capacity-1,text.size());
@@ -73,14 +77,40 @@ std::string Checker::downloadUrl(){poll();return result_.state==DF_UPDATE_AVAILA
 void Checker::shutdown(){if(pending_.valid()){pending_.wait();(void)pending_.get();}}
 void configure(std::string url,std::string gameId,Fetch fetch){std::lock_guard<std::mutex> lock(mutex());checker().configure(std::move(url),std::move(gameId),std::move(fetch));}
 void configureFile(const std::filesystem::path& path,Fetch fetch) {
+    std::lock_guard<std::mutex> lock(mutex());
     std::string url;
+    activeConfig=nlohmann::json::object();activeFetch=fetch;activeGameId=PLATFORMER_CLIENT_VERSION_ID;
     try {
-        std::ifstream file(path);nlohmann::json config;if(file)file>>config;
-        url=config.value("update_manifest_url",config.value("windows_update_manifest_url",std::string()));
+        std::ifstream file(path);nlohmann::json config = nlohmann::json::object();if(file)file>>config;
+        if(!config.is_object())throw std::runtime_error("Invalid updater configuration.");
+        AppUpdate::applySavedChannel(config);
+        url=AppUpdate::manifestUrl(config);
+        activeConfig=std::move(config);
     }catch(...){}
-    configure(std::move(url),PLATFORMER_CLIENT_VERSION_ID,std::move(fetch));
+    checker().configure(std::move(url),PLATFORMER_CLIENT_VERSION_ID,std::move(fetch));
 }
-bool request(uint32_t action){std::lock_guard<std::mutex> lock(mutex());return action==DF_UPDATE_CHECK&&checker().check();}
+bool request(uint32_t action) {
+    std::lock_guard<std::mutex> lock(mutex());
+    if(action==DF_UPDATE_CHECK)return checker().check();
+    const auto channel=activeConfig.value("update_channel",std::string("stable"));
+    if(action==DF_UPDATE_IS_STABLE)return channel=="stable";
+    if(action==DF_UPDATE_IS_PRERELEASE)return channel=="prerelease";
+    if(action==DF_UPDATE_IS_NIGHTLY)return channel=="nightly";
+    std::string selected;
+    if(action==DF_UPDATE_SELECT_STABLE)selected="stable";
+    else if(action==DF_UPDATE_SELECT_PRERELEASE)selected="prerelease";
+    else if(action==DF_UPDATE_SELECT_NIGHTLY)selected="nightly";
+    else return false;
+    if(!activeFetch || checker().snapshot().state==DF_UPDATE_CHECKING)return false;
+    try {
+        auto config=activeConfig;config["update_channel"]=selected;
+        auto url=AppUpdate::manifestUrl(config);
+        if(!AppUpdate::saveChannel(config,selected))return false;
+        activeConfig=std::move(config);
+        checker().configure(std::move(url),activeGameId,activeFetch);
+        return true;
+    }catch(...){return false;}
+}
 DFSandboxUpdateStatus snapshot(){std::lock_guard<std::mutex> lock(mutex());return checker().snapshot();}
 std::string downloadUrl(){std::lock_guard<std::mutex> lock(mutex());return checker().downloadUrl();}
 void shutdown(){std::lock_guard<std::mutex> lock(mutex());checker().shutdown();}

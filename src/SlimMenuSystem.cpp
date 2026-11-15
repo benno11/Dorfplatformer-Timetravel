@@ -704,6 +704,14 @@ SlimMenu loadMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuC
         text("Current Version: " + fallbackText(ctx.versionString, "dev") + " (" + fallbackText(ctx.versionIdString, "dev") + ")");
         text("Sandbox Version: " + std::string(GameSandbox::version));
         text("Status: " + state.status);
+        const auto channel = ctx.getUpdateChannel ? ctx.getUpdateChannel() : "stable";
+        text("Update Channel: " + channel);
+        if(ctx.selectUpdateChannel && !state.busy()) {
+            for(const auto* choice : {"stable", "prerelease", "nightly"})
+                menu.items.push_back(MenuItem{MenuItem::Type::Button, std::string("Use ") + choice +
+                    (channel == choice ? " (selected)" : ""), "update_channel", choice});
+        }
+        text("Nightly: latest successful platform build. Prerelease: Tuesday snapshot.");
         menu.items.push_back(MenuItem{MenuItem::Type::Button, state.actionLabel(), "updater", {}});
         menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back", "menu", "mainsetting"});
         if (!state.latestVersion.empty()) text("Latest Version: " + state.latestVersion);
@@ -2356,6 +2364,14 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
     }
     if (command == "account_open" || command == "account_logout" || command == "account_repair" || command == "back" || command == "quit" || command == "menu")
         stopAccountInput(runtime);
+    if (command == "update_channel") {
+        if(ctx.selectUpdateChannel && !readUpdaterState(ctx).busy()) {
+            runtime.updaterNotice = ctx.selectUpdateChannel(arg) ? "Channel saved. Check for updates to load it." :
+                "Could not change the update channel.";
+            runtime.vars["__reload_menu"] = "1";
+        }
+        return SlimMenuExit::Continue;
+    }
     if (command == "updater") {
         const auto state = readUpdaterState(ctx);
         if (state.canAct()) {

@@ -1,6 +1,7 @@
 {
   "version": "3.0.0 Alpha 4",
   "version_id": 28,
+  "update_channel": "stable",
   "movement": {
     "accel_in_water": 600.0,
     "accel_ground": 900.0,

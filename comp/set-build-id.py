@@ -8,6 +8,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -42,6 +43,10 @@ def main() -> int:
         data = json.load(fh)
 
     data["version_id"] = build_id
+    branch = os.environ.get("GITHUB_REF_NAME", "")
+    if branch in ("nightly", "prerelease"):
+        data["update_channel"] = branch
+    data["update_edition"] = "lite" if os.environ.get("PLATFORMER_LITE_EDITION") in ("ON", "1", "true") else "full"
     with config_path.open("w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2)
         fh.write("\n")
