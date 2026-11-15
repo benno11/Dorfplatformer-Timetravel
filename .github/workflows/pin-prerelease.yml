@@ -1,0 +1,24 @@
+name: Manually pin prerelease
+on:
+  workflow_dispatch:
+    inputs:
+      source_release:
+        description: Published main build release to pin
+        type: string
+        required: true
+        default: draft-main-321
+permissions:
+  contents: write
+concurrency:
+  group: weekly-prerelease
+  cancel-in-progress: false
+jobs:
+  pin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pin and verify current weekly prerelease manifests
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_RELEASE: ${{ inputs.source_release }}
+        run: python3 comp/pin-prerelease.py
