@@ -8652,7 +8652,7 @@ int RunGameApp(int argc, char** argv) {
 
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
             const auto settingsDraw = pauseButtonAnimations.drawRect(3, pauseBtnSettings, pauseSelection == 3, win, screenW, screenH);
-            auto buttonFrame = pauseFrames.find("buttonbg");
+            auto buttonFrame = pauseFrames.find("settingbtn");
             if (buttonFrame == pauseFrames.end()) buttonFrame = pauseFrames.find("settingbtn.png");
             if (pauseTex && buttonFrame != pauseFrames.end()) {
                 SDL_SetTextureAlphaMod(pauseTex, pauseButtonAlpha);
