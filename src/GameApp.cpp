@@ -76,6 +76,7 @@
 #include "Achievements.h"
 #include "AchievementToast.h"
 #include "LevelWrap.h"
+#include "DebugFreeCamera.h"
 #include "ObjectWrapping.h"
 #include "LevelParameterObjects.h"
 #include "EditorObjectTools.h"
@@ -3111,6 +3112,7 @@ int RunGameApp(int argc, char** argv) {
         float cameraDisabledBySignpostY = 0.0f;
         bool bossEndCameraFreezeEligible = false;
         BackgroundCamera backgroundCamera;
+        DebugFreeCamera debugFreeCamera;
         float previousCameraX = 0.0f;
         float previousCameraY = 0.0f;
         bool levelCompleteCameraLocked = false;
@@ -3253,6 +3255,7 @@ int RunGameApp(int argc, char** argv) {
         };
         auto reloadLevel = [&](bool showIntroCard = true, bool preserveButtons = false) {
             exclusionCamera.reset();
+            debugFreeCamera = {};
             hairMouse.release(characterParts);
             characterParts = CharacterCreator::PartPhysics{};
             spikeImpact.remaining = 0;
@@ -4508,6 +4511,10 @@ int RunGameApp(int argc, char** argv) {
             const double dtPrecise = (double)(nowNs - lastTicksNs) / 1000000000.0;
             const float dt = GameplayDeltaTime(dtPrecise);
             AudioSystem::pumpEventSfx();
+            if (debugFreeCamera.active && !debugToolsEnabled()) {
+                debugFreeCamera.active=false;
+                exclusionCamera.reset();
+            }
             const MovementConfig activeMovement = CharacterCreator::movementFor(characterAppearance, movementCfg, showExperimentalFeatures);
             if (!paused) spikeImpact.remaining = std::max(0.0f, spikeImpact.remaining - dt);
             if (!paused) {
@@ -4949,7 +4956,16 @@ int RunGameApp(int argc, char** argv) {
                     showFpsCounter = !showFpsCounter;
                 }
                 if (debugToolsEnabled() && e.key.key == SDLK_F10) {
-                    clampCamX = !clampCamX;
+                    if (e.key.mod & SDL_KMOD_CTRL) {
+                        if (debugFreeCamera.active || (!paused && !deathSequenceActive && !levelCompleteActive)) {
+                            debugFreeCamera.toggle(previousCameraX, previousCameraY);
+                            exclusionCamera.reset();
+                        }
+                    } else clampCamX = !clampCamX;
+                }
+                if (debugFreeCamera.active && e.key.key == SDLK_HOME) {
+                    debugFreeCamera.x=player.x+player.w*0.5f-kGameplayViewW*0.5f;
+                    debugFreeCamera.y=player.y+player.h*0.5f-kGameplayViewH*0.5f;
                 }
                 if (debugToolsEnabled() && e.key.key == SDLK_F5) {
                     stopDebugButtonEditing();
@@ -5244,7 +5260,7 @@ int RunGameApp(int argc, char** argv) {
                 }
             }
 
-            if (!paused && !deathSequenceActive && !replayPlaybackDrivingThisFrame) {
+            if (!paused && !deathSequenceActive && !replayPlaybackDrivingThisFrame && !debugFreeCamera.active) {
             const float frameStartX = player.x;
             const float frameStartY = player.y;
             enum MovementReasonMask : unsigned int {
@@ -7403,6 +7419,18 @@ int RunGameApp(int argc, char** argv) {
             cameraWrapX ? static_cast<float>(map.w * map.tileSize) : 0.0f,
             cameraWrapY ? static_cast<float>(map.h * map.tileSize) : 0.0f);
         if (excludedCamera.resolved) { camX = excludedCamera.x; camY = excludedCamera.y; }
+        if (debugFreeCamera.active) {
+            if (!paused && !lowPowerSuspendActive && SDL_GetKeyboardFocus()==win) {
+                const bool* keys=SDL_GetKeyboardState(nullptr);
+                const float horizontal=static_cast<float>(keys[SDL_SCANCODE_D]||keys[SDL_SCANCODE_RIGHT])-
+                    static_cast<float>(keys[SDL_SCANCODE_A]||keys[SDL_SCANCODE_LEFT]);
+                const float vertical=static_cast<float>(keys[SDL_SCANCODE_S]||keys[SDL_SCANCODE_DOWN])-
+                    static_cast<float>(keys[SDL_SCANCODE_W]||keys[SDL_SCANCODE_UP]);
+                debugFreeCamera.pan(horizontal,vertical,dtPrecise,
+                    keys[SDL_SCANCODE_LSHIFT]||keys[SDL_SCANCODE_RSHIFT]);
+            }
+            camX=std::round(debugFreeCamera.x);camY=std::round(debugFreeCamera.y);
+        }
         previousCameraX = camX;
         previousCameraY = camY;
         if (!deathSequenceActive) { lastRenderCamX = camX; lastRenderCamY = camY; }
@@ -8902,6 +8930,8 @@ int RunGameApp(int argc, char** argv) {
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
         }
 
+        if (debugFreeCamera.active)
+            DrawTextColored(ren,16,16,1,"FREECAM | Ctrl+F10 exit | WASD/arrows pan | Shift fast | Home recenter",{255,230,130,255});
         drawAchievementToast(kBaseScreenW, kBaseScreenH);
 
         SDL_SetRenderTarget(ren, nullptr);
