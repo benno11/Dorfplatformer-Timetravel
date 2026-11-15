@@ -45,7 +45,7 @@
 				<key>spriteSourceSize</key>
 				<string>{87,87}</string>
 				<key>textureRect</key>
-				<string>{{260,308},{87,87}}</string>
+				<string>{{352,0},{87,87}}</string>
 				<key>textureRotated</key>
 				<false/>
 			</dict>
@@ -79,6 +79,21 @@
 				<key>textureRotated</key>
 				<false/>
 			</dict>
+			<key>settingbtn.png</key>
+			<dict>
+				<key>aliases</key>
+				<array/>
+				<key>spriteOffset</key>
+				<string>{0,0}</string>
+				<key>spriteSize</key>
+				<string>{86,88}</string>
+				<key>spriteSourceSize</key>
+				<string>{86,88}</string>
+				<key>textureRect</key>
+				<string>{{260,308},{86,88}}</string>
+				<key>textureRotated</key>
+				<false/>
+			</dict>
 		</dict>
 		<key>metadata</key>
 		<dict>
@@ -91,7 +106,7 @@
 			<key>realTextureFileName</key>
 			<string>DF_Pause-uhd.png</string>
 			<key>size</key>
-			<string>{352,396}</string>
+			<string>{439,396}</string>
 			<key>textureFileName</key>
 			<string>DF_Pause-uhd.png</string>
 		</dict>
