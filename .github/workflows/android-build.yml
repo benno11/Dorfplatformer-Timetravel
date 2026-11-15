@@ -36,6 +36,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Repair bundled object coordinates before packaging
+        shell: bash
+        run: |
+          python3 -m unittest discover -s comp -p test_repair_level_objects.py
+          python3 comp/repair-level-objects.py --fix
+
       - name: Set build ID from workflow run number
         shell: bash
         run: python3 comp/set-build-id.py "$GITHUB_RUN_NUMBER"
@@ -113,6 +119,12 @@ jobs:
     steps:
       - name: Checkout game
         uses: actions/checkout@v4
+
+      - name: Repair bundled object coordinates before packaging
+        shell: bash
+        run: |
+          python3 -m unittest discover -s comp -p test_repair_level_objects.py
+          python3 comp/repair-level-objects.py --fix
 
       - name: Set build ID from workflow run number
         shell: bash
@@ -354,6 +366,12 @@ jobs:
       - name: Checkout game
         uses: actions/checkout@v4
 
+      - name: Repair bundled object coordinates before packaging
+        shell: bash
+        run: |
+          python3 -m unittest discover -s comp -p test_repair_level_objects.py
+          python3 comp/repair-level-objects.py --fix
+
       - name: Set build ID from workflow run number
         shell: bash
         run: python3 comp/set-build-id.py "$GITHUB_RUN_NUMBER"
@@ -569,6 +587,12 @@ jobs:
     steps:
       - name: Checkout game
         uses: actions/checkout@v4
+
+      - name: Repair bundled object coordinates before packaging
+        shell: bash
+        run: |
+          python3 -m unittest discover -s comp -p test_repair_level_objects.py
+          python3 comp/repair-level-objects.py --fix
 
       - name: Set build ID from workflow run number
         shell: bash

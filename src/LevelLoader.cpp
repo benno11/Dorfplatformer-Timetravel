@@ -1,4 +1,5 @@
 #include "SoundEvents.h"
+#include "CampaignObjectRepair.h"
 #include "LevelLoader.h"
 #include "LevelParameterObjects.h"
 #include <iomanip>
@@ -642,6 +643,14 @@ bool loadLevelBNNLVL(const std::string& path,
         for (size_t i = 0; i < objects.size(); ++i) {
             objects[i].parameterValue = values[i];
             objects[i].layer = layers[i];
+        }
+        if (CampaignObjectRepair::bundled(path)) {
+            const auto references=nlohmann::json::parse(ReadTextFile("assets/levels/object-reference.json"),nullptr,false);
+            const auto name=std::filesystem::path(path).filename().string();
+            if(references.is_object() && references.contains(name)) {
+                const auto fixed=CampaignObjectRepair::repair(objects,map,references[name]);
+                if(fixed)SDL_Log("Repaired %zu corrupt object positions in %s",fixed,path.c_str());
+            }
         }
         if (meta.name.empty()) meta.name = magic;
         meta.entitySpawnPos.clear();
