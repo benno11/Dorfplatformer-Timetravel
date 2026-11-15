@@ -74,6 +74,7 @@
 #include "LevelManager.h"
 #include "GameProgression.h"
 #include "Achievements.h"
+#include "AchievementToast.h"
 #include "LevelWrap.h"
 #include "LevelParameterObjects.h"
 #include "EditorObjectTools.h"
@@ -2478,16 +2479,7 @@ int RunGameApp(int argc, char** argv) {
         achievements.tick(static_cast<float>(now - lastAchievementDraw) / 1000000000.0f);
         lastAchievementDraw = now;
         if (const auto* title = achievements.toast()) {
-            const int toastW = std::min(560, canvasW - 32);
-            SDL_Rect toastRect{canvasW - toastW - 16, canvasH - 104, toastW, 88};
-            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
-            SDL_SetRenderDrawColor(ren, 18, 104, 49, 245);
-            SDL_RenderFillRect(ren, &toastRect);
-            SDL_SetRenderDrawColor(ren, 86, 220, 124, 255);
-            SDL_RenderDrawRect(ren, &toastRect);
-            DrawTextColored(ren, toastRect.x + 18, toastRect.y + 14, 2, "ACHIEVEMENT UNLOCKED", SDL_Color{190, 255, 205, 255});
-            DrawTextColored(ren, toastRect.x + 18, toastRect.y + 46, 3, *title, SDL_Color{255, 255, 255, 255});
-            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
+            AchievementToast::draw(ren, canvasW, canvasH, *title);
         }
 
     };
