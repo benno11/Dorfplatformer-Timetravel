@@ -1,9 +1,54 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
+<plist version="1.0" msg="Spritesheet created with https://gdcolon.com/gdsplitter">
 	<dict>
 		<key>frames</key>
 		<dict>
+			<key>buttonbg.png</key>
+			<dict>
+				<key>aliases</key>
+				<array/>
+				<key>spriteOffset</key>
+				<string>{0,0}</string>
+				<key>spriteSize</key>
+				<string>{86,88}</string>
+				<key>spriteSourceSize</key>
+				<string>{86,88}</string>
+				<key>textureRect</key>
+				<string>{{0,308},{86,88}}</string>
+				<key>textureRotated</key>
+				<false/>
+			</dict>
+			<key>Continuebtn.png</key>
+			<dict>
+				<key>aliases</key>
+				<array/>
+				<key>spriteOffset</key>
+				<string>{0,0}</string>
+				<key>spriteSize</key>
+				<string>{86,88}</string>
+				<key>spriteSourceSize</key>
+				<string>{86,88}</string>
+				<key>textureRect</key>
+				<string>{{86,308},{86,88}}</string>
+				<key>textureRotated</key>
+				<false/>
+			</dict>
+			<key>exitbtn.png</key>
+			<dict>
+				<key>aliases</key>
+				<array/>
+				<key>spriteOffset</key>
+				<string>{0,0}</string>
+				<key>spriteSize</key>
+				<string>{87,87}</string>
+				<key>spriteSourceSize</key>
+				<string>{87,87}</string>
+				<key>textureRect</key>
+				<string>{{260,308},{87,87}}</string>
+				<key>textureRotated</key>
+				<false/>
+			</dict>
 			<key>Panel.png</key>
 			<dict>
 				<key>aliases</key>
@@ -19,21 +64,6 @@
 				<key>textureRotated</key>
 				<false/>
 			</dict>
-			<key>Continuebtn.png</key>
-			<dict>
-				<key>aliases</key>
-				<array/>
-				<key>spriteOffset</key>
-				<string>{0,0}</string>
-				<key>spriteSize</key>
-				<string>{88,86}</string>
-				<key>spriteSourceSize</key>
-				<string>{88,86}</string>
-				<key>textureRect</key>
-				<string>{{0,309},{88,86}}</string>
-				<key>textureRotated</key>
-				<true/>
-			</dict>
 			<key>Retartbtn.png</key>
 			<dict>
 				<key>aliases</key>
@@ -45,22 +75,7 @@
 				<key>spriteSourceSize</key>
 				<string>{88,88}</string>
 				<key>textureRect</key>
-				<string>{{353,0},{88,88}}</string>
-				<key>textureRotated</key>
-				<false/>
-			</dict>
-			<key>exitbtn.png</key>
-			<dict>
-				<key>aliases</key>
-				<array/>
-				<key>spriteOffset</key>
-				<string>{0,0}</string>
-				<key>spriteSize</key>
-				<string>{87,87}</string>
-				<key>spriteSourceSize</key>
-				<string>{87,87}</string>
-				<key>textureRect</key>
-				<string>{{353,89},{87,87}}</string>
+				<string>{{172,308},{88,88}}</string>
 				<key>textureRotated</key>
 				<false/>
 			</dict>
@@ -76,7 +91,7 @@
 			<key>realTextureFileName</key>
 			<string>DF_Pause-uhd.png</string>
 			<key>size</key>
-			<string>{441,395}</string>
+			<string>{352,396}</string>
 			<key>textureFileName</key>
 			<string>DF_Pause-uhd.png</string>
 		</dict>

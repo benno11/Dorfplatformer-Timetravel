@@ -15,7 +15,37 @@
 				<key>spriteSourceSize</key>
 				<string>{700,700}</string>
 				<key>textureRect</key>
-				<string>{{0,186},{700,700}}</string>
+				<string>{{0,176},{700,700}}</string>
+				<key>textureRotated</key>
+				<false/>
+			</dict>
+			<key>door_bottom.png</key>
+			<dict>
+				<key>aliases</key>
+				<array/>
+				<key>spriteOffset</key>
+				<string>{0,0}</string>
+				<key>spriteSize</key>
+				<string>{21,32}</string>
+				<key>spriteSourceSize</key>
+				<string>{21,32}</string>
+				<key>textureRect</key>
+				<string>{{764,176},{21,32}}</string>
+				<key>textureRotated</key>
+				<false/>
+			</dict>
+			<key>door_top.png</key>
+			<dict>
+				<key>aliases</key>
+				<array/>
+				<key>spriteOffset</key>
+				<string>{0,0}</string>
+				<key>spriteSize</key>
+				<string>{32,32}</string>
+				<key>spriteSourceSize</key>
+				<string>{32,32}</string>
+				<key>textureRect</key>
+				<string>{{785,176},{32,32}}</string>
 				<key>textureRotated</key>
 				<false/>
 			</dict>
@@ -30,7 +60,7 @@
 				<key>spriteSourceSize</key>
 				<string>{32,32}</string>
 				<key>textureRect</key>
-				<string>{{784,186},{32,32}}</string>
+				<string>{{817,176},{32,32}}</string>
 				<key>textureRotated</key>
 				<false/>
 			</dict>
@@ -60,7 +90,7 @@
 				<key>spriteSourceSize</key>
 				<string>{588,519}</string>
 				<key>textureRect</key>
-				<string>{{0,896},{588,519}}</string>
+				<string>{{0,876},{588,519}}</string>
 				<key>textureRotated</key>
 				<false/>
 			</dict>
@@ -75,7 +105,7 @@
 				<key>spriteSourceSize</key>
 				<string>{26,26}</string>
 				<key>textureRect</key>
-				<string>{{826,186},{26,26}}</string>
+				<string>{{849,176},{26,26}}</string>
 				<key>textureRotated</key>
 				<false/>
 			</dict>
@@ -90,7 +120,7 @@
 				<key>spriteSourceSize</key>
 				<string>{64,56}</string>
 				<key>textureRect</key>
-				<string>{{710,186},{64,56}}</string>
+				<string>{{700,176},{64,56}}</string>
 				<key>textureRotated</key>
 				<false/>
 			</dict>
@@ -106,7 +136,7 @@
 			<key>realTextureFileName</key>
 			<string>DF_Enitys-uhd.png</string>
 			<key>size</key>
-			<string>{958,1415}</string>
+			<string>{958,1395}</string>
 			<key>textureFileName</key>
 			<string>DF_Enitys-uhd.png</string>
 		</dict>
