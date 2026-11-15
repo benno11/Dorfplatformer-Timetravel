@@ -298,6 +298,10 @@ std::string SerializeLevelBNNLVL(const TileMap& map, const std::vector<ObjectIns
         map.tileIds.size() != (size_t)map.w * map.h ||
         (!meta.legacyEncoding && meta.formatVersion > kCurrentLevelFormatVersion)) return {};
     for (const auto& obj : objects) {
+        // Saving/upgrading must not silently filter away malformed object IDs.
+        int id=0;
+        const auto parsed=std::from_chars(obj.id.data(),obj.id.data()+obj.id.size(),id);
+        if(parsed.ec!=std::errc() || parsed.ptr!=obj.id.data()+obj.id.size() || id<=0)return {};
         if (!std::isfinite(obj.x) || !std::isfinite(obj.y) || obj.layer < 0 || obj.layer > 9) return {};
         if (LevelParameters::definition(obj) && obj.parameterValue && !LevelParameters::valid(obj)) return {};
     }
@@ -371,6 +375,7 @@ struct LegacyToken {
     int value = 0;        // chunk.return
     char lastLetter = 0;  // chunk.lastletter (a-z)
     bool empty = true;    // chunk.return == ""
+    bool invalid = false;
 };
 
 static bool isSep(char c) {
@@ -392,9 +397,10 @@ static bool nextLegacyToken(const std::string& s, size_t& i, LegacyToken& out) {
     if (s[i] == '-') { neg = true; i++; }
     while (i < s.size() && std::isdigit((unsigned char)s[i])) {
         anyDigit = true;
-        v = v * 10 + (s[i] - '0');
-        i++;
-        if (v > 2'000'000'000L) break;
+        const int digit=s[i]-'0';
+        if(v>(std::numeric_limits<int>::max()-digit)/10)out.invalid=true;
+        if(!out.invalid)v=v*10+digit;
+        ++i;
     }
 
     if (anyDigit) {
@@ -437,98 +443,28 @@ static bool nextLegacyToken(const std::string& s, size_t& i, LegacyToken& out) {
    if temp.id > total: temp.id += 1-total
    if temp.id > max_y: error
 ------------------------------ */
-static bool placeTilesLikeScript(const std::string& fileData,
-                                size_t& cursor,
-                                int w, int h,
-                                std::vector<unsigned short>& outRowMajorGrid,
-                                int& outObjCountTokenIndex)
-{
-    const int total = w * h;
-
-    // We'll build Tile_grid as column-major scratch Tileist first (1..total),
-    // then convert to engine row-major (y*w+x) with y flipped.
-    std::vector<unsigned short> tileList(total, 0);
-
-    // Script: parse_next_chunk(); temp.id;
-    // temp.id defaults to 0 in many systems; but in your earlier code you started at 1.
-    // In Scratch-style LoadBlocks, start is 1.
-    int tempId = 1; // 1-based
-
-    LegacyToken t{};
-    int tokenIndex = 0;
-
-    // loopuntil(loader.id > Chunk.upperend):
-    // We can't know upperend exactly; practical rule:
-    // keep consuming tile tokens until we've "failed the step rule" OR until next token clearly is objectCount.
-    //
-    // Your script exits with e500 when wrap pushes temp.id > max_y.
-    // We'll detect that and stop BEFORE objects, returning false if we stop too early.
-    //
-    // The simplest faithful approach:
-    // continue placing until the stepping rule says "would error", then STOP reading tile tokens.
-    while (true) {
-        size_t savedCursor = cursor;
-
-        if (!nextLegacyToken(fileData, cursor, t)) {
-            // ran out
-            outObjCountTokenIndex = tokenIndex;
-            break;
-        }
-        tokenIndex++;
-
-        // temp.block = chunk.return; if chunk.return == "" => temp.block = 2
-        int block = 0;
-        if (t.empty || !t.hasValue) {
-            // matches "chunk.return == """: treat missing numeric as 2
-            block = 2;
-        } else {
-            block = t.value;
-        }
-
-        // run length is based on chunk.lastletter in a-z
-        // If no letter, treat as 'a' (1) to be tolerant.
-        char rl = (t.lastLetter >= 'a' && t.lastLetter <= 'z') ? t.lastLetter : 'a';
-        int run = (rl - 'a') + 1; // a=1 .. z=26
-
-        for (int r = 0; r < run; r++) {
-            // write TileList[tempId]
-            int idx0 = tempId - 1;
-            if (idx0 < 0 || idx0 >= total) {
-                SDL_Log("Tile placement out of range (tempId=%d total=%d)", tempId, total);
-                return false;
-            }
-            tileList[idx0] = (unsigned short)std::max(0, block);
-            // temp.id += max_y
-            tempId += h;
-
-            // if temp.id > total: temp.id += 1-total
-            if (tempId > total) {
-                tempId += (1 - total);
-
-                // if temp.id > max_y: return e500
-                if (tempId > h) {
-                    // This is the exact script stop condition; we consider tile section ended.
-                    // Rewind cursor to before this token, so objectCount token can be read next.
-                    cursor = savedCursor;
-                    outObjCountTokenIndex = tokenIndex - 1;
-                    goto TILE_DONE;
-                }
-            }
+static bool placeTilesLikeScript(const std::string& fileData, size_t& cursor, int w, int h,
+                                std::vector<unsigned short>& outRowMajorGrid) {
+    const int total=w*h;
+    outRowMajorGrid.assign(total,0);
+    int written=0;
+    while(written<total) {
+        LegacyToken token{};
+        if(!nextLegacyToken(fileData,cursor,token))return false;
+        // Missing numeric values with a run letter represent air. Punctuation,
+        // negative IDs, oversized IDs and incomplete grids are not valid tiles.
+        if(token.invalid || (!token.hasValue && !token.lastLetter) ||
+            (token.hasValue && (token.value<0 || token.value>65535)))return false;
+        const int run=token.lastLetter ? token.lastLetter-'a'+1 : 1;
+        if(run<1 || run>total-written)return false;
+        const unsigned short block=static_cast<unsigned short>(token.hasValue?token.value:2);
+        for(int i=0;i<run;++i,++written) {
+            const int x=written%w,y=h-1-written/w;
+            outRowMajorGrid[y*w+x]=block;
         }
     }
-
-TILE_DONE:
-
-    // Convert tileList (column-major) into engine row-major, with vertical flip.
-    outRowMajorGrid.assign(total, 0);
-    for (int x = 0; x < w; x++) {
-        for (int y = 0; y < h; y++) {
-            int src = x * h + y;          // column-major
-            int dst = (h - 1 - y) * w + x; // row-major, flipped vertically
-            outRowMajorGrid[dst] = tileList[src];
-        }
-    }
-
+    // Leave the cursor after the final tile token. The next token is the object
+    // count; never rewind a run or consume object data as another tile.
     return true;
 }
 
@@ -547,7 +483,7 @@ static void posToXY(int pos, int h, float& x, float& y) {
 /* =========================================================
    MAIN: loads legacy tile_grid + objects
 ========================================================= */
-bool loadLevelBNNLVL(const std::string& path,
+static bool loadLevelImpl(const std::string& path,
                      TileMap& map,
                      std::vector<ObjectInstance>& objects,
                      LevelMeta& meta)
@@ -662,17 +598,17 @@ bool loadLevelBNNLVL(const std::string& path,
     LegacyToken t{};
 
     // parse_next_chunk: version
-    if (!nextLegacyToken(s, cur, t) || !t.hasValue) return false;
+    if (!nextLegacyToken(s, cur, t) || !t.hasValue || t.invalid || t.lastLetter) return false;
     int ver = t.value;
     meta.formatVersion = ver;
     meta.legacyEncoding = true;
 
     // parse_next_chunk: max_x
-    if (!nextLegacyToken(s, cur, t) || !t.hasValue) return false;
+    if (!nextLegacyToken(s, cur, t) || !t.hasValue || t.invalid || t.lastLetter) return false;
     int w = t.value;
 
     // parse_next_chunk: max_y
-    if (!nextLegacyToken(s, cur, t) || !t.hasValue) return false;
+    if (!nextLegacyToken(s, cur, t) || !t.hasValue || t.invalid || t.lastLetter) return false;
     int h = t.value;
 
     const float tileGridDivisor = 1;
@@ -694,16 +630,16 @@ bool loadLevelBNNLVL(const std::string& path,
     // Some files omit this token; if the next token has a run-length letter,
     // it's the first tile token and should not be consumed here.
     {
-        size_t savedCur = cur;
-        if (!(nextLegacyToken(s, cur, t) && t.hasValue && t.lastLetter == 0)) {
-            cur = savedCur;
-        }
+        const size_t savedCur=cur;
+        if(nextLegacyToken(s,cur,t)) {
+            if(t.invalid)return false;
+            if(!t.hasValue || t.lastLetter!=0)cur=savedCur;
+        } else cur=savedCur;
     }
 
     // Tile section
     std::vector<unsigned short> grid;
-    int dummy = 0;
-    if (!placeTilesLikeScript(s, cur, w, h, grid, dummy)) {
+    if (!placeTilesLikeScript(s, cur, w, h, grid)) {
         SDL_Log("Legacy tile placement failed");
         return false;
     }
@@ -715,25 +651,16 @@ bool loadLevelBNNLVL(const std::string& path,
     const int shiftedColumns = shouldNormalizeHorizontalOffset(path) ? normalizeHorizontalOffset(map) : 0;
     applyBlockDefsToMaps(map, map.tileIds, defs);
 
-    // Legacy OBJ stream quirk: consume one extra token before object section.
-    {
-        LegacyToken preObjT{};
-        nextLegacyToken(s, cur, preObjT);
-    }
-
-    // Next chunk should be object count
-    if (!nextLegacyToken(s, cur, t) || !t.hasValue) {
-        // If missing, still OK: no objects
+    // The object section follows the exact tile count. No section means zero
+    // objects; a declared section must be complete and contain pure integers.
+    if (!nextLegacyToken(s,cur,t)) {
         objects.clear();
-        if (meta.name.empty()) meta.name = "Legacy " + std::to_string(ver);
-        meta.entitySpawnPos.clear();
-        meta.entitySpawnType.clear();
-        loaded = true; return true;
+        meta.entitySpawnPos.clear();meta.entitySpawnType.clear();
+        if(meta.name.empty())meta.name="Legacy "+std::to_string(ver);
+        loaded=true;return true;
     }
-
-    int objCount = t.value;
-    if (objCount < 0) objCount = 0;
-    if (objCount > 200000) objCount = 200000;
+    if(t.invalid || !t.hasValue || t.lastLetter || t.value<0 || t.value>200000)return false;
+    const int objCount=t.value;
 
     std::vector<int> entitySpawnPos;
     std::vector<int> entitySpawnType;
@@ -741,19 +668,16 @@ bool loadLevelBNNLVL(const std::string& path,
     entitySpawnType.reserve(objCount);
     for (int n = 0; n < objCount; n++) {
         LegacyToken posT{}, typeT{};
-        if (!nextLegacyToken(s, cur, posT) || !posT.hasValue) break;
-        if (!nextLegacyToken(s, cur, typeT) || !typeT.hasValue) break;
+        if (!nextLegacyToken(s, cur, posT) || posT.invalid || !posT.hasValue || posT.lastLetter ||
+            posT.value<1 || posT.value>total)return false;
+        if (!nextLegacyToken(s, cur, typeT) || typeT.invalid || !typeT.hasValue || typeT.lastLetter || typeT.value<1)return false;
         entitySpawnPos.push_back(posT.value);
         entitySpawnType.push_back(typeT.value);
     }
 
-    const size_t usableObjDataCount = std::min(entitySpawnPos.size(), entitySpawnType.size());
-    if (usableObjDataCount != (size_t)objCount) {
-        SDL_Log("OBJ data count mismatch in %s: header=%d usable=%d",
-                path.c_str(), objCount, (int)usableObjDataCount);
-    }
-    entitySpawnPos.resize(usableObjDataCount);
-    entitySpawnType.resize(usableObjDataCount);
+    LegacyToken trailing{};
+    if(nextLegacyToken(s,cur,trailing))return false;
+    const size_t usableObjDataCount=entitySpawnPos.size();
     meta.entitySpawnPos = entitySpawnPos;
     meta.entitySpawnType = entitySpawnType;
 
@@ -769,7 +693,7 @@ bool loadLevelBNNLVL(const std::string& path,
         // translation to object centers before any wrapped copies are made.
         o.x -= static_cast<float>(shiftedColumns * map.tileSize);
         // Keep POS/TYPE aligned by index during creation.
-        const int objectId = std::max(1, entitySpawnType[temp22]);
+        const int objectId = entitySpawnType[temp22];
         if (objectId == 61) {
             o.y += 3.0f * TILE_SIZE;
         }
@@ -780,4 +704,17 @@ bool loadLevelBNNLVL(const std::string& path,
     if (meta.name.empty()) meta.name = "Legacy " + std::to_string(ver);
     SDL_Log("Legacy load OK: %s tiles=%d objects=%d", path.c_str(), total, (int)objects.size());
     loaded = true; return true;
+}
+
+// A failed conversion must not expose a half-decoded map or stale/mixed object
+// list to callers. Publish the complete level only after every section validates.
+bool loadLevelBNNLVL(const std::string& path, TileMap& map,
+                     std::vector<ObjectInstance>& objects, LevelMeta& meta) {
+    TileMap candidate;
+    candidate.tileSize=map.tileSize;
+    std::vector<ObjectInstance> candidateObjects;
+    LevelMeta candidateMeta;
+    if(!loadLevelImpl(path,candidate,candidateObjects,candidateMeta))return false;
+    map=std::move(candidate);objects=std::move(candidateObjects);meta=std::move(candidateMeta);
+    return true;
 }

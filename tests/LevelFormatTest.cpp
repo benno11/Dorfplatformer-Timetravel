@@ -292,8 +292,9 @@ int main() {
         "OBJPARAM1 2\n0 1\n0 0\n", "OBJPARAM1 1\n0 -1\n", "OBJPARAM1 1\n0 2\n",
         "OBJPARAM1 1\n0 9999999999999999999999\n", "OBJPARAM1 1\n0\n"}) {
         files["invalid_setter.bin"] = std::string("DFLVL4 1 1\n2\nOBJ 1\n1102 16 16\n") + extension;
+        const auto beforeFailure=SerializeLevelBNNLVL(map,objects,loaded);
         assert(!loadLevelBNNLVL("invalid_setter.bin", map, objects, loaded));
-        for (const auto& obj : objects) assert(!obj.parameterValue); // No partial extension is applied.
+        assert(SerializeLevelBNNLVL(map,objects,loaded)==beforeFailure); // No partial level is published.
     }
     files["old_resave.bin"] = "DFLVL4 1 1\n2\nOBJ 1\n1102 16 16\n";
     assert(loadLevelBNNLVL("old_resave.bin", map, objects, loaded));
@@ -315,8 +316,9 @@ int main() {
     for (const auto& section : {"OBJLAYER2 1\n0 1\n", "OBJLAYER1 1\n0 -1\n", "OBJLAYER1 1\n0 10\n",
         "OBJLAYER1 1\n1 0\n", "OBJLAYER1 1\n0\n", "OBJLAYER1 0\nOBJLAYER1 0\n"}) {
         files["bad_layer.bin"] = std::string("DFLVL4 1 1\n2\nOBJ 1\n1106 16 16\nOBJPARAM1 1\n0 3\n") + section;
+        const auto beforeFailure=SerializeLevelBNNLVL(map,objects,loaded);
         assert(!loadLevelBNNLVL("bad_layer.bin", map, objects, loaded));
-        assert(!objects[0].parameterValue && objects[0].layer == 0); // Atomic extension loading.
+        assert(SerializeLevelBNNLVL(map,objects,loaded)==beforeFailure); // Atomic level loading.
     }
     assert(loadLevelBNNLVL("configured.bin", map, objects, loaded));
     files["configured_upgrade.bin"] = SerializeLevelBNNLVL(map, objects, loaded);
@@ -344,7 +346,7 @@ int main() {
     }
     // The original chunk-encoded campaign level is upgraded from its decoded
     // geometry, preventing coordinate adjustments from being applied twice.
-    assert(loadLevelBNNLVL("assets/levels/level_001.txt", map, objects, loaded));
+    assert(loadLevelBNNLVL("tests/fixtures/level39-legacy.txt", map, objects, loaded));
     assert(loaded.legacyEncoding && LevelNeedsUpgrade(loaded));
     const auto originalTiles = map.tileIds;
     const auto originalObjects = objects;
