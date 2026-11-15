@@ -4759,6 +4759,10 @@ int RunGameApp(int argc, char** argv) {
         SDL_FRect touchRightBtn{uiPad + uiSize + uiGap, screenH - uiPad - uiSize, uiSize, uiSize};
         SDL_FRect touchDownBtn{uiPad + (uiSize + uiGap) * 2.0f, screenH - uiPad - uiSize, uiSize, uiSize};
         SDL_FRect touchJumpBtn{screenW - uiPad - uiSize, screenH - uiPad - uiSize, uiSize, uiSize};
+        const float cameraButtonW=std::clamp(180.0f*mobileUiScale,140.0f,240.0f);
+        const float cameraButtonH=std::clamp(52.0f*mobileUiScale,44.0f,72.0f);
+        const SDL_FRect touchCameraBtn{screenW-uiPad-cameraButtonW,
+            std::max(76.0f,screenH*0.12f),cameraButtonW,cameraButtonH};
         bool touchLeft = false;
         bool touchRight = false;
         bool touchDown = false;
@@ -4874,6 +4878,21 @@ int RunGameApp(int argc, char** argv) {
                 continue;
             }
             if (e.type == SDL_EVENT_FINGER_DOWN) {
+                if (!paused && debugToolsEnabled() && (e.tfinger.windowID==mainWindowId || e.tfinger.windowID==0)) {
+                    int winW=0,winH=0,gx=0,gy=0;
+                    getWindowSizeInPixelsCompat(win,winW,winH);
+                    if (windowToGamePoint(static_cast<int>(std::lround(e.tfinger.x*winW)),
+                        static_cast<int>(std::lround(e.tfinger.y*winH)),winW,winH,kBaseScreenW,kBaseScreenH,gx,gy,1.0f) &&
+                        pointInRectF(static_cast<float>(gx),static_cast<float>(gy),touchCameraBtn)) {
+                        hasTouchScreenDevice=true;
+                        if (debugFreeCamera.active || (!deathSequenceActive && !levelCompleteActive)) {
+                            debugFreeCamera.toggle(previousCameraX,previousCameraY);
+                            exclusionCamera.reset();
+                            SoundEvents::emit(SoundEvents::Event::Click);
+                        }
+                        continue;
+                    }
+                }
                 bool consumedByDebugger = false;
                 if (embeddedDetailedDebugger &&
                     (e.tfinger.windowID == mainWindowId || e.tfinger.windowID == 0)) {
@@ -7420,12 +7439,12 @@ int RunGameApp(int argc, char** argv) {
             cameraWrapY ? static_cast<float>(map.h * map.tileSize) : 0.0f);
         if (excludedCamera.resolved) { camX = excludedCamera.x; camY = excludedCamera.y; }
         if (debugFreeCamera.active) {
-            if (!paused && !lowPowerSuspendActive && SDL_GetKeyboardFocus()==win) {
+            if (!paused && !lowPowerSuspendActive && (hasTouchScreenDevice || SDL_GetKeyboardFocus()==win)) {
                 const bool* keys=SDL_GetKeyboardState(nullptr);
-                const float horizontal=static_cast<float>(keys[SDL_SCANCODE_D]||keys[SDL_SCANCODE_RIGHT])-
-                    static_cast<float>(keys[SDL_SCANCODE_A]||keys[SDL_SCANCODE_LEFT]);
-                const float vertical=static_cast<float>(keys[SDL_SCANCODE_S]||keys[SDL_SCANCODE_DOWN])-
-                    static_cast<float>(keys[SDL_SCANCODE_W]||keys[SDL_SCANCODE_UP]);
+                const float horizontal=static_cast<float>(keys[SDL_SCANCODE_D]||keys[SDL_SCANCODE_RIGHT]||touchRight)-
+                    static_cast<float>(keys[SDL_SCANCODE_A]||keys[SDL_SCANCODE_LEFT]||touchLeft);
+                const float vertical=static_cast<float>(keys[SDL_SCANCODE_S]||keys[SDL_SCANCODE_DOWN]||touchDown)-
+                    static_cast<float>(keys[SDL_SCANCODE_W]||keys[SDL_SCANCODE_UP]||touchJump);
                 debugFreeCamera.pan(horizontal,vertical,dtPrecise,
                     keys[SDL_SCANCODE_LSHIFT]||keys[SDL_SCANCODE_RSHIFT]);
             }
@@ -8802,7 +8821,7 @@ int RunGameApp(int argc, char** argv) {
                 drawBtnLabel(touchLeftBtn, "L");
                 drawBtnLabel(touchRightBtn, "R");
                 drawBtnLabel(touchDownBtn, "DN");
-                drawBtnLabel(touchJumpBtn, "JMP");
+                drawBtnLabel(touchJumpBtn, debugFreeCamera.active ? "UP" : "JMP");
                 SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
             }
         }
@@ -8930,8 +8949,22 @@ int RunGameApp(int argc, char** argv) {
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
         }
 
+        if (hasTouchScreenDevice && !paused && debugToolsEnabled()) {
+            SDL_SetRenderDrawBlendMode(ren,SDL_BLENDMODE_BLEND);
+            SDL_SetRenderDrawColor(ren,debugFreeCamera.active?38:32,debugFreeCamera.active?108:42,
+                debugFreeCamera.active?160:58,220);
+            SDL_RenderFillRectF(ren,&touchCameraBtn);
+            SDL_SetRenderDrawColor(ren,180,210,240,240);
+            SDL_RenderDrawRectF(ren,&touchCameraBtn);
+            const std::string label=debugFreeCamera.active ? "CAMERA: ON" : "FREE CAMERA";
+            const int scale=MeasureTextWidth(2,label)<touchCameraBtn.w-12 ? 2 : 1;
+            DrawTextColored(ren,static_cast<int>(touchCameraBtn.x+(touchCameraBtn.w-MeasureTextWidth(scale,label))/2),
+                static_cast<int>(touchCameraBtn.y+(touchCameraBtn.h-scale*10)/2),scale,label,{245,250,255,255});
+            SDL_SetRenderDrawBlendMode(ren,SDL_BLENDMODE_NONE);
+        }
         if (debugFreeCamera.active)
-            DrawTextColored(ren,16,16,1,"FREECAM | Ctrl+F10 exit | WASD/arrows pan | Shift fast | Home recenter",{255,230,130,255});
+            DrawTextColored(ren,16,16,1,hasTouchScreenDevice ? "FREECAM | Touch L/R/DN/UP to pan | Tap CAMERA to exit" :
+                "FREECAM | Ctrl+F10 exit | WASD/arrows pan | Shift fast | Home recenter",{255,230,130,255});
         drawAchievementToast(kBaseScreenW, kBaseScreenH);
 
         SDL_SetRenderTarget(ren, nullptr);
