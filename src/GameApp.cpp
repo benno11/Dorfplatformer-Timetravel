@@ -76,6 +76,7 @@
 #include "Achievements.h"
 #include "AchievementToast.h"
 #include "LevelWrap.h"
+#include "ObjectWrapping.h"
 #include "LevelParameterObjects.h"
 #include "EditorObjectTools.h"
 #include "FrontendMenu.h"
@@ -7702,19 +7703,18 @@ int RunGameApp(int argc, char** argv) {
             if (objId == ObjectIds::ShellChraker) {
                 const auto base = entitiesFrameByName.find("ShellChraker_base");
                 const auto arm = entitiesFrameByName.find("ShellChraker_arm");
-                float cx = obj.x - camX, cy = obj.y - camY;
-                const float wrapW = (float)(map.w * map.tileSize), wrapH = (float)(map.h * map.tileSize);
-                if (renderWrapX) cx -= std::floor((cx + wrapW * 0.5f) / wrapW) * wrapW;
-                if (renderWrapY) cy -= std::floor((cy + wrapH * 0.5f) / wrapH) * wrapH;
-                for (int iy = renderWrapY ? -1 : 0; iy <= (renderWrapY ? 1 : 0); ++iy)
-                    for (int ix = renderWrapX ? -1 : 0; ix <= (renderWrapX ? 1 : 0); ++ix) {
-                        const auto geometry = ShellChraker::geometry(shellChrakerStates[objIdx], cx + ix * wrapW,
-                            cy + iy * wrapH, (float)map.tileSize);
-                        if (geometry.body.x + map.tileSize * 3.0f < 0.0f || geometry.body.x - map.tileSize * 3.0f > worldViewW ||
-                            geometry.body.y + geometry.body.h < 0.0f || geometry.body.y > worldViewH) continue;
-                        RenderShellChraker(ren, entitiesTex, base == entitiesFrameByName.end() ? nullptr : &base->second,
-                            arm == entitiesFrameByName.end() ? nullptr : &arm->second, geometry);
-                    }
+                // Include the extended arm in visibility, but keep the same
+                // center and world periods as all other active objects.
+                const float extent=map.tileSize*7.0f;
+                for (const auto& copy : ObjectWrapping::copies(obj.x,obj.y,extent,extent,
+                    camX,camY,worldViewW,worldViewH,
+                    renderWrapX ? static_cast<float>(map.w*map.tileSize) : 0.0f,
+                    renderWrapY ? static_cast<float>(map.h*map.tileSize) : 0.0f)) {
+                    const auto geometry=ShellChraker::geometry(shellChrakerStates[objIdx],
+                        copy.x+copy.w*0.5f,copy.y+copy.h*0.5f,static_cast<float>(map.tileSize));
+                    RenderShellChraker(ren, entitiesTex, base == entitiesFrameByName.end() ? nullptr : &base->second,
+                        arm == entitiesFrameByName.end() ? nullptr : &arm->second, geometry);
+                }
                 continue;
             }
             const bool isFastTravelChanger = (objId >= 57 && objId <= 61);
@@ -7725,20 +7725,11 @@ int RunGameApp(int argc, char** argv) {
             // are editor-only triggers and must not borrow an entity frame (or
             // the fallback frame) during gameplay.
             if (isWrapControl || objId == ObjectIds::CameraExclusion || objId == ObjectIds::DiagonalCameraExclusion || LevelParameters::definition(objId)) continue;
-            float entityBaseX = obj.x - 16.0f;
-            float entityBaseY = obj.y - 16.0f;
-            if (renderWrapX && !isEndSign) {
-                const float wrapW = (float)(map.w * map.tileSize);
-                // Keep the primary entity render closest to camera X for stable wrapping.
-                while ((entityBaseX - camX) < -wrapW * 0.5f) entityBaseX += wrapW;
-                while ((entityBaseX - camX) >  wrapW * 0.5f) entityBaseX -= wrapW;
-            }
-            if (renderWrapY && !isEndSign) {
-                const float wrapH = (float)(map.h * map.tileSize);
-                // Keep the primary entity render closest to camera Y for stable wrapping.
-                while ((entityBaseY - camY) < -wrapH * 0.5f) entityBaseY += wrapH;
-                while ((entityBaseY - camY) >  wrapH * 0.5f) entityBaseY -= wrapH;
-            }
+            const auto objectCopies = [&](float width, float height) {
+                return ObjectWrapping::copies(obj.x,obj.y,width,height,camX,camY,worldViewW,worldViewH,
+                    renderWrapX ? static_cast<float>(map.w*map.tileSize) : 0.0f,
+                    renderWrapY ? static_cast<float>(map.h*map.tileSize) : 0.0f);
+            };
             const Frame* of = nullptr;
             SDL_Texture* objectTex = entitiesTex;
             bool objectTypeKnown = knownObjectIds.find(objId) != knownObjectIds.end();
@@ -7805,43 +7796,30 @@ int RunGameApp(int argc, char** argv) {
                 continue;
             }
             if (!isFastTravelChanger && !isBumper && !isEndSign && !isWrapControl && objectTypeKnown && !objectFrameFound) {
-                SDL_Rect placeholder{
-                    (int)std::lround(entityBaseX + 4.0f - camX),
-                    (int)std::lround(entityBaseY + 4.0f - camY),
-                    24,
-                    24
-                };
                 Uint8 r = 220, g = 220, b = 240;
                 if (objId == ObjectIds::Pickup) { r = 120; g = 255; b = 185; }
                 else if (objId == ObjectIds::MovingPlatform) { r = 130; g = 155; b = 185; }
                 else if (objId == ObjectIds::Goal) { r = 255; g = 245; b = 150; }
-                SDL_SetRenderDrawColor(ren, r, g, b, 230);
-                SDL_RenderFillRect(ren, &placeholder);
-                SDL_SetRenderDrawColor(ren, 20, 24, 32, 255);
-                SDL_RenderDrawRect(ren, &placeholder);
+                for (const auto& copy : objectCopies(24,24)) {
+                    const SDL_Rect placeholder{static_cast<int>(std::lround(copy.x)),static_cast<int>(std::lround(copy.y)),24,24};
+                    SDL_SetRenderDrawColor(ren, r, g, b, 230);
+                    SDL_RenderFillRect(ren, &placeholder);
+                    SDL_SetRenderDrawColor(ren, 20, 24, 32, 255);
+                    SDL_RenderDrawRect(ren, &placeholder);
+                }
                 continue;
             }
 
             if (!isFastTravelChanger && objectTex && of) {
                 int fw = 32;
                 int fh = 32;
-                int dstX = (int)std::lround(entityBaseX - camX);
-                int dstY = (int)std::lround(entityBaseY - camY);
                 const auto bumperImpact = bumperImpacts.find(objIdx);
                 if (isBumper && bumperImpact != bumperImpacts.end() && bumperImpact->second.remaining > 0.0f) {
                     const float age = bumperImpactDuration - bumperImpact->second.remaining;
                     const float spring = std::cos(age * 25.0f) * std::exp(-age * 9.0f);
                     fw = (int)std::lround(32.0f * (1.0f + 0.28f * spring));
                     fh = (int)std::lround(32.0f * (1.0f - 0.26f * spring));
-                    dstX += (32 - fw) / 2;
-                    dstY += (32 - fh) / 2;
                 }
-                SDL_Rect dst{
-                    dstX,
-                    dstY,
-                    fw,
-                    fh
-                };
                 auto renderObjFrame = [&](const SDL_Rect& outDst) {
                     renderFrame(ren, objectTex, *of, outDst);
                     if (isBumper && bumperImpact != bumperImpacts.end() && bumperImpact->second.remaining > 0.0f) {
@@ -7864,70 +7842,15 @@ int RunGameApp(int argc, char** argv) {
                         SDL_SetRenderDrawBlendMode(ren, previousBlend);
                     }
                 };
-                renderObjFrame(dst);
-                if (renderWrapY && !isEndSign) {
-                    const int wrapH = map.h * map.tileSize;
-                    SDL_Rect dstTop = dst;
-                    SDL_Rect dstBottom = dst;
-                    dstTop.y -= wrapH;
-                    dstBottom.y += wrapH;
-                    renderObjFrame(dstTop);
-                    renderObjFrame(dstBottom);
-                }
-                if (renderWrapX && !isEndSign) {
-                    const int wrapW = map.w * map.tileSize;
-                    SDL_Rect dstLeft = dst;
-                    SDL_Rect dstRight = dst;
-                    dstLeft.x -= wrapW;
-                    dstRight.x += wrapW;
-                    renderObjFrame(dstLeft);
-                    renderObjFrame(dstRight);
-                }
-                if (renderWrapY && renderWrapX && !isEndSign) {
-                    const int wrapW = map.w * map.tileSize;
-                    const int wrapH = map.h * map.tileSize;
-                    SDL_Rect dstTL = dst;
-                    SDL_Rect dstTR = dst;
-                    SDL_Rect dstBL = dst;
-                    SDL_Rect dstBR = dst;
-                    dstTL.x -= wrapW; dstTL.y -= wrapH;
-                    dstTR.x += wrapW; dstTR.y -= wrapH;
-                    dstBL.x -= wrapW; dstBL.y += wrapH;
-                    dstBR.x += wrapW; dstBR.y += wrapH;
-                    renderObjFrame(dstTL);
-                    renderObjFrame(dstTR);
-                    renderObjFrame(dstBL);
-                    renderObjFrame(dstBR);
+                for (const auto& copy : objectCopies(static_cast<float>(fw),static_cast<float>(fh))) {
+                    const SDL_Rect dst{static_cast<int>(std::lround(copy.x)),static_cast<int>(std::lround(copy.y)),fw,fh};
+                    renderObjFrame(dst);
                 }
             } else if (!isFastTravelChanger) {
                 SDL_SetRenderDrawColor(ren, 120, 220, 120, 255);
-                SDL_FRect orc{ entityBaseX - camX, entityBaseY - camY, 32.0f, 32.0f };
-                SDL_RenderDrawRectF(ren, &orc);
-                if (renderWrapY) {
-                    const float wrapH = (float)(map.h * map.tileSize);
-                    SDL_FRect top{orc.x, orc.y - wrapH, orc.w, orc.h};
-                    SDL_FRect bottom{orc.x, orc.y + wrapH, orc.w, orc.h};
-                    SDL_RenderDrawRectF(ren, &top);
-                    SDL_RenderDrawRectF(ren, &bottom);
-                }
-                if (renderWrapX) {
-                    const float wrapW = (float)(map.w * map.tileSize);
-                    SDL_FRect left{orc.x - wrapW, orc.y, orc.w, orc.h};
-                    SDL_FRect right{orc.x + wrapW, orc.y, orc.w, orc.h};
-                    SDL_RenderDrawRectF(ren, &left);
-                    SDL_RenderDrawRectF(ren, &right);
-                }
-                if (renderWrapY && renderWrapX) {
-                    const float wrapW = (float)(map.w * map.tileSize);
-                    const float wrapH = (float)(map.h * map.tileSize);
-                    SDL_FRect tl{orc.x - wrapW, orc.y - wrapH, orc.w, orc.h};
-                    SDL_FRect tr{orc.x + wrapW, orc.y - wrapH, orc.w, orc.h};
-                    SDL_FRect bl{orc.x - wrapW, orc.y + wrapH, orc.w, orc.h};
-                    SDL_FRect br{orc.x + wrapW, orc.y + wrapH, orc.w, orc.h};
-                    SDL_RenderDrawRectF(ren, &tl);
-                    SDL_RenderDrawRectF(ren, &tr);
-                    SDL_RenderDrawRectF(ren, &bl);
-                    SDL_RenderDrawRectF(ren, &br);
+                for (const auto& copy : objectCopies(32,32)) {
+                    const SDL_FRect rect{copy.x,copy.y,copy.w,copy.h};
+                    SDL_RenderDrawRectF(ren,&rect);
                 }
             }
 
@@ -7935,44 +7858,11 @@ int RunGameApp(int argc, char** argv) {
                 if (isFastTravelChanger) SDL_SetRenderDrawColor(ren, 220, 60, 220, 255);
                 else SDL_SetRenderDrawColor(ren, 255, 150, 60, 255);
                 const float inset = (isBumper || isFastTravelChanger) ? kTriggerHitboxInset : 0.0f;
-                SDL_FRect ehb{
-                    entityBaseX - camX + inset,
-                    entityBaseY - camY + inset,
-                    32.0f - 2.0f * inset,
-                    32.0f - 2.0f * inset
-                };
-                drawVisibleDebugRect(ehb);
-                if (renderWrapY) {
-                    const float wrapH = (float)(map.h * map.tileSize);
-                    SDL_FRect top{ehb.x, ehb.y - wrapH, ehb.w, ehb.h};
-                    SDL_FRect bottom{ehb.x, ehb.y + wrapH, ehb.w, ehb.h};
-                    drawVisibleDebugRect(top);
-                    drawVisibleDebugRect(bottom);
-                }
-                if (renderWrapX) {
-                    const float wrapW = (float)(map.w * map.tileSize);
-                    SDL_FRect left{ehb.x - wrapW, ehb.y, ehb.w, ehb.h};
-                    SDL_FRect right{ehb.x + wrapW, ehb.y, ehb.w, ehb.h};
-                    drawVisibleDebugRect(left);
-                    drawVisibleDebugRect(right);
-                }
-
-                const int idScale = 1;
-                auto drawVisibleObjectId = [&](const SDL_FRect& rect) {
-                    if (debugRectIsVisible(rect)) {
-                        DrawGameText(ren, (int)std::lround(rect.x), (int)std::lround(rect.y) - 10, idScale, obj.id);
-                    }
-                };
-                drawVisibleObjectId(ehb);
-                if (renderWrapY) {
-                    const float wrapH = (float)(map.h * map.tileSize);
-                    drawVisibleObjectId(SDL_FRect{ehb.x, ehb.y - wrapH, ehb.w, ehb.h});
-                    drawVisibleObjectId(SDL_FRect{ehb.x, ehb.y + wrapH, ehb.w, ehb.h});
-                }
-                if (renderWrapX) {
-                    const float wrapW = (float)(map.w * map.tileSize);
-                    drawVisibleObjectId(SDL_FRect{ehb.x - wrapW, ehb.y, ehb.w, ehb.h});
-                    drawVisibleObjectId(SDL_FRect{ehb.x + wrapW, ehb.y, ehb.w, ehb.h});
+                for (const auto& copy : objectCopies(32-2*inset,32-2*inset)) {
+                    const SDL_FRect hitbox{copy.x,copy.y,copy.w,copy.h};
+                    drawVisibleDebugRect(hitbox);
+                    DrawGameText(ren,static_cast<int>(std::lround(copy.x)),
+                        static_cast<int>(std::lround(copy.y))-10,1,obj.id);
                 }
             }
         }
