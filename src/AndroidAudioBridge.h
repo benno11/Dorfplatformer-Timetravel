@@ -23,6 +23,7 @@ void ensureLevelMusic(bool paused, bool deathSequenceActive, bool levelCompleteA
 void haltMusic();
 void haltAllChannels();
 
+void playEventSfx(int event);
 void playCoinSfx();
 void playLoseSfx();
 void playBumperSfx();

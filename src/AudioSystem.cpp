@@ -1,4 +1,7 @@
 #include "AudioSystem.h"
+#include "SoundEvents.h"
+
+namespace { AudioSystem* eventAudio = nullptr; }
 
 #include <algorithm>
 #include <cstdlib>
@@ -347,7 +350,7 @@ struct AudioSystem::Impl {
 
 #if AUDIO_HAS_SDL3_MIXER
     struct PreparedSounds {
-        std::array<Mix_Chunk*, 5> chunks{};
+        std::array<Mix_Chunk*, 11> chunks{};
         PreparedSounds() = default;
         PreparedSounds(const PreparedSounds&) = delete;
         PreparedSounds(PreparedSounds&& other) noexcept : chunks(other.chunks) { other.chunks = {}; }
@@ -364,6 +367,7 @@ struct AudioSystem::Impl {
     std::future<PreparedSounds> pendingSounds;
     bool gameplaySoundsLoaded = false;
     int sfxVolume = 128;
+    std::array<Mix_Chunk*, 6> eventSfx{};
     Mix_Chunk* coinSfx = nullptr;
     Mix_Chunk* loseSfx = nullptr;
     Mix_Chunk* victorySfx = nullptr;
@@ -378,6 +382,7 @@ struct AudioSystem::Impl {
 AudioSystem::~AudioSystem() { shutdown(); }
 
 bool AudioSystem::initialize() {
+    eventAudio = this;
     if (!impl_) impl_ = new Impl();
     if (impl_->shuttingDown) return false;
     if (impl_->ready) return true;
@@ -452,6 +457,7 @@ bool AudioSystem::initialize() {
 }
 
 void AudioSystem::shutdown() {
+    if (eventAudio == this) { eventAudio = nullptr; SoundEvents::take(); }
     if (!impl_) return;
     if (impl_->shuttingDown) return;
     impl_->shuttingDown = true;
@@ -515,9 +521,12 @@ void AudioSystem::loadGlobalAssets() {
 #if AUDIO_HAS_SDL3_MIXER
     const std::string decoders = availableAudioDecoders();
     if (!impl_->pendingSounds.valid() && !impl_->gameplaySoundsLoaded) {
-        std::array<std::string, 5> paths{{ResolveAssetPath("assets/Audio/sfx/Coin.mp3"),
+        std::array<std::string, 11> paths{{ResolveAssetPath("assets/Audio/sfx/Coin.mp3"),
             ResolveAssetPath("assets/Audio/sfx/Lose.mp3"), ResolveAssetPath("assets/Audio/sfx/Victory.mp3"),
-            ResolveAssetPath("assets/Audio/sfx/Message.mp3"), ResolveAssetPath("assets/Audio/sfx/Bumper.mp3")}};
+            ResolveAssetPath("assets/Audio/sfx/Message.mp3"), ResolveAssetPath("assets/Audio/sfx/Bumper.mp3"),
+            ResolveAssetPath(SoundEvents::paths[0]), ResolveAssetPath(SoundEvents::paths[1]),
+            ResolveAssetPath(SoundEvents::paths[2]), ResolveAssetPath(SoundEvents::paths[3]),
+            ResolveAssetPath(SoundEvents::paths[4]), ResolveAssetPath(SoundEvents::paths[5])}};
         auto prepare = [paths] {
             Impl::PreparedSounds sounds;
             for (size_t i = 0; i < paths.size(); ++i) {
@@ -560,6 +569,7 @@ void AudioSystem::finishGameplayAssetLoading() {
         auto sounds = impl_->pendingSounds.get();
         impl_->coinSfx = sounds.chunks[0]; impl_->loseSfx = sounds.chunks[1];
         impl_->victorySfx = sounds.chunks[2]; impl_->messageSfx = sounds.chunks[3]; impl_->bumperSfx = sounds.chunks[4];
+        std::copy_n(sounds.chunks.begin()+5, 6, impl_->eventSfx.begin());
         for (auto* chunk : sounds.chunks) if (chunk) Mix_VolumeChunkCompat(chunk, impl_->sfxVolume);
         sounds.chunks = {};
         impl_->gameplaySoundsLoaded = true;
@@ -580,6 +590,7 @@ void AudioSystem::unloadGlobalAssets() {
 #if AUDIO_HAS_SDL3_MIXER
     impl_->gameplaySoundsLoaded = false;
     if (!g_mix_mixer) {
+        impl_->eventSfx = {};
         impl_->coinSfx = nullptr;
         impl_->loseSfx = nullptr;
         impl_->victorySfx = nullptr;
@@ -592,6 +603,7 @@ void AudioSystem::unloadGlobalAssets() {
     // Stop any active playback before freeing underlying audio buffers.
     Mix_HaltMusicCompat();
     Mix_HaltChannelCompat(-1);
+    for (auto*& chunk : impl_->eventSfx) { if (chunk) Mix_FreeChunkCompat(chunk); chunk = nullptr; }
     if (impl_->coinSfx) { Mix_FreeChunkCompat(impl_->coinSfx); impl_->coinSfx = nullptr; }
     if (impl_->loseSfx) { Mix_FreeChunkCompat(impl_->loseSfx); impl_->loseSfx = nullptr; }
     if (impl_->victorySfx) { Mix_FreeChunkCompat(impl_->victorySfx); impl_->victorySfx = nullptr; }
@@ -617,6 +629,7 @@ void AudioSystem::applyVolumes(bool muteAllAudio, int musicVolume, int sfxVolume
     if (gameplayAssetsReady()) finishGameplayAssetLoading();
     Mix_VolumeMusicCompat(appliedMusic);
     Mix_VolumeCompat(-1, appliedSfx);
+    for (auto* chunk : impl_->eventSfx) if (chunk) Mix_VolumeChunkCompat(chunk, appliedSfx);
     if (impl_->coinSfx) Mix_VolumeChunkCompat(impl_->coinSfx, appliedSfx);
     if (impl_->loseSfx) Mix_VolumeChunkCompat(impl_->loseSfx, appliedSfx);
     if (impl_->victorySfx) Mix_VolumeChunkCompat(impl_->victorySfx, appliedSfx);
@@ -821,3 +834,28 @@ bool AudioSystem::isChannelPlaying(int channel) const {
 #endif
 }
 
+
+void AudioSystem::pumpEventSfx() {
+    if (!SDL_IsMainThread() || !eventAudio || !eventAudio->isReady()) return;
+    auto* audio = eventAudio;
+    if (!audio->gameplayAssetsReady()) return;
+    audio->finishGameplayAssetLoading();
+    const unsigned events = SoundEvents::take();
+    static Uint64 lastClick = 0;
+    for (unsigned i=0; i<SoundEvents::paths.size(); ++i) {
+        if (!(events & (1u<<i))) continue;
+        // A pointer press and the resulting activation may be reported in
+        // consecutive UI frames. Play that click once.
+        if (i == static_cast<unsigned>(SoundEvents::Event::Click)) {
+            const auto now=SDL_GetTicksNS();
+            if (lastClick && now-lastClick < 75000000) continue;
+            lastClick=now;
+        }
+#if defined(__ANDROID__)
+        if (audio->impl_->usingJavaBackend) { AndroidAudioBridge::playEventSfx(static_cast<int>(i)); continue; }
+#endif
+#if AUDIO_HAS_SDL3_MIXER
+        if (audio->impl_->eventSfx[i]) Mix_PlayChannelCompat(-1, audio->impl_->eventSfx[i], 0);
+#endif
+    }
+}

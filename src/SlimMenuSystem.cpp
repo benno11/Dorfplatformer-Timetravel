@@ -2215,6 +2215,7 @@ void presentMenuFrame(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenu
     SDL_RenderTexture(ctx.ren, ctx.gameTarget, static_cast<const SDL_Rect*>(nullptr), &dst);
     FlushNativeTextOverlay(ctx.ren);
     if (runtime.difficultyPopupOpen) renderDifficultyPopup(runtime, ctx);
+    AudioSystem::pumpEventSfx();
     SDL_RenderPresent(ctx.ren);
 }
 
@@ -2994,7 +2995,7 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                         runtime.vars["online_level_status"].clear();
                     }
                 } catch (const std::exception& error) {
-                    SDL_Log("Online menu load failed: %s", error.what());
+                    SoundEvents::emit(SoundEvents::Event::Error); SDL_Log("Online menu load failed: %s", error.what());
                     if (current) runtime.vars["online_level_status"] = "Could not load this page. Refresh to retry.";
                 }
                 runtime.onlineLevelsLoaded = current;
@@ -3004,7 +3005,7 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                 runtime.accountRoleRequest.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
                 bool isMod = false;
                 try { isMod = runtime.accountRoleRequest.get(); }
-                catch (const std::exception& error) { SDL_Log("Account role lookup failed: %s", error.what()); }
+                catch (const std::exception& error) { SoundEvents::emit(SoundEvents::Event::Error); SDL_Log("Account role lookup failed: %s", error.what()); }
                 const std::string currentRoleKey = (ctx.levelServerUrl ? *ctx.levelServerUrl : std::string()) + "\n" +
                     (ctx.levelServerAuthToken ? *ctx.levelServerAuthToken : std::string());
                 if (runtime.pendingAccountRoleKey == currentRoleKey) {
@@ -3039,7 +3040,7 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                     runtime.vars[it->variable] = it->response.get();
                 } catch (const std::exception& error) {
                     runtime.vars[it->variable].clear();
-                    SDL_Log("Menu GET failed: %s", error.what());
+                    SoundEvents::emit(SoundEvents::Event::Error); SDL_Log("Menu GET failed: %s", error.what());
                 }
                 it = runtime.pendingGets.erase(it);
             }
@@ -3099,7 +3100,7 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                     std::string status;
                     bool ok = false;
                     try { ok = putOnlineLevelDifficulty(runtime.difficultyLevel, runtime.difficultyChoice, ctx, status); }
-                    catch (const std::exception& error) { SDL_Log("Difficulty save failed: %s", error.what()); }
+                    catch (const std::exception& error) { SoundEvents::emit(SoundEvents::Event::Error); SDL_Log("Difficulty save failed: %s", error.what()); }
                     runtime.difficultySaving = false;
                     runtime.vars["level_detail_status"] = status.empty() ? (ok ? "Rating updated." : "Rate failed.") : status;
                     if (ok) {

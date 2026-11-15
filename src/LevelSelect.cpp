@@ -561,6 +561,7 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
         DrawGameText(ren, cancelBtn.x + 38, cancelBtn.y + 12, 2, "CANCEL");
         DrawGameText(ren, panel.x + 20, panel.y + panel.h - 24, 2, "Touch +/- or use arrows. ENTER confirms.");
 
+        AudioSystem::pumpEventSfx();
         SDL_RenderPresent(ren);
         SDL_Delay(16);
     }
@@ -690,6 +691,7 @@ bool RunLevelConfigMenu(SDL_Window* win, SDL_Renderer* ren, LevelMeta& config) {
             }
         }
         DrawGameText(ren, 80, 345, 1, "Auto keeps the original level setting. Jump overrides tile 12.");
+        AudioSystem::pumpEventSfx();
         SDL_RenderPresent(ren);
         SDL_Delay(16);
     }
@@ -1801,6 +1803,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             nextAutosave = SDL_GetTicks() + 15000;
             if (snapshot() != savedSnapshot) saveEditor(false, true);
         }
+        AudioSystem::pumpEventSfx();
         SDL_RenderPresent(ren);
         SDL_Delay(16);
     }
@@ -1996,6 +1999,7 @@ std::string RunLocalLevelRenamePrompt(SDL_Window* win, SDL_Renderer* ren, const 
         SDL_SetRenderDrawColor(ren, 235, 205, 210, 255);
         SDL_RenderDrawRect(ren, &cancelBtn);
         DrawGameText(ren, cancelBtn.x + 34, cancelBtn.y + 12, 2, "CANCEL");
+        AudioSystem::pumpEventSfx();
         SDL_RenderPresent(ren);
         SDL_Delay(16);
     }
@@ -2107,6 +2111,7 @@ GrowLevelPromptResult RunGrowLevelPrompt(SDL_Window* win, SDL_Renderer* ren, int
         SDL_SetRenderDrawColor(ren, 235, 205, 210, 255);
         SDL_RenderDrawRect(ren, &cancelBtn);
         DrawGameText(ren, cancelBtn.x + 34, cancelBtn.y + 12, 2, "CANCEL");
+        AudioSystem::pumpEventSfx();
         SDL_RenderPresent(ren);
         SDL_Delay(16);
     }

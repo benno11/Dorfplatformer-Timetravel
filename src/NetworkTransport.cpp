@@ -1,7 +1,10 @@
 #include "NetworkTransport.h"
+#include "SoundEvents.h"
+#include "AudioSystem.h"
 #include "TextRenderer.h"
 
 #include <algorithm>
+#include <nlohmann/json.hpp>
 #if defined(__ANDROID__)
 #include <SDL3/SDL_system.h>
 #endif
@@ -125,6 +128,7 @@ void NetworkBusyScreen::frame(std::atomic<bool>& cancelled) {
     const std::string label = cancelled.load() ? "Cancelling..." :
         "Connecting" + std::string((SDL_GetTicks() / 250) % 4, '.') + "  (Esc to cancel)";
     DrawGameText(ren, 20, std::max(0, height - 46), 2, label);
+    AudioSystem::pumpEventSfx();
     SDL_RenderPresent(ren);
 
 }
@@ -132,7 +136,7 @@ void NetworkBusyScreen::frame(std::atomic<bool>& cancelled) {
 #if defined(HAVE_CURL) && HAVE_CURL
 CURLcode PerformNetworkRequest(CURL* curl) {
     auto cancelled = std::make_shared<std::atomic<bool>>(false);
-    return RunNetworkOperation([curl, cancelled] {
+    const auto result = RunNetworkOperation([curl, cancelled] {
         curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
         curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
         curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION,
@@ -146,6 +150,11 @@ CURLcode PerformNetworkRequest(CURL* curl) {
         curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L);
         return result;
     }, cancelled);
+    long status = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+    if (!cancelled->load() && (result != CURLE_OK || status >= 400))
+        SoundEvents::emit(SoundEvents::Event::Error);
+    return result;
 }
 #endif
 
@@ -194,6 +203,24 @@ jobject PerformJavaNetworkObject(JNIEnv* env, jclass cls, jmethodID method,
     }, cancelled);
     jobject result = global && !cancelled->load() ? env->NewLocalRef(global) : nullptr;
     if (global) env->DeleteGlobalRef(global);
+    if (!cancelled->load()) {
+        bool failed = !result;
+        if (result) {
+            auto text = static_cast<jstring>(result);
+            const char* value = env->GetStringUTFChars(text,nullptr);
+            failed = !value || !*value;
+            if (value && *value) {
+                const auto response=nlohmann::json::parse(value,nullptr,false);
+                if (response.is_object()) {
+                    const auto error=response.find("error");
+                    failed=(error!=response.end() && !error->is_null() && *error!=false && *error!="") ||
+                        (response.contains("ok") && response["ok"]==false);
+                }
+            }
+            if (value) env->ReleaseStringUTFChars(text,value);
+        }
+        if (failed) SoundEvents::emit(SoundEvents::Event::Error);
+    }
     return result;
 }
 
@@ -212,6 +239,7 @@ jint PerformJavaNetworkInt(JNIEnv* env, jclass cls, jmethodID method,
         }
         return result;
     }, cancelled);
+    if (!cancelled->load() && (result < 0 || result >= 400)) SoundEvents::emit(SoundEvents::Event::Error);
     return cancelled->load() ? -1 : result;
 }
 #endif

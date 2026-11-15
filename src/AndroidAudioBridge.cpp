@@ -26,6 +26,7 @@ struct MethodCache {
     jmethodID ensureLevelMusic = nullptr;
     jmethodID haltMusic = nullptr;
     jmethodID haltAllChannels = nullptr;
+    jmethodID playEventSfx = nullptr;
     jmethodID playCoinSfx = nullptr;
     jmethodID playLoseSfx = nullptr;
     jmethodID playBumperSfx = nullptr;
@@ -64,6 +65,7 @@ bool cacheMethods(JNIEnv* env) {
     g_methods.ensureLevelMusic = env->GetStaticMethodID(g_bridge_class, "ensureLevelMusic", "(ZZZ)V");
     g_methods.haltMusic = env->GetStaticMethodID(g_bridge_class, "haltMusic", "()V");
     g_methods.haltAllChannels = env->GetStaticMethodID(g_bridge_class, "haltAllChannels", "()V");
+    g_methods.playEventSfx = env->GetStaticMethodID(g_bridge_class, "playEventSfx", "(I)V");
     g_methods.playCoinSfx = env->GetStaticMethodID(g_bridge_class, "playCoinSfx", "()V");
     g_methods.playLoseSfx = env->GetStaticMethodID(g_bridge_class, "playLoseSfx", "()V");
     g_methods.playBumperSfx = env->GetStaticMethodID(g_bridge_class, "playBumperSfx", "()V");
@@ -84,6 +86,7 @@ bool cacheMethods(JNIEnv* env) {
         !g_methods.ensureLevelMusic ||
         !g_methods.haltMusic ||
         !g_methods.haltAllChannels ||
+        !g_methods.playEventSfx ||
         !g_methods.playCoinSfx ||
         !g_methods.playLoseSfx ||
         !g_methods.playBumperSfx ||
@@ -206,6 +209,14 @@ void ensureLevelMusic(bool paused, bool deathSequenceActive, bool levelCompleteA
 void haltMusic() { callVoid(g_methods.haltMusic); }
 
 void haltAllChannels() { callVoid(g_methods.haltAllChannels); }
+
+void playEventSfx(int event) {
+    withEnv([&](JNIEnv* env) {
+        if (env && g_bridge_class && g_methods.playEventSfx)
+            env->CallStaticVoidMethod(g_bridge_class, g_methods.playEventSfx, static_cast<jint>(event));
+        return 0;
+    });
+}
 
 void playCoinSfx() { callVoid(g_methods.playCoinSfx); }
 

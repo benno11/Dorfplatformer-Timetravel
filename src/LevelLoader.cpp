@@ -1,3 +1,4 @@
+#include "SoundEvents.h"
 #include "LevelLoader.h"
 #include "LevelParameterObjects.h"
 #include <iomanip>
@@ -549,6 +550,11 @@ bool loadLevelBNNLVL(const std::string& path,
                      std::vector<ObjectInstance>& objects,
                      LevelMeta& meta)
 {
+    bool loaded = false;
+    struct FailureSound {
+        bool& loaded;
+        ~FailureSound(){if (!loaded) SoundEvents::emit(SoundEvents::Event::Error);}
+    } failureSound{loaded};
     std::string s = readWholeFile(path);
     if (s.empty()) return false;
     parseLevelMetaHeader(s, meta);
@@ -639,7 +645,7 @@ bool loadLevelBNNLVL(const std::string& path,
         if (meta.name.empty()) meta.name = magic;
         meta.entitySpawnPos.clear();
         meta.entitySpawnType.clear();
-        return true;
+        loaded = true; return true;
     }
 
     size_t cur = 0;
@@ -714,7 +720,7 @@ bool loadLevelBNNLVL(const std::string& path,
         if (meta.name.empty()) meta.name = "Legacy " + std::to_string(ver);
         meta.entitySpawnPos.clear();
         meta.entitySpawnType.clear();
-        return true;
+        loaded = true; return true;
     }
 
     int objCount = t.value;
@@ -762,5 +768,5 @@ bool loadLevelBNNLVL(const std::string& path,
 
     if (meta.name.empty()) meta.name = "Legacy " + std::to_string(ver);
     SDL_Log("Legacy load OK: %s tiles=%d objects=%d", path.c_str(), total, (int)objects.size());
-    return true;
+    loaded = true; return true;
 }

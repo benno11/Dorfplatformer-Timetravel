@@ -943,6 +943,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx, bool settingsOnly) {
         SDL_RenderClear(ctx.ren);
         SDL_RenderCopy(ctx.ren, gameTarget, nullptr, &presentDst);
         FlushNativeTextOverlay(ctx.ren);
+        AudioSystem::pumpEventSfx();
         SDL_RenderPresent(ctx.ren);
     }
     cleanupMenuAssets();

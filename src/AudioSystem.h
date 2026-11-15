@@ -31,6 +31,8 @@ public:
     void haltMusic();
     void haltAllChannels();
 
+    static void pumpEventSfx();
+
     void playCoinSfx();
     void playLoseSfx();
     void playBumperSfx();

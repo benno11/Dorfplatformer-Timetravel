@@ -91,6 +91,7 @@
 #include "SandboxUpdates.h"
 #include "SandboxPointers.h"
 #include "AudioSystem.h"
+#include "SoundEvents.h"
 #include "InputSystem.h"
 #include "Platform.h"
 #include "UiScale.h"
@@ -2260,6 +2261,7 @@ int RunGameApp(int argc, char** argv) {
             long code = 0;
             curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
             if (rc != CURLE_OK || code < 200 || code >= 300) {
+                SoundEvents::emit(SoundEvents::Event::Error);
                 SDL_Log("telemetry: webhook failed code=%ld curl=%d", code, (int)rc);
             }
             curl_slist_free_all(headers);
@@ -4158,6 +4160,7 @@ int RunGameApp(int argc, char** argv) {
             else openPauseMenu();
         };
         auto handlePauseSelect = [&](int sel) {
+            SoundEvents::emit(SoundEvents::Event::Click);
             pauseSelection = sel;
             if (pauseSelection == 0) {
                 closePauseMenu();
@@ -4517,6 +4520,7 @@ int RunGameApp(int argc, char** argv) {
             const Uint64 nowNs = SDL_GetTicksNS();
             const double dtPrecise = (double)(nowNs - lastTicksNs) / 1000000000.0;
             const float dt = GameplayDeltaTime(dtPrecise);
+            AudioSystem::pumpEventSfx();
             const MovementConfig activeMovement = CharacterCreator::movementFor(characterAppearance, movementCfg, showExperimentalFeatures);
             if (!paused) spikeImpact.remaining = std::max(0.0f, spikeImpact.remaining - dt);
             if (!paused) {
@@ -6198,6 +6202,7 @@ int RunGameApp(int argc, char** argv) {
             }
             const float beforeNormalX = player.x;
             const float beforeNormalY = player.y;
+            const float beforeNormalVy = player.vy;
                 if (!fastTravelEnabled) {
                     std::vector<SDL_FRect> platformSolids;
                     for (int index = 0; index < (int)objects.size(); ++index) {
@@ -6217,6 +6222,8 @@ int RunGameApp(int argc, char** argv) {
                                 gameplayWrapX, gameplayWrapY) > 0) audio.playCoinSfx();
                         }
                     );
+                    if (player.tile12BounceActive && player.vy < 0 && beforeNormalVy >= 0)
+                        SoundEvents::emit(SoundEvents::Event::Bounce);
                     if (upd == PlayerUpdateResult::Normal && !player.freeMove) {
                         bool touchedPlatform = false;
                         for (const auto& bounds : platformSolids) {
@@ -6973,7 +6980,7 @@ int RunGameApp(int argc, char** argv) {
                             checkpointLevelPath = normalizeLevelPath(levelManager.levelPath());
                             checkpointTileX = qx;
                             checkpointTileY = qy;
-                            audio.playCoinSfx();
+                            SoundEvents::emit(SoundEvents::Event::Checkpoint);
                             cpFound = true;
                         }
                     }
@@ -7177,6 +7184,7 @@ int RunGameApp(int argc, char** argv) {
                     endSignState.objectX = triggerX;
                     endSignState.objectY = triggerY;
                     endSignState.triggered = true;
+                    SoundEvents::emit(SoundEvents::Event::Sign);
                     endSignState.phase = EndSignPhase::SignForward;
                     endSignState.frameTimer = 0.0f;
                     cameraDisabledBySignpost = true;

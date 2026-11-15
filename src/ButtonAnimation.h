@@ -5,19 +5,23 @@
 #include <cmath>
 #include <unordered_map>
 #include "GameSupport.h"
+#include "SoundEvents.h"
+#include "AudioSystem.h"
 
 // Animate the drawing rectangle only; input keeps using the stable layout rectangle.
 class ButtonAnimations {
     struct State {
         Uint64 ticks = 0;
         Uint64 activated = 0;
+        bool hovered = false;
+        bool pressed = false;
         float focus = 0;
         float press = 0;
     };
     std::unordered_map<int, State> states;
 public:
     void clear() { states.clear(); }
-    void activate(int id) { states[id].activated = SDL_GetTicksNS(); }
+    void activate(int id) { states[id].activated = SDL_GetTicksNS(); SoundEvents::emit(SoundEvents::Event::Click); }
 
     SDL_Rect drawRect(int id, SDL_Rect rect, bool focused, SDL_Window* window,
                       int baseW, int baseH, float scale = 1.0f, bool enabled = true) {
@@ -47,11 +51,17 @@ public:
             SDL_free(devices);
         }
         auto& state = states[id];
+        if (hover && !state.hovered) SoundEvents::emit(SoundEvents::Event::Hover);
+        state.hovered = hover;
         const Uint64 now = SDL_GetTicksNS();
         const float dt = state.ticks ? std::min(0.05f, (float)((now - state.ticks) / 1e9)) : 0.0f;
         state.ticks = now;
         const bool pressed = enabled && (touching || (hover && (buttons & SDL_BUTTON_LMASK)) ||
             (state.activated && now - state.activated < 100000000));
+        if (pressed && !state.pressed && (!state.activated || now-state.activated > 150000000))
+            SoundEvents::emit(SoundEvents::Event::Click);
+        state.pressed = pressed;
+        AudioSystem::pumpEventSfx();
         state.focus += ((enabled && (focused || hover) ? 1.0f : 0.0f) - state.focus) * (1 - std::exp(-18 * dt));
         state.press += ((pressed ? 1.0f : 0.0f) - state.press) * (1 - std::exp(-35 * dt));
         const float size = 1 + 0.025f * state.focus - 0.055f * state.press;

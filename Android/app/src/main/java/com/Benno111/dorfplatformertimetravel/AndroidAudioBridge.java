@@ -31,6 +31,9 @@ public final class AndroidAudioBridge {
     private static final SparseIntArray soundDurationsMs = new SparseIntArray();
     private static final SparseArray<Long> activeStreams = new SparseArray<>();
 
+    private static final String[] EVENT_SFX = {"Audio/sfx/signflip.mp3", "Audio/sfx/max.wav",
+        "Audio/sfx/SuperBounce.mp3", "Audio/sfx/Hint.mp3", "Audio/sfx/Click5.mp3", "Audio/sfx/Error3.mp3"};
+    private static final int[] eventSoundIds = new int[EVENT_SFX.length];
     private static int coinSoundId;
     private static int loseSoundId;
     private static int victorySoundId;
@@ -104,6 +107,7 @@ public final class AndroidAudioBridge {
                 return;
             }
 
+            for (int i=0; i<EVENT_SFX.length; ++i) eventSoundIds[i] = loadSoundLocked(EVENT_SFX[i]);
             coinSoundId = loadSoundLocked(SFX_COIN);
             loseSoundId = loadSoundLocked(SFX_LOSE);
             victorySoundId = loadSoundLocked(SFX_VICTORY);
@@ -122,6 +126,7 @@ public final class AndroidAudioBridge {
             haltAllChannelsLocked();
             releasePlayerLocked(menuPlayer);
             menuPlayer = null;
+            java.util.Arrays.fill(eventSoundIds, 0);
             coinSoundId = 0;
             loseSoundId = 0;
             victorySoundId = 0;
@@ -222,6 +227,12 @@ public final class AndroidAudioBridge {
     public static void haltAllChannels() {
         synchronized (LOCK) {
             haltAllChannelsLocked();
+        }
+    }
+
+    public static void playEventSfx(int event) {
+        synchronized (LOCK) {
+            if (event >= 0 && event < eventSoundIds.length) playSoundLocked(eventSoundIds[event]);
         }
     }
 
