@@ -4127,9 +4127,6 @@ int RunGameApp(int argc, char** argv) {
         SDL_Rect pauseBtnExit{0,0,0,0};
         SDL_Rect pauseBtnSettings{0,0,0,0};
         bool pauseSettingsRequested = false;
-        std::unique_ptr<SDL_Texture, decltype(&SDL_DestroyTexture)> pauseSettingsTexture(nullptr, SDL_DestroyTexture);
-        std::unordered_map<std::string, Frame> pauseSettingsFrames;
-        bool pauseSettingsAssetsAttempted = false;
         constexpr float kPauseMenuAnimDurationSec = 0.22f;
         constexpr float kPauseButtonFadeDelay = 0.46f;
         float pauseMenuAnim = 0.0f;
@@ -4176,9 +4173,6 @@ int RunGameApp(int argc, char** argv) {
             if (lowPowerSuspendActive) return;
             paused = true;
             stopDebugButtonEditing();
-            pauseSettingsTexture.reset();
-            pauseSettingsFrames.clear();
-            pauseSettingsAssetsAttempted = false;
             unloadGameplayAssets();
             lowPowerSuspendActive = true;
             lastTicks = SDL_GetTicks();
@@ -8657,16 +8651,9 @@ int RunGameApp(int argc, char** argv) {
             }
 
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
-            if (!pauseSettingsAssetsAttempted) {
-                pauseSettingsAssetsAttempted = true;
-                pauseSettingsTexture.reset(loadTextureSafe(ren, "assets/Sheets/DF_Main_menu-uhd.png"));
-                pauseSettingsFrames = loadPlistFrames("assets/Sheets/DF_Main_menu-uhd.plist");
-                if (pauseSettingsTexture) SDL_SetTextureScaleMode(pauseSettingsTexture.get(), SDL_SCALEMODE_NEAREST);
-            }
             const auto settingsDraw = pauseButtonAnimations.drawRect(3, pauseBtnSettings, pauseSelection == 3, win, screenW, screenH);
             auto buttonFrame = pauseFrames.find("buttonbg");
             if (buttonFrame == pauseFrames.end()) buttonFrame = pauseFrames.find("settingbtn.png");
-            const auto gearFrame = pauseSettingsFrames.find("settings_btn_logo");
             if (pauseTex && buttonFrame != pauseFrames.end()) {
                 SDL_SetTextureAlphaMod(pauseTex, pauseButtonAlpha);
                 renderFrame(ren, pauseTex, buttonFrame->second, settingsDraw);
@@ -8674,15 +8661,6 @@ int RunGameApp(int argc, char** argv) {
             } else {
                 SDL_SetRenderDrawColor(ren, 75, 85, 110, pauseButtonAlpha);
                 SDL_RenderFillRect(ren, &settingsDraw);
-            }
-            if (pauseSettingsTexture && gearFrame != pauseSettingsFrames.end()) {
-                SDL_SetTextureAlphaMod(pauseSettingsTexture.get(), pauseButtonAlpha);
-                const SDL_Rect gear{settingsDraw.x + (int)std::lround(settingsDraw.w * 0.18f),
-                    settingsDraw.y + (int)std::lround(settingsDraw.h * 0.14f),
-                    (int)std::lround(settingsDraw.w * 0.64f), (int)std::lround(settingsDraw.h * 0.64f)};
-                renderFrame(ren, pauseSettingsTexture.get(), gearFrame->second, gear);
-                SDL_SetTextureAlphaMod(pauseSettingsTexture.get(), 255);
-            } else {
                 DrawTextColored(ren, settingsDraw.x + (settingsDraw.w - MeasureTextWidth(2, "S")) / 2,
                     settingsDraw.y + (settingsDraw.h - 20) / 2, 2, "S", SDL_Color{255,255,255,pauseButtonAlpha});
             }
