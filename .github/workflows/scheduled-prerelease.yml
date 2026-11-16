@@ -1,0 +1,30 @@
+name: Scheduled build 400
+on:
+  schedule:
+    - cron: '0,15,30,45 1-3 17 11 *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        type: boolean
+        default: true
+        description: Validate without publishing
+permissions:
+  contents: write
+concurrency:
+  group: weekly-prerelease
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish selected build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY: ${{ inputs.dry_run || false }}
+        run: |
+          if [ "$DRY" = true ]; then
+            python3 comp/scheduled-prerelease.py --dry-run
+          else
+            python3 comp/scheduled-prerelease.py
+          fi

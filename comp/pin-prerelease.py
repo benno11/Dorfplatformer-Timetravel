@@ -26,6 +26,8 @@ def main():
         raise ValueError('Publish the source release before selecting it.')
     commit = json.loads(gh('api', f'repos/{REPO}/commits/{source}'))['sha']
     config = json.loads(base64.b64decode(json.loads(gh('api', f'repos/{REPO}/contents/assets/config.json?ref={commit}'))['content']))
+    sandbox = json.loads(gh('api', f'repos/{REPO}/contents/src/SandboxVersion.h?ref={commit}'))
+    sandbox_version = re.search(r'version\[\] = "([^"]+)"', base64.b64decode(sandbox['content']).decode()).group(1)
     assets = {a['name']: a['browser_download_url'] for a in release['assets']}
     packages = {}
     for edition in ('full', 'lite'):
@@ -55,7 +57,7 @@ def main():
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / 'update-manifest.json'
         for (target, edition), urls in packages.items():
-            manifest = dict(version=config['version'], version_id=int(match[1]), channel='prerelease',
+            manifest = dict(version=config['version'], sandbox_version=sandbox_version, version_id=int(match[1]), channel='prerelease',
                             target=target, edition=edition, commit=commit, source_release=source,
                             source_release_url=release['html_url'], built_at=release['published_at'],
                             snapshot_date=snapshot, pinned_at=now.isoformat(), pin_mode='manual',

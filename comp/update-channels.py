@@ -106,6 +106,12 @@ def publish(target, edition, packages):
 
 
 def promote(now):
+    plan_path = Path(__file__).with_name("prerelease-plan.json")
+    if plan_path.exists():
+        plan = json.loads(plan_path.read_text())
+        due = dt.datetime.fromisoformat(plan["publish_at"])
+        if boundary(now) == boundary(due):
+            print("Reserved for scheduled release."); return
     cutoff = boundary(now)
     if cutoff is None:
         return
