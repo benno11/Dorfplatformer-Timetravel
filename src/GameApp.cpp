@@ -1,3 +1,4 @@
+#include "CoinLauncher.h"
 #include "GameApp.h"
 #include "ProcessEnvironment.h"
 #include "EditionPolicy.h"
@@ -4692,6 +4693,24 @@ int RunGameApp(int argc, char** argv) {
                         }
                         c.vx *= -0.25f;
                         c.vy *= -0.25f;
+                    }
+                    for (int index = 0; index < (int)objects.size(); ++index) {
+                        const auto& object = objects[index];
+                        const int id = object.id == "31" ? 31 : object.id == "46" ? 46 : 0;
+                        if (!id) continue;
+                        float launchY = c.y, launchVy = c.vy;
+                        const int direction = CoinLauncher::bounce(id, object.x, object.y,
+                            prevX, prevY, c.x, launchY, launchVy,
+                            gameplayWrapX ? (float)(map.w * map.tileSize) : 0.0f,
+                            gameplayWrapY ? (float)(map.h * map.tileSize) : 0.0f);
+                        if (!direction || tileSolidAt(c.x, launchY) ||
+                            tileSolidAt(c.x - coinR, launchY) || tileSolidAt(c.x + coinR, launchY) ||
+                            tileSolidAt(c.x, launchY - coinR + 0.01f) ||
+                            tileSolidAt(c.x, launchY + coinR - 0.01f)) continue;
+                        c.y = launchY;
+                        c.vy = launchVy;
+                        if (id == 46) triggerBumperImpact(index, object.x, object.y, (float)direction);
+                        break;
                     }
                     c.vx *= std::exp(-2.0f * dt);
                 }
