@@ -1,5 +1,8 @@
 #include <windows.h>
 #include <shellapi.h>
+#include <commctrl.h>
+#include <atomic>
+#include <thread>
 
 #include <curl/curl.h>
 #include <nlohmann/json.hpp>
@@ -43,12 +46,76 @@ struct Manifest {
     std::string notes;
 };
 
+// Runs independently of network I/O so connection stalls cannot freeze the UI.
+class UpdateProgressWindow {
+public:
+    explicit UpdateProgressWindow(bool visible) {
+        if (visible) worker = std::thread([this] { run(); });
+    }
+    ~UpdateProgressWindow() { close(); }
+    void close() {
+        finished = true;
+        if (worker.joinable()) worker.join();
+    }
+    void update(int value) { percent = value; }
+private:
+    std::atomic<int> percent{-1};
+    std::atomic<bool> finished{false};
+    std::thread worker;
+    static LRESULT CALLBACK procedure(HWND window, UINT message, WPARAM w, LPARAM l) {
+        if (message == WM_CLOSE) return 0; // Installation owns this window's lifetime.
+        if (message == WM_DESTROY) { PostQuitMessage(0); return 0; }
+        return DefWindowProcW(window, message, w, l);
+    }
+    void run() {
+        const auto instance = GetModuleHandleW(nullptr);
+        INITCOMMONCONTROLSEX controls{sizeof(controls), ICC_PROGRESS_CLASS};
+        InitCommonControlsEx(&controls);
+        WNDCLASSW type{};
+        type.lpfnWndProc = procedure; type.hInstance = instance;
+        type.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+        type.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+        type.lpszClassName = L"DFUpdateProgress";
+        RegisterClassW(&type);
+        HWND window = CreateWindowW(type.lpszClassName, L"Updating Dorfplatformer Timetravel",
+            WS_OVERLAPPED | WS_CAPTION | WS_MINIMIZEBOX,
+            CW_USEDEFAULT, CW_USEDEFAULT, 460, 150, nullptr, nullptr, instance, nullptr);
+        if (!window) return;
+        HWND label = CreateWindowW(L"STATIC", L"Connecting to update server...",
+            WS_CHILD | WS_VISIBLE, 20, 20, 410, 24, window, nullptr, instance, nullptr);
+        HWND bar = CreateWindowW(PROGRESS_CLASSW, nullptr, WS_CHILD | WS_VISIBLE | PBS_MARQUEE,
+            20, 55, 410, 22, window, nullptr, instance, nullptr);
+        SendMessageW(bar, PBM_SETMARQUEE, TRUE, 30);
+        ShowWindow(window, SW_SHOWNORMAL);
+        SetTimer(window, 1, 100, nullptr);
+        MSG message{};
+        int last = -2;
+        while (GetMessageW(&message, nullptr, 0, 0) > 0) {
+            if (finished) { DestroyWindow(window); break; }
+            const int value = percent.load();
+            if (value != last) {
+                const bool downloading = value >= 0 && value <= 100;
+                const auto style = GetWindowLongPtrW(bar, GWL_STYLE);
+                SetWindowLongPtrW(bar, GWL_STYLE, downloading ? style & ~PBS_MARQUEE : style | PBS_MARQUEE);
+                SendMessageW(bar, PBM_SETMARQUEE, !downloading, 30);
+                if (downloading) SendMessageW(bar, PBM_SETPOS, value, 0);
+                const auto text = downloading ? L"Downloading update... " + std::to_wstring(value) + L"%" :
+                    std::wstring(L"Connecting to update server...");
+                SetWindowTextW(label, text.c_str());
+                last = value;
+            }
+            TranslateMessage(&message); DispatchMessageW(&message);
+        }
+    }
+};
+
 struct DownloadProgressContext {
     std::filesystem::path statusFile;
     std::string currentVersion;
     std::string currentVersionId;
     Manifest manifest;
     int lastPercent = -1;
+    UpdateProgressWindow* window = nullptr;
 };
 
 int onDownloadProgress(void* clientp,
@@ -326,6 +393,7 @@ int onDownloadProgress(void* clientp,
         progress01 = (double)dlnow / (double)dltotal;
     }
     const int percent = (int)std::lround(std::clamp(progress01, 0.0, 1.0) * 100.0);
+    if (ctx->window) ctx->window->update(dltotal > 0 ? percent : -1);
     if (percent == ctx->lastPercent && percent != 100) {
         return 0;
     }
@@ -527,12 +595,14 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     writeStatus(options.statusFile, "downloading", "Downloading installer...",
                 options.currentVersion, options.currentVersionId, manifest, 0.0);
     std::string err;
+    UpdateProgressWindow progressWindow(options.relaunch && !options.silent);
     DownloadProgressContext progressCtx{
         options.statusFile,
         options.currentVersion,
         options.currentVersionId,
         manifest,
-        -1
+        -1,
+        &progressWindow
     };
     if (!httpDownloadFile(manifest.installerUrl, installerPath, err, &progressCtx, options.relaunch)) {
         writeStatus(options.statusFile, "error", "Could not download the new installer.",
@@ -543,7 +613,11 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
 
     writeStatus(options.statusFile, "install_ready", "Installer downloaded. Starting installer...",
                 options.currentVersion, options.currentVersionId, manifest, 1.0);
-    std::wstring installerArgs = L"/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-";
+    // The installer takes over with its own installation progress window.
+    progressWindow.close();
+    std::wstring installerArgs = options.silent
+        ? L"/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /UPDATE=1"
+        : L"/SILENT /SUPPRESSMSGBOXES /NORESTART /SP- /UPDATE=1";
     SHELLEXECUTEINFOW sei{};
     sei.cbSize = sizeof(sei);
     sei.fMask = SEE_MASK_NOCLOSEPROCESS;
@@ -553,7 +627,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     sei.lpFile = installerPath.c_str();
     sei.lpParameters = installerArgs.c_str();
     sei.lpDirectory = options.appDir.empty() ? nullptr : options.appDir.c_str();
-    sei.nShow = SW_HIDE;
+    sei.nShow = options.silent ? SW_HIDE : SW_SHOWNORMAL;
     const BOOL started = ShellExecuteExW(&sei);
     curl_global_cleanup();
     if (!started) {

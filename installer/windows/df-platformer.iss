@@ -62,7 +62,7 @@ Name: "startuptray"; Description: "Start tray companion with Windows"; GroupDesc
 [Files]
 Source: "..\..\dist\windows-installer\root\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\..\dist\windows-installer\app\*"; DestDir: "{app}\versions\{#MyAppVersionId}"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\..\dist\windows-installer\{#MyVcRedistFile}"; DestDir: "{tmp}"; Flags: deleteafterinstall
+Source: "..\..\dist\windows-installer\{#MyVcRedistFile}"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: ShouldInstallVcRuntime
 
 [InstallDelete]
 ; Clean up files left by the legacy single-folder install layout.
@@ -102,12 +102,18 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDi
 Name: "{userstartup}\Dorfplatformer Tray"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--tray"; WorkingDir: "{app}"; Tasks: startuptray; AppUserModelID: "Benno111.DorfplatformerTimetravel.Launcher"
 
 [Run]
-Filename: "{tmp}\{#MyVcRedistFile}"; Parameters: "/install /quiet /norestart"; Flags: waituntilterminated
+Filename: "{tmp}\{#MyVcRedistFile}"; Parameters: "/install /quiet /norestart"; Flags: waituntilterminated; Check: ShouldInstallVcRuntime
 Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
 
 [Code]
 var
   ExistingSystemInstallHandled: Boolean;
+
+function ShouldInstallVcRuntime(): Boolean;
+begin
+  { The initial installation already installed the runtime. }
+  Result := ExpandConstant('{param:UPDATE|0}') <> '1';
+end;
 
 function GetExistingSystemUninstallKey(): string;
 begin

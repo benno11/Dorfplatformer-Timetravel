@@ -1442,6 +1442,7 @@ if(WIN32 AND CURL_FOUND)
     CURL::libcurl
     nlohmann_json::nlohmann_json
     shell32
+    comctl32
   )
   target_compile_definitions(df-updater PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
   if(MSVC)

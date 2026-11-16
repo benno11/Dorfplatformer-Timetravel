@@ -78,18 +78,17 @@ bool handoff() {
         if(!request(DF_UPDATE_CHECK))throw std::runtime_error("Update checking is not configured.");
         DFSandboxUpdateStatus status{};
         do{status=snapshot();if(status.state==DF_UPDATE_CHECKING)Sleep(10);}while(status.state==DF_UPDATE_CHECKING);
-        if(status.state!=DF_UPDATE_AVAILABLE){MessageBoxA(nullptr,status.detail,"Sandbox updater",MB_OK|MB_ICONINFORMATION);return false;}
+        if(status.state!=DF_UPDATE_AVAILABLE){
+            if(status.state==DF_UPDATE_ERROR)throw std::runtime_error(status.detail);
+            return false;
+        }
         const auto url=downloadUrl();
         if(url.rfind("https://",0)!=0)throw std::runtime_error("Automatic installation requires an HTTPS download URL.");
-        std::string message="Install the new game and sandbox bundle?\nGame: ";message+=status.latest_game;
-        if(status.latest_sandbox[0]){message+="\nSandbox: ";message+=status.latest_sandbox;}
-        message+="\n\nThe installer will download in the background and reopen the game when finished.";
-        if(MessageBoxA(nullptr,message.c_str(),"Sandbox updater",MB_YESNO|MB_ICONQUESTION)!=IDYES)return false;
         std::filesystem::path updater;
         for(const auto& candidate:{root/L"df-updater.exe",root.parent_path()/L"df-updater.exe",root.parent_path().parent_path()/L"df-updater.exe"})
             if(std::filesystem::is_regular_file(candidate)){updater=candidate;break;}
         if(updater.empty())throw std::runtime_error("df-updater.exe is missing from the installed game package.");
-        std::wstring command=quote(updater.wstring())+L" --silent --mode install --relaunch --app-dir "+quote(root.wstring());
+        std::wstring command=quote(updater.wstring())+L" --mode install --relaunch --app-dir "+quote(root.wstring());
         command+=L" --installer-url "+quote(wide(url));
         command+=L" --current-version "+quote(wide(PLATFORMER_CLIENT_VERSION));
         command+=L" --current-version-id "+quote(wide(PLATFORMER_CLIENT_VERSION_ID));
