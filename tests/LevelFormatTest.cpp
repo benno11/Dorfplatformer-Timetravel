@@ -399,17 +399,21 @@ int main() {
     player = Player{};
     assert(!manager.openCoinBox(map, 9, objects, player));
     assert(!player.hasShield && manager.coinCount() == 7); // Standalone marker does nothing.
+    player.onGround = true;
     manager.setTileAt(map, 9, 20);
     assert(manager.openCoinBox(map, 9, objects, player));
     assert(player.hasShield && manager.coinCount() == 7 && map.tileIds[9] == 21);
+    assert(player.vy == -600 && !player.onGround);
     assert(!manager.openCoinBox(map, 9, objects, player)); // Empty boxes cannot award another shield.
     player.vx = 123;
     player.vy = -75;
     assert(Shield::absorbDamage(player));
     assert(!player.hasShield && manager.coinCount() == 7 && player.vx == 123 && player.vy == -75);
     assert(!Shield::absorbDamage(player));
+    player.vy = -900; // Opening a box cannot weaken an existing bounce.
     manager.setTileAt(map, 10, 20);
     assert(manager.openCoinBox(map, 10, objects, player));
+    assert(player.vy == -900 && !player.onGround);
     assert(!player.hasShield && manager.coinCount() == 12); // Other boxes still award coins.
     objects = {{std::to_string(ObjectIds::Shield), -16, 16}};
     manager.setTileAt(map, 3, 20);

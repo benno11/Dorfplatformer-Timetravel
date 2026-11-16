@@ -273,6 +273,14 @@ bool LevelManager::openCoinBox(TileMap& map, int index, const std::vector<Object
     setTileAt(map, index, 21);
     if (shieldBox) player.hasShield = true;
     else addCoins(5);
+    // Opening either reward box gives the player a short upward hop, including
+    // side contacts during a slide. Empty boxes never apply another impulse.
+    player.vy = std::min(player.vy, -600.0f);
+    player.onGround = false;
+    player.tile12BounceActive = false;
+    player.jumpHeld = false;
+    player.jumpHoldTime = 0.0f;
+    player.jumpBufferTime = 0.0f;
     return true;
 }
 

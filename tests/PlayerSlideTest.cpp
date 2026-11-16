@@ -100,6 +100,8 @@ int main() {
     boxed.x = boxX * map.tileSize - boxed.w - 4;
     step(boxed, 1.0f / 30, true);
     assert(boxed.hasShield && manager.coinCount() == 5 && map.tileIds[boxIndex] == 21);
+    assert(boxed.vy < 0 && !boxed.onGround);
+    assert(boxed.slideTime > 0); // Opening a box preserves slide immunity.
 
     // Wrapped contacts open the matching box on the opposite edge.
     const int wrappedIndex = boxY * map.w + map.w - 1;
@@ -108,7 +110,10 @@ int main() {
     assert(manager.openCoinBoxesInRect(map, {-16, boxY * (float)map.tileSize, 16, 20},
         objects, wrapped, true, false) == 1);
     assert(map.tileIds[wrappedIndex] == 21 && manager.coinCount() == 10);
+    assert(wrapped.vy == -600 && !wrapped.onGround);
+    wrapped.vy = 123;
     assert(manager.openCoinBoxesInRect(map, {-16, boxY * (float)map.tileSize, 16, 20},
         objects, wrapped, true, false) == 0);
+    assert(wrapped.vy == 123); // Empty boxes cannot bounce again.
     SDL_Quit();
 }
