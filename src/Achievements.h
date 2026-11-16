@@ -10,14 +10,15 @@
 class Achievements {
 public:
     struct Definition { const char* id; const char* title; };
-    inline static constexpr std::array<Definition, 12> definitions{{
+    inline static constexpr std::array<Definition, 13> definitions{{
         {"complete_level", "Complete a level"}, {"beat_boss", "Beat a boss"},
         {"complete_world", "Complete a world"}, {"ending", "Get an ending"},
         {"good_ending", "Get the good ending"},
         {"buttons_world_1", "World 1 buttons"}, {"buttons_world_2", "World 2 buttons"},
         {"buttons_world_3", "World 3 buttons"}, {"buttons_world_4", "World 4 buttons"},
         {"buttons_world_5", "World 5 buttons"}, {"buttons_world_6", "World 6 buttons"},
-        {"beat_hardmode", "Beat Hardmode"}
+        {"beat_hardmode", "Beat Hardmode"},
+        {"all_campaign_coins", "Collect every campaign coin"}
     }};
     bool unlock(const std::string& id) {
         for (const auto& definition : definitions) {
@@ -37,16 +38,27 @@ public:
             if (!buttons_.count(world * 10 + a)) return changed;
         return unlock("buttons_world_" + std::to_string(world)) || changed;
     }
+    bool campaignCoin(const std::string& source, const std::set<std::string>& required) {
+        if (!required.count(source) || has("all_campaign_coins")) return false;
+        const bool changed = campaignCoins_.insert(source).second;
+        if (!required.empty() && std::includes(campaignCoins_.begin(), campaignCoins_.end(),
+                required.begin(), required.end()))
+            return unlock("all_campaign_coins") || changed;
+        return changed;
+    }
     nlohmann::json save() const {
-        return {{"unlocked", unlocked_}, {"button_areas", buttons_}};
+        return {{"unlocked", unlocked_}, {"button_areas", buttons_}, {"campaign_coins", campaignCoins_}};
     }
     void load(const nlohmann::json& j) {
         if (!j.is_object()) return;
-        unlocked_.clear(); buttons_.clear(); notifications_.clear(); remaining_ = 4.0f;
+        unlocked_.clear(); buttons_.clear(); campaignCoins_.clear(); notifications_.clear(); remaining_ = 4.0f;
         if (j.contains("unlocked") && j["unlocked"].is_array())
             for (const auto& entry : j["unlocked"])
                 if (entry.is_string()) for (const auto& definition : definitions)
                     if (entry == definition.id) unlocked_.insert(definition.id);
+        if (j.contains("campaign_coins") && j["campaign_coins"].is_array())
+            for (const auto& entry : j["campaign_coins"])
+                if (entry.is_string()) campaignCoins_.insert(entry.get<std::string>());
         if (j.contains("button_areas") && j["button_areas"].is_array())
             for (const auto& entry : j["button_areas"])
                 if (entry.is_number_integer() && entry >= 11 && entry <= 63) {
@@ -63,6 +75,7 @@ public:
 private:
     std::set<std::string> unlocked_;
     std::set<int> buttons_;
+    std::set<std::string> campaignCoins_;
     std::deque<std::string> notifications_;
     float remaining_ = 4.0f;
 };

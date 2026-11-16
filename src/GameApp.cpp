@@ -75,6 +75,7 @@
 #include "LevelManager.h"
 #include "GameProgression.h"
 #include "Achievements.h"
+#include "CampaignCoins.h"
 #include "AchievementToast.h"
 #include "LevelWrap.h"
 #include "DebugFreeCamera.h"
@@ -2290,6 +2291,7 @@ int RunGameApp(int argc, char** argv) {
     });
     finishStartupLoading();
     LevelManager levelManager;
+    const auto campaignCoinCatalog = CampaignCoins::catalog();
     Uint64 nextAudioRecoverTick = 0;
     auto recoverAudioIfNeeded = [&](bool inLevel) {
         if (!audioRecoveryEnabled) return;
@@ -3662,6 +3664,11 @@ int RunGameApp(int argc, char** argv) {
             int value = 1;
         };
         std::vector<DroppedCoin> droppedCoins;
+        levelManager.coinSourceCollected = [&](const std::string& source) {
+            if (hardmodeRun || hardmodePractice || !IsCampaignLevelPath(levelManager.levelPath())) return;
+            const auto name = std::filesystem::path(levelManager.levelPath()).filename().string();
+            if (achievements.campaignCoin(name + ":" + source, campaignCoinCatalog)) saveClientSettings();
+        };
         auto transitionToLevelPath = [&](const std::string& path) -> bool {
             if (path.empty()) return false;
             if (hardmodePractice && path != levelManager.levelPath()) return false;
@@ -7106,6 +7113,8 @@ int RunGameApp(int argc, char** argv) {
                 }
                 if (deathSequenceActive) break;
                 if (objId == ObjectIds::Pickup && objectOverlapsPlayer(objects[objIdx], 12.0f, 12.0f)) {
+                    if (levelManager.coinSourceCollected)
+                        levelManager.coinSourceCollected(CampaignCoins::pickup(objects[objIdx].x, objects[objIdx].y));
                     eraseGameplayObject(objIdx);
                     levelManager.addCoins(1);
                     audio.playCoinSfx();

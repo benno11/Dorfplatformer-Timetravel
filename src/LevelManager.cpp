@@ -1,4 +1,5 @@
 #include "LevelManager.h"
+#include "CampaignCoins.h"
 
 #include <SDL3/SDL.h>
 #include <algorithm>
@@ -251,6 +252,7 @@ int LevelManager::collectCoinsAtPlayer(TileMap& map, const Player& player, bool 
             map.tileIds[idx] = 2;
             applyBlockDefAt(map, idx, 2);
             collected++;
+            if (coinSourceCollected) coinSourceCollected(CampaignCoins::tile(idx, false));
         }
     }
 
@@ -272,7 +274,10 @@ bool LevelManager::openCoinBox(TileMap& map, int index, const std::vector<Object
     }
     setTileAt(map, index, 21);
     if (shieldBox) player.hasShield = true;
-    else addCoins(5);
+    else {
+        addCoins(5);
+        if (coinSourceCollected) coinSourceCollected(CampaignCoins::tile(index, true));
+    }
     // Opening either reward box gives the player a short upward hop, including
     // side contacts during a slide. Empty boxes never apply another impulse.
     player.vy = std::min(player.vy, -600.0f);

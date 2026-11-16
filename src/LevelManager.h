@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <functional>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -12,6 +13,7 @@
 class LevelManager {
 public:
     LevelManager();
+    std::function<void(const std::string&)> coinSourceCollected;
 
     bool setLevelPath(const std::string& path);
     const std::string& levelPath() const;

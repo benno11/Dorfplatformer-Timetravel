@@ -1,4 +1,5 @@
 #include "PlayerController.h"
+#include "CampaignCoins.h"
 #include "LevelManager.h"
 #include "AssetPath.h"
 #ifdef NDEBUG
@@ -20,6 +21,7 @@ bool FileExists(const std::string& path) { return std::filesystem::exists(path);
 
 int main() {
     assert(SDL_Init(0));
+    assert(!CampaignCoins::catalog().empty());
     TileMap map;
     map.resize(100, 8);
     for (int x = 0; x < map.w; ++x) map.setSolid(x, 5, 1);
@@ -31,6 +33,8 @@ int main() {
         return p;
     };
     LevelManager manager;
+    std::vector<std::string> collectedSources;
+    manager.coinSourceCollected = [&](const std::string& key) { collectedSources.push_back(key); };
     std::vector<ObjectInstance> objects;
     auto step = [&](Player& p, float dt, bool down, float move = 0.0f) {
         float inputMove = 0;
@@ -115,5 +119,12 @@ int main() {
     assert(manager.openCoinBoxesInRect(map, {-16, boxY * (float)map.tileSize, 16, 20},
         objects, wrapped, true, false) == 0);
     assert(wrapped.vy == 123); // Empty boxes cannot bounce again.
+    assert(collectedSources.size() == 2); // Coin boxes count; shield boxes and empty boxes do not.
+    map.tileIds[0] = 24;
+    Player coinPlayer; coinPlayer.x = coinPlayer.y = 0;
+    assert(manager.collectCoinsAtPlayer(map, coinPlayer) == 1);
+    assert(collectedSources.back() == "tile:0");
+    assert(manager.collectCoinsAtPlayer(map, coinPlayer) == 0);
+    assert(collectedSources.size() == 3);
     SDL_Quit();
 }
