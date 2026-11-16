@@ -3,16 +3,10 @@ package com.Benno111.dorfplatformertimetravel;
 import android.content.Context;
 import android.content.res.AssetFileDescriptor;
 import android.media.AudioAttributes;
-import android.media.MediaMetadataRetriever;
 import android.media.MediaPlayer;
-import android.media.SoundPool;
-import android.os.SystemClock;
 import android.util.Log;
 import android.util.SparseArray;
-import android.util.SparseBooleanArray;
-import android.util.SparseIntArray;
 
-import java.io.IOException;
 import java.util.ArrayList;
 
 public final class AndroidAudioBridge {
@@ -26,10 +20,11 @@ public final class AndroidAudioBridge {
     private static final String SFX_BUMPER = "Audio/sfx/Bumper.mp3";
     private static final String MENU_MUSIC = "Audio/Music/Menu.mp3";
 
-    private static SoundPool soundPool;
-    private static final SparseBooleanArray loadedSoundIds = new SparseBooleanArray();
-    private static final SparseIntArray soundDurationsMs = new SparseIntArray();
-    private static final SparseArray<Long> activeStreams = new SparseArray<>();
+    private static boolean initialized;
+    private static final SparseArray<String> soundAssets = new SparseArray<>();
+    private static final SparseArray<MediaPlayer> activeStreams = new SparseArray<>();
+    private static int nextSoundId = 1;
+    private static int nextStreamId = 1;
 
     private static final String[] EVENT_SFX = {"Audio/sfx/signflip.mp3", "Audio/sfx/max.wav",
         "Audio/sfx/SuperBounce.mp3", "Audio/sfx/Hint.mp3", "Audio/sfx/Click5.mp3", "Audio/sfx/Error3.mp3"};
@@ -53,33 +48,9 @@ public final class AndroidAudioBridge {
 
     public static boolean initialize() {
         synchronized (LOCK) {
-            if (soundPool != null) {
-                return true;
-            }
-
-            final Context context = getContext();
-            if (context == null) {
-                Log.i(TAG, "initialize: no SDL activity/context yet");
-                return false;
-            }
-
-            final AudioAttributes attrs = new AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_GAME)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .build();
-
-            soundPool = new SoundPool.Builder()
-                    .setAudioAttributes(attrs)
-                    .setMaxStreams(8)
-                    .build();
-
-            soundPool.setOnLoadCompleteListener((pool, sampleId, status) -> {
-                synchronized (LOCK) {
-                    loadedSoundIds.put(sampleId, status == 0);
-                    LOCK.notifyAll();
-                }
-            });
-
+            if (initialized) return true;
+            if (getContext() == null) return false;
+            initialized = true;
             return true;
         }
     }
@@ -92,12 +63,8 @@ public final class AndroidAudioBridge {
             releasePlayerLocked(levelPlayer);
             levelPlayer = null;
             levelMusicAssetPath = null;
-            loadedSoundIds.clear();
-            soundDurationsMs.clear();
-            if (soundPool != null) {
-                soundPool.release();
-                soundPool = null;
-            }
+            soundAssets.clear();
+            initialized = false;
         }
     }
 
@@ -132,8 +99,7 @@ public final class AndroidAudioBridge {
             victorySoundId = 0;
             messageSoundId = 0;
             bumperSoundId = 0;
-            loadedSoundIds.clear();
-            soundDurationsMs.clear();
+            soundAssets.clear();
         }
     }
 
@@ -268,10 +234,8 @@ public final class AndroidAudioBridge {
 
     public static boolean isChannelPlaying(int channel) {
         synchronized (LOCK) {
-            final long now = SystemClock.elapsedRealtime();
-            pruneFinishedStreamsLocked(now);
-            final Long endsAt = activeStreams.get(channel);
-            return endsAt != null && endsAt > now;
+            // Preparing asynchronous streams count as active until completion.
+            return activeStreams.get(channel) != null;
         }
     }
 
@@ -316,73 +280,17 @@ public final class AndroidAudioBridge {
         }
 
         final float sfx = appliedSfxVolume();
-        for (int i = 0; i < activeStreams.size(); i++) {
-            final int streamId = activeStreams.keyAt(i);
-            if (soundPool != null) {
-                soundPool.setVolume(streamId, sfx, sfx);
-            }
+        for (int i=0; i<activeStreams.size(); ++i) {
+            try { activeStreams.valueAt(i).setVolume(sfx,sfx); }
+            catch (IllegalStateException ignored) {}
         }
     }
 
     private static int loadSoundLocked(String assetPath) {
-        if (soundPool == null) {
-            return 0;
-        }
-        final Context context = getContext();
-        if (context == null) {
-            return 0;
-        }
-
-        try (AssetFileDescriptor afd = context.getAssets().openFd(assetPath)) {
-            final int soundId = soundPool.load(afd, 1);
-            if (soundId != 0) {
-                soundDurationsMs.put(soundId, readDurationMsLocked(assetPath));
-                waitForSoundLoadLocked(soundId);
-            }
-            return soundId;
-        } catch (IOException e) {
-            Log.i(TAG, "loadSound failed for " + assetPath, e);
-            return 0;
-        }
-    }
-
-    private static void waitForSoundLoadLocked(int soundId) {
-        final long deadline = SystemClock.elapsedRealtime() + 2000L;
-        while (SystemClock.elapsedRealtime() < deadline) {
-            if (loadedSoundIds.get(soundId, false)) {
-                return;
-            }
-            try {
-                LOCK.wait(15L);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return;
-            }
-        }
-    }
-
-    private static int readDurationMsLocked(String assetPath) {
-        final Context context = getContext();
-        if (context == null) {
-            return 1000;
-        }
-
-        MediaMetadataRetriever retriever = new MediaMetadataRetriever();
-        try (AssetFileDescriptor afd = context.getAssets().openFd(assetPath)) {
-            retriever.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
-            final String duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
-            if (duration != null) {
-                return Math.max(1, Integer.parseInt(duration));
-            }
-        } catch (Throwable t) {
-            Log.i(TAG, "readDuration failed for " + assetPath, t);
-        } finally {
-            try {
-                retriever.release();
-            } catch (Throwable ignored) {
-            }
-        }
-        return 1000;
+        if (!initialized) return 0;
+        final int id=nextSoundId++;
+        soundAssets.put(id,assetPath);
+        return id;
     }
 
     private static MediaPlayer createPlayerLocked(String assetPath) {
@@ -391,8 +299,8 @@ public final class AndroidAudioBridge {
             return null;
         }
 
+        final MediaPlayer player = new MediaPlayer();
         try (AssetFileDescriptor afd = context.getAssets().openFd(assetPath)) {
-            final MediaPlayer player = new MediaPlayer();
             player.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
             player.setAudioAttributes(new AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_GAME)
@@ -414,6 +322,7 @@ public final class AndroidAudioBridge {
             });
             return player;
         } catch (Throwable t) {
+            releasePlayerLocked(player);
             Log.i(TAG, "createPlayer failed for " + assetPath, t);
             return null;
         }
@@ -478,44 +387,54 @@ public final class AndroidAudioBridge {
         }
     }
 
+    private static void finishStreamLocked(int id, MediaPlayer player) {
+        if (activeStreams.get(id) != player) return;
+        activeStreams.remove(id);
+        releasePlayerLocked(player);
+    }
+
     private static int playSoundLocked(int soundId) {
-        if (soundPool == null || soundId == 0 || !loadedSoundIds.get(soundId, false)) {
+        final String assetPath=soundAssets.get(soundId);
+        final Context context=getContext();
+        if (!initialized || assetPath==null || context==null) return -1;
+        // Bound concurrent decoders/file descriptors without stealing victory
+        // playback or destroying an effect which is still preparing.
+        if (activeStreams.size()>=8) return -1;
+        final int id=nextStreamId++;
+        final MediaPlayer player=new MediaPlayer();
+        try (AssetFileDescriptor afd=context.getAssets().openFd(assetPath)) {
+            player.setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_GAME)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build());
+            player.setDataSource(afd.getFileDescriptor(),afd.getStartOffset(),afd.getLength());
+            player.setLooping(false);
+            final float volume=appliedSfxVolume();
+            player.setVolume(volume,volume);
+            activeStreams.put(id,player);
+            player.setOnPreparedListener(mp -> {
+                synchronized (LOCK) {
+                    if(activeStreams.get(id)!=mp)return;
+                    try { final float gain=appliedSfxVolume();mp.setVolume(gain,gain);mp.start(); }
+                    catch(IllegalStateException error){finishStreamLocked(id,mp);}
+                }
+            });
+            player.setOnCompletionListener(mp -> { synchronized(LOCK){finishStreamLocked(id,mp);} });
+            player.setOnErrorListener((mp,what,extra) -> {
+                synchronized(LOCK){finishStreamLocked(id,mp);}return true;
+            });
+            player.prepareAsync();
+            return id;
+        } catch (Throwable error) {
+            activeStreams.remove(id);
+            releasePlayerLocked(player);
+            Log.i(TAG,"Could not stream SFX " + assetPath,error);
             return -1;
         }
-
-        pruneFinishedStreamsLocked(SystemClock.elapsedRealtime());
-        final float volume = appliedSfxVolume();
-        final int streamId = soundPool.play(soundId, volume, volume, 1, 0, 1.0f);
-        if (streamId == 0) {
-            return -1;
-        }
-
-        final long durationMs = Math.max(1, soundDurationsMs.get(soundId, 1000));
-        activeStreams.put(streamId, SystemClock.elapsedRealtime() + durationMs);
-        return streamId;
     }
 
     private static void haltAllChannelsLocked() {
-        if (soundPool == null) {
-            activeStreams.clear();
-            return;
-        }
-        final ArrayList<Integer> streamIds = new ArrayList<>(activeStreams.size());
-        for (int i = 0; i < activeStreams.size(); i++) {
-            streamIds.add(activeStreams.keyAt(i));
-        }
-        for (Integer streamId : streamIds) {
-            soundPool.stop(streamId);
-        }
+        final ArrayList<MediaPlayer> players=new ArrayList<>();
+        for(int i=0;i<activeStreams.size();++i)players.add(activeStreams.valueAt(i));
         activeStreams.clear();
-    }
-
-    private static void pruneFinishedStreamsLocked(long now) {
-        for (int i = activeStreams.size() - 1; i >= 0; i--) {
-            final Long endsAt = activeStreams.valueAt(i);
-            if (endsAt == null || endsAt <= now) {
-                activeStreams.removeAt(i);
-            }
-        }
+        for(MediaPlayer player:players)releasePlayerLocked(player);
     }
 }

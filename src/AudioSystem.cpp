@@ -9,6 +9,7 @@ namespace { AudioSystem* eventAudio = nullptr; }
 #include <sstream>
 #include <vector>
 #include <array>
+#include <unordered_map>
 #include <future>
 #include <chrono>
 
@@ -34,13 +35,39 @@ namespace { AudioSystem* eventAudio = nullptr; }
 
 #if AUDIO_HAS_SDL3_MIXER
 namespace {
-struct Mix_Chunk { MIX_Audio* audio = nullptr; };
+struct Mix_Chunk { std::string path; float gain = 1.0f; };
 using Mix_Music = Mix_Chunk;
 
 static MIX_Mixer* g_mix_mixer = nullptr;
 static std::vector<MIX_Track*> g_mix_channels;
 static MIX_Track* g_mix_music_track = nullptr;
 static bool g_mix_initialized = false;
+static float g_music_gain = 1.0f;
+static std::unordered_map<MIX_Track*, SDL_IOStream*> g_mix_streams;
+
+static void mix_release_stream(MIX_Track* track) {
+    auto found=g_mix_streams.find(track);
+    if(found==g_mix_streams.end())return;
+    (void)MIX_SetTrackIOStream(track,nullptr,false);
+    SDL_CloseIO(found->second);
+    g_mix_streams.erase(found);
+}
+static bool mix_stream_file(MIX_Track* track,const std::string& path) {
+    SDL_IOStream* io=SDL_IOFromFile(path.c_str(),"rb");
+    if(!io)return false;
+    if(!MIX_SetTrackIOStream(track,io,false)){SDL_CloseIO(io);return false;}
+    // Replacing the input destroys the previous decoder before its file closes.
+    auto old=g_mix_streams.find(track);
+    if(old!=g_mix_streams.end())SDL_CloseIO(old->second);
+    g_mix_streams[track]=io;
+    return true;
+}
+static void mix_collect_streams() {
+    for(auto it=g_mix_streams.begin();it!=g_mix_streams.end();) {
+        MIX_Track* track=it->first;++it;
+        if(!MIX_TrackPlaying(track))mix_release_stream(track);
+    }
+}
 
 #ifndef MIX_INIT_MP3
 #define MIX_INIT_MP3 0x00000008
@@ -60,6 +87,7 @@ static int mix_find_channel() {
     for (int i = 0; i < (int)g_mix_channels.size(); ++i) {
         if (!g_mix_channels[i] || !MIX_TrackPlaying(g_mix_channels[i])) return i;
     }
+    if(g_mix_channels.size()>=32)return -1;
     g_mix_channels.push_back(nullptr);
     return (int)g_mix_channels.size() - 1;
 }
@@ -119,72 +147,26 @@ static std::string availableAudioDecoders() {
     return out.str();
 }
 
-static MIX_Audio* mixLoadAudioWithDecoder(MIX_Mixer* mixer, const char* path, bool predecode, const char* decoder) {
-    if (!mixer || !path || !*path) return nullptr;
-    SDL_IOStream* io = SDL_IOFromFile(path, "rb");
-    if (!io) return nullptr;
-
-    const SDL_PropertiesID props = SDL_CreateProperties();
-    if (!props) {
-        SDL_CloseIO(io);
-        return nullptr;
-    }
-
-    SDL_SetPointerProperty(props, MIX_PROP_AUDIO_LOAD_IOSTREAM_POINTER, io);
-    SDL_SetBooleanProperty(props, MIX_PROP_AUDIO_LOAD_CLOSEIO_BOOLEAN, true);
-    SDL_SetBooleanProperty(props, MIX_PROP_AUDIO_LOAD_PREDECODE_BOOLEAN, predecode);
-    SDL_SetBooleanProperty(props, MIX_PROP_AUDIO_LOAD_SKIP_METADATA_TAGS_BOOLEAN, false);
-    SDL_SetPointerProperty(props, MIX_PROP_AUDIO_LOAD_PREFERRED_MIXER_POINTER, mixer);
-    if (decoder && *decoder) SDL_SetStringProperty(props, MIX_PROP_AUDIO_DECODER_STRING, decoder);
-
-    MIX_Audio* audio = MIX_LoadAudioWithProperties(props);
-    SDL_DestroyProperties(props);
-    return audio;
-}
-
-static MIX_Audio* mixLoadAudioBestEffort(const char* path, bool predecode) {
-    if (!g_mix_mixer || !path || !*path) return nullptr;
-
-    MIX_Audio* audio = MIX_LoadAudio(g_mix_mixer, path, predecode);
-    if (audio) return audio;
-
-    static const char* kDecoderCandidates[] = {"DRMP3", "MPG123", "MP3"};
-    for (const char* decoder : kDecoderCandidates) {
-        audio = mixLoadAudioWithDecoder(g_mix_mixer, path, predecode, decoder);
-        if (audio) return audio;
-    }
-
-    return nullptr;
-}
-
+// Retain only a filename. Each playback opens an independent seekable stream;
+// neither encoded files nor decoded PCM are cached in their entirety.
 static Mix_Chunk* Mix_LoadWAVCompat(const char* path) {
-    if (!g_mix_mixer || !path) return nullptr;
-    MIX_Audio* a = mixLoadAudioBestEffort(path, true);
-    if (!a) return nullptr;
-    Mix_Chunk* c = new Mix_Chunk();
-    c->audio = a;
-    return c;
+    if(!g_mix_mixer || !path)return nullptr;
+    SDL_IOStream* file=SDL_IOFromFile(path,"rb");
+    if(!file)return nullptr;
+    SDL_CloseIO(file);
+    return new Mix_Chunk{path,1.0f};
 }
-
-static Mix_Music* Mix_LoadMUSCompat(const char* path) {
-    if (!g_mix_mixer || !path) return nullptr;
-    MIX_Audio* a = mixLoadAudioBestEffort(path, false);
-    if (!a) {
-        // Some MP3 builds only behave when fully predecoded up front.
-        a = mixLoadAudioBestEffort(path, true);
-    }
-    if (!a) return nullptr;
-    Mix_Music* m = new Mix_Music();
-    m->audio = a;
-    return m;
-}
+static Mix_Music* Mix_LoadMUSCompat(const char* path) { return Mix_LoadWAVCompat(path); }
 
 static int Mix_PlayChannelCompat(int channel, Mix_Chunk* chunk, int loops) {
-    if (!g_mix_mixer || !chunk || !chunk->audio) return -1;
+    if (!g_mix_mixer || !chunk || chunk->path.empty()) return -1;
     const int idx = (channel < 0) ? mix_find_channel() : channel;
     MIX_Track* t = mix_track_at(idx);
     if (!t) return -1;
-    if (!MIX_SetTrackAudio(t, chunk->audio)) return -1;
+    if (!mix_stream_file(t,chunk->path)) {
+        SDL_Log("Could not stream SFX '%s': %s",chunk->path.c_str(),SDL_GetError());return -1;
+    }
+    (void)MIX_SetTrackGain(t,chunk->gain);
     const SDL_PropertiesID props = SDL_CreateProperties();
     if (!props) return -1;
     SDL_SetNumberProperty(props, MIX_PROP_PLAY_LOOPS_NUMBER, loops);
@@ -195,10 +177,13 @@ static int Mix_PlayChannelCompat(int channel, Mix_Chunk* chunk, int loops) {
 }
 
 static int Mix_PlayMusicCompat(Mix_Music* music, int loops) {
-    if (!g_mix_mixer || !music || !music->audio) return -1;
+    if (!g_mix_mixer || !music || music->path.empty()) return -1;
     if (!g_mix_music_track) g_mix_music_track = MIX_CreateTrack(g_mix_mixer);
     if (!g_mix_music_track) return -1;
-    if (!MIX_SetTrackAudio(g_mix_music_track, music->audio)) return -1;
+    if (!mix_stream_file(g_mix_music_track,music->path)) {
+        SDL_Log("Could not stream music '%s': %s",music->path.c_str(),SDL_GetError());return -1;
+    }
+    (void)MIX_SetTrackGain(g_mix_music_track,g_music_gain);
     const SDL_PropertiesID props = SDL_CreateProperties();
     if (!props) return -1;
     SDL_SetNumberProperty(props, MIX_PROP_PLAY_LOOPS_NUMBER, loops);
@@ -221,21 +206,26 @@ static int Mix_PlayingMusicCompat() {
 }
 
 static void Mix_HaltMusicCompat() {
-    if (g_mix_music_track) (void)MIX_StopTrack(g_mix_music_track, 0);
+    if (g_mix_music_track) { (void)MIX_StopTrack(g_mix_music_track, 0); mix_release_stream(g_mix_music_track); }
 }
 
 static int Mix_HaltChannelCompat(int channel) {
     if (!g_mix_mixer) return 0;
-    if (channel < 0) return MIX_StopAllTracks(g_mix_mixer, 0) ? 0 : -1;
+    if (channel < 0) {
+        const bool stopped=MIX_StopAllTracks(g_mix_mixer,0);
+        for(MIX_Track* track:g_mix_channels)if(track)mix_release_stream(track);
+        if(g_mix_music_track)mix_release_stream(g_mix_music_track);
+        return stopped?0:-1;
+    }
     MIX_Track* t = mix_track_at(channel);
     if (!t) return 0;
-    return MIX_StopTrack(t, 0) ? 0 : -1;
+    const bool stopped=MIX_StopTrack(t,0);mix_release_stream(t);return stopped?0:-1;
 }
 
 static int Mix_VolumeMusicCompat(int volume) {
     if (!g_mix_mixer) return volume;
     const float gain = std::clamp(volume / 128.0f, 0.0f, 1.0f);
-    (void)MIX_SetMixerGain(g_mix_mixer, gain);
+    g_music_gain=gain;
     if (g_mix_music_track) (void)MIX_SetTrackGain(g_mix_music_track, gain);
     return volume;
 }
@@ -252,15 +242,12 @@ static int Mix_VolumeCompat(int channel, int volume) {
 }
 
 static int Mix_VolumeChunkCompat(Mix_Chunk* chunk, int volume) {
-    (void)chunk;
+    if(chunk)chunk->gain=std::clamp(volume/128.0f,0.0f,1.0f);
     return volume;
 }
 
 static void Mix_FreeChunkCompat(Mix_Chunk* chunk) {
     if (!chunk) return;
-    // Audio buffers are owned by the active mixer; only destroy while mixer is alive.
-    if (chunk->audio && g_mix_mixer) MIX_DestroyAudio(chunk->audio);
-    chunk->audio = nullptr;
     delete chunk;
 }
 
@@ -269,11 +256,13 @@ static void Mix_FreeMusicCompat(Mix_Music* music) { Mix_FreeChunkCompat(music); 
 static void Mix_CloseAudioCompat() {
     if (g_mix_mixer) (void)MIX_StopAllTracks(g_mix_mixer, 0);
     if (g_mix_music_track) {
+        mix_release_stream(g_mix_music_track);
         MIX_DestroyTrack(g_mix_music_track);
         g_mix_music_track = nullptr;
     }
     for (MIX_Track*& t : g_mix_channels) {
         if (t) {
+            mix_release_stream(t);
             MIX_DestroyTrack(t);
             t = nullptr;
         }
@@ -838,6 +827,9 @@ bool AudioSystem::isChannelPlaying(int channel) const {
 void AudioSystem::pumpEventSfx() {
     if (!SDL_IsMainThread() || !eventAudio || !eventAudio->isReady()) return;
     auto* audio = eventAudio;
+#if AUDIO_HAS_SDL3_MIXER
+    mix_collect_streams();
+#endif
     if (!audio->gameplayAssetsReady()) return;
     audio->finishGameplayAssetLoading();
     const unsigned events = SoundEvents::take();

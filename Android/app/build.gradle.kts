@@ -94,6 +94,11 @@ android {
         }
     }
 
+    androidResources {
+        // File-backed playback requires seekable asset descriptors.
+        noCompress += listOf("mp3", "wav", "ogg", "flac", "m4a", "aac")
+    }
+
     sourceSets {
         getByName("main") {
             java.setSrcDirs(listOf("src/main/java"))
