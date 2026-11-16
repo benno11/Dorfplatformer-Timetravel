@@ -1670,7 +1670,7 @@ void renderDifficultyPopup(SlimRuntime& runtime, const SlimMenuContext& ctx) {
     int savedW = 0, savedH = 0;
     SDL_RendererLogicalPresentation savedPresentation;
     SDL_GetRenderLogicalPresentation(ctx.ren, &savedW, &savedH, &savedPresentation);
-    SDL_SetRenderLogicalPresentation(ctx.ren, ctx.baseScreenW, ctx.baseScreenH, SDL_LOGICAL_PRESENTATION_LETTERBOX);
+    SDL_SetRenderLogicalPresentation(ctx.ren, ctx.baseScreenW, ctx.baseScreenH, SDL_LOGICAL_PRESENTATION_STRETCH);
     SDL_SetRenderViewport(ctx.ren, nullptr);
     SDL_SetRenderScale(ctx.ren, 1.0f, 1.0f);
     SDL_SetRenderDrawBlendMode(ctx.ren, SDL_BLENDMODE_BLEND);

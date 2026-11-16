@@ -574,3 +574,11 @@ Each middle viewport applies its own top/bottom cuts, drawing clip, pointer hit
 bounds, and scroll limit. The scrollbar stays inside the center column. Explicit
 `cut` padding still applies to each column. The Online Levels menu now uses the
 same side footer arrangement as Local Levels.
+
+## Canvas presentation
+
+The canvas stretches independently along X and Y to fill the complete target
+resolution. Aspect-ratio letterboxing and rounding borders are removed, including
+from difficulty/configuration dialogs and the network loading snapshot. Mouse
+and touch positions use the same transformation. UI scaling changes controls
+inside the canvas rather than shrinking the final canvas into an inset rectangle.

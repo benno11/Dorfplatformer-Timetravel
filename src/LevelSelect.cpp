@@ -614,7 +614,7 @@ bool RunLevelConfigMenu(SDL_Window* win, SDL_Renderer* ren, LevelMeta& config) {
     SDL_RendererLogicalPresentation savedPresentation;
     SDL_GetRenderLogicalPresentation(ren, &savedW, &savedH, &savedPresentation);
     SDL_SetRenderTarget(ren, nullptr);
-    SDL_SetRenderLogicalPresentation(ren, 640, 480, SDL_LOGICAL_PRESENTATION_LETTERBOX);
+    SDL_SetRenderLogicalPresentation(ren, 640, 480, SDL_LOGICAL_PRESENTATION_STRETCH);
     SDL_SetRenderViewport(ren, nullptr);
     SDL_SetRenderClipRect(ren, nullptr);
     SDL_SetRenderScale(ren, 1.0f, 1.0f);

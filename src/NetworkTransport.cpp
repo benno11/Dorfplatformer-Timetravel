@@ -112,14 +112,8 @@ void NetworkBusyScreen::frame(std::atomic<bool>& cancelled) {
     SDL_SetRenderDrawColor(ren, 20, 26, 34, 255);
     SDL_RenderClear(ren);
     if (snapshot) {
-        float textureW = 0.0f, textureH = 0.0f;
-        SDL_GetTextureSize(snapshot, &textureW, &textureH);
-        if (textureW > 0.0f && textureH > 0.0f) {
-            const float fit = (std::min)(width / textureW, height / textureH);
-            const SDL_FRect dst{(width - textureW * fit) / 2, (height - textureH * fit) / 2,
-                                textureW * fit, textureH * fit};
-            SDL_RenderTexture(ren, snapshot, nullptr, &dst);
-        }
+        const SDL_FRect dst{0, 0, (float)width, (float)height};
+        SDL_RenderTexture(ren, snapshot, nullptr, &dst);
     }
     SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
     SDL_SetRenderDrawColor(ren, 0, 0, 0, 180);

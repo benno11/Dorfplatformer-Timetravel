@@ -1,4 +1,5 @@
 #include "GameSupport.h"
+#include "CanvasPresentation.h"
 #include "TextureSampling.h"
 
 #include <SDL3_image/SDL_image.h>
@@ -606,28 +607,13 @@ SDL_Texture* loadTextureSafe(SDL_Renderer* ren, const std::string& path, std::st
     return tex;
 }
 
-SDL_Rect computePresentRect(int winW, int winH, int baseW, int baseH, float uiScale) {
-    if (winW <= 0 || winH <= 0 || baseW <= 0 || baseH <= 0) return SDL_Rect{0, 0, winW, winH};
-    float sx = (float)winW / (float)baseW;
-    float sy = (float)winH / (float)baseH;
-    float fitScale = std::min(sx, sy);
-    float clampedUiScale = std::clamp(uiScale, 0.50f, 1.00f);
-    float s = fitScale * clampedUiScale;
-    int w = std::max(1, (int)std::floor(baseW * s));
-    int h = std::max(1, (int)std::floor(baseH * s));
-    int x = (winW - w) / 2;
-    int y = (winH - h) / 2;
-    return SDL_Rect{x, y, w, h};
+SDL_Rect computePresentRect(int winW, int winH, int /*baseW*/, int /*baseH*/, float /*uiScale*/) {
+    return CanvasPresentation::destination(winW, winH);
 }
 
-bool windowToGamePoint(int wx, int wy, int winW, int winH, int baseW, int baseH, int& gx, int& gy, float uiScale) {
-    SDL_Rect dst = computePresentRect(winW, winH, baseW, baseH, uiScale);
-    if (wx < dst.x || wy < dst.y || wx >= dst.x + dst.w || wy >= dst.y + dst.h) return false;
-    float u = (float)(wx - dst.x) / (float)dst.w;
-    float v = (float)(wy - dst.y) / (float)dst.h;
-    gx = std::clamp((int)std::floor(u * baseW), 0, baseW - 1);
-    gy = std::clamp((int)std::floor(v * baseH), 0, baseH - 1);
-    return true;
+bool windowToGamePoint(int wx, int wy, int winW, int winH, int baseW, int baseH,
+                       int& gx, int& gy, float /*uiScale*/) {
+    return CanvasPresentation::toCanvas(wx, wy, winW, winH, baseW, baseH, gx, gy);
 }
 
 bool getWindowSizeInPixelsCompat(SDL_Window* win, int& w, int& h) {

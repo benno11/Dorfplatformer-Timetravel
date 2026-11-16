@@ -63,6 +63,8 @@ void renderFrameEx(SDL_Renderer* ren, SDL_Texture* tex, const Frame& f, const SD
 SDL_Texture* loadTextureWithColorKey(SDL_Renderer* ren, const std::string& path, Uint8 r, Uint8 g, Uint8 b);
 SDL_Texture* loadTextureSafe(SDL_Renderer* ren, const std::string& path, std::string* errorOut = nullptr);
 
+// The canvas stretches to the complete output. uiScale is retained for caller compatibility;
+// control/text scaling is handled within the canvas and never adds output borders.
 SDL_Rect computePresentRect(int winW, int winH, int baseW, int baseH, float uiScale = 1.0f);
 bool windowToGamePoint(int wx, int wy, int winW, int winH, int baseW, int baseH, int& gx, int& gy, float uiScale = 1.0f);
 bool getWindowSizeInPixelsCompat(SDL_Window* win, int& w, int& h);
