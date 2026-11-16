@@ -14,10 +14,12 @@ otherwise
 text "No levels match this filter."
 endwhen
 endwhen
+snap left bottom
 button "Refresh" refresh_levels online
 button "Previous Page" level_page online:prev
 button "Next Page" level_page online:next
 button "Filter: All" level_filter online:all
+snap right bottom
 button "Filter: Easy" level_filter online:easy
 button "Filter: Medium" level_filter online:medium
 button "Filter: Hard" level_filter online:hard

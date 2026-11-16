@@ -1571,7 +1571,8 @@ size_t buttonItemIndex(const SlimMenu& menu, int button) {
 }
 
 SDL_Rect menuScrollTrack(const SlimMenuLayout::Layout& layout) {
-    return {layout.body.x + layout.body.w + 3, layout.body.y, 6, layout.body.h};
+    const int width = std::min(6, layout.body.w);
+    return {layout.body.x + layout.body.w - width, layout.body.y, width, layout.body.h};
 }
 
 SDL_Rect menuScrollThumb(const SlimMenuLayout::Layout& layout, float scroll) {
@@ -2828,6 +2829,11 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                 }
                 return -1;
             };
+            auto overScrollingContent = [&](float x, float y) {
+                for (size_t i = 0; i < layout.clips.size(); ++i)
+                    if (!layout.fixed[i] && SlimMenuLayout::contains(layout.clips[i], x, y)) return true;
+                return false;
+            };
             auto dragScrollbar = [&](float y) {
                 const auto track = menuScrollTrack(layout);
                 const auto thumb = menuScrollThumb(layout, runtime.scrollY);
@@ -3133,8 +3139,8 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                     continue;
                 }
                 if (e.type == SDL_EVENT_FINGER_DOWN && !touchActive && pointer(e.tfinger.x, e.tfinger.y, true, x, y) &&
-                    (SlimMenuLayout::contains(layout.body, x, y) || hitButton(x, y) >= 0)) {
-                    touchCanScroll = SlimMenuLayout::contains(layout.body, x, y);
+                    (overScrollingContent(x, y) || hitButton(x, y) >= 0)) {
+                    touchCanScroll = overScrollingContent(x, y);
                     touchActive = true;
                     touchDragged = false;
                     trackedFinger = e.tfinger.fingerID;

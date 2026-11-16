@@ -442,7 +442,7 @@ Hardmode restart rules remain in effect. Pausing also pauses the death flight.
 - `center` (or `snap center center`) returns subsequent objects to the centered,
   scrolling content. `align` still aligns normal content; use `center` to leave
   a fixed edge explicitly.
-- `cut TOP BOTTOM` reserves additional logical pixels above/below the center
+- `cut TOP BOTTOM` reserves additional logical pixels above/below each column
   viewport. It clips drawing and pointer input, without clipping fixed controls.
   Values are nonnegative; the viewport always retains at least one pixel.
 
@@ -539,9 +539,9 @@ Each horizontal/vertical anchor pair has its own stack: top-left, top-center,
 top-right, middle-left, middle-right, bottom-left, bottom-center, and bottom-right.
 Adding controls to one fixed stack does not reposition another fixed stack.
 Stacks grow in script order and bottom stacks end at their bottom anchor.
-The scrolling center is clipped using the tallest top/bottom stack, rather than
-adding the heights of different columns together. Side stacks anchor against
-the original content bounds, so headers and footers cannot shift them.
+Each horizontal column clips its middle content against only its own top and
+bottom stacks. Side stacks anchor against their own column bounds. Headers or
+footers in a different column cannot shift or shorten the center list.
 
 Both `snap left bottom` and `snap bottom left` select bottom-left. Likewise,
 `snap right top` and `snap top right` select top-right. `center` and
@@ -559,3 +559,18 @@ endfor
 Basic event requirements show 0/1 or 1/1. World button summaries include both
 areas. Campaign coins show the overall collected/required location count; the
 requirement submenu retains the full per-level breakdown.
+
+
+## Clipping by horizontal snap zone
+
+When side snap controls are present, the content bounds split into left, center,
+and right columns. Controls are sized to fit their column. A bottom-left stack
+only cuts the left column; a bottom-right stack only cuts the right column.
+The center list stays visible down to its own bottom-center controls, regardless
+of how tall either side footer becomes. Menus with only center controls retain
+full-width content.
+
+Each middle viewport applies its own top/bottom cuts, drawing clip, pointer hit
+bounds, and scroll limit. The scrollbar stays inside the center column. Explicit
+`cut` padding still applies to each column. The Online Levels menu now uses the
+same side footer arrangement as Local Levels.

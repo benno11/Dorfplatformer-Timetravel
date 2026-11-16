@@ -37,7 +37,7 @@ int main() {
         const auto fixed = build(960, 540, 1, Align::Center, Align::Center, docked, 8, 12);
         require(fixed.maxScroll > 0, "Docked menu should still scroll center content");
         require(fixed.items[0].y + fixed.items[0].h <= fixed.body.y, "Header overlaps center");
-        require(fixed.items[1].y >= fixed.body.y + fixed.body.h, "Footer overlaps center");
+        require(fixed.items[1].y >= fixed.columns[0].y + fixed.columns[0].h, "Footer overlaps its own column");
         require(fixed.items[2].x + fixed.items[2].w <= fixed.body.x, "Left dock overlaps center");
         require(fixed.items[3].x >= fixed.body.x + fixed.body.w, "Right dock overlaps center");
         for (size_t n = 0; n < 4; ++n) {
@@ -86,6 +86,37 @@ int main() {
             const auto r = itemRect(columns, n, 100);
             require(hit(columns, n, r.x + r.w / 2, r.y + r.h / 2, 100), "Independent footer lost pointer input");
         }
+
+        std::vector<Item> centralList(20, Item{384, 54});
+        centralList.push_back({150, 54, Align::Center, Align::End, true});
+        const auto centerOnly = build(960, 540, 1, Align::Center, Align::Center, centralList, 8, 8);
+        for (int n = 0; n < 4; ++n) {
+            centralList.push_back({384, 54, Align::Start, Align::End, true});
+            centralList.push_back({384, 54, Align::End, Align::End, true});
+        }
+        const auto withSideFooters = build(960, 540, 1, Align::Center, Align::Center, centralList, 8, 8);
+        require(withSideFooters.body.y == centerOnly.body.y && withSideFooters.body.h == centerOnly.body.h,
+                "Side footers changed the center list clipping height");
+        require(withSideFooters.maxScroll == centerOnly.maxScroll, "Side footers changed center scroll range");
+        require(withSideFooters.columns[0].h < withSideFooters.body.h && withSideFooters.columns[2].h < withSideFooters.body.h,
+                "Each footer must cut only its own column");
+        require(withSideFooters.items[0].x >= withSideFooters.columns[0].x + withSideFooters.columns[0].w &&
+                withSideFooters.items[0].x + withSideFooters.items[0].w <= withSideFooters.columns[2].x,
+                "Center list overlaps another horizontal zone");
+        const float endScroll = reveal(withSideFooters, 19, 0);
+        const auto finalRow = itemRect(withSideFooters, 19, endScroll);
+        require(hit(withSideFooters, 19, finalRow.x + finalRow.w / 2, finalRow.y + finalRow.h / 2, endScroll),
+                "Center list end cannot be reached with side footers");
+        const float sideX = (float)(withSideFooters.columns[0].x + withSideFooters.columns[0].w - 1);
+        const float sharedY = finalRow.y + finalRow.h / 2.0f;
+        require(!hit(withSideFooters, 19, sideX, sharedY, endScroll),
+                "Center list intercepts pointer input in a side column");
+        require(hit(withSideFooters, 25, sideX, sharedY, endScroll),
+                "Side footer cannot be activated beside a visible center row");
+        centralList.push_back({150, 30, Align::Start, Align::Start, true});
+        const auto sideHeader = build(960, 540, 1, Align::Center, Align::Center, centralList, 8, 8);
+        require(sideHeader.body.y == withSideFooters.body.y && sideHeader.body.h == withSideFooters.body.h,
+                "Side header changed center clipping");
 
         const auto smallLeft = build(960, 540, 0.5f, Align::Start, Align::Start, anchors);
         const auto smallRight = build(960, 540, 0.5f, Align::End, Align::End, anchors);

@@ -43,8 +43,10 @@ struct Item {
 struct Layout {
     float scale = 1.0f;
     SDL_Rect panel{}, body{};
+    std::array<SDL_Rect, 3> columns{};
     std::vector<SDL_Rect> items;
     std::vector<bool> fixed;
+    std::vector<int> scrollLimits;
     std::vector<SDL_Rect> clips;
     int contentHeight = 0;
     int maxScroll = 0;
@@ -73,83 +75,90 @@ inline Layout build(int screenW, int screenH, float scale, Align horizontal, Ali
                    result.panel.w - leftPad - rightPad, result.panel.h - topPad - bottomPad};
     constexpr int gap = 12;
     const SDL_Rect originalBody = result.body;
-    // Each of the nine anchor positions owns its own stack. Reserving the
-    // maximum height at an edge clips the center without concatenating columns.
+    // Horizontal snap zones share screen space, but never reserve vertical
+    // space in another column. A center-only menu retains its full width.
     std::array<int, 9> dockHeights{}, dockWidths{}, dockCounts{};
-    auto anchor = [](const Item& item) {
-        return (int)item.vertical * 3 + (int)item.horizontal;
-    };
+    auto anchor = [](const Item& item) { return (int)item.vertical * 3 + (int)item.horizontal; };
+    bool hasSideZones = false;
     for (const auto& item : items) if (item.docked) {
         const int group = anchor(item);
         dockHeights[group] += std::max(1, item.height) + (dockCounts[group]++ ? gap : 0);
         dockWidths[group] = std::max(dockWidths[group], std::max(1, item.width));
+        hasSideZones |= item.horizontal != Align::Center;
     }
-    const std::array<int, 4> reserve{
-        std::max({dockHeights[0], dockHeights[1], dockHeights[2]}) +
-            (dockCounts[0] || dockCounts[1] || dockCounts[2] ? gap : 0),
-        std::max({dockHeights[6], dockHeights[7], dockHeights[8]}) +
-            (dockCounts[6] || dockCounts[7] || dockCounts[8] ? gap : 0),
-        dockWidths[3] + (dockCounts[3] ? gap : 0),
-        dockWidths[5] + (dockCounts[5] ? gap : 0)
-    };
-    const int topReserve = std::min(reserve[0], result.body.h - 1);
-    const int bottomReserve = std::min(reserve[1], result.body.h - topReserve - 1);
-    const int leftReserve = std::min(reserve[2], result.body.w - 1);
-    const int rightReserve = std::min(reserve[3], result.body.w - leftReserve - 1);
-    result.body.x += leftReserve; result.body.w -= leftReserve + rightReserve;
-    result.body.y += topReserve; result.body.h -= topReserve + bottomReserve;
-    const int trimTop = std::clamp(cutTop, 0, result.body.h - 1);
-    const int trimBottom = std::clamp(cutBottom, 0, result.body.h - trimTop - 1);
-    result.body.y += trimTop; result.body.h -= trimTop + trimBottom;
-    std::array<int, 3> heights{}, counts{};
-    for (const auto& item : items) {
-        if (item.docked) continue;
-        const int group = (int)item.vertical;
-        heights[group] += std::max(1, item.height) + (counts[group]++ ? gap : 0);
+    std::array<SDL_Rect, 3> zones;
+    for (int column = 0; column < 3; ++column) {
+        zones[column] = originalBody;
+        if (hasSideZones) {
+            zones[column].x += originalBody.w * column / 3;
+            zones[column].w = std::max(1, originalBody.w * (column + 1) / 3 - originalBody.w * column / 3);
+        }
+        auto viewport = zones[column];
+        const int top = std::min(dockHeights[column] + (dockCounts[column] ? gap : 0), viewport.h - 1);
+        const int bottom = std::min(dockHeights[6 + column] + (dockCounts[6 + column] ? gap : 0), viewport.h - top - 1);
+        viewport.y += top; viewport.h -= top + bottom;
+        const int trimTop = std::clamp(cutTop, 0, viewport.h - 1);
+        const int trimBottom = std::clamp(cutBottom, 0, viewport.h - trimTop - 1);
+        viewport.y += trimTop; viewport.h -= trimTop + trimBottom;
+        result.columns[column] = viewport;
     }
-    int total = 0, groups = 0;
-    for (int i = 0; i < 3; ++i) {
-        if (counts[i]) { total += heights[i]; ++groups; }
+    result.body = result.columns[(int)Align::Center];
+    std::array<std::array<int, 3>, 3> heights{}, counts{}, y{};
+    std::array<int, 3> contentHeights{}, scrollLimits{};
+    for (const auto& item : items) if (!item.docked) {
+        const int column = (int)item.horizontal, group = (int)item.vertical;
+        heights[column][group] += std::max(1, item.height) + (counts[column][group]++ ? gap : 0);
     }
-    total += std::max(0, groups - 1) * gap;
-    result.contentHeight = std::max(total, result.body.h);
-    result.maxScroll = std::max(0, total - result.body.h);
-    const int centerMin = counts[0] ? heights[0] + gap : 0;
-    const int centerMax = result.contentHeight - heights[1] - (counts[2] ? heights[2] + gap : 0);
-    std::array<int, 3> y{0,
-        std::clamp((result.contentHeight - heights[1]) / 2, centerMin, std::max(centerMin, centerMax)),
-        result.contentHeight - heights[2]};
+    for (int column = 0; column < 3; ++column) {
+        int total = 0, groups = 0;
+        for (int group = 0; group < 3; ++group) if (counts[column][group]) {
+            total += heights[column][group]; ++groups;
+        }
+        total += std::max(0, groups - 1) * gap;
+        contentHeights[column] = std::max(total, result.columns[column].h);
+        scrollLimits[column] = std::max(0, total - result.columns[column].h);
+        result.maxScroll = std::max(result.maxScroll, scrollLimits[column]);
+        const int centerMin = counts[column][0] ? heights[column][0] + gap : 0;
+        const int centerMax = contentHeights[column] - heights[column][1] -
+            (counts[column][2] ? heights[column][2] + gap : 0);
+        y[column] = {0, std::clamp((contentHeights[column] - heights[column][1]) / 2,
+            centerMin, std::max(centerMin, centerMax)), contentHeights[column] - heights[column][2]};
+    }
+    result.contentHeight = result.body.h + result.maxScroll;
     std::array<int, 9> used{};
     for (const auto& item : items) {
+        const int column = (int)item.horizontal;
         result.fixed.push_back(item.docked);
+        result.scrollLimits.push_back(item.docked ? 0 : scrollLimits[column]);
         if (item.docked) {
             const int group = anchor(item);
-            const int groupWidth = std::clamp(dockWidths[group], 1, originalBody.w);
+            const auto& zone = zones[column];
+            const int groupWidth = std::clamp(dockWidths[group], 1, zone.w);
             const int groupHeight = std::max(1, dockHeights[group]);
             const int width = std::clamp(item.width, 1, groupWidth);
             const int height = std::max(1, item.height);
-            const int groupX = originalBody.x + offset(originalBody.w - groupWidth, item.horizontal);
-            const int groupY = originalBody.y + offset(originalBody.h - groupHeight, item.vertical);
+            const int groupX = zone.x + offset(zone.w - groupWidth, item.horizontal);
+            const int groupY = zone.y + offset(zone.h - groupHeight, item.vertical);
             result.items.push_back({groupX + offset(groupWidth - width, item.horizontal),
                 groupY + used[group], width, height});
-            // Allow the existing hover animation to grow a few pixels without
-            // clipping its border, while keeping drawing inside the menu.
-            const int clipX = std::max(originalBody.x, groupX - gap / 2);
-            const int clipY = std::max(originalBody.y, groupY - gap / 2);
-            SDL_Rect clip{clipX, clipY,
-                std::max(0, std::min(originalBody.x + originalBody.w, groupX + groupWidth + gap / 2) - clipX),
-                std::max(0, std::min(originalBody.y + originalBody.h, groupY + groupHeight + gap / 2) - clipY)};
-            result.clips.push_back(clip);
+            // Middle controls obey only their own column's header/footer cuts.
+            const auto& bounds = item.vertical == Align::Center ? result.columns[column] : zone;
+            const int clipX = std::max(bounds.x, groupX - gap / 2);
+            const int clipY = std::max(bounds.y, groupY - gap / 2);
+            result.clips.push_back({clipX, clipY,
+                std::max(0, std::min(bounds.x + bounds.w, groupX + groupWidth + gap / 2) - clipX),
+                std::max(0, std::min(bounds.y + bounds.h, groupY + groupHeight + gap / 2) - clipY)});
             used[group] += height + gap;
             continue;
         }
-        result.clips.push_back(result.body);
+        const auto& viewport = result.columns[column];
+        result.clips.push_back(viewport);
         const int group = (int)item.vertical;
-        const int width = std::clamp(item.width, 1, result.body.w);
+        const int width = std::clamp(item.width, 1, viewport.w);
         const int height = std::max(1, item.height);
-        result.items.push_back({result.body.x + offset(result.body.w - width, item.horizontal),
-                                result.body.y + y[group], width, height});
-        y[group] += height + gap;
+        result.items.push_back({viewport.x + offset(viewport.w - width, item.horizontal),
+            viewport.y + y[column][group], width, height});
+        y[column][group] += height + gap;
     }
     return result;
 }
@@ -165,7 +174,8 @@ inline bool contains(const SDL_Rect& rect, float x, float y) {
 }
 
 inline SDL_Rect itemRect(const Layout& layout, size_t item, float scroll) {
-    return scrolled(layout.items[item], layout.fixed[item] ? 0.0f : scroll);
+    return scrolled(layout.items[item], layout.fixed[item] ? 0.0f :
+        std::clamp(scroll, 0.0f, (float)layout.scrollLimits[item]));
 }
 
 inline bool hit(const Layout& layout, size_t item, float x, float y, float scroll) {
@@ -177,9 +187,13 @@ inline float reveal(const Layout& layout, size_t item, float scroll) {
     if (item >= layout.items.size()) return std::clamp(scroll, 0.0f, (float)layout.maxScroll);
     if (layout.fixed[item]) return std::clamp(scroll, 0.0f, (float)layout.maxScroll);
     const auto& rect = layout.items[item];
-    if (rect.h >= layout.body.h || rect.y - scroll < layout.body.y) scroll = (float)(rect.y - layout.body.y);
-    else if (rect.y + rect.h - scroll > layout.body.y + layout.body.h)
-        scroll = (float)(rect.y + rect.h - layout.body.y - layout.body.h);
-    return std::clamp(scroll, 0.0f, (float)layout.maxScroll);
+    const auto& viewport = layout.clips[item];
+    const float effective = std::clamp(scroll, 0.0f, (float)layout.scrollLimits[item]);
+    float next = effective;
+    if (rect.h >= viewport.h || rect.y - next < viewport.y) next = (float)(rect.y - viewport.y);
+    else if (rect.y + rect.h - next > viewport.y + viewport.h)
+        next = (float)(rect.y + rect.h - viewport.y - viewport.h);
+    return next == effective ? std::clamp(scroll, 0.0f, (float)layout.maxScroll) :
+        std::clamp(next, 0.0f, (float)layout.scrollLimits[item]);
 }
 }
