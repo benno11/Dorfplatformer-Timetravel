@@ -10,5 +10,5 @@ endwhen
 when hardmode_unlocked
 button "Hardmode" menu hardmode
 endwhen
-snap left bottom
+snap center bottom
 button "Back" menu mainplay

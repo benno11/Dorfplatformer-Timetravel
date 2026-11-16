@@ -15,5 +15,5 @@ otherwise
 text "Campaign progress unavailable"
 endwhen
 endfor
-snap left bottom
+snap center bottom
 button "Back" menu achievements

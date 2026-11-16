@@ -1,4 +1,4 @@
-cut 8 8
+cut 8 7
 center
 title "Local Levels"
 text "Filter: ${level_filter_label}  Page ${level_page_number}/${level_page_count}"
@@ -15,13 +15,15 @@ otherwise
 text "No levels match this filter."
 endwhen
 endwhen
+snap bottom left
 button "Refresh" refresh_levels local
 button "Previous Page" level_page local:prev
 button "Next Page" level_page local:next
 button "Filter: All" level_filter local:all
+snap bottom right
 button "Filter: Easy" level_filter local:easy
 button "Filter: Medium" level_filter local:medium
 button "Filter: Hard" level_filter local:hard
 button "Filter: Unrated" level_filter local:unrated
-snap left bottom
+snap center bottom
 button "Back" menu mainedit

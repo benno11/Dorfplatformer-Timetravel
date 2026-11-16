@@ -1,0 +1,12 @@
+cut 8 8
+center
+# DF Slim Menu: about (press any information row to copy its value)
+title "About"
+button "Version ID: ${about_version_id}" copy "${about_version_id}"
+button "SDL: ${about_sdl_version}" copy "${about_sdl_version}"
+button "Build: ${about_build_uuid}" copy "${about_build_uuid}"
+button "Build Time: ${about_build_time}" copy "${about_build_time}"
+button "Timezone: ${about_build_timezone}" copy "${about_build_timezone}"
+button "Hardware" menu settingsaboutspecs
+snap center bottom
+button "Back" menu settingsabout

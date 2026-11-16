@@ -27,5 +27,5 @@ button "Reset Hair Shape" character reset_hair_parts
 otherwise
 text "Enable Experimental Features in General Settings."
 endwhen
-snap left bottom
+snap center bottom
 button "Back" menu charactercreator

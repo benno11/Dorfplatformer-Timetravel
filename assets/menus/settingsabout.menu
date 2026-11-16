@@ -2,27 +2,9 @@ cut 8 8
 center
 # DF Slim Menu: about (press any information row to copy its value)
 title "About"
-text "${clipboard_status}"
 button "Game: ${about_game_name}" copy "${about_game_name}"
 button "Version: ${about_version}" copy "${about_version}"
 button "Sandbox Version: ${about_sandbox_version}" copy "${about_sandbox_version}"
-button "Version ID: ${about_version_id}" copy "${about_version_id}"
-button "SDL: ${about_sdl_version}" copy "${about_sdl_version}"
-button "Platform: ${about_platform}" copy "${about_platform}"
-button "Renderer: ${about_renderer}" copy "${about_renderer}"
-button "Window: ${about_window_size}" copy "${about_window_size}"
-button "Base: ${about_base_size}" copy "${about_base_size}"
-button "UI Scale: ${about_ui_scale}" copy "${about_ui_scale}"
-button "Edge Padding: ${about_ui_edge_padding}" copy "${about_ui_edge_padding}"
-button "Video: ${about_video_driver}" copy "${about_video_driver}"
-button "Audio: ${about_audio_driver}" copy "${about_audio_driver}"
-button "CPU Cores: ${about_cpu_cores}" copy "${about_cpu_cores}"
-button "RAM: ${about_system_ram}" copy "${about_system_ram}"
-button "Build: ${about_build_uuid}" copy "${about_build_uuid}"
-button "Build Time: ${about_build_time}" copy "${about_build_time}"
-button "Timezone: ${about_build_timezone}" copy "${about_build_timezone}"
-button "Updater: ${about_updater_status}" copy "${about_updater_status}"
-button "Open Updater" menu settingsupdater
-button "SDL Revision" menu settingsaboutrevision
-snap left bottom
+button "Advanced" menu settingsaboutadvanced
+snap center bottom
 button "Back" menu mainsetting

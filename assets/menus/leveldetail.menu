@@ -6,27 +6,34 @@ otherwise
 title "Local Level"
 endwhen
 when detail_available
+snap center top
 text "Name: ${detail_label}"
-text "${detail_difficulty}" difficulty_badge
+snap center center
 when detail_online
-text "Source: online"
+text "${detail_difficulty}" difficulty_badge
+snap center top
 text "Downloads: ${detail_downloads}  Likes: +${detail_likes} / -${detail_dislikes}"
 otherwise
+snap center top
 text "Verified: ${detail_verified}"
 endwhen
+snap center center
 text "${level_detail_status}"
 button "Play" start "${detail_path}"
 when detail_online
 button "Update Download" update_online_level "${detail_index}"
+snap center bottom
 button "Like" vote_online_level "${detail_index}:like"
 button "Dislike" vote_online_level "${detail_index}:dislike"
 button "Clear Vote" vote_online_level "${detail_index}:clear"
+snap center center
 when account_is_mod
 button "Set Difficulty" rate_online_level "${detail_index}"
 endwhen
 otherwise
 button "Edit" edit_level "${detail_index}"
 button "Rename" rename_level "${detail_index}"
+snap center bottom
 button "Resize" resize_level "${detail_index}"
 button "Upload" upload_level "${detail_index}"
 button "Delete" delete_level "${detail_index}"
@@ -34,5 +41,5 @@ endwhen
 otherwise
 text "Level no longer available."
 endwhen
-snap left bottom
+snap center bottom
 button "Back" menu "${detail_back}"

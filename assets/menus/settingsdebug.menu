@@ -10,5 +10,5 @@ button "Player Hitbox: ${show_player_hitbox}" toggle show_player_hitbox
 button "Debug HUD: ${show_debug_view}" toggle show_debug_view
 button "Hide Unknown Objects: ${hide_unknown_object_types}" toggle hide_unknown_object_types
 text "Free camera: Ctrl+F10. Pan: WASD/arrows. Shift: fast. Home: recenter."
-snap left bottom
+snap center bottom
 button "Back" menu mainsetting

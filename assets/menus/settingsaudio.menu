@@ -8,5 +8,5 @@ button "Mute All: ${mute_all_audio}" toggle mute_all_audio
 center
 slider "Music Volume" music_volume
 slider "Sound Effects Volume" sfx_volume
-snap left bottom
+snap center bottom
 button "Back" menu mainsetting

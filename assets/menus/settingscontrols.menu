@@ -10,5 +10,5 @@ button "Move Right: ${move_right}" bind move_right
 button "Slide: ${slide}" bind slide
 button "Jump: ${jump}" bind jump
 button "Pause: ${pause}" bind pause
-snap left bottom
+snap center bottom
 button "Back" menu mainsetting

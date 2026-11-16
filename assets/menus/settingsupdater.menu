@@ -35,5 +35,5 @@ when updater_notes
 text "Release Notes:"
 text "${updater_notes}" wrap
 endwhen
-snap left bottom
+snap center bottom
 button "Back" menu mainsetting

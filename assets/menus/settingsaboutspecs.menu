@@ -1,0 +1,16 @@
+cut 8 8
+center
+# DF Slim Menu: about "Hardware" (press any information row to copy its value)
+title "About"
+button "Platform: ${about_platform}" copy "${about_platform}"
+button "Renderer: ${about_renderer}" copy "${about_renderer}"
+button "Window: ${about_window_size}" copy "${about_window_size}"
+button "Base: ${about_base_size}" copy "${about_base_size}"
+button "UI Scale: ${about_ui_scale}" copy "${about_ui_scale}"
+button "Edge Padding: ${about_ui_edge_padding}" copy "${about_ui_edge_padding}"
+button "Video: ${about_video_driver}" copy "${about_video_driver}"
+button "Audio: ${about_audio_driver}" copy "${about_audio_driver}"
+button "CPU Cores: ${about_cpu_cores}" copy "${about_cpu_cores}"
+button "RAM: ${about_system_ram}" copy "${about_system_ram}"
+snap center bottom
+button "Back" menu settingsaboutadvanced

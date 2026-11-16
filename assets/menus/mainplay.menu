@@ -8,7 +8,6 @@ text "Active slot: ${active_save_slot}"
 button "Slot 1: ${save_slot_1_status}" save_slot 1
 button "Slot 2: ${save_slot_2_status}" save_slot 2
 button "Slot 3: ${save_slot_3_status}" save_slot 3
-snap right center
 button "Save Settings" menu savesettings
-snap left bottom
+snap center bottom
 button "Back" back

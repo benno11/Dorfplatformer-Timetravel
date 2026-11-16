@@ -22,5 +22,5 @@ button "Filter: Easy" level_filter online:easy
 button "Filter: Medium" level_filter online:medium
 button "Filter: Hard" level_filter online:hard
 button "Filter: Unrated" level_filter online:unrated
-snap left bottom
+snap center bottom
 button "Back" menu mainedit

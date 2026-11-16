@@ -13,8 +13,8 @@ set ground "Main Ground Tiles"
 set boss_barrier "Boss Barrier (98)"
 control resume "RESUME" resume
 control save_resume "SAVE & RESUME" save_resume
+control exit "SAVE & PLAY" save_play
 control save_exit "SAVE & EXIT" save_exit
-control exit "EXIT" exit
 control config "LEVEL CONFIG" config
 control object_config "CONFIGURE OBJECT" object_config
 control pan "PAN" pan

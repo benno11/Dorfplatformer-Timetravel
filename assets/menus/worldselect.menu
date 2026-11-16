@@ -8,5 +8,5 @@ endfor
 otherwise
 text "Reach an ending to unlock World Select."
 endwhen
-snap left bottom
+snap center bottom
 button "Back" menu saveplay

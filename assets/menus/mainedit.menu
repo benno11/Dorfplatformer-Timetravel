@@ -5,5 +5,5 @@ title "Level Browser"
 text "Browse local and online levels."
 button "Local Levels" menu locallevels
 button "Online Levels" menu onlinelevels
-snap left bottom
+snap center bottom
 button "Back" back

@@ -9,5 +9,5 @@ endfor
 otherwise
 text "Reach the good ending to unlock Hardmode."
 endwhen
-snap left bottom
+snap center bottom
 button "Back" menu hardmode

@@ -27,5 +27,6 @@ button "Restart Game" mod_restart
 otherwise
 text "Native mod loader is unavailable."
 endwhen
-snap left bottom
-button "Back" menu mainsetting
+button "Logging" menu settingslogging
+snap center bottom
+button "Back" menu settingsextras

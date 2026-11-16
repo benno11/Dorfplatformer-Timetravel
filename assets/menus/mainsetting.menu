@@ -11,12 +11,8 @@ if debugger_attached skip 1
 button "Debug" menu settingsdebug
 button "Controls" menu settingscontrols
 button "Extra Options" menu settingsextras
-if show_experimental_features skip 1
-button "Character Creator [Experimental]" menu charactercreator
-button "Mods" menu settingsmods
 button "Achievements" menu achievements
-button "Logging" menu settingslogging
 button "About" menu settingsabout
 button "Updater" menu settingsupdater
-snap left bottom
+snap center bottom
 button "Back" back

@@ -6,8 +6,9 @@ text "${achievement_unlocked}/${achievement_count} unlocked"
 text "Shared across all save slots."
 center
 foreach achievements
-button "[${row.state}] ${row.title}" menu "achievement:${row.id}"
+button "[${row.state}] ${row.title}, with   ${row.requirements}" copy "${row.id}"
 endfor
-text "World buttons: activate the buttons in areas 1 and 2."
-snap left bottom
+
+
+snap center bottom
 button "Back" back

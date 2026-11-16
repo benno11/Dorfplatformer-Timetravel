@@ -10,5 +10,5 @@ button "View Game Log" menu gamelog
 when log_path
 button "Copy Log File Path" copy "${log_path}"
 endwhen
-snap left bottom
-button "Back" menu mainsetting
+snap center bottom
+button "Back" menu settingsmods

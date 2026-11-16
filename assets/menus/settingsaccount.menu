@@ -15,5 +15,5 @@ if account_signed_in skip 1
 button "Log Out" account_logout
 if account_needs_repair skip 1
 button "Repair Login" account_repair
-snap left bottom
+snap center bottom
 button "Back" menu mainsetting

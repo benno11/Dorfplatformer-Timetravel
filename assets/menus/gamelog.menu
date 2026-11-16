@@ -13,5 +13,5 @@ when has_log_lines
 otherwise
 text "No log messages recorded."
 endwhen
-snap left bottom
+snap center bottom
 button "Back" menu settingslogging

@@ -38,5 +38,5 @@ button "Reset to Default Character" character reset
 otherwise
 text "Enable Experimental Features in General Settings."
 endwhen
-snap left bottom
+snap center bottom
 button "Back" menu mainsetting
