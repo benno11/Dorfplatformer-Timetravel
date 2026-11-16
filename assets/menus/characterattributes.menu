@@ -1,0 +1,17 @@
+cut 8 8
+center
+title "Character Attributes [Experimental]"
+when character_available
+text "Movement stats apply while the custom character is enabled."
+button "Visual Build: ${visual_build}" character build
+button "Part Springiness: ${attribute_springiness}%" character springiness
+button "Run Speed: ${attribute_speed}%" character speed
+button "Acceleration: ${attribute_acceleration}%" character acceleration
+button "Jump Strength: ${attribute_jump}%" character jump
+button "Gravity: ${attribute_gravity}%" character gravity
+button "Reset Attributes" character reset_attributes
+otherwise
+text "Enable Experimental Features in General Settings."
+endwhen
+snap left bottom
+button "Back" menu charactercreator

@@ -1,0 +1,6 @@
+title "RENAME LOCAL LEVEL"
+set field "NAME: "
+set panel_width 520
+set panel_height 220
+control ok "OK" apply
+control cancel "CANCEL" cancel

@@ -1,0 +1,3 @@
+title "Connecting"
+set cancelling "Cancelling..."
+set cancel_hint "  (Esc to cancel)"

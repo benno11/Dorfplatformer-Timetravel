@@ -1,0 +1,31 @@
+cut 8 8
+center
+title "Native Mods"
+text "Mod API 1.1 - ${mods_platform}"
+when mod_status
+text "${mod_status}"
+otherwise
+text "Changes apply after restarting the game."
+endwhen
+when mods_available
+foreach mods
+button "${row.name} ${row.version} [${row.state}]" mod_toggle "${row.id}" "${row.icon}"
+text "${row.status}"
+endfor
+when has_mods
+otherwise
+text "No mods installed. Add a folder containing mod.json."
+endwhen
+when android
+button "Import Mod ZIP" mod_import
+otherwise
+button "Open Mods Folder" mod_folder
+endwhen
+button "Copy Mods Folder Path" mod_path
+button "Scan for Installed Mods" mod_scan
+button "Restart Game" mod_restart
+otherwise
+text "Native mod loader is unavailable."
+endwhen
+snap left bottom
+button "Back" menu mainsetting

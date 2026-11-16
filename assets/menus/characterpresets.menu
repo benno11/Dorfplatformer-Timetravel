@@ -1,0 +1,17 @@
+cut 8 8
+center
+title "Placeholder Characters [Experimental]"
+when character_available
+text "Choose a starter character. All parts remain editable."
+foreach character_presets
+when row.selected
+button "${row.name} [Selected]" character "preset:${row.id}"
+otherwise
+button "${row.name}" character "preset:${row.id}"
+endwhen
+endfor
+otherwise
+text "Enable Experimental Features in General Settings."
+endwhen
+snap left bottom
+button "Back" menu charactercreator

@@ -1,0 +1,31 @@
+cut 8 8
+center
+title "Custom Hairstyle [Experimental]"
+when character_available
+text "Shape the built-in hair parts. Select a value to cycle; changes save automatically." wrap
+when hair_parts_selected
+button "Custom Hair Parts [Selected]" character use_hair_parts
+otherwise
+button "Use Custom Hair Parts" character use_hair_parts
+endwhen
+when uncap_hair
+button "Override Hair Length Limit: ON" character uncap_hair_length
+text "Fringe, back, and side lengths grow up to ${hair_limit}. Minimum: 0 (hidden)." wrap
+otherwise
+button "Override Hair Length Limit: OFF" character uncap_hair_length
+text "Fringe, back, and side length limit: ${hair_limit}."
+endwhen
+foreach hair_shapes
+button "${row.name}: ${row.value}" character "hair_shape:${row.id}"
+when row.shortenable
+button "Shorten ${row.name} (-1)" character "hair_shorten:${row.id}"
+endwhen
+endfor
+button "Hair Color: ${hair_color}" character hair_color
+button "Hair Texture: ${hair_texture}" character texture:hair
+button "Reset Hair Shape" character reset_hair_parts
+otherwise
+text "Enable Experimental Features in General Settings."
+endwhen
+snap left bottom
+button "Back" menu charactercreator

@@ -1,0 +1,12 @@
+cut 8 8
+center
+title "World Select"
+when world_select_unlocked
+foreach worlds
+button "World ${row.number}" world "${row.number}"
+endfor
+otherwise
+text "Reach an ending to unlock World Select."
+endwhen
+snap left bottom
+button "Back" menu saveplay

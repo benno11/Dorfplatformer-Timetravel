@@ -1,0 +1,10 @@
+title "RESIZE LOCAL LEVEL"
+set grow_title "GROW LOCAL LEVEL"
+set width "WIDTH: "
+set height "HEIGHT: "
+set instructions "5-400 TILES; KEEPS TOP-LEFT AREA"
+set panel_width 520
+set panel_height 280
+control apply "APPLY" apply
+control grow "GROW" grow
+control cancel "CANCEL" cancel

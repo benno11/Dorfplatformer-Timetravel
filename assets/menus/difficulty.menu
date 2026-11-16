@@ -1,0 +1,6 @@
+title "Select Difficulty"
+control unrated "Unrated" difficulty 0
+control apply "Apply" apply
+control cancel "Cancel" cancel
+set instructions "1-3 Easy   4-6 Medium   7-9 Hard"
+set saving "Saving..."

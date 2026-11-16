@@ -1,0 +1,38 @@
+cut 8 8
+center
+when detail_online
+title "Online Level"
+otherwise
+title "Local Level"
+endwhen
+when detail_available
+text "Name: ${detail_label}"
+text "${detail_difficulty}" difficulty_badge
+when detail_online
+text "Source: online"
+text "Downloads: ${detail_downloads}  Likes: +${detail_likes} / -${detail_dislikes}"
+otherwise
+text "Verified: ${detail_verified}"
+endwhen
+text "${level_detail_status}"
+button "Play" start "${detail_path}"
+when detail_online
+button "Update Download" update_online_level "${detail_index}"
+button "Like" vote_online_level "${detail_index}:like"
+button "Dislike" vote_online_level "${detail_index}:dislike"
+button "Clear Vote" vote_online_level "${detail_index}:clear"
+when account_is_mod
+button "Set Difficulty" rate_online_level "${detail_index}"
+endwhen
+otherwise
+button "Edit" edit_level "${detail_index}"
+button "Rename" rename_level "${detail_index}"
+button "Resize" resize_level "${detail_index}"
+button "Upload" upload_level "${detail_index}"
+button "Delete" delete_level "${detail_index}"
+endwhen
+otherwise
+text "Level no longer available."
+endwhen
+snap left bottom
+button "Back" menu "${detail_back}"

@@ -1,0 +1,42 @@
+cut 8 8
+center
+title "Character Creator [Experimental]"
+when character_available
+when character_file_status
+text "${character_file_status}" wrap
+otherwise
+text "Changes save automatically. Select a part to cycle."
+endwhen
+when character_enabled
+button "Use Custom Character: ON" character enabled
+otherwise
+button "Use Custom Character: OFF" character enabled
+endwhen
+button "Import Character..." character_file import
+button "Export Character..." character_file export
+button "Load Example Characters" character_examples
+when sprite_layers
+text "Sprite layers: ${sprite_name} (original colors and hair)"
+button "Switch to Editable Procedural Parts" character procedural_parts
+endwhen
+button "Placeholder Characters" menu characterpresets
+button "Character Attributes" menu characterattributes
+button "Part Textures" menu charactertextures
+button "Skin: ${skin_color}" character skin
+button "Hair Style: ${hair_style}" character hair_style
+button "Customize Built-in Hair..." menu characterhair
+button "Import Custom Hairstyle..." character_import custom_hair
+when has_custom_hair
+button "Remove Imported Hairstyle" character clear_hair
+endwhen
+button "Hair Color: ${hair_color}" character hair_color
+button "Shirt: ${shirt_color}" character shirt
+button "Pants: ${pants_color}" character pants
+button "Headwear: ${hat_style}" character hat
+button "Accent: ${accent_color}" character accent
+button "Reset to Default Character" character reset
+otherwise
+text "Enable Experimental Features in General Settings."
+endwhen
+snap left bottom
+button "Back" menu mainsetting

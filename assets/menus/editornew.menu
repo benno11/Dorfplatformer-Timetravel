@@ -1,0 +1,9 @@
+title "CREATE NEW LEVEL"
+set name "NAME: "
+set width "WIDTH: "
+set height "HEIGHT: "
+set instructions "Touch +/- or use arrows. ENTER confirms."
+set panel_width 520
+set panel_height 320
+control create "CREATE" create
+control cancel "CANCEL" cancel

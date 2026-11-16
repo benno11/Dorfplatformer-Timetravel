@@ -1,0 +1,9 @@
+title "Level Config"
+set world "World"
+set area "Area"
+set time "Time"
+set auto "Auto"
+set bounce "Bouncy tile 12: "
+set instructions "Auto keeps the original level setting. Jump overrides tile 12."
+control apply "Apply" apply
+control cancel "Cancel" cancel

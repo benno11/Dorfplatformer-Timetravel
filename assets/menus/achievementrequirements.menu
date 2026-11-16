@@ -1,0 +1,19 @@
+cut 8 8
+center
+title "${achievement_title}"
+snap center top
+when achievement_earned
+text "Achievement unlocked"
+otherwise
+text "In progress"
+endwhen
+center
+foreach requirements
+when row.available
+text "${row.label}: ${row.current}/${row.total}"
+otherwise
+text "Campaign progress unavailable"
+endwhen
+endfor
+snap left bottom
+button "Back" menu achievements

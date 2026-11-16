@@ -1,0 +1,10 @@
+title "CLOSE GAME?"
+control resume "RESUME" resume
+control close "CLOSE" quit
+set width 360
+set height 180
+set button_y 94
+set button_width 140
+set button_height 56
+set resume_x 26
+set close_x 194

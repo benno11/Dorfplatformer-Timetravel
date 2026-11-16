@@ -1,0 +1,17 @@
+cut 8 8
+center
+title "Game Log"
+button "Refresh" menu gamelog
+when log_path
+button "Copy Log File Path" copy "${log_path}"
+endwhen
+text "Recent messages (logging must be enabled)."
+foreach log_lines
+text "${row.text}" literal_log
+endfor
+when has_log_lines
+otherwise
+text "No log messages recorded."
+endwhen
+snap left bottom
+button "Back" menu settingslogging

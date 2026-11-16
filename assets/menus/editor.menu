@@ -1,0 +1,21 @@
+title "PAUSED"
+set autosave "AUTO SAVE EVERY 15 SECONDS"
+set configure_hint "TAP OBJECT TO CONFIGURE"
+set pan_hint "DRAG TO PAN"
+set delete_hint "DELETE MODE"
+set place_hint "PLACE / OVERRIDE"
+set keys_hint "F2: LEVEL  F3: OBJECT  ESC: MENU"
+set tile_short "TILE"
+set tiles "TILES"
+set object_short "OBJ"
+set objects "OBJECTS"
+set ground "Main Ground Tiles"
+set boss_barrier "Boss Barrier (98)"
+control resume "RESUME" resume
+control save_resume "SAVE & RESUME" save_resume
+control save_exit "SAVE & EXIT" save_exit
+control exit "EXIT" exit
+control config "LEVEL CONFIG" config
+control object_config "CONFIGURE OBJECT" object_config
+control pan "PAN" pan
+control delete "DELETE" delete

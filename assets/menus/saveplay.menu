@@ -1,0 +1,14 @@
+cut 8 8
+center
+title "Save Slot ${save_slot_number}"
+when save_exists
+button "Continue Adventure" saved
+endwhen
+when world_select_unlocked
+button "World Select" menu worldselect
+endwhen
+when hardmode_unlocked
+button "Hardmode" menu hardmode
+endwhen
+snap left bottom
+button "Back" menu mainplay

@@ -1,6 +1,7 @@
 #include "EditionPolicy.h"
 #include "BuildInfo.h"
 #include "FrontendMenu.h"
+#include "MenuScriptTemplate.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3_image/SDL_image.h>
@@ -289,16 +290,19 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx, bool settingsOnly) {
         return false;
 #endif
     };
+    const auto titleMenu = MenuScript::view(ReadTextFile("assets/menus/title.menu"));
+    const auto quitMenu = MenuScript::view(ReadTextFile("assets/menus/quitconfirm.menu"));
+    const char* titleControls[] = {"settings", "play", "editor"};
     auto mainMenuBtnRect = [&](int idx) -> SDL_Rect {
         const int count = levelSelectEnabled ? 3 : 2;
         const float canvas = menuCanvasScale();
         const float s = mainMenuScale();
-        const int btnW = std::max(56, (int)std::lround(112.0f * canvas * s));
-        const int btnH = std::max(56, (int)std::lround(112.0f * canvas * s));
-        const int step = std::max(btnW + 8, (int)std::lround((112.0f + 44.0f) * canvas * s));
-        const int centerY = (int)std::lround(menuCanvasOriginY() + 266.0f * canvas);
+        const int btnW = std::max(56, (int)std::lround(titleMenu.number("button_size") * canvas * s));
+        const int btnH = std::max(56, (int)std::lround(titleMenu.number("button_size") * canvas * s));
+        const int step = std::max(btnW + 8, (int)std::lround((titleMenu.number("button_size") + titleMenu.number("button_gap")) * canvas * s));
+        const int centerY = (int)std::lround(menuCanvasOriginY() + titleMenu.number("button_center_y") * canvas);
         const float groupOffset = (float)idx - (float)(count - 1) * 0.5f;
-        const int centerX = (int)std::lround(menuCanvasOriginX() + 480.0f * canvas + groupOffset * (float)step);
+        const int centerX = (int)std::lround(menuCanvasOriginX() + titleMenu.number("canvas_center_x") * canvas + groupOffset * (float)step);
         return SDL_Rect{centerX - btnW / 2, centerY - btnH / 2, btnW, btnH};
     };
     auto mainMenuButtonCount = [&]() -> int {
@@ -306,25 +310,25 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx, bool settingsOnly) {
     };
     auto quitModalRect = [&]() -> SDL_Rect {
         const float s = uiButtonScale();
-        SDL_Rect base{ctx.baseScreenW / 2 - 180, ctx.baseScreenH / 2 - 90, 360, 180};
+        SDL_Rect base{ctx.baseScreenW / 2 - (int)quitMenu.number("width") / 2, ctx.baseScreenH / 2 - (int)quitMenu.number("height") / 2, (int)quitMenu.number("width"), (int)quitMenu.number("height")};
         return scaleRectCentered(base, s);
     };
     auto quitResumeBtnRect = [&](const SDL_Rect& modal) -> SDL_Rect {
         const float s = uiButtonScale();
         return SDL_Rect{
-            modal.x + (int)std::lround(26.0f * s),
-            modal.y + (int)std::lround(94.0f * s),
-            std::max(40, (int)std::lround(140.0f * s)),
-            std::max(20, (int)std::lround(56.0f * s))
+            modal.x + (int)std::lround(quitMenu.number("resume_x") * s),
+            modal.y + (int)std::lround(quitMenu.number("button_y") * s),
+            std::max(40, (int)std::lround(quitMenu.number("button_width") * s)),
+            std::max(20, (int)std::lround(quitMenu.number("button_height") * s))
         };
     };
     auto quitCloseBtnRect = [&](const SDL_Rect& modal) -> SDL_Rect {
         const float s = uiButtonScale();
         return SDL_Rect{
-            modal.x + (int)std::lround(194.0f * s),
-            modal.y + (int)std::lround(94.0f * s),
-            std::max(40, (int)std::lround(140.0f * s)),
-            std::max(20, (int)std::lround(56.0f * s))
+            modal.x + (int)std::lround(quitMenu.number("close_x") * s),
+            modal.y + (int)std::lround(quitMenu.number("button_y") * s),
+            std::max(40, (int)std::lround(quitMenu.number("button_width") * s)),
+            std::max(20, (int)std::lround(quitMenu.number("button_height") * s))
         };
     };
     SDL_Texture* mainMenuTex = loadTextureSafe(ctx.ren, "assets/Sheets/DF_Main_menu-uhd.png", nullptr);
@@ -568,14 +572,18 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx, bool settingsOnly) {
         return false;
     };
     auto mainMenuSelectionAction = [&](int selection) {
-        return runScriptMenu(selection == 0 ? "mainsetting" : selection == 1 ? "mainplay" : "mainedit");
+        if (selection < 0 || selection >= 3) return false;
+        const auto& control = titleMenu.control(titleControls[selection]);
+        if (control.action == "quit") { running = false; return false; }
+        return control.action == "menu" && runScriptMenu(control.target);
     };
-    auto mainMenuLabelForIndex = [](int index) -> std::string {
-        return index == 0 ? "SETTINGS" : index == 1 ? "PLAY" : "EDITOR";
+    auto mainMenuLabelForIndex = [&](int index) -> std::string {
+        return index >= 0 && index < 3 ? titleMenu.control(titleControls[index]).label : std::string();
     };
     if (settingsOnly) {
         ctx.menuSession = CreateSlimMenuSession();
-        runScriptMenu("mainsetting");
+        const auto pauseView = MenuScript::view(ReadTextFile("assets/menus/pause.menu"));
+        runScriptMenu(pauseView.control("settings").target);
         cleanupMenuAssets();
         return running ? FrontendAction::StartGame : FrontendAction::Quit;
     }
@@ -658,7 +666,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx, bool settingsOnly) {
                     if (SDL_PointInRect(&point, &close)) { closeMenuSel = 1; accept = true; }
                 }
                 if (accept) {
-                    if (closeMenuSel == 1) running = false;
+                    if (quitMenu.control(closeMenuSel == 1 ? "close" : "resume").action == "quit") running = false;
                     closeMenuOpen = false;
                     blockMenuInput();
                 }
@@ -752,9 +760,9 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx, bool settingsOnly) {
                 btnSprite = getMenuFrame("button_generic", btnSpriteTex);
                 btnSpriteIsGeneric = (btnSprite != nullptr);
             }
-            const Frame* playLogo = getMenuFrame("play_btn_logo", playLogoTex);
-            const Frame* settingsLogo = getMenuFrame("settings_btn_logo", settingsLogoTex);
-            const Frame* editorLogo = getMenuFrame("Editor_logo", editorLogoTex);
+            const Frame* playLogo = getMenuFrame(titleMenu.control("play").sprite.c_str(), playLogoTex);
+            const Frame* settingsLogo = getMenuFrame(titleMenu.control("settings").sprite.c_str(), settingsLogoTex);
+            const Frame* editorLogo = getMenuFrame(titleMenu.control("editor").sprite.c_str(), editorLogoTex);
             if (mainLogoTex && mainLogo) {
                 const float canvas = menuCanvasScale();
                 const float s = mainMenuScale();
@@ -882,7 +890,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx, bool settingsOnly) {
                     SDL_RenderDrawRect(ctx.ren, &modal);
                 }
                 BeginNativeTextOverlay(ctx.ren, ctx.baseScreenW, ctx.baseScreenH, presentDst);
-                DrawGameText(ctx.ren, modal.x + (modal.w - MeasureTextWidth(2, "CLOSE GAME?")) / 2, modal.y + (int)std::lround(18.0f * uiButtonScale()), 2, "CLOSE GAME?");
+                DrawGameText(ctx.ren, modal.x + (modal.w - MeasureTextWidth(2, quitMenu.title)) / 2, modal.y + (int)std::lround(18.0f * uiButtonScale()), 2, quitMenu.title);
 
                 SDL_Rect resumeBtn = buttonAnimations.drawRect(10, quitResumeBtnRect(modal), closeMenuSel == 0,
                     ctx.win, ctx.baseScreenW, ctx.baseScreenH);
@@ -912,8 +920,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx, bool settingsOnly) {
                 SDL_RenderRect(ctx.ren, &resumeBtn);
                 SDL_RenderRect(ctx.ren, &closeBtn);
                 const int labelLineH = std::max(10, (int)std::lround(16.0f * uiButtonScale()));
-                DrawGameText(ctx.ren, resumeBtn.x + (resumeBtn.w - MeasureTextWidth(2, "RESUME")) / 2, resumeBtn.y + (resumeBtn.h - labelLineH) / 2, 2, "RESUME");
-                DrawGameText(ctx.ren, closeBtn.x + (closeBtn.w - MeasureTextWidth(2, "CLOSE")) / 2, closeBtn.y + (closeBtn.h - labelLineH) / 2, 2, "CLOSE");
+                DrawGameText(ctx.ren, resumeBtn.x + (resumeBtn.w - MeasureTextWidth(2, quitMenu.control("resume").label)) / 2, resumeBtn.y + (resumeBtn.h - labelLineH) / 2, 2, quitMenu.control("resume").label);
+                DrawGameText(ctx.ren, closeBtn.x + (closeBtn.w - MeasureTextWidth(2, quitMenu.control("close").label)) / 2, closeBtn.y + (closeBtn.h - labelLineH) / 2, 2, quitMenu.control("close").label);
             }
         }
         if (defaultShowFpsCounter) {

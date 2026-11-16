@@ -1,0 +1,26 @@
+cut 8 8
+center
+title "Online Levels"
+text "Filter: ${level_filter_label}  Page ${level_page_number}/${level_page_count}"
+text "${online_level_status}"
+
+foreach levels
+button "${row.label}" level_detail "online:${row.index}"
+endfor
+when levels_empty
+when levels_loading
+text "Loading online levels..."
+otherwise
+text "No levels match this filter."
+endwhen
+endwhen
+button "Refresh" refresh_levels online
+button "Previous Page" level_page online:prev
+button "Next Page" level_page online:next
+button "Filter: All" level_filter online:all
+button "Filter: Easy" level_filter online:easy
+button "Filter: Medium" level_filter online:medium
+button "Filter: Hard" level_filter online:hard
+button "Filter: Unrated" level_filter online:unrated
+snap left bottom
+button "Back" menu mainedit

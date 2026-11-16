@@ -1,0 +1,13 @@
+cut 8 8
+center
+title "Hardmode Practice"
+text "Practice does not affect run progress or completion."
+when hardmode_unlocked
+foreach practice_levels
+button "Level ${row.number}" hardmode_practice "${row.number}"
+endfor
+otherwise
+text "Reach the good ending to unlock Hardmode."
+endwhen
+snap left bottom
+button "Back" menu hardmode

@@ -1,0 +1,13 @@
+cut 8 8
+center
+title "Import Character [Experimental]"
+when character_available
+text "Choose a character from the imported sprite pack."
+foreach imported_characters
+button "${row.name}" character_pack_select "${row.index}"
+endfor
+otherwise
+text "Enable Experimental Features in General Settings."
+endwhen
+snap left bottom
+button "Back" menu charactercreator

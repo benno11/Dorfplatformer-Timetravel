@@ -5,6 +5,7 @@
 #include "SandboxVersion.h"
 #include "SlimMenuSystem.h"
 #include "SlimMenuLayout.h"
+#include "MenuScriptTemplate.h"
 #include "ButtonAnimation.h"
 #include "DifficultySelector.h"
 
@@ -141,6 +142,7 @@ struct SlimRuntime {
     bool ownsMenuTexture = true;
     std::unordered_map<std::string, Frame> menuFrames;
     std::unordered_map<std::string, SDL_Texture*> modIcons;
+    MenuScript::View difficultyMenu;
     std::array<SDL_Texture*, 3> sliderTextures{};
     SDL_Texture* difficultyTexture = nullptr;
     Frame difficultyFrame{};
@@ -153,6 +155,7 @@ struct SlimRuntime {
     int onlinePageCount = 1, onlineTotal = 0;
     std::future<bool> accountRoleRequest;
     std::string accountRoleKey, pendingAccountRoleKey;
+    MenuScript::Tables menuRows;
     std::unordered_map<std::string, std::string> vars;
     std::string waitingBind;
     std::vector<PendingGet> pendingGets;
@@ -191,11 +194,7 @@ bool menuNetworkBusy(const SlimRuntime& runtime) {
         [&](const SlimRuntime::PendingGet& request) { return pending(request.response); });
 }
 
-struct ParsedLine {
-    int lineNo = 0;
-    std::string text;
-    std::vector<std::string> parts;
-};
+using ParsedLine = MenuScript::Line;
 
 
 std::string trim(const std::string& in) {
@@ -204,40 +203,6 @@ std::string trim(const std::string& in) {
     std::size_t last = in.size();
     while (last > first && std::isspace(static_cast<unsigned char>(in[last - 1]))) --last;
     return in.substr(first, last - first);
-}
-
-std::vector<std::string> tokenize(const std::string& line) {
-    std::vector<std::string> out;
-    std::string cur;
-    bool quoted = false;
-    for (std::size_t i = 0; i < line.size(); ++i) {
-        const char ch = line[i];
-        if (quoted) {
-            if (ch == '"' && (i == 0 || line[i - 1] != '\\')) {
-                quoted = false;
-            } else if (ch == '\\' && i + 1 < line.size() && line[i + 1] == '"') {
-                cur.push_back('"');
-                ++i;
-            } else {
-                cur.push_back(ch);
-            }
-            continue;
-        }
-        if (ch == '"') {
-            quoted = true;
-            continue;
-        }
-        if (std::isspace(static_cast<unsigned char>(ch))) {
-            if (!cur.empty()) {
-                out.push_back(cur);
-                cur.clear();
-            }
-            continue;
-        }
-        cur.push_back(ch);
-    }
-    if (!cur.empty()) out.push_back(cur);
-    return out;
 }
 
 std::string replaceAll(std::string text, const std::string& from, const std::string& to) {
@@ -566,7 +531,7 @@ std::string menuPath(const std::string& name) {
 }
 
 std::string makeApiUrl(const SlimMenuContext& ctx, std::string path);
-SlimMenu buildGeneratedLevelMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuContext& ctx);
+void prepareMenuData(const std::string& name, SlimRuntime& runtime, const SlimMenuContext& ctx);
 
 bool parseMenuAlignment(std::string value, SlimMenuLayout::Align& out) {
     value = toLowerAscii(value);
@@ -596,325 +561,61 @@ UpdaterMenu::State readUpdaterState(const SlimMenuContext& ctx) {
 
 SlimMenu loadMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuContext& ctx) {
     if (!Edition::menuAllowed(name)) return loadMenu("mainsetting", runtime, ctx);
-    if (name == "settingslogging" || name == "gamelog") {
-        SlimMenu menu; menu.name = name; menu.title = name == "gamelog" ? "Game Log" : "Logging";
-        auto text = [&](const std::string& label) { MenuItem item; item.label = label; menu.items.push_back(item); };
-        auto button = [&](const std::string& label, const std::string& command, const std::string& arg) {
-            MenuItem item; item.type = MenuItem::Type::Button; item.label = label; item.command = command; item.arg = arg; menu.items.push_back(item);
-        };
-        if (name == "settingslogging") {
-            button("Game Logging: ${game_log_enabled}", "toggle", "game_log_enabled");
-#ifdef __ANDROID__
-            button("Save Logcat to File: ${save_logcat_to_file}", "toggle", "save_logcat_to_file");
-            if (ctx.getLogcatStatus) text(ctx.getLogcatStatus());
-#endif
-            button("View Game Log", "menu", "gamelog");
-        } else {
-            button("Refresh", "menu", "gamelog");
-            if (ctx.getLogPath) button("Copy Log File Path", "copy", ctx.getLogPath());
-            button("Back", "menu", "settingslogging");
-            text("Recent messages (logging must be enabled).");
-            const auto lines = ctx.getLogLines ? ctx.getLogLines() : std::vector<std::string>{};
-            const size_t first = lines.size() > 50 ? lines.size() - 50 : 0;
-            for (size_t i = first; i < lines.size(); ++i) {
-                auto line = lines[i].substr(0, 160);
-                std::replace(line.begin(), line.end(), '\n', ' '); std::replace(line.begin(), line.end(), '\r', ' ');
-                text(line); menu.items.back().command = "literal_log";
-            }
-            if (lines.empty()) text("No log messages recorded.");
-        }
-        if (name == "settingslogging") {
-            if (ctx.getLogPath) button("Copy Log File Path", "copy", ctx.getLogPath());
-            button("Back", "menu", "mainsetting");
-        }
-        return menu;
-    }
-    if (name.rfind("achievement:", 0) == 0) {
-        const auto id = name.substr(12);
-        SlimMenu menu; menu.name = name; menu.title = "Requirement Progress";
-        for (const auto& definition : Achievements::definitions) if (id == definition.id) {
-            menu.title = definition.title;
-            if (ctx.achievements) {
-                const auto requirements = ctx.achievements->requirements(id,
-                    ctx.campaignCoinCatalog ? *ctx.campaignCoinCatalog : std::set<std::string>{});
-                for (const auto& requirement : requirements) {
-                    MenuItem item;
-                    item.label = requirement.total > 0 ? requirement.label + ": " + std::to_string(requirement.current) + "/" + std::to_string(requirement.total) : "Campaign progress unavailable";
-                    menu.items.push_back(item);
-                }
-                MenuItem status; status.docked = true; status.vertical = SlimMenuLayout::Align::Start;
-                status.label = ctx.achievements->has(id) ? "Achievement unlocked" : "In progress";
-                menu.items.insert(menu.items.begin(), status);
-            }
-        }
-        MenuItem back; back.type = MenuItem::Type::Button; back.label = "Back";
-        back.command = "menu"; back.arg = "achievements"; menu.items.push_back(back);
-        return menu;
-    }
-    if (name == "achievements") {
-        SlimMenu menu; menu.name = name; menu.title = "Achievements";
-        auto text = [&](const std::string& label) { MenuItem item; item.label = label; menu.items.push_back(item); };
-        int unlocked = 0, available = 0;
-        for (const auto& definition : Achievements::definitions) {
-            if (!Edition::achievementAvailable(definition.id)) continue;
-            ++available;
-            if (ctx.achievements && ctx.achievements->has(definition.id)) ++unlocked;
-        }
-        text(std::to_string(unlocked) + "/" + std::to_string(available) + " unlocked");
-        text("Shared across all save slots.");
-        for (const auto& definition : Achievements::definitions) {
-            if (!Edition::achievementAvailable(definition.id)) continue;
-            const bool earned = ctx.achievements && ctx.achievements->has(definition.id);
-            MenuItem entry; entry.type = MenuItem::Type::Button;
-            entry.label = std::string(earned ? "[UNLOCKED] " : "[LOCKED] ") + definition.title;
-            entry.command = "menu"; entry.arg = "achievement:" + std::string(definition.id);
-            menu.items.push_back(entry);
-        }
-        text("World buttons: activate the buttons in areas 1 and 2.");
-        MenuItem back; back.type = MenuItem::Type::Button; back.label = "Back";
-        back.command = "back"; menu.items.push_back(back);
-        return menu;
-    }
-    if (name == "settingsmods") {
-        SlimMenu menu; menu.name = name; menu.title = "Native Mods";
-        auto text = [&](const std::string& label) { MenuItem item; item.label = label; menu.items.push_back(item); };
-        auto button = [&](const std::string& label, const std::string& command, const std::string& arg = "") {
-            MenuItem item; item.type = MenuItem::Type::Button; item.label = label; item.command = command; item.arg = arg; menu.items.push_back(item);
-        };
-        text("Mod API 1.1 - " + NativeMods::Loader::platform());
-        text(runtime.vars.count("mod_status") ? runtime.vars["mod_status"] : "Changes apply after restarting the game.");
-        if (ctx.mods) {
-            for (const auto& mod : ctx.mods->list()) {
-                button(mod.name + " " + mod.version + (mod.enabled ? " [ON]" : " [OFF]"), "mod_toggle", mod.id);
-                menu.items.back().iconPath = mod.icon;
-                text(mod.status);
-            }
-            if (ctx.mods->list().empty()) text("No mods installed. Add a folder containing mod.json.");
-#ifdef __ANDROID__
-            button("Import Mod ZIP", "mod_import");
-#else
-            button("Open Mods Folder", "mod_folder");
-#endif
-            button("Copy Mods Folder Path", "mod_path");
-            button("Scan for Installed Mods", "mod_scan");
-            button("Restart Game", "mod_restart");
-        } else text("Native mod loader is unavailable.");
-        button("Back", "menu", "mainsetting");
-        return menu;
-    }
-    if (name == "settingsupdater") {
-        SlimMenu menu;
-        menu.name = name;
-        menu.title = "Updater";
-        runtime.updater = readUpdaterState(ctx);
-        const auto& state = runtime.updater;
-        auto text = [&](const std::string& value) {
-            // Wrap details and release notes into scrollable rows, including long URLs.
-            const int maxWidth = std::max(1, ctx.baseScreenW - 100);
-            std::istringstream paragraphs(value);
-            std::string paragraph;
-            while (std::getline(paragraphs, paragraph)) {
-                while (!paragraph.empty()) {
-                    size_t end = 1, high = paragraph.size();
-                    while (end < high) {
-                        const size_t middle = end + (high - end + 1) / 2;
-                        if (MeasureTextWidth(2, paragraph.substr(0, middle)) <= maxWidth) end = middle;
-                        else high = middle - 1;
-                    }
-                    if (end < paragraph.size()) {
-                        const auto space = paragraph.rfind(' ', end);
-                        if (space != std::string::npos && space > 0) end = space;
-                    }
-                    menu.items.push_back(MenuItem{MenuItem::Type::Text, paragraph.substr(0, end), {}, {}});
-                    paragraph.erase(0, end);
-                    while (!paragraph.empty() && paragraph.front() == ' ') paragraph.erase(0, 1);
-                }
-            }
-        };
-        text("Current Version: " + fallbackText(ctx.versionString, "dev") + " (" + fallbackText(ctx.versionIdString, "dev") + ")");
-        text("Sandbox Version: " + std::string(GameSandbox::version));
-        text("Status: " + state.status);
-        const auto channel = ctx.getUpdateChannel ? ctx.getUpdateChannel() : "stable";
-        text("Update Channel: " + channel);
-        if(ctx.selectUpdateChannel && !state.busy()) {
-            for(const auto* choice : {"stable", "prerelease", "nightly"})
-                menu.items.push_back(MenuItem{MenuItem::Type::Button, std::string("Use ") + choice +
-                    (channel == choice ? " (selected)" : ""), "update_channel", choice});
-        }
-        text("Nightly: latest successful platform build. Prerelease: Tuesday snapshot.");
-        menu.items.push_back(MenuItem{MenuItem::Type::Button, state.actionLabel(), "updater", {}});
-        menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back", "menu", "mainsetting"});
-        if (!state.latestVersion.empty()) text("Latest Version: " + state.latestVersion);
-        if (!state.detail.empty()) text(state.detail);
-        if (!runtime.updaterNotice.empty()) text(runtime.updaterNotice);
-        if (!state.available) text("Updates are unavailable in this build.");
-        else if (state.status == "NOT CONFIGURED") text("Set update_manifest_url in assets/config.json to enable updates.");
-        if (state.status.rfind("DOWNLOADING", 0) == 0 || state.percent > 0)
-            menu.items.push_back(MenuItem{MenuItem::Type::Text, "Download: " + std::to_string(state.percent) + "%", "updater_progress", {}});
-        if (!state.notes.empty()) { text("Release Notes:"); text(state.notes); }
-        return menu;
-    }
-    if (name == "charactercreator" || name == "characterpresets" || name == "characterattributes" || name == "charactertextures" || name == "characterhair" || name == "characterpack") {
-        SlimMenu menu;
-        menu.name = name;
-        menu.title = name == "characterpresets" ? "Placeholder Characters [Experimental]" : "Character Creator [Experimental]";
-        if (name == "characterattributes") menu.title = "Character Attributes [Experimental]";
-        if (name == "charactertextures") menu.title = "Part Textures [Experimental]";
-        if (name == "characterhair") menu.title = "Custom Hairstyle [Experimental]";
-        if (name == "characterpack") menu.title = "Import Character [Experimental]";
-        if (ctx.characterAppearance && ctx.showExperimentalFeatures && *ctx.showExperimentalFeatures) {
-            auto a = *ctx.characterAppearance;
-            a.normalize();
-            if (name == "characterpack") {
-                menu.items.push_back(MenuItem{MenuItem::Type::Text, "Choose a character from the imported sprite pack.", {}, {}});
-                for (size_t i = 0; i < runtime.importedCharacters.size(); ++i)
-                    menu.items.push_back(MenuItem{MenuItem::Type::Button, runtime.importedCharacters[i].sprites.name,
-                        "character_pack_select", std::to_string(i)});
-                menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back to Creator", "menu", "charactercreator"});
-                return menu;
-            }
-            if (name == "characterpresets") {
-                menu.items.push_back(MenuItem{MenuItem::Type::Text, "Choose a starter character. All parts remain editable.", {}, {}});
-                for (const auto& preset : CharacterCreator::placeholderCharacters) {
-                    const bool selected = CharacterCreator::save(a) == CharacterCreator::save(preset.appearance);
-                    menu.items.push_back(MenuItem{MenuItem::Type::Button,
-                        std::string(preset.name) + (selected ? " [Selected]" : ""),
-                        "character", std::string("preset:") + preset.id});
-                }
-                menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back to Creator", "menu", "charactercreator"});
-                return menu;
-            }
-            auto option = [&](const std::string& label, const char* part) {
-                menu.items.push_back(MenuItem{MenuItem::Type::Button, label, "character", part});
-            };
-            if (name == "characterhair") {
-                menu.items.push_back(MenuItem{MenuItem::Type::Text, "Shape the built-in hair parts. Select a value to cycle; changes save automatically.", {}, {}});
-                option(a.hairStyle == CharacterCreator::customPartsHairStyle && a.sprites.base.empty() ?
-                    "Custom Hair Parts [Selected]" : "Use Custom Hair Parts", "use_hair_parts");
-                option(std::string("Override Hair Length Limit: ") + (a.uncapHairLength ? "ON" : "OFF"), "uncap_hair_length");
-                if (a.uncapHairLength) menu.items.push_back(MenuItem{MenuItem::Type::Text,
-                    "Fringe, back, and side lengths grow without wrapping up to " + std::to_string(CharacterCreator::overrideHairLengthLimit) + ". Minimum: 0 (hidden).", {}, {}});
-                else menu.items.push_back(MenuItem{MenuItem::Type::Text,
-                    "Fringe, back, and side length limit: " + std::to_string(CharacterCreator::normalHairLengthLimit) + ".", {}, {}});
-                for (int i = 0; i < (int)a.hairShape.size(); ++i) {
-                    menu.items.push_back(MenuItem{MenuItem::Type::Button,
-                        std::string(CharacterCreator::hairShapeNames[i]) + ": " + std::to_string(a.hairShape[i]),
-                        "character", std::string("hair_shape:") + CharacterCreator::hairShapeIds[i]});
-                    if (a.uncapHairLength && CharacterCreator::isHairLength(i))
-                        menu.items.push_back(MenuItem{MenuItem::Type::Button,
-                            std::string("Shorten ") + CharacterCreator::hairShapeNames[i] + " (-1)",
-                            "character", std::string("hair_shorten:") + CharacterCreator::hairShapeIds[i]});
-                }
-                option(std::string("Hair Color: ") + CharacterCreator::colors[a.hairColor].name, "hair_color");
-                option(std::string("Hair Texture: ") + CharacterCreator::textureNames[a.textures[(int)CharacterCreator::Part::Hair]], "texture:hair");
-                option("Reset Hair Shape", "reset_hair_parts");
-                menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back to Creator", "menu", "charactercreator"});
-                return menu;
-            }
-            if (name == "characterattributes") {
-                menu.items.push_back(MenuItem{MenuItem::Type::Text, "Movement stats apply while the custom character is enabled.", {}, {}});
-                option(std::string("Visual Build: ") + CharacterCreator::builds[a.build], "build");
-                for (const auto& stat : std::array<std::pair<const char*, int>, 5>{{
-                    {"springiness", a.springiness}, {"speed", a.speed}, {"acceleration", a.acceleration},
-                    {"jump", a.jump}, {"gravity", a.gravity}}}) {
-                    const std::string id = stat.first;
-                    const std::string label = id == "springiness" ? "Part Springiness" :
-                        (id == "speed" ? "Run Speed" : (id == "acceleration" ? "Acceleration" : (id == "jump" ? "Jump Strength" : "Gravity")));
-                    option(label + ": " + std::to_string(CharacterCreator::statPercent[stat.second]) + "%", stat.first);
-                }
-                option("Reset Attributes", "reset_attributes");
-                menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back to Creator", "menu", "charactercreator"});
-                return menu;
-            }
-            if (name == "charactertextures") {
-                const std::string status = runtime.vars["character_texture_status"];
-                menu.items.push_back(MenuItem{MenuItem::Type::Text,
-                    status.empty() ? "Cycle a pattern or import an image as an 8x8 tile." : status, {}, {}});
-                for (int i = 0; i < 6; ++i) {
-                    menu.items.push_back(MenuItem{MenuItem::Type::Button,
-                        std::string(CharacterCreator::partNames[i]) + ": " + CharacterCreator::textureNames[a.textures[i]],
-                        "character", std::string("texture:") + CharacterCreator::partIds[i]});
-                    menu.items.push_back(MenuItem{MenuItem::Type::Button,
-                        std::string("Import ") + CharacterCreator::partNames[i] + " Image...", "character_import", CharacterCreator::partIds[i]});
-                }
-                option("Clear All Part Textures", "clear_textures");
-                menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back to Creator", "menu", "charactercreator"});
-                return menu;
-            }
-            const std::string fileStatus = runtime.vars["character_file_status"];
-            menu.items.push_back(MenuItem{MenuItem::Type::Text,
-                fileStatus.empty() ? "Changes save automatically. Select a part to cycle." : fileStatus, {}, {}});
-            option(std::string("Use Custom Character: ") + (a.enabled ? "ON" : "OFF"), "enabled");
-            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Import Character...", "character_file", "import"});
-            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Export Character...", "character_file", "export"});
-            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Load Example Characters", "character_examples", {}});
-            if (!a.sprites.base.empty()) {
-                menu.items.push_back(MenuItem{MenuItem::Type::Text, "Sprite layers: " + a.sprites.name + " (original colors and hair)", {}, {}});
-                option("Switch to Editable Procedural Parts", "procedural_parts");
-            }
-            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Placeholder Characters", "menu", "characterpresets"});
-            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Character Attributes", "menu", "characterattributes"});
-            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Part Textures", "menu", "charactertextures"});
-            option(std::string("Skin: ") + CharacterCreator::skinColors[a.skin].name, "skin");
-            option(std::string("Hair Style: ") + CharacterCreator::hairStyles[a.hairStyle], "hair_style");
-            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Customize Built-in Hair...", "menu", "characterhair"});
-            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Import Custom Hairstyle...", "character_import", "custom_hair"});
-            if (!a.hairPixels.empty()) option("Remove Imported Hairstyle", "clear_hair");
-            option(std::string("Hair Color: ") + CharacterCreator::colors[a.hairColor].name, "hair_color");
-            option(std::string("Shirt: ") + CharacterCreator::colors[a.shirt].name, "shirt");
-            option(std::string("Pants: ") + CharacterCreator::colors[a.pants].name, "pants");
-            option(std::string("Headwear: ") + CharacterCreator::hats[a.hat], "hat");
-            option(std::string("Accent: ") + CharacterCreator::colors[a.accent].name, "accent");
-            option("Reset to Default Character", "reset");
-        } else menu.items.push_back(MenuItem{MenuItem::Type::Text, "Enable Experimental Features in General Settings.", {}, {}});
-        menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back", "menu", "mainsetting"});
-        return menu;
-    }
-    if (name == "locallevels" || name == "onlinelevels" || name == "leveldetail" || name == "worldselect" || name == "saveplay" || name == "hardmodepractice") {
-        return buildGeneratedLevelMenu(name, runtime, ctx);
-    }
-
+    prepareMenuData(name, runtime, ctx);
     SlimMenu menu;
     menu.name = name;
     MenuItem style;
     auto source = runtime.scriptSources.find(name);
     if (source == runtime.scriptSources.end()) {
-        source = runtime.scriptSources.emplace(name, ReadTextFile(menuPath(name))).first;
+        source = runtime.scriptSources.emplace(name, ReadTextFile(menuPath(name.rfind("achievement:", 0) == 0 ? "achievementrequirements" : name))).first;
     }
     const std::string& text = source->second;
-    std::istringstream in(text);
-    std::string line;
-    int lineNo = 0;
-    std::vector<ParsedLine> lines;
-    while (std::getline(in, line)) {
-        ++lineNo;
-        line = trim(line);
-        if (line.empty() || line[0] == '#') continue;
-        const std::vector<std::string> parts = tokenize(line);
-        if (parts.empty()) continue;
-        lines.push_back(ParsedLine{lineNo, line, parts});
+    auto lines = MenuScript::parse(text);
+    try {
+        lines = MenuScript::expand(lines, runtime.menuRows,
+            [&](const std::string& key) { return varIsTruthy(key, runtime, ctx); });
+    } catch (const std::exception& error) {
+        SDL_Log("MenuScript %s: %s", name.c_str(), error.what());
+        return menu;
     }
-
     for (std::size_t i = 0; i < lines.size();) {
         const ParsedLine& lineInfo = lines[i];
         const std::vector<std::string>& parts = lineInfo.parts;
         const std::string& op = parts[0];
         if (op == "title" && parts.size() >= 2) {
-            menu.title = parts[1];
+            menu.title = expandVars(parts[1], runtime, ctx);
             ++i;
         } else if (op == "text" && parts.size() >= 2) {
             MenuItem item = style;
             item.type = MenuItem::Type::Text;
             item.label = parts[1];
-            menu.items.push_back(std::move(item));
+            if (parts.size() >= 3) item.command = parts[2];
+            if (item.command == "wrap") {
+                const int maxWidth = std::max(1, (int)(ctx.baseScreenW / menu.scale) - 100);
+                std::istringstream paragraphs(expandVars(item.label, runtime, ctx));
+                std::string paragraph;
+                while (std::getline(paragraphs, paragraph)) while (!paragraph.empty()) {
+                    size_t count = 1;
+                    while (count < paragraph.size() && MeasureTextWidth(2, paragraph.substr(0, count + 1)) <= maxWidth) ++count;
+                    if (count < paragraph.size()) {
+                        const auto space = paragraph.rfind(' ', count);
+                        if (space != std::string::npos && space > 0) count = space;
+                    }
+                    MenuItem wrapped = item; wrapped.command.clear(); wrapped.label = paragraph.substr(0, count);
+                    menu.items.push_back(std::move(wrapped));
+                    paragraph.erase(0, count);
+                    while (!paragraph.empty() && paragraph.front() == ' ') paragraph.erase(0, 1);
+                }
+            } else menu.items.push_back(std::move(item));
             ++i;
         } else if ((op == "button" || op == "slider") && parts.size() >= 3) {
-            const std::string arg = parts.size() >= 4 ? parts[3] : std::string();
+            const std::string arg = parts.size() >= 4 ? expandVars(parts[3], runtime, ctx) : std::string();
             MenuItem item = style;
             item.type = op == "slider" ? MenuItem::Type::Slider : MenuItem::Type::Button;
             item.label = parts[1];
             item.command = parts[2];
             item.arg = arg;
+            if (parts.size() >= 5) item.iconPath = parts[4];
             menu.items.push_back(std::move(item));
             ++i;
         } else if (op == "scale" && parts.size() >= 2) {
@@ -1701,158 +1402,142 @@ bool putServerUpdateTrigger(const SlimMenuContext& ctx, std::string& status) {
 #endif
 }
 
-SlimMenu buildGeneratedLevelMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuContext& ctx) {
-    if (name == "saveplay") {
-        SlimMenu menu;
-        menu.name = name;
-        const int slot = ctx.activeSaveSlotIndex ? *ctx.activeSaveSlotIndex : 0;
-        menu.title = "Save Slot " + std::to_string(slot + 1);
-        if (HasGameSnapshot(slot))
-            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Continue Adventure", "saved", {}});
-        if (ctx.progression && ctx.progression->worldSelectUnlocked)
-            menu.items.push_back(MenuItem{MenuItem::Type::Button, "World Select", "menu", "worldselect"});
-        if (!Edition::lite && ctx.progression && ctx.progression->hardmodeUnlocked)
-            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Hardmode", "menu", "hardmode"});
-        menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back", "menu", "mainplay"});
-        return menu;
-    }
-    if (name == "hardmodepractice") {
-        SlimMenu menu;
-        menu.name = name;
-        menu.title = "Hardmode Practice";
-        menu.items.push_back(MenuItem{MenuItem::Type::Text, "Practice does not affect run progress or completion.", {}, {}});
-        if (!Edition::lite && ctx.progression && ctx.progression->hardmodeUnlocked) {
-            for (int level = 1; level <= kHardmodeLevelCount; ++level)
-                menu.items.push_back(MenuItem{MenuItem::Type::Button, "Level " + std::to_string(level),
-                    "hardmode_practice", std::to_string(level)});
-        } else menu.items.push_back(MenuItem{MenuItem::Type::Text, "Reach the good ending to unlock Hardmode.", {}, {}});
-        menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back", "menu", "hardmode"});
-        return menu;
-    }
-    if (name == "worldselect") {
-        SlimMenu menu;
-        menu.name = name;
-        menu.title = "World Select";
-        if (ctx.progression && ctx.progression->worldSelectUnlocked) {
-            for (int world = 1; world <= 7; ++world) {
-                if (!Edition::worldSelectable(world)) continue;
-                menu.items.push_back(MenuItem{MenuItem::Type::Button, "World " + std::to_string(world), "world", std::to_string(world)});
-            }
-        } else menu.items.push_back(MenuItem{MenuItem::Type::Text, "Reach an ending to unlock World Select.", {}, {}});
-        menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back", "menu", "saveplay"});
-        return menu;
-    }
-    if (name == "leveldetail") {
-        const std::string source = runtime.vars.count("detail_source") ? runtime.vars["detail_source"] : "local";
-        const int index = runtime.vars.count("detail_index") ? std::atoi(runtime.vars["detail_index"].c_str()) : -1;
-        std::vector<SlimLevelEntry> levels = filteredGeneratedLevels(source, runtime, ctx);
-        SlimMenu menu;
-        menu.name = name;
-        menu.title = source == "online" ? "Online Level" : "Local Level";
-        if (index < 0 || index >= (int)levels.size()) {
-            menu.items.push_back(MenuItem{MenuItem::Type::Text, "Level no longer available.", {}, {}});
-            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back", "menu", source == "online" ? "onlinelevels" : "locallevels"});
-            return menu;
+void prepareMenuData(const std::string& name, SlimRuntime& runtime, const SlimMenuContext& ctx) {
+    runtime.menuRows.clear();
+    auto& v = runtime.vars;
+    for (const auto* key : {"mod_status", "level_detail_status", "online_level_status", "local_level_status",
+            "character_file_status", "character_texture_status"}) v.try_emplace(key, "");
+    auto flag = [&](const std::string& key, bool value) { v[key] = value ? "true" : "false"; };
+    auto row = [&](const std::string& table, MenuScript::Row fields) { runtime.menuRows[table].push_back(std::move(fields)); };
+    flag("android", SDL_GetPlatform() == std::string("Android"));
+    flag("mods_available", ctx.mods != nullptr);
+    v["mods_platform"] = NativeMods::Loader::platform();
+    v["client_version"] = fallbackText(ctx.versionString,"dev");
+    v["client_version_id"] = fallbackText(ctx.versionIdString,"dev");
+    v["log_path"] = ctx.getLogPath ? ctx.getLogPath() : "";
+    v["logcat_status"] = ctx.getLogcatStatus ? ctx.getLogcatStatus() : "";
+    if (name == "gamelog") {
+        const auto lines = ctx.getLogLines ? ctx.getLogLines() : std::vector<std::string>{};
+        for (size_t i = lines.size() > 50 ? lines.size() - 50 : 0; i < lines.size(); ++i) {
+            auto text = lines[i].substr(0, 160);
+            std::replace(text.begin(), text.end(), '\n', ' '); std::replace(text.begin(), text.end(), '\r', ' ');
+            row("log_lines", {{"text", text}});
         }
-        const SlimLevelEntry& level = levels[index];
-        runtime.vars["detail_label"] = level.displayName.empty() ? level.label : level.displayName;
-        runtime.vars["detail_path"] = level.path;
-        runtime.vars["detail_difficulty"] = level.difficulty > 0 ? std::to_string(level.difficulty) : "unrated";
-        runtime.vars["detail_downloads"] = std::to_string(level.downloads);
-        runtime.vars["detail_likes"] = std::to_string(level.likes);
-        runtime.vars["detail_dislikes"] = std::to_string(level.dislikes);
-        if (source != "online") {
-            runtime.vars["detail_verified"] = IsLocalLevelVerified(level.path) ? "true" : "false";
+        flag("has_log_lines", !lines.empty());
+    }
+    if (name == "settingsmods" && ctx.mods) {
+        for (const auto& mod : ctx.mods->list()) row("mods", {{"id",mod.id},{"name",mod.name},
+            {"version",mod.version},{"state",mod.enabled?"ON":"OFF"},{"status",mod.status},{"icon",mod.icon}});
+        flag("has_mods", !ctx.mods->list().empty());
+    }
+    if (name == "achievements") {
+        int unlocked = 0, count = 0;
+        for (const auto& def : Achievements::definitions) if (Edition::achievementAvailable(def.id)) {
+            const bool earned = ctx.achievements && ctx.achievements->has(def.id);
+            ++count; unlocked += earned;
+            row("achievements", {{"id",def.id},{"title",def.title},{"state",earned?"UNLOCKED":"LOCKED"}});
         }
-        menu.items.push_back(MenuItem{MenuItem::Type::Text, "Name: " + runtime.vars["detail_label"], {}, {}});
-        menu.items.push_back(MenuItem{MenuItem::Type::Text,
-            level.difficulty > 0 ? std::to_string(level.difficulty) : "?", "difficulty_badge", {}});
-        if (source == "online") {
-            menu.items.push_back(MenuItem{MenuItem::Type::Text, "Source: online", {}, {}});
-            menu.items.push_back(MenuItem{MenuItem::Type::Text,
-                "Downloads: " + runtime.vars["detail_downloads"] +
-                "  Likes: +" + runtime.vars["detail_likes"] +
-                " / -" + runtime.vars["detail_dislikes"], {}, {}});
-            menu.items.push_back(MenuItem{MenuItem::Type::Text, "${level_detail_status}", {}, {}});
-            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Play", "start", level.path});
-            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Update Download", "update_online_level", std::to_string(index)});
-            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Like", "vote_online_level", std::to_string(index) + ":like"});
-            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Dislike", "vote_online_level", std::to_string(index) + ":dislike"});
-            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Clear Vote", "vote_online_level", std::to_string(index) + ":clear"});
-            if (currentAccountIsMod(runtime, ctx)) {
-                menu.items.push_back(MenuItem{MenuItem::Type::Button, "Set Difficulty", "rate_online_level", std::to_string(index)});
-            }
-            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back", "menu", "onlinelevels"});
-        } else {
-            menu.items.push_back(MenuItem{MenuItem::Type::Text, std::string("Verified: ") + runtime.vars["detail_verified"], {}, {}});
-            menu.items.push_back(MenuItem{MenuItem::Type::Text, "${level_detail_status}", {}, {}});
-            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Play", "start", level.path});
-            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Edit", "edit_level", std::to_string(index)});
-            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Rename", "rename_level", std::to_string(index)});
-            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Resize", "resize_level", std::to_string(index)});
-            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Upload", "upload_level", std::to_string(index)});
-            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Delete", "delete_level", std::to_string(index)});
-            menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back", "menu", "locallevels"});
+        v["achievement_count"] = std::to_string(count); v["achievement_unlocked"] = std::to_string(unlocked);
+    }
+    if (name.rfind("achievement:",0)==0) {
+        const auto id=name.substr(12);
+        for (const auto& def : Achievements::definitions) if (id==def.id) v["achievement_title"]=def.title;
+        flag("achievement_earned",ctx.achievements && ctx.achievements->has(id));
+        if (ctx.achievements) for (const auto& req : ctx.achievements->requirements(id,
+                ctx.campaignCoinCatalog ? *ctx.campaignCoinCatalog : std::set<std::string>{}))
+            row("requirements",{{"label",req.label},{"current",std::to_string(req.current)},
+                {"total",std::to_string(req.total)},{"available",req.total>0?"true":"false"}});
+    }
+    if (name=="settingsupdater") {
+        runtime.updater=readUpdaterState(ctx); const auto& state=runtime.updater;
+        v["updater_status"]=state.status; v["updater_latest"]=state.latestVersion;
+        v["updater_detail"]=state.detail; v["updater_notice"]=runtime.updaterNotice;
+        v["updater_notes"]=state.notes; v["updater_action"]=state.actionLabel();
+        v["updater_percent"]=std::to_string(state.percent);
+        v["update_channel"]=ctx.getUpdateChannel?ctx.getUpdateChannel():"stable";
+        flag("updater_available",state.available); flag("updater_not_configured",state.status=="NOT CONFIGURED");
+        flag("updater_progress",state.status.rfind("DOWNLOADING",0)==0||state.percent>0);
+        flag("can_select_channel",ctx.selectUpdateChannel&&!state.busy());
+    }
+    const int slot=ctx.activeSaveSlotIndex?*ctx.activeSaveSlotIndex:0;
+    v["save_slot_number"]=std::to_string(slot+1);
+    flag("save_exists",name=="saveplay"&&HasGameSnapshot(slot));
+    flag("world_select_unlocked",ctx.progression&&ctx.progression->worldSelectUnlocked);
+    flag("hardmode_unlocked",!Edition::lite&&ctx.progression&&ctx.progression->hardmodeUnlocked);
+    if (name=="worldselect") for(int world=1;world<=7;++world) if(Edition::worldSelectable(world))
+        row("worlds",{{"number",std::to_string(world)}});
+    if (name=="hardmodepractice") for(int level=1;level<=kHardmodeLevelCount;++level)
+        row("practice_levels",{{"number",std::to_string(level)}});
+    flag("character_available",ctx.characterAppearance&&ctx.showExperimentalFeatures&&*ctx.showExperimentalFeatures);
+    if (name.rfind("character",0)==0 && ctx.characterAppearance) {
+        auto a=*ctx.characterAppearance; a.normalize();
+        flag("character_enabled",a.enabled); flag("sprite_layers",!a.sprites.base.empty());
+        flag("has_custom_hair",!a.hairPixels.empty()); flag("uncap_hair",a.uncapHairLength);
+        flag("hair_parts_selected",a.hairStyle==CharacterCreator::customPartsHairStyle&&a.sprites.base.empty());
+        v["sprite_name"]=a.sprites.name;
+        v["hair_limit"]=std::to_string(a.uncapHairLength?CharacterCreator::overrideHairLengthLimit:CharacterCreator::normalHairLengthLimit);
+        v["skin_color"]=CharacterCreator::skinColors[a.skin].name;
+        v["hair_style"]=CharacterCreator::hairStyles[a.hairStyle];
+        v["hair_color"]=CharacterCreator::colors[a.hairColor].name;
+        v["shirt_color"]=CharacterCreator::colors[a.shirt].name;
+        v["pants_color"]=CharacterCreator::colors[a.pants].name;
+        v["hat_style"]=CharacterCreator::hats[a.hat];
+        v["accent_color"]=CharacterCreator::colors[a.accent].name;
+        v["hair_texture"]=CharacterCreator::textureNames[a.textures[(int)CharacterCreator::Part::Hair]];
+        v["visual_build"]=CharacterCreator::builds[a.build];
+        for (size_t i=0;i<runtime.importedCharacters.size();++i)
+            row("imported_characters",{{"index",std::to_string(i)},{"name",runtime.importedCharacters[i].sprites.name}});
+        for (const auto& preset:CharacterCreator::placeholderCharacters)
+            row("character_presets",{{"id",preset.id},{"name",preset.name},
+                {"selected",CharacterCreator::save(a)==CharacterCreator::save(preset.appearance)?"true":"false"}});
+        for(int i=0;i<(int)a.hairShape.size();++i)
+            row("hair_shapes",{{"id",CharacterCreator::hairShapeIds[i]},{"name",CharacterCreator::hairShapeNames[i]},
+                {"value",std::to_string(a.hairShape[i])},{"shortenable",a.uncapHairLength&&CharacterCreator::isHairLength(i)?"true":"false"}});
+        const int attributes[]={a.speed,a.jump,a.acceleration,a.springiness,a.gravity};
+        const char* attributeIds[]={"speed","jump","acceleration","springiness","gravity"};
+        for(int i=0;i<5;++i) v[std::string("attribute_")+attributeIds[i]]=std::to_string(CharacterCreator::statPercent[attributes[i]]);
+        for(int i=0;i<6;++i) row("character_parts",{{"id",CharacterCreator::partIds[i]},
+            {"name",CharacterCreator::partNames[i]},{"texture",CharacterCreator::textureNames[a.textures[i]]}});
+    }
+    if (name=="leveldetail") {
+        const auto source=v.count("detail_source")?v["detail_source"]:"local";
+        const int index=v.count("detail_index")?std::atoi(v["detail_index"].c_str()):-1;
+        const auto levels=filteredGeneratedLevels(source,runtime,ctx);
+        flag("account_is_mod", source=="online" && currentAccountIsMod(runtime,ctx));
+        flag("detail_online",source=="online"); flag("detail_available",index>=0&&index<(int)levels.size());
+        v["detail_back"]=source=="online"?"onlinelevels":"locallevels";
+        if(index>=0&&index<(int)levels.size()) {
+            const auto& level=levels[index];
+            v["detail_label"]=level.displayName.empty()?level.label:level.displayName; v["detail_path"]=level.path;
+            v["detail_difficulty"]=level.difficulty>0?std::to_string(level.difficulty):"?";
+            v["detail_downloads"]=std::to_string(level.downloads);v["detail_likes"]=std::to_string(level.likes);
+            v["detail_dislikes"]=std::to_string(level.dislikes);
+            if(source!="online")v["detail_verified"]=IsLocalLevelVerified(level.path)?"true":"false";
+            flag("can_rate_level",source=="online"&&currentAccountIsMod(runtime,ctx));
         }
-        return menu;
     }
-
-    const bool online = name == "onlinelevels";
-    const std::string prefix = online ? "online" : "local";
-    const std::string pageVar = prefix + "_level_page";
-    const std::string filterVar = prefix + "_level_filter";
-    if (!runtime.vars.count(pageVar)) runtime.vars[pageVar] = "0";
-    if (!runtime.vars.count(filterVar)) runtime.vars[filterVar] = "all";
-
-    const auto& levels = cachedSlimLevels(online, runtime, ctx);
-    const std::string filter = runtime.vars[filterVar];
-    std::vector<SlimLevelEntry> filtered;
-    for (const auto& level : levels) {
-        if (levelMatchesFilter(level, filter)) filtered.push_back(level);
+    if(name=="locallevels"||name=="onlinelevels") {
+        const bool online=name=="onlinelevels";const std::string prefix=online?"online":"local";
+        const auto pageVar=prefix+"_level_page",filterVar=prefix+"_level_filter";
+        if(!v.count(pageVar))v[pageVar]="0";if(!v.count(filterVar))v[filterVar]="all";
+        const auto& levels=cachedSlimLevels(online,runtime,ctx);
+        std::vector<SlimLevelEntry> filtered;
+        for(const auto& level:levels)if(levelMatchesFilter(level,v[filterVar]))filtered.push_back(level);
+        const int pages=online?runtime.onlinePageCount:std::max(1,(int)((filtered.size()+9)/10));
+        const int page=online?std::max(0,std::atoi(v[pageVar].c_str())):std::clamp(std::atoi(v[pageVar].c_str()),0,pages-1);
+        v[pageVar]=std::to_string(page);v["level_prefix"]=prefix;v["level_filter_label"]=levelFilterLabel(v[filterVar]);
+        v["level_page_number"]=std::to_string(page+1);v["level_page_count"]=std::to_string(pages);
+        v["level_total"]=std::to_string(runtime.onlineTotal);
+        flag("levels_online",online);flag("levels_empty",filtered.empty());
+        flag("levels_loading",online&&runtime.onlineLevelsRequest.valid());flag("levels_loaded",online&&runtime.onlineLevelsLoaded);
+        const int start=online?0:page*10,end=std::min((int)filtered.size(),start+10);
+        for(int i=start;i<end;++i) {
+            const auto& level=filtered[i];
+            row("levels",{{"index",std::to_string(i)},{"label",level.label+ difficultySuffix(level.difficulty)+(online?levelStatsSuffix(level):std::string())}});
+        }
     }
-
-    constexpr int kPageSize = 10;
-    const int pageCount = online ? runtime.onlinePageCount : std::max(1, (int)((filtered.size() + kPageSize - 1) / kPageSize));
-    int page = online ? std::max(0, std::atoi(runtime.vars[pageVar].c_str()))
-                      : std::clamp(std::atoi(runtime.vars[pageVar].c_str()), 0, pageCount - 1);
-    runtime.vars[pageVar] = std::to_string(page);
-
-    SlimMenu menu;
-    menu.name = name;
-    menu.title = online ? "Online Levels" : "Local Levels";
-    menu.items.push_back(MenuItem{MenuItem::Type::Text,
-        "Filter: " + levelFilterLabel(filter) + "  Page " + std::to_string(page + 1) + "/" + std::to_string(pageCount) +
-        (online && runtime.onlineLevelsLoaded ? "  (" + std::to_string(runtime.onlineTotal) + " levels)" : std::string()), {}, {}});
-    if (!online) {
-        menu.items.push_back(MenuItem{MenuItem::Type::Text, "${level_detail_status}", {}, {}});
-        menu.items.push_back(MenuItem{MenuItem::Type::Button, "Create", "create_level", {}});
-    } else if (!runtime.vars["online_level_status"].empty()) {
-        menu.items.push_back(MenuItem{MenuItem::Type::Text, "${online_level_status}", {}, {}});
-    }
-    if (filtered.empty()) {
-        menu.items.push_back(MenuItem{MenuItem::Type::Text,
-            online && runtime.onlineLevelsRequest.valid() ? "Loading online levels..." : "No levels match this filter.", {}, {}});
-    }
-
-    const int start = online ? 0 : page * kPageSize;
-    const int end = std::min((int)filtered.size(), start + kPageSize);
-    for (int i = start; i < end; ++i) {
-        const auto& level = filtered[i];
-        menu.items.push_back(MenuItem{MenuItem::Type::Button,
-            level.label + difficultySuffix(level.difficulty) + (online ? levelStatsSuffix(level) : std::string()),
-            "level_detail", prefix + ":" + std::to_string(i)});
-    }
-    menu.items.push_back(MenuItem{MenuItem::Type::Button, "Refresh", "refresh_levels", prefix});
-    menu.items.push_back(MenuItem{MenuItem::Type::Button, "Previous Page", "level_page", prefix + ":prev"});
-    menu.items.push_back(MenuItem{MenuItem::Type::Button, "Next Page", "level_page", prefix + ":next"});
-    menu.items.push_back(MenuItem{MenuItem::Type::Button, "Filter: All", "level_filter", prefix + ":all"});
-    menu.items.push_back(MenuItem{MenuItem::Type::Button, "Filter: Easy", "level_filter", prefix + ":easy"});
-    menu.items.push_back(MenuItem{MenuItem::Type::Button, "Filter: Medium", "level_filter", prefix + ":medium"});
-    menu.items.push_back(MenuItem{MenuItem::Type::Button, "Filter: Hard", "level_filter", prefix + ":hard"});
-    menu.items.push_back(MenuItem{MenuItem::Type::Button, "Filter: Unrated", "level_filter", prefix + ":unrated"});
-    menu.items.push_back(MenuItem{MenuItem::Type::Button, "Back", "menu", "mainedit"});
-    return menu;
 }
+
 
 SlimMenuLayout::Layout layoutFor(const SlimMenu& menu, const SlimRuntime& runtime, const SlimMenuContext& ctx) {
     std::vector<SlimMenuLayout::Item> items;
@@ -1998,8 +1683,8 @@ void renderDifficultyPopup(SlimRuntime& runtime, const SlimMenuContext& ctx) {
         while (scale > 1 && MeasureTextWidth(scale, text) > layout.panel.w - 24) --scale;
         DrawGameText(ctx.ren, layout.panel.x + (layout.panel.w - MeasureTextWidth(scale, text)) / 2, y, scale, text);
     };
-    centered("Select Difficulty", layout.panel.y + 12, layout.panel.h < 300 ? 2 : 3);
-    centered("1-3 Easy   4-6 Medium   7-9 Hard", layout.panel.y + layout.panel.h * 15 / 100, 1);
+    centered(runtime.difficultyMenu.title, layout.panel.y + 12, layout.panel.h < 300 ? 2 : 3);
+    centered(runtime.difficultyMenu.text("instructions"), layout.panel.y + layout.panel.h * 15 / 100, 1);
     for (int i = 0; i < (int)layout.buttons.size(); ++i) {
         const bool chosen = i <= 9 && i == runtime.difficultyChoice;
         const bool focused = i == runtime.difficultyFocus;
@@ -2022,18 +1707,18 @@ void renderDifficultyPopup(SlimRuntime& runtime, const SlimMenuContext& ctx) {
                     SDL_RenderRect(ctx.ren, &outline);
                 }
                 if (i == 0) {
-                    const int scale = MeasureTextWidth(2, "Unrated") < rect.w - size - 24 ? 2 : 1;
-                    DrawGameText(ctx.ren, rect.x + size + 16, rect.y + (rect.h - scale * 10) / 2, scale, "Unrated");
+                    const int scale = MeasureTextWidth(2, runtime.difficultyMenu.control("unrated").label) < rect.w - size - 24 ? 2 : 1;
+                    DrawGameText(ctx.ren, rect.x + size + 16, rect.y + (rect.h - scale * 10) / 2, scale, runtime.difficultyMenu.control("unrated").label);
                 }
                 continue;
             }
         }
-        const std::string text = i == 0 ? "Unrated" : (i == 10 ? "Apply" : (i == 11 ? "Cancel" : std::to_string(i)));
+        const std::string text = i == 0 ? runtime.difficultyMenu.control("unrated").label : (i == 10 ? runtime.difficultyMenu.control("apply").label : (i == 11 ? runtime.difficultyMenu.control("cancel").label : std::to_string(i)));
         const int scale = MeasureTextWidth(2, text) < rect.w - 12 ? 2 : 1;
         DrawGameText(ctx.ren, rect.x + (rect.w - MeasureTextWidth(scale, text)) / 2,
             rect.y + (rect.h - scale * 10) / 2, scale, text);
     }
-    if (runtime.difficultySaving) centered("Saving...", layout.panel.y + layout.panel.h * 80 / 100, 1);
+    if (runtime.difficultySaving) centered(runtime.difficultyMenu.text("saving"), layout.panel.y + layout.panel.h * 80 / 100, 1);
     else if (!runtime.difficultyStatus.empty()) centered(runtime.difficultyStatus, layout.panel.y + layout.panel.h * 80 / 100, 1);
     renderMenuExit(runtime, ctx, false);
     SDL_SetRenderScale(ctx.ren, 1.0f, 1.0f);
@@ -2877,6 +2562,7 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
     // Drop any queued text belonging to the screen that opened this menu.
     CancelNativeTextOverlay(ctx.ren);
     SlimRuntime runtime;
+    runtime.difficultyMenu = MenuScript::view(ReadTextFile("assets/menus/difficulty.menu"));
     runtime.ownsMenuTexture = !ctx.menuTexture;
     runtime.menuTexture = ctx.menuTexture ? ctx.menuTexture : loadTextureSafe(ctx.ren, "assets/Sheets/DF_Menus-uhd.png");
     runtime.menuFrames = ctx.menuFrames ? *ctx.menuFrames : loadPlistFrames("assets/Sheets/DF_Menus-uhd.plist");
@@ -3219,7 +2905,7 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                             selected = 1;
                             runtime.scrollY = SlimMenuLayout::reveal(layout, buttonItemIndex(menu, selected), runtime.scrollY);
                         } else {
-                            MenuItem login{MenuItem::Type::Button, "Sign In", "account_login", {}};
+                            MenuItem login; login.type = MenuItem::Type::Button; login.command = "account_login";
                             execute(login, runtime, ctx, currentMenu);
                             selected = varIsTruthy("account_signed_in", runtime, ctx) ? 0 : 2;
                             inputBlockUntilTicks = SDL_GetTicks() + 250;

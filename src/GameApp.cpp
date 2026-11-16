@@ -1,3 +1,4 @@
+#include "MenuScriptTemplate.h"
 #include "CoinLauncher.h"
 #include "GameApp.h"
 #include "ProcessEnvironment.h"
@@ -816,6 +817,10 @@ int RunGameApp(int argc, char** argv) {
     }
     SDL_Log("Window and renderer created");
     networkRuntime.setWindow(win, ren);
+    const auto networkMenuScript = MenuScript::view(ReadTextFile("assets/menus/networkbusy.menu"));
+    networkRuntime.connectingLabel = networkMenuScript.title;
+    networkRuntime.cancellingLabel = networkMenuScript.text("cancelling");
+    networkRuntime.cancelHint = networkMenuScript.text("cancel_hint");
     setStartupProgress(0.30f);
     SDL_Texture* gameTarget = SDL_CreateTexture(
         ren,
@@ -3892,6 +3897,7 @@ int RunGameApp(int argc, char** argv) {
         std::vector<SDL_FRect> semiHitboxes;
         std::vector<SDL_FRect> waterHitboxes;
         std::vector<SDL_FRect> airDebugHitboxes;
+        const auto pauseMenuScript = MenuScript::view(ReadTextFile("assets/menus/pause.menu"));
         int pauseSelection = 0; // Visual order: 3 = Settings, 0 = Resume, 1 = Restart, 2 = Quit
         bool returnToSelect = false;
         std::unordered_map<SDL_FingerID, SDL_FPoint> activeTouches;
@@ -4170,9 +4176,12 @@ int RunGameApp(int argc, char** argv) {
         auto handlePauseSelect = [&](int sel) {
             SoundEvents::emit(SoundEvents::Event::Click);
             pauseSelection = sel;
-            if (pauseSelection == 0) {
+            const char* pauseControls[] = {"resume", "restart", "quit", "settings"};
+            if (sel < 0 || sel >= 4) return;
+            const auto& action = pauseMenuScript.control(pauseControls[sel]);
+            if (action.action == "resume") {
                 closePauseMenu();
-            } else if (pauseSelection == 1) {
+            } else if (action.action == "restart") {
                 deathSequenceActive = false;
                 deathTimer = 0;
                 droppedCoins.clear();
@@ -4180,9 +4189,9 @@ int RunGameApp(int argc, char** argv) {
                 paused = false;
                 pauseMenuAnim = 0.0f;
                 pauseMenuClosing = false;
-            } else if (pauseSelection == 3) {
+            } else if (action.action == "menu") {
                 pauseSettingsRequested = true;
-            } else {
+            } else if (action.action == "quit") {
                 if (hardmodeRun) (void)saveGameToDisk();
                 returnToSelect = true;
                 levelRunning = false;
@@ -8521,13 +8530,13 @@ int RunGameApp(int argc, char** argv) {
             SDL_Rect overlay{0, 0, screenW, screenH};
             SDL_RenderFillRect(ren, &overlay);
 
-            bool hasPanel = pauseTex && pauseFrames.count("Panel") != 0;
-            bool hasContinue = pauseTex && pauseFrames.count("Continuebtn") != 0;
-            bool hasRestart = pauseTex && pauseFrames.count("Retartbtn") != 0;
-            bool hasExit = pauseTex && pauseFrames.count("exitbtn") != 0;
+            bool hasPanel = pauseTex && pauseFrames.count(pauseMenuScript.text("panel_sprite")) != 0;
+            bool hasContinue = pauseTex && pauseFrames.count(pauseMenuScript.control("resume").sprite) != 0;
+            bool hasRestart = pauseTex && pauseFrames.count(pauseMenuScript.control("restart").sprite) != 0;
+            bool hasExit = pauseTex && pauseFrames.count(pauseMenuScript.control("quit").sprite) != 0;
 
             if (hasPanel && hasContinue && hasRestart && hasExit) {
-                const Frame& panelFrame = pauseFrames["Panel"];
+                const Frame& panelFrame = pauseFrames[pauseMenuScript.text("panel_sprite")];
                 SDL_Rect panelDst = scaleRectCentered(SDL_Rect{
                     screenW / 2 - panelFrame.rect.w / 2,
                     screenH / 2 - panelFrame.rect.h / 2,
@@ -8539,11 +8548,11 @@ int RunGameApp(int argc, char** argv) {
                 renderFrame(ren, pauseTex, panelFrame, panelDst);
                 SDL_SetTextureAlphaMod(pauseTex, pauseButtonAlpha);
 
-                const Frame& continueFrame = pauseFrames["Continuebtn"];
-                const Frame& restartFrame = pauseFrames["Retartbtn"];
-                const Frame& exitFrame = pauseFrames["exitbtn"];
+                const Frame& continueFrame = pauseFrames[pauseMenuScript.control("resume").sprite];
+                const Frame& restartFrame = pauseFrames[pauseMenuScript.control("restart").sprite];
+                const Frame& exitFrame = pauseFrames[pauseMenuScript.control("quit").sprite];
 
-                const float actionButtonScale = uiButtonScale * 0.75f;
+                const float actionButtonScale = uiButtonScale * pauseMenuScript.number("button_scale");
                 int contW = std::max(1, (int)std::lround((continueFrame.rotated ? continueFrame.rect.h : continueFrame.rect.w) * actionButtonScale));
                 int contH = std::max(1, (int)std::lround((continueFrame.rotated ? continueFrame.rect.w : continueFrame.rect.h) * actionButtonScale));
                 int restartW = std::max(1, (int)std::lround((restartFrame.rotated ? restartFrame.rect.h : restartFrame.rect.w) * actionButtonScale));
@@ -8579,7 +8588,7 @@ int RunGameApp(int argc, char** argv) {
                 SDL_Rect highlight = (pauseSelection == 0) ? contDst : (pauseSelection == 1 ? restartDst : exitDst);
                 if (pauseSelection < 3) SDL_RenderDrawRect(ren, &highlight);
             } else {
-                SDL_Rect panel = scaleRectCentered(SDL_Rect{screenW / 2 - 140, screenH / 2 - 90, 280, 180});
+                SDL_Rect panel = scaleRectCentered(SDL_Rect{screenW / 2 - (int)pauseMenuScript.number("fallback_width") / 2, screenH / 2 - (int)pauseMenuScript.number("fallback_height") / 2, (int)pauseMenuScript.number("fallback_width"), (int)pauseMenuScript.number("fallback_height")});
                 panel.y += pauseSlideY;
                 SDL_SetRenderDrawColor(ren, 30, 30, 38, (Uint8)std::clamp((int)std::lround(230.0f * pauseEase), 0, 230));
                 SDL_RenderFillRect(ren, &panel);
@@ -8587,11 +8596,11 @@ int RunGameApp(int argc, char** argv) {
                 SDL_RenderDrawRect(ren, &panel);
 
                 SDL_SetRenderDrawColor(ren, 230, 230, 230, pausePanelAlpha);
-                DrawTextColored(ren, screenW / 2 - MeasureTextWidth(3, "PAUSED") / 2, panel.y + (int)std::lround(22.0f * uiButtonScale), 3, "PAUSED", SDL_Color{255, 255, 255, pausePanelAlpha});
+                DrawTextColored(ren, screenW / 2 - MeasureTextWidth(3, pauseMenuScript.title) / 2, panel.y + (int)std::lround(22.0f * uiButtonScale), 3, pauseMenuScript.title, SDL_Color{255, 255, 255, pausePanelAlpha});
 
-                const int buttonW = std::max(1, (int)std::lround(70 * uiButtonScale));
-                const int buttonH = std::max(1, (int)std::lround(30 * uiButtonScale));
-                const int gap = std::max(4, (int)std::lround(8 * uiButtonScale));
+                const int buttonW = std::max(1, (int)std::lround(pauseMenuScript.number("fallback_button_width") * uiButtonScale));
+                const int buttonH = std::max(1, (int)std::lround(pauseMenuScript.number("fallback_button_height") * uiButtonScale));
+                const int gap = std::max(4, (int)std::lround(pauseMenuScript.number("fallback_button_gap") * uiButtonScale));
                 const int startX = screenW / 2 - (buttonH + 3 * buttonW + 3 * gap) / 2;
                 const int buttonY = screenH / 2 + (int)std::lround(10 * uiButtonScale) + pauseSlideY;
                 pauseBtnSettings = {startX, buttonY, buttonH, buttonH};
@@ -8609,23 +8618,23 @@ int RunGameApp(int argc, char** argv) {
                 SDL_SetRenderDrawColor(ren, pauseSelection == 0 ? 70 : 45, pauseSelection == 0 ? 120 : 70, pauseSelection == 0 ? 170 : 90, pauseButtonAlpha);
                 SDL_RenderFillRect(ren, &resumeBtn);
                 SDL_SetRenderDrawColor(ren, 200, 200, 200, pauseButtonAlpha);
-                DrawTextColored(ren, resumeBtn.x + (resumeBtn.w - MeasureTextWidth(1, "RESUME")) / 2, resumeBtn.y + (resumeBtn.h - labelLineH) / 2, 1, "RESUME", SDL_Color{255, 255, 255, pauseButtonAlpha});
+                DrawTextColored(ren, resumeBtn.x + (resumeBtn.w - MeasureTextWidth(1, pauseMenuScript.control("resume").label)) / 2, resumeBtn.y + (resumeBtn.h - labelLineH) / 2, 1, pauseMenuScript.control("resume").label, SDL_Color{255, 255, 255, pauseButtonAlpha});
 
                 SDL_SetRenderDrawColor(ren, pauseSelection == 1 ? 70 : 45, pauseSelection == 1 ? 120 : 70, pauseSelection == 1 ? 170 : 90, pauseButtonAlpha);
                 SDL_RenderFillRect(ren, &restartBtn);
                 SDL_SetRenderDrawColor(ren, 200, 200, 200, pauseButtonAlpha);
-                DrawTextColored(ren, restartBtn.x + (restartBtn.w - MeasureTextWidth(1, "RESTART")) / 2, restartBtn.y + (restartBtn.h - labelLineH) / 2, 1, "RESTART", SDL_Color{255, 255, 255, pauseButtonAlpha});
+                DrawTextColored(ren, restartBtn.x + (restartBtn.w - MeasureTextWidth(1, pauseMenuScript.control("restart").label)) / 2, restartBtn.y + (restartBtn.h - labelLineH) / 2, 1, pauseMenuScript.control("restart").label, SDL_Color{255, 255, 255, pauseButtonAlpha});
 
                 SDL_SetRenderDrawColor(ren, pauseSelection == 2 ? 120 : 70, pauseSelection == 2 ? 70 : 50, pauseSelection == 2 ? 70 : 60, pauseButtonAlpha);
                 SDL_RenderFillRect(ren, &quitBtn);
                 SDL_SetRenderDrawColor(ren, 200, 200, 200, pauseButtonAlpha);
-                DrawTextColored(ren, quitBtn.x + (quitBtn.w - MeasureTextWidth(1, "QUIT")) / 2, quitBtn.y + (quitBtn.h - labelLineH) / 2, 1, "QUIT", SDL_Color{255, 255, 255, pauseButtonAlpha});
+                DrawTextColored(ren, quitBtn.x + (quitBtn.w - MeasureTextWidth(1, pauseMenuScript.control("quit").label)) / 2, quitBtn.y + (quitBtn.h - labelLineH) / 2, 1, pauseMenuScript.control("quit").label, SDL_Color{255, 255, 255, pauseButtonAlpha});
             }
 
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
             const auto settingsDraw = pauseButtonAnimations.drawRect(3, pauseBtnSettings, pauseSelection == 3, win, screenW, screenH);
-            auto buttonFrame = pauseFrames.find("settingbtn");
-            if (buttonFrame == pauseFrames.end()) buttonFrame = pauseFrames.find("settingbtn.png");
+            auto buttonFrame = pauseFrames.find(pauseMenuScript.control("settings").sprite);
+            if (buttonFrame == pauseFrames.end()) buttonFrame = pauseFrames.find(pauseMenuScript.control("settings").sprite + ".png");
             if (pauseTex && buttonFrame != pauseFrames.end()) {
                 SDL_SetTextureAlphaMod(pauseTex, pauseButtonAlpha);
                 renderFrame(ren, pauseTex, buttonFrame->second, settingsDraw);
@@ -8633,8 +8642,8 @@ int RunGameApp(int argc, char** argv) {
             } else {
                 SDL_SetRenderDrawColor(ren, 75, 85, 110, pauseButtonAlpha);
                 SDL_RenderFillRect(ren, &settingsDraw);
-                DrawTextColored(ren, settingsDraw.x + (settingsDraw.w - MeasureTextWidth(2, "S")) / 2,
-                    settingsDraw.y + (settingsDraw.h - 20) / 2, 2, "S", SDL_Color{255,255,255,pauseButtonAlpha});
+                DrawTextColored(ren, settingsDraw.x + (settingsDraw.w - MeasureTextWidth(2, pauseMenuScript.control("settings").label)) / 2,
+                    settingsDraw.y + (settingsDraw.h - 20) / 2, 2, pauseMenuScript.control("settings").label, SDL_Color{255,255,255,pauseButtonAlpha});
             }
         }
         if (levelCompleteUiLerp > 0.001f) {

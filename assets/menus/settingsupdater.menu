@@ -1,0 +1,39 @@
+cut 8 8
+center
+title "Updater"
+text "Current Version: ${client_version} (${client_version_id})"
+text "Sandbox Version: ${about_sandbox_version}"
+text "Status: ${updater_status}"
+text "Update Channel: ${update_channel}"
+when can_select_channel
+button "Use stable" update_channel stable
+button "Use prerelease" update_channel prerelease
+button "Use nightly" update_channel nightly
+endwhen
+text "Nightly: latest successful platform build. Prerelease: Tuesday snapshot."
+button "${updater_action}" updater
+when updater_latest
+text "Latest Version: ${updater_latest}" wrap
+endwhen
+when updater_detail
+text "${updater_detail}" wrap
+endwhen
+when updater_notice
+text "${updater_notice}" wrap
+endwhen
+when updater_available
+when updater_not_configured
+text "Set update_manifest_url in assets/config.json to enable updates." wrap
+endwhen
+otherwise
+text "Updates are unavailable in this build."
+endwhen
+when updater_progress
+text "Download: ${updater_percent}%" updater_progress
+endwhen
+when updater_notes
+text "Release Notes:"
+text "${updater_notes}" wrap
+endwhen
+snap left bottom
+button "Back" menu mainsetting

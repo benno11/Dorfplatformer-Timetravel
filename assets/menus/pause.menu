@@ -1,0 +1,12 @@
+title "PAUSED"
+control resume "RESUME" resume "" Continuebtn
+control restart "RESTART" restart "" Retartbtn
+control quit "QUIT" quit "" exitbtn
+control settings "S" menu mainsetting settingbtn
+set panel_sprite Panel
+set button_scale 0.75
+set fallback_width 280
+set fallback_height 180
+set fallback_button_width 70
+set fallback_button_height 30
+set fallback_button_gap 8

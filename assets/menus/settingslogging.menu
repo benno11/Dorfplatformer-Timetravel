@@ -1,0 +1,14 @@
+cut 8 8
+center
+title "Logging"
+button "Game Logging: ${game_log_enabled}" toggle game_log_enabled
+when android
+button "Save Logcat to File: ${save_logcat_to_file}" toggle save_logcat_to_file
+text "${logcat_status}"
+endwhen
+button "View Game Log" menu gamelog
+when log_path
+button "Copy Log File Path" copy "${log_path}"
+endwhen
+snap left bottom
+button "Back" menu mainsetting

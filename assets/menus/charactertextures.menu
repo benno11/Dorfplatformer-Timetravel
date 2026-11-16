@@ -1,0 +1,19 @@
+cut 8 8
+center
+title "Part Textures [Experimental]"
+when character_available
+when character_texture_status
+text "${character_texture_status}"
+otherwise
+text "Cycle a pattern or import an image as an 8x8 tile."
+endwhen
+foreach character_parts
+button "${row.name}: ${row.texture}" character "texture:${row.id}"
+button "Import ${row.name} Image..." character_import "${row.id}"
+endfor
+button "Clear All Part Textures" character clear_textures
+otherwise
+text "Enable Experimental Features in General Settings."
+endwhen
+snap left bottom
+button "Back" menu charactercreator

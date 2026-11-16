@@ -21,6 +21,7 @@ public:
     void setWindow(SDL_Window* window, SDL_Renderer* renderer);
     void shutdown();
     AsyncNetworkExecutor executor;
+    std::string connectingLabel, cancellingLabel, cancelHint;
 private:
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;

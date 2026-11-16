@@ -1,0 +1,8 @@
+title "Dorfplatformer Timetravel"
+control settings "SETTINGS" menu mainsetting settings_btn_logo
+control play "PLAY" menu mainplay play_btn_logo
+control editor "EDITOR" menu mainedit Editor_logo
+set button_size 112
+set button_gap 44
+set button_center_y 266
+set canvas_center_x 480

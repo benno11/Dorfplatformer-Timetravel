@@ -476,3 +476,59 @@ and `${slide}` are the MenuScript names; `move_down` remains a compatibility ali
 Legacy default S/Space and S/W pairs migrate to Space/W. Other custom bindings
 are preserved. Save data writes the explicit `slide` / `key_slide` fields so a
 later reload does not mistake a custom choice for legacy defaults.
+
+## Templates and dynamic data
+
+All menu definitions live in `assets/menus/*.menu`. Static menus and generated
+menus use the same loader; C++ supplies values and row collections rather than
+creating buttons or navigation entries.
+
+- `when variable` / `otherwise` / `endwhen` conditionally include a block.
+  `otherwise` is optional. Blocks may nest; the existing `if ... skip` syntax
+  still works for older scripts.
+- `foreach collection` / `endfor` repeats its block for each data row.
+  `${row.field}` reads a row value; `when row.flag` tests a row field.
+- Titles and button arguments support `${variables}`, just like labels.
+- `text "${description}" wrap` wraps paragraphs to the menu width.
+- A button's optional fifth token supplies an icon path.
+- `text "${row.text}" literal_log` displays literal log messages.
+
+```menu
+title "Achievements"
+foreach achievements
+button "[${row.state}] ${row.title}" menu "achievement:${row.id}"
+endfor
+snap left bottom
+button "Back" back
+```
+
+Collections supplied by the game include `achievements`, `requirements`,
+`log_lines`, `mods`, `worlds`, `practice_levels`, `levels`, `character_presets`,
+`imported_characters`, `hair_shapes`, and `character_parts`. They supply game data;
+labels, visibility, menu destinations, and commands are defined by the templates.
+Repeated values are substituted into already-tokenized fields, so names and
+server/log text cannot inject new MenuScript commands.
+
+`title.menu`, `pause.menu`, `quitconfirm.menu`, and `difficulty.menu` describe
+animated views. Their existing renderers retain their animation, input handling,
+and sprite styling. These files use:
+
+```menu
+title "PAUSED"
+control resume "RESUME" resume "" Continuebtn
+control settings "S" menu mainsetting settingbtn
+set button_scale 0.75
+```
+
+`control ID LABEL ACTION [DESTINATION] [SPRITE]` defines an animated control.
+`set KEY VALUE` supplies presentation values consumed by that view, including
+button sizes, spacing, panel dimensions, and explanatory text. Control IDs bind
+to the existing game actions; edit labels, destinations, sprites, and documented
+measurements without rebuilding C++. Platform-native file pickers and operating
+system permission dialogs remain platform UI.
+
+The editor uses animated view definitions in `editor.menu`, `editornew.menu`,
+`editorconfig.menu`, `editorinput.menu`, and `editorresize.menu`. These supply
+its toolbar and pause controls, prompt titles, field labels, and panel sizes.
+`networkbusy.menu` supplies connection/cancellation overlay text. The editor's
+painting tools and numeric/text input widgets remain engine code.

@@ -1,3 +1,4 @@
+#include "MenuScriptTemplate.h"
 #include "BuildInfo.h"
 #include "LevelSelect.h"
 #include "AssetPath.h"
@@ -201,7 +202,7 @@ void drawChromeButton(SDL_Renderer* ren, const SDL_Rect& rect, bool active) {
 
 std::string localLevelsFolderPath();
 std::string RunLocalLevelRenamePrompt(SDL_Window* win, SDL_Renderer* ren, const std::string& initialName,
-    const std::string& title = "RENAME LOCAL LEVEL", const std::string& fieldLabel = "NAME: ");
+    const std::string& title = "", const std::string& fieldLabel = "");
 struct GrowLevelPromptResult {
     bool accepted = false;
     int width = 30;
@@ -313,6 +314,8 @@ std::string buildNamedLocalLevelPath(const std::string& name) {
 }
 
 NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
+    const auto menuScript = MenuScript::view(ReadTextFile("assets/menus/editornew.menu"));
+
     NewLevelPromptResult out;
     bool running = true;
     int selectedRow = 0; // 0 name, 1 width, 2 height, 3 create, 4 cancel
@@ -414,7 +417,7 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
     while (running) {
         int winW = 0, winH = 0;
         getWindowSizeInPixelsCompat(win, winW, winH);
-        SDL_Rect panel{winW / 2 - 260, winH / 2 - 160, 520, 320};
+        SDL_Rect panel{winW / 2 - (int)menuScript.number("panel_width") / 2, winH / 2 - (int)menuScript.number("panel_height") / 2, (int)menuScript.number("panel_width"), (int)menuScript.number("panel_height")};
         SDL_Rect rowName{panel.x + 20, panel.y + 56, panel.w - 40, 38};
         SDL_Rect rowW{panel.x + 20, panel.y + 106, panel.w - 40, 38};
         SDL_Rect rowH{panel.x + 20, panel.y + 156, panel.w - 40, 38};
@@ -524,7 +527,7 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
         SDL_RenderFillRect(ren, &panel);
         SDL_SetRenderDrawColor(ren, 200, 210, 230, 255);
         SDL_RenderDrawRect(ren, &panel);
-        DrawGameText(ren, panel.x + 20, panel.y + 20, 3, "CREATE NEW LEVEL");
+        DrawGameText(ren, panel.x + 20, panel.y + 20, 3, menuScript.title);
 
         auto drawRow = [&](const SDL_Rect& r, bool selected, const std::string& text) {
             SDL_SetRenderDrawColor(ren, selected ? 68 : 50, selected ? 98 : 72, selected ? 158 : 108, 255);
@@ -540,9 +543,9 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
             SDL_RenderDrawRect(ren, &r);
             DrawGameText(ren, r.x + 12, r.y + 6, 2, label);
         };
-        drawRow(rowName, selectedRow == 0, std::string("NAME: ") + out.name);
-        drawRow(rowW, selectedRow == 1, std::string("WIDTH: ") + std::to_string(out.width));
-        drawRow(rowH, selectedRow == 2, std::string("HEIGHT: ") + std::to_string(out.height));
+        drawRow(rowName, selectedRow == 0, std::string(menuScript.text("name")) + out.name);
+        drawRow(rowW, selectedRow == 1, std::string(menuScript.text("width")) + std::to_string(out.width));
+        drawRow(rowH, selectedRow == 2, std::string(menuScript.text("height")) + std::to_string(out.height));
         drawAdjustButton(rowWMinus, "-");
         drawAdjustButton(rowWPlus, "+");
         drawAdjustButton(rowHMinus, "-");
@@ -552,14 +555,14 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
         SDL_RenderFillRect(ren, &createBtn);
         SDL_SetRenderDrawColor(ren, 205, 235, 210, 255);
         SDL_RenderDrawRect(ren, &createBtn);
-        DrawGameText(ren, createBtn.x + 38, createBtn.y + 12, 2, "CREATE");
+        DrawGameText(ren, createBtn.x + 38, createBtn.y + 12, 2, menuScript.control("create").label);
 
         SDL_SetRenderDrawColor(ren, selectedRow == 4 ? 110 : 80, selectedRow == 4 ? 70 : 55, selectedRow == 4 ? 90 : 70, 255);
         SDL_RenderFillRect(ren, &cancelBtn);
         SDL_SetRenderDrawColor(ren, 235, 205, 210, 255);
         SDL_RenderDrawRect(ren, &cancelBtn);
-        DrawGameText(ren, cancelBtn.x + 38, cancelBtn.y + 12, 2, "CANCEL");
-        DrawGameText(ren, panel.x + 20, panel.y + panel.h - 24, 2, "Touch +/- or use arrows. ENTER confirms.");
+        DrawGameText(ren, cancelBtn.x + 38, cancelBtn.y + 12, 2, menuScript.control("cancel").label);
+        DrawGameText(ren, panel.x + 20, panel.y + panel.h - 24, 2, menuScript.text("instructions"));
 
         AudioSystem::pumpEventSfx();
         SDL_RenderPresent(ren);
@@ -599,6 +602,8 @@ public:
 };
 
 bool RunLevelConfigMenu(SDL_Window* win, SDL_Renderer* ren, LevelMeta& config) {
+    const auto menuScript = MenuScript::view(ReadTextFile("assets/menus/editorconfig.menu"));
+
     LevelMeta draft = config;
     EditorSkin skin(ren);
     int selected = 0;
@@ -674,23 +679,23 @@ bool RunLevelConfigMenu(SDL_Window* win, SDL_Renderer* ren, LevelMeta& config) {
         SDL_SetRenderDrawColor(ren, 20, 29, 42, 255);
         SDL_RenderClear(ren);
         skin.draw(ren, SDL_Rect{48, 8, 544, 448}, false, true);
-        DrawGameText(ren, 320 - MeasureTextWidth(3, "Level Config") / 2, 24, 3, "Level Config");
+        DrawGameText(ren, 320 - MeasureTextWidth(3, menuScript.title) / 2, 24, 3, menuScript.title);
         const int values[] = {draft.world, draft.area, draft.time};
-        const char* names[] = {"World", "Area", "Time"};
+        const char* names[] = {menuScript.text("world").c_str(), menuScript.text("area").c_str(), menuScript.text("time").c_str()};
         for (int row = 0; row < 6; ++row) {
             SDL_SetRenderDrawColor(ren, selected == row ? 65 : 39, selected == row ? 96 : 59, selected == row ? 130 : 82, 255);
             skin.draw(ren, rows[row], selected == row);
             SDL_SetRenderDrawColor(ren, selected == row ? 230 : 130, 205, 235, 255);
             SDL_RenderRect(ren, &rows[row]);
-            const std::string label = row < 3 ? std::string(names[row]) + ": " + (values[row] ? std::to_string(values[row]) : "Auto") :
-                (row == 3 ? std::string("Bouncy tile 12: ") + (draft.bouncyTile12 ? "ON" : "OFF") : (row == 4 ? "Apply" : "Cancel"));
+            const std::string label = row < 3 ? std::string(names[row]) + ": " + (values[row] ? std::to_string(values[row]) : menuScript.text("auto")) :
+                (row == 3 ? std::string(menuScript.text("bounce")) + (draft.bouncyTile12 ? "ON" : "OFF") : (row == 4 ? menuScript.control("apply").label : menuScript.control("cancel").label));
             DrawGameText(ren, rows[row].x + (rows[row].w - MeasureTextWidth(2, label)) / 2, rows[row].y + 14, 2, label);
             if (row < 3) {
                 DrawGameText(ren, rows[row].x + 20, rows[row].y + 14, 2, "-");
                 DrawGameText(ren, rows[row].x + rows[row].w - 32, rows[row].y + 14, 2, "+");
             }
         }
-        DrawGameText(ren, 80, 345, 1, "Auto keeps the original level setting. Jump overrides tile 12.");
+        DrawGameText(ren, 80, 345, 1, menuScript.text("instructions"));
         AudioSystem::pumpEventSfx();
         SDL_RenderPresent(ren);
         SDL_Delay(16);
@@ -704,6 +709,8 @@ bool RunLevelConfigMenu(SDL_Window* win, SDL_Renderer* ren, LevelMeta& config) {
 
 std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::string& initialPath = "",
                                 const std::string& newLevelName = "", int newLevelW = -1, int newLevelH = -1) {
+    const auto menuScript = MenuScript::view(ReadTextFile("assets/menus/editor.menu"));
+
     constexpr int kEditorTileSize = 32;
     int gridW = (newLevelW > 0) ? std::clamp(newLevelW, 5, 400) : 30;
     int gridH = (newLevelH > 0) ? std::clamp(newLevelH, 5, 400) : 17;
@@ -822,10 +829,13 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
     };
     auto pauseAction = [&](int action) {
         pauseSel = action;
-        if (action == 0) paused = false;
-        else if (action == 1) { if (saveEditor(false)) paused = false; }
-        else if (action == 2) saveEditor(true);
-        else if (snapshot() == savedSnapshot || saveEditor(false, true)) running = false;
+        const char* controls[] = {"resume", "save_resume", "save_exit", "exit"};
+        if (action < 0 || action >= 4) return;
+        const auto& command = menuScript.control(controls[action]).action;
+        if (command == "resume") paused = false;
+        else if (command == "save_resume") { if (saveEditor(false)) paused = false; }
+        else if (command == "save_exit") saveEditor(true);
+        else if (command == "exit" && (snapshot() == savedSnapshot || saveEditor(false, true))) running = false;
     };
     auto openLevelConfig = [&]() {
         editorFingerActive = fingerPainting = fingerPaletteScroll = fingerGridPanning = middlePanning = false;
@@ -1665,14 +1675,14 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
 
         const int helpScale = 1;
         DrawGameText(ren, panelX + 4, objectConfigBtn.y - 40, helpScale,
-            configureObjects ? "TAP OBJECT TO CONFIGURE" : (touchPanMode ? "DRAG TO PAN" : (touchEraseMode ? "DELETE MODE" : "PLACE / OVERRIDE")));
-        DrawGameText(ren, panelX + 4, objectConfigBtn.y - 24, helpScale, "F2: LEVEL  F3: OBJECT  ESC: MENU");
+            configureObjects ? menuScript.text("configure_hint") : (touchPanMode ? menuScript.text("pan_hint") : (touchEraseMode ? menuScript.text("delete_hint") : menuScript.text("place_hint"))));
+        DrawGameText(ren, panelX + 4, objectConfigBtn.y - 24, helpScale, menuScript.text("keys_hint"));
         if (!statusText.empty() && SDL_GetTicks() < statusUntil)
             DrawGameText(ren, panelX + 4, objectConfigBtn.y - 56, 1, statusText);
         skin.draw(ren, configBtn);
-        DrawGameText(ren, configBtn.x + (configBtn.w - MeasureTextWidth(2, "LEVEL CONFIG")) / 2, configBtn.y + 12, 2, "LEVEL CONFIG");
+        DrawGameText(ren, configBtn.x + (configBtn.w - MeasureTextWidth(2, menuScript.control("config").label)) / 2, configBtn.y + 12, 2, menuScript.control("config").label);
         skin.draw(ren, objectConfigBtn, configureObjects);
-        DrawGameText(ren, objectConfigBtn.x + (objectConfigBtn.w - MeasureTextWidth(2, "CONFIGURE OBJECT")) / 2, objectConfigBtn.y + 12, 2, "CONFIGURE OBJECT");
+        DrawGameText(ren, objectConfigBtn.x + (objectConfigBtn.w - MeasureTextWidth(2, menuScript.control("object_config").label)) / 2, objectConfigBtn.y + 12, 2, menuScript.control("object_config").label);
         skin.draw(ren, brushDownBtn);
         skin.draw(ren, brushUpBtn);
         const std::string brushLabel = "BRUSH " + std::to_string(brushSize) + "x" + std::to_string(brushSize);
@@ -1690,25 +1700,25 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         skin.draw(ren, tileModeBtn, !objectMode);
         SDL_SetRenderDrawColor(ren, 220, 220, 230, 255);
         SDL_RenderDrawRect(ren, &tileModeBtn);
-        const char* tileModeLabel = controlW < 105 ? "TILE" : "TILES";
+        const char* tileModeLabel = controlW < 105 ? menuScript.text("tile_short").c_str() : menuScript.text("tiles").c_str();
         DrawGameText(ren, tileModeBtn.x + std::max(4, (tileModeBtn.w - MeasureTextWidth(2, tileModeLabel)) / 2), tileModeBtn.y + 13, 2, tileModeLabel);
         SDL_SetRenderDrawColor(ren, objectMode ? 90 : 50, objectMode ? 110 : 70, objectMode ? 170 : 90, 255);
         skin.draw(ren, objectModeBtn, objectMode);
         SDL_SetRenderDrawColor(ren, 220, 220, 230, 255);
         SDL_RenderDrawRect(ren, &objectModeBtn);
-        const char* objectModeLabel = controlW < 120 ? "OBJ" : "OBJECTS";
+        const char* objectModeLabel = controlW < 120 ? menuScript.text("object_short").c_str() : menuScript.text("objects").c_str();
         DrawGameText(ren, objectModeBtn.x + std::max(4, (objectModeBtn.w - MeasureTextWidth(2, objectModeLabel)) / 2), objectModeBtn.y + 13, 2, objectModeLabel);
 
         SDL_SetRenderDrawColor(ren, touchPanMode ? 90 : 50, touchPanMode ? 120 : 70, touchPanMode ? 170 : 90, 255);
         skin.draw(ren, panModeBtn, touchPanMode);
         SDL_SetRenderDrawColor(ren, 220, 220, 230, 255);
         SDL_RenderDrawRect(ren, &panModeBtn);
-        DrawGameText(ren, panModeBtn.x + std::max(4, (panModeBtn.w - MeasureTextWidth(2, "PAN")) / 2), panModeBtn.y + 13, 2, "PAN");
+        DrawGameText(ren, panModeBtn.x + std::max(4, (panModeBtn.w - MeasureTextWidth(2, menuScript.control("pan").label)) / 2), panModeBtn.y + 13, 2, menuScript.control("pan").label);
         SDL_SetRenderDrawColor(ren, touchEraseMode ? 150 : 50, touchEraseMode ? 75 : 70, touchEraseMode ? 75 : 90, 255);
         skin.draw(ren, eraseModeBtn, touchEraseMode);
         SDL_SetRenderDrawColor(ren, 220, 220, 230, 255);
         SDL_RenderDrawRect(ren, &eraseModeBtn);
-        DrawGameText(ren, eraseModeBtn.x + std::max(4, (eraseModeBtn.w - MeasureTextWidth(2, "DELETE")) / 2), eraseModeBtn.y + 13, 2, "DELETE");
+        DrawGameText(ren, eraseModeBtn.x + std::max(4, (eraseModeBtn.w - MeasureTextWidth(2, menuScript.control("delete").label)) / 2), eraseModeBtn.y + 13, 2, menuScript.control("delete").label);
 
         SDL_SetRenderDrawColor(ren, 55, 65, 90, 255);
         skin.draw(ren, zoomOutBtn, false);
@@ -1749,9 +1759,9 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                     SDL_RenderFillRect(ren, &sw);
                 }
                 if (pid == 7) {
-                    DrawGameText(ren, r.x + 38, r.y + 8, 2, "Main Ground Tiles");
+                    DrawGameText(ren, r.x + 38, r.y + 8, 2, menuScript.text("ground"));
                 } else if (pid == TileIds::BossBarrier) {
-                    DrawGameText(ren, r.x + 38, r.y + 8, 2, "Boss Barrier (98)");
+                    DrawGameText(ren, r.x + 38, r.y + 8, 2, menuScript.text("boss_barrier"));
                 } else {
                     DrawGameText(ren, r.x + 38, r.y + 8, 2, std::string("Tile ") + std::to_string((int)pid));
                 }
@@ -1787,10 +1797,10 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
 
             skin.draw(ren, pausePanel, false, true);
-            DrawGameText(ren, pausePanel.x + (pausePanel.w - MeasureTextWidth(3, "PAUSED")) / 2, pausePanel.y + 16, 3, "PAUSED");
-            const std::string notice = SDL_GetTicks() < statusUntil ? statusText : "AUTO SAVE EVERY 15 SECONDS";
+            DrawGameText(ren, pausePanel.x + (pausePanel.w - MeasureTextWidth(3, menuScript.title)) / 2, pausePanel.y + 16, 3, menuScript.title);
+            const std::string notice = SDL_GetTicks() < statusUntil ? statusText : menuScript.text("autosave");
             DrawGameText(ren, pausePanel.x + (pausePanel.w - MeasureTextWidth(1, notice)) / 2, pausePanel.y + 52, 1, notice);
-            const char* labels[4] = {"RESUME", "SAVE & RESUME", "SAVE & EXIT", "EXIT"};
+            const char* labels[4] = {menuScript.control("resume").label.c_str(), menuScript.control("save_resume").label.c_str(), menuScript.control("save_exit").label.c_str(), menuScript.control("exit").label.c_str()};
             for (int i = 0; i < 4; ++i) {
                 const SDL_Rect rect = editorAnimations.drawRect(i, pauseBtns[i], i == pauseSel, win, winW, winH);
                 skin.draw(ren, rect, i == pauseSel);
@@ -1883,7 +1893,11 @@ bool ResizeLocalLevelForMenu(SDL_Window* win, SDL_Renderer* ren, const std::stri
 namespace {
 
 std::string RunLocalLevelRenamePrompt(SDL_Window* win, SDL_Renderer* ren, const std::string& initialName,
-    const std::string& title, const std::string& fieldLabel) {
+    const std::string& requestedTitle, const std::string& requestedLabel) {
+    const auto menuScript = MenuScript::view(ReadTextFile("assets/menus/editorinput.menu"));
+    const auto title = requestedTitle.empty() ? menuScript.title : requestedTitle;
+    const auto fieldLabel = requestedLabel.empty() ? menuScript.text("field") : requestedLabel;
+
     std::string name = initialName;
     EditorSkin skin(ren);
     bool accepted = false;
@@ -1910,7 +1924,7 @@ std::string RunLocalLevelRenamePrompt(SDL_Window* win, SDL_Renderer* ren, const 
     while (running) {
         int winW = 0, winH = 0;
         getWindowSizeInPixelsCompat(win, winW, winH);
-        SDL_Rect panel{winW / 2 - 260, winH / 2 - 110, 520, 220};
+        SDL_Rect panel{winW / 2 - (int)menuScript.number("panel_width") / 2, winH / 2 - (int)menuScript.number("panel_height") / 2, (int)menuScript.number("panel_width"), (int)menuScript.number("panel_height")};
         SDL_Rect rowName{panel.x + 20, panel.y + 66, panel.w - 40, 40};
         SDL_Rect okBtn{panel.x + 80, panel.y + 148, 150, 42};
         SDL_Rect cancelBtn{panel.x + 290, panel.y + 148, 150, 42};
@@ -1993,12 +2007,12 @@ std::string RunLocalLevelRenamePrompt(SDL_Window* win, SDL_Renderer* ren, const 
         skin.draw(ren, okBtn);
         SDL_SetRenderDrawColor(ren, 205, 235, 210, 255);
         SDL_RenderDrawRect(ren, &okBtn);
-        DrawGameText(ren, okBtn.x + 48, okBtn.y + 12, 2, "OK");
+        DrawGameText(ren, okBtn.x + 48, okBtn.y + 12, 2, menuScript.control("ok").label);
         SDL_SetRenderDrawColor(ren, 80, 55, 70, 255);
         skin.draw(ren, cancelBtn);
         SDL_SetRenderDrawColor(ren, 235, 205, 210, 255);
         SDL_RenderDrawRect(ren, &cancelBtn);
-        DrawGameText(ren, cancelBtn.x + 34, cancelBtn.y + 12, 2, "CANCEL");
+        DrawGameText(ren, cancelBtn.x + 34, cancelBtn.y + 12, 2, menuScript.control("cancel").label);
         AudioSystem::pumpEventSfx();
         SDL_RenderPresent(ren);
         SDL_Delay(16);
@@ -2008,6 +2022,8 @@ std::string RunLocalLevelRenamePrompt(SDL_Window* win, SDL_Renderer* ren, const 
 }
 
 GrowLevelPromptResult RunGrowLevelPrompt(SDL_Window* win, SDL_Renderer* ren, int currentW, int currentH, bool allowShrink) {
+    const auto menuScript = MenuScript::view(ReadTextFile("assets/menus/editorresize.menu"));
+
     GrowLevelPromptResult out;
     out.width = allowShrink ? std::clamp(currentW, 5, 400) : currentW;
     out.height = allowShrink ? std::clamp(currentH, 5, 400) : currentH;
@@ -2018,7 +2034,7 @@ GrowLevelPromptResult RunGrowLevelPrompt(SDL_Window* win, SDL_Renderer* ren, int
     while (running) {
         int winW = 0, winH = 0;
         getWindowSizeInPixelsCompat(win, winW, winH);
-        SDL_Rect panel{winW / 2 - 260, winH / 2 - 140, 520, 280};
+        SDL_Rect panel{winW / 2 - (int)menuScript.number("panel_width") / 2, winH / 2 - (int)menuScript.number("panel_height") / 2, (int)menuScript.number("panel_width"), (int)menuScript.number("panel_height")};
         SDL_Rect rowW{panel.x + 20, panel.y + 66, panel.w - 40, 38};
         SDL_Rect rowH{panel.x + 20, panel.y + 116, panel.w - 40, 38};
         SDL_Rect rowWMinus{rowW.x + rowW.w - 96, rowW.y + 5, 40, rowW.h - 10};
@@ -2079,7 +2095,7 @@ GrowLevelPromptResult RunGrowLevelPrompt(SDL_Window* win, SDL_Renderer* ren, int
         SDL_RenderFillRect(ren, &panel);
         SDL_SetRenderDrawColor(ren, 200, 210, 230, 255);
         SDL_RenderDrawRect(ren, &panel);
-        DrawGameText(ren, panel.x + 20, panel.y + 20, 3, allowShrink ? "RESIZE LOCAL LEVEL" : "GROW LOCAL LEVEL");
+        DrawGameText(ren, panel.x + 20, panel.y + 20, 3, allowShrink ? menuScript.title : menuScript.text("grow_title"));
         auto drawRow = [&](const SDL_Rect& r, bool selected, const std::string& text) {
             SDL_SetRenderDrawColor(ren, selected ? 68 : 50, selected ? 98 : 72, selected ? 158 : 108, 255);
             SDL_RenderFillRect(ren, &r);
@@ -2094,23 +2110,23 @@ GrowLevelPromptResult RunGrowLevelPrompt(SDL_Window* win, SDL_Renderer* ren, int
             SDL_RenderDrawRect(ren, &r);
             DrawGameText(ren, r.x + 12, r.y + 6, 2, label);
         };
-        drawRow(rowW, selectedRow == 0, std::string("WIDTH: ") + std::to_string(out.width));
-        drawRow(rowH, selectedRow == 1, std::string("HEIGHT: ") + std::to_string(out.height));
+        drawRow(rowW, selectedRow == 0, std::string(menuScript.text("width")) + std::to_string(out.width));
+        drawRow(rowH, selectedRow == 1, std::string(menuScript.text("height")) + std::to_string(out.height));
         drawAdjust(rowWMinus, "-");
         drawAdjust(rowWPlus, "+");
         drawAdjust(rowHMinus, "-");
         drawAdjust(rowHPlus, "+");
-        if (allowShrink) DrawGameText(ren, panel.x + 20, panel.y + 174, 2, "5-400 TILES; KEEPS TOP-LEFT AREA");
+        if (allowShrink) DrawGameText(ren, panel.x + 20, panel.y + 174, 2, menuScript.text("instructions"));
         SDL_SetRenderDrawColor(ren, 55, 95, 70, 255);
         SDL_RenderFillRect(ren, &growBtn);
         SDL_SetRenderDrawColor(ren, 205, 235, 210, 255);
         SDL_RenderDrawRect(ren, &growBtn);
-        DrawGameText(ren, growBtn.x + 42, growBtn.y + 12, 2, allowShrink ? "APPLY" : "GROW");
+        DrawGameText(ren, growBtn.x + 42, growBtn.y + 12, 2, allowShrink ? menuScript.control("apply").label : menuScript.control("grow").label);
         SDL_SetRenderDrawColor(ren, 80, 55, 70, 255);
         SDL_RenderFillRect(ren, &cancelBtn);
         SDL_SetRenderDrawColor(ren, 235, 205, 210, 255);
         SDL_RenderDrawRect(ren, &cancelBtn);
-        DrawGameText(ren, cancelBtn.x + 34, cancelBtn.y + 12, 2, "CANCEL");
+        DrawGameText(ren, cancelBtn.x + 34, cancelBtn.y + 12, 2, menuScript.control("cancel").label);
         AudioSystem::pumpEventSfx();
         SDL_RenderPresent(ren);
         SDL_Delay(16);
