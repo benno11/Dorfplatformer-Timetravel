@@ -11,4 +11,4 @@ button "Slide: ${slide}" bind slide
 button "Jump: ${jump}" bind jump
 button "Pause: ${pause}" bind pause
 snap center bottom
-button "Back" menu mainsetting
+button "Back" menu settingsgeneral

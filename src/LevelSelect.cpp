@@ -708,8 +708,10 @@ bool RunLevelConfigMenu(SDL_Window* win, SDL_Renderer* ren, LevelMeta& config) {
 
 
 std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::string& initialPath = "",
-                                const std::string& newLevelName = "", int newLevelW = -1, int newLevelH = -1) {
+                                const std::string& newLevelName = "", int newLevelW = -1, int newLevelH = -1, bool* playRequested = nullptr) {
+    if (playRequested) *playRequested = false;
     const auto menuScript = MenuScript::view(ReadTextFile("assets/menus/editor.menu"));
+    const auto pauseIds = menuScript.ordered({"resume", "save_resume", "exit", "save_exit"});
 
     constexpr int kEditorTileSize = 32;
     int gridW = (newLevelW > 0) ? std::clamp(newLevelW, 5, 400) : 30;
@@ -829,12 +831,15 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
     };
     auto pauseAction = [&](int action) {
         pauseSel = action;
-        const char* controls[] = {"resume", "save_resume", "save_exit", "exit"};
+
         if (action < 0 || action >= 4) return;
-        const auto& command = menuScript.control(controls[action]).action;
+        const auto& command = menuScript.control(pauseIds[action]).action;
         if (command == "resume") paused = false;
         else if (command == "save_resume") { if (saveEditor(false)) paused = false; }
         else if (command == "save_exit") saveEditor(true);
+        else if (command == "save_play") {
+            if (saveEditor(true)) { if (playRequested) *playRequested = true; }
+        }
         else if (command == "exit" && (snapshot() == savedSnapshot || saveEditor(false, true))) running = false;
     };
     auto openLevelConfig = [&]() {
@@ -1119,7 +1124,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                     editorFingerActive = fingerPainting = false; continue;
                 }
                 if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && (e.key.key == SDLK_COMMA || e.key.key == SDLK_PERIOD)) {
-                    brushSize = std::clamp(brushSize + (e.key.key == SDLK_PERIOD ? 2 : -2), 1, EditorBrush::maxSize); continue;
+                    brushSize = std::clamp(brushSize + (e.key.key == SDLK_PERIOD ? 1 : -1), 1, EditorBrush::maxSize); continue;
                 }
                 const bool configObject = ((mouseTool || touchTool) && SDL_PointInRect(&toolPoint, &objectConfigBtn)) ||
                     (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && e.key.key == SDLK_F3);
@@ -1800,7 +1805,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             DrawGameText(ren, pausePanel.x + (pausePanel.w - MeasureTextWidth(3, menuScript.title)) / 2, pausePanel.y + 16, 3, menuScript.title);
             const std::string notice = SDL_GetTicks() < statusUntil ? statusText : menuScript.text("autosave");
             DrawGameText(ren, pausePanel.x + (pausePanel.w - MeasureTextWidth(1, notice)) / 2, pausePanel.y + 52, 1, notice);
-            const char* labels[4] = {menuScript.control("resume").label.c_str(), menuScript.control("save_resume").label.c_str(), menuScript.control("save_exit").label.c_str(), menuScript.control("exit").label.c_str()};
+            const char* labels[4] = {menuScript.control(pauseIds[0]).label.c_str(), menuScript.control(pauseIds[1]).label.c_str(), menuScript.control(pauseIds[2]).label.c_str(), menuScript.control(pauseIds[3]).label.c_str()};
             for (int i = 0; i < 4; ++i) {
                 const SDL_Rect rect = editorAnimations.drawRect(i, pauseBtns[i], i == pauseSel, win, winW, winH);
                 skin.draw(ren, rect, i == pauseSel);
@@ -1834,8 +1839,8 @@ std::string localLevelsFolderPath() {
 
 } // namespace
 
-std::string OpenLocalLevelEditorForMenu(SDL_Window* win, SDL_Renderer* ren, const std::string& initialPath) {
-    return RunLocalLevelEditor(win, ren, initialPath);
+std::string OpenLocalLevelEditorForMenu(SDL_Window* win, SDL_Renderer* ren, const std::string& initialPath, bool* playRequested) {
+    return RunLocalLevelEditor(win, ren, initialPath, "", -1, -1, playRequested);
 }
 
 std::string RenameLocalLevelForMenu(SDL_Window* win, SDL_Renderer* ren, const std::string& path, std::string& status) {

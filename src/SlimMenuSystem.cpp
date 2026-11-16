@@ -1439,7 +1439,7 @@ void prepareMenuData(const std::string& name, SlimRuntime& runtime, const SlimMe
         for (const auto& def : Achievements::definitions) if (Edition::achievementAvailable(def.id)) {
             const bool earned = ctx.achievements && ctx.achievements->has(def.id);
             ++count; unlocked += earned;
-            row("achievements", {{"id",def.id},{"title",def.title},{"state",earned?"UNLOCKED":"LOCKED"},
+            row("achievements", {{"id",def.id},{"title",def.title},{"state",earned?"UNLOCKED":"LOCKED"},{"unlocked",earned?"true":"false"},
                 {"requirements",progress.requirementSummary(def.id,catalog)}});
         }
         v["achievement_count"] = std::to_string(count); v["achievement_unlocked"] = std::to_string(unlocked);
@@ -2273,8 +2273,14 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
         return SlimMenuExit::Continue;
     }
     if (command == "create_level") {
-        const std::string createdPath = OpenLocalLevelEditorForMenu(ctx.win, ctx.ren, {});
+        bool playRequested = false;
+        const std::string createdPath = OpenLocalLevelEditorForMenu(ctx.win, ctx.ren, {}, &playRequested);
         runtime.localLevelsLoaded = false;
+        if (playRequested && !createdPath.empty() && ctx.selectedLevelPath) {
+            *ctx.selectedLevelPath = createdPath;
+            if (ctx.selectedLevelName) ctx.selectedLevelName->clear();
+            return SlimMenuExit::StartGame;
+        }
         runtime.vars["level_detail_status"] = createdPath.empty() ? "Create cancelled." : "Level saved.";
         runtime.vars["__reload_menu"] = "1";
         return SlimMenuExit::Continue;
@@ -2287,8 +2293,14 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
             runtime.vars["__reload_menu"] = "1";
             return SlimMenuExit::Continue;
         }
-        const std::string editedPath = OpenLocalLevelEditorForMenu(ctx.win, ctx.ren, levels[index].path);
+        bool playRequested = false;
+        const std::string editedPath = OpenLocalLevelEditorForMenu(ctx.win, ctx.ren, levels[index].path, &playRequested);
         runtime.localLevelsLoaded = false;
+        if (playRequested && !editedPath.empty() && ctx.selectedLevelPath) {
+            *ctx.selectedLevelPath = editedPath;
+            if (ctx.selectedLevelName) ctx.selectedLevelName->clear();
+            return SlimMenuExit::StartGame;
+        }
         runtime.vars["level_detail_status"] = editedPath.empty() ? "Edit cancelled." : "Level saved.";
         runtime.vars["__reload_menu"] = "1";
         return SlimMenuExit::Continue;

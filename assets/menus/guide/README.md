@@ -582,3 +582,28 @@ resolution. Aspect-ratio letterboxing and rounding borders are removed, includin
 from difficulty/configuration dialogs and the network loading snapshot. Mouse
 and touch positions use the same transformation. UI scaling changes controls
 inside the canvas rather than shrinking the final canvas into an inset rectangle.
+
+
+Achievement rows also expose `row.unlocked` as `true` or `false`. Use it directly
+in a condition rather than comparing the display-oriented `row.state` string:
+
+```menu
+foreach achievements
+when row.unlocked
+button "${row.title}" copy "${row.title}"
+otherwise
+button "${row.requirements}" copy "${row.requirements}"
+endwhen
+endfor
+```
+
+The value follows saved global achievement progress, including after restarting.
+`row.state` remains available for menus that display `UNLOCKED` / `LOCKED` labels.
+
+The editor pause menu follows file order. `control exit "SAVE & PLAY" save_play`
+saves the level and starts it on success; failed saves keep the editor open.
+The same path works for new and existing levels. Place it after Save & Resume.
+
+Brush sizes now paint exactly N by N cells, including 2, 4, 6, and 8. Even sizes
+extend one extra cell right/down, with preview and painting kept identical.
+Comma/period step through every size; clipping at the map edge remains active.

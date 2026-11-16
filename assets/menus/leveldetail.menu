@@ -28,7 +28,7 @@ button "Dislike" vote_online_level "${detail_index}:dislike"
 button "Clear Vote" vote_online_level "${detail_index}:clear"
 snap center center
 when account_is_mod
-button "Set Difficulty" rate_online_level "${detail_index}"
+button "Moderator: Set Difficulty" rate_online_level "${detail_index}"
 endwhen
 otherwise
 button "Edit" edit_level "${detail_index}"

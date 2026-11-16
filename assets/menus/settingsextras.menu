@@ -8,5 +8,7 @@ text "More legacy categories unlock through experimental features."
 button "Anonymous Metrics: ${send_anonymous_metrics}" toggle send_anonymous_metrics
 button "Character Creator [Experimental]" menu charactercreator
 button "Mods" menu settingsmods
+
+
 snap center bottom
-button "Back" menu mainsetting
+button "Back" menu settingsgeneral

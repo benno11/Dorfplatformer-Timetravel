@@ -13,7 +13,7 @@ struct LevelEntry {
     int dislikes = 0;
 };
 
-std::string OpenLocalLevelEditorForMenu(SDL_Window* win, SDL_Renderer* ren, const std::string& initialPath);
+std::string OpenLocalLevelEditorForMenu(SDL_Window* win, SDL_Renderer* ren, const std::string& initialPath, bool* playRequested = nullptr);
 std::string RenameLocalLevelForMenu(SDL_Window* win, SDL_Renderer* ren, const std::string& path, std::string& status);
 bool ResizeLocalLevelForMenu(SDL_Window* win, SDL_Renderer* ren, const std::string& path, std::string& status);
 bool uploadLocalLevelToServer(const LevelEntry& level, std::string& statusText);

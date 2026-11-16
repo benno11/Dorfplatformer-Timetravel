@@ -2,9 +2,13 @@ cut 8 8
 center
 # DF Slim Menu: general settings
 title "General Settings"
-button "Level Select: ${level_select_enabled}" toggle level_select_enabled
-button "Camera Clamp X: ${camera_clamp_x}" toggle camera_clamp_x
+button "Account" menu settingsaccount
+button "Extra Settings" menu settingsextras
+button "Controls" menu settingscontrols
+button "Online Content: ${level_select_enabled}" toggle level_select_enabled
 button "Power Management: ${power_management_enabled}" toggle power_management_enabled
 button "Low Power Mode: ${low_power_mode_enabled}" toggle low_power_mode_enabled
+
+
 snap center bottom
 button "Back" menu mainsetting

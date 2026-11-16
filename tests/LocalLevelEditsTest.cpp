@@ -7,6 +7,7 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <set>
 
 namespace fs = std::filesystem;
 static std::string read(const fs::path& path) {
@@ -22,6 +23,21 @@ int main() {
     for (const auto& cell : EditorBrush::cells(5, 4, 0, 0, 9))
         assert(cell.first >= 0 && cell.first < 5 && cell.second >= 0 && cell.second < 4);
 
+    for (int size = 1; size <= 9; ++size) {
+        const auto footprint = EditorBrush::cells(50, 50, 25, 25, size);
+        assert(footprint.size() == (size_t)(size * size));
+        std::set<std::pair<int, int>> unique(footprint.begin(), footprint.end());
+        assert(unique.size() == footprint.size());
+        for (const auto& cell : footprint) {
+            assert(cell.first >= 25 - (size - 1) / 2 && cell.first <= 25 + size / 2);
+            assert(cell.second >= 25 - (size - 1) / 2 && cell.second <= 25 + size / 2);
+        }
+    }
+    for (int size : {2, 4, 6, 8}) {
+        const auto edge = EditorBrush::cells(10, 10, 0, 0, size);
+        assert(edge.size() == (size_t)((size / 2 + 1) * (size / 2 + 1)));
+        for (const auto& cell : edge) assert(cell.first >= 0 && cell.first < 10 && cell.second >= 0 && cell.second < 10);
+    }
     std::vector<ObjectInstance> layered;
     EditorObjects::replace(layered, {"31", 48, 48, {}, 0});
     EditorObjects::replace(layered, {"46", 48, 48, {}, 2});

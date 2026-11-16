@@ -6,7 +6,15 @@ text "${achievement_unlocked}/${achievement_count} unlocked"
 text "Shared across all save slots."
 center
 foreach achievements
-button "[${row.state}] ${row.title}, with   ${row.requirements}" copy "${row.id}"
+
+
+when row.unlocked
+button "${row.title}" copy "${row.title}"
+otherwise
+button "${row.requirements}" copy "${row.requirements}"
+endwhen
+
+
 endfor
 
 

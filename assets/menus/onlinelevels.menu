@@ -1,8 +1,10 @@
 cut 8 8
 center
+snap center top
 title "Online Levels"
 text "Filter: ${level_filter_label}  Page ${level_page_number}/${level_page_count}"
 text "${online_level_status}"
+snap center center
 
 foreach levels
 button "${row.label}" level_detail "online:${row.index}"

@@ -4,6 +4,7 @@
 #include <cmath>
 #include <sstream>
 #include <functional>
+#include <initializer_list>
 #include <map>
 #include <stdexcept>
 #include <string>
@@ -51,6 +52,14 @@ struct View {
     std::string title;
     Row values;
     std::map<std::string, Control> controls;
+    std::vector<std::string> order;
+    std::vector<std::string> ordered(std::initializer_list<const char*> ids) const {
+        std::vector<std::string> result;
+        for (const auto& id : order)
+            for (const auto* allowed : ids) if (id == allowed) result.push_back(id);
+        for (const auto* id : ids) if (std::find(result.begin(), result.end(), id) == result.end()) result.push_back(id);
+        return result;
+    }
     const std::string& text(const std::string& key) const {
         static const std::string empty;
         const auto found=values.find(key); return found==values.end()?empty:found->second;
@@ -69,7 +78,10 @@ inline View view(const std::string& source) {
         const auto& p=line.parts;
         if(p[0]=="title"&&p.size()>1)result.title=p[1];
         if(p[0]=="set"&&p.size()>2)result.values[p[1]]=p[2];
-        if(p[0]=="control"&&p.size()>=4)result.controls[p[1]]={p[2],p[3],p.size()>4?p[4]:"",p.size()>5?p[5]:""};
+        if(p[0]=="control"&&p.size()>=4){
+            if(!result.controls.count(p[1]))result.order.push_back(p[1]);
+            result.controls[p[1]]={p[2],p[3],p.size()>4?p[4]:"",p.size()>5?p[5]:""};
+        }
     }
     return result;
 }

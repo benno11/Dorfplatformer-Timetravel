@@ -32,6 +32,21 @@ int main() {
     try { expand(parse("when enabled\ntext \"broken\""),tables,[](const std::string&){return true;}); }
     catch(const std::runtime_error&) {rejected=true;}
     assert(rejected);
+    // The uploaded achievement menu selects titles for earned rows and
+    // requirements for locked rows, using boolean data rather than state labels.
+    tables["achievements"] = {
+        {{"title", "Earned title"}, {"requirements", "Completed requirement"}, {"unlocked", "true"}},
+        {{"title", "Locked title"}, {"requirements", "Missing requirement (0/1)"}, {"unlocked", "false"}}
+    };
+    const auto achievementMenu = expand(parse(read("assets/menus/achievements.menu")), tables,
+        [](const std::string&) { return false; });
+    std::vector<Line> achievementButtons;
+    for (const auto& line : achievementMenu)
+        if (line.parts.size() >= 4 && line.parts[0] == "button" && line.parts[2] == "copy")
+            achievementButtons.push_back(line);
+    assert(achievementButtons.size() == 2);
+    assert(achievementButtons[0].parts[1] == "Earned title" && achievementButtons[0].parts[3] == "Earned title");
+    assert(achievementButtons[1].parts[1] == "Missing requirement (0/1)" && achievementButtons[1].parts[3] == "Missing requirement (0/1)");
     // Every shipped menu parses and expands under both feature states.
     size_t count=0;
     for(const auto& file:std::filesystem::directory_iterator("assets/menus")) {
@@ -51,6 +66,9 @@ int main() {
     assert(quit.control("close").action=="quit" && quit.number("width")==360);
     const auto editor=view(read("assets/menus/editor.menu"));
     assert(editor.control("save_exit").action=="save_exit");
+    const auto order=editor.ordered({"resume","save_resume","exit","save_exit"});
+    assert(order[1]=="save_resume" && order[2]=="exit");
+    assert(editor.control("exit").action=="save_play" && editor.control("exit").label=="SAVE & PLAY");
     assert(view(read("assets/menus/editorresize.menu")).number("panel_width")==520);
     std::cout<<count<<" menu templates validated; nesting, conditions, safe row expansion and animated controls passed\n";
 }
