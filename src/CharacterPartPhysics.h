@@ -117,7 +117,7 @@ struct PartPhysics {
             fringeProfile.length = style == customPartsHairStyle ? (float)appearance->hairShape[1] : 3;
             fringeProfile.stiffness *= 1.15f;
             sideProfile = backProfile;
-            sideProfile.length = style == customPartsHairStyle ? (float)appearance->hairShape[5] : 1;
+            sideProfile.length = style == customPartsHairStyle ? (float)appearance->hairShape[5] : 0;
         }
         // The attachment's bounce contributes to inertia in world directions.
         const float hairVx = vx + (appearance ? headX.velocity * direction * 8 : 0);

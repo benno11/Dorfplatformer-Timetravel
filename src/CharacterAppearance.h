@@ -115,7 +115,7 @@ struct Preset {
 inline Appearance rangerPresetAppearance() {
     Appearance appearance{true, 1, 3, customPartsHairStyle, 5, 0, 0, 4};
     appearance.hairShape[2] = 17;
-    appearance.hairShape[5] = 16;
+    appearance.hairShape[5] = 0;
     return appearance;
 }
 inline const std::array<Preset, 7> placeholderCharacters{{
@@ -135,6 +135,7 @@ inline nlohmann::json save(const Appearance& appearance) {
         {"skin", a.skin}, {"hair_color", a.hairColor}, {"hair_style", a.hairStyle},
         {"hair_pixels", a.hairPixels},
         {"hair_shape", a.hairShape},
+        {"hair_revision", 1},
         {"uncap_hair_length", a.uncapHairLength},
         {"shirt", a.shirt}, {"pants", a.pants}, {"hat", a.hat}, {"accent", a.accent},
         {"textures", a.textures}, {"texture_pixels", a.texturePixels}, {"build", a.build},
@@ -166,6 +167,8 @@ inline Appearance load(const nlohmann::json& json) {
             if (json["hair_shape"][i].is_number_integer())
                 a.hairShape[i] = (int)std::clamp(json["hair_shape"][i].get<double>(), 0.0, (double)hairShapeLimit(i, a.uncapHairLength));
     }
+    // Apply the requested reset once; preserve later creator edits on reload.
+    if (!json.contains("hair_revision") || json["hair_revision"] != 1) a.hairShape[5] = 0;
     if (json.contains("hair_pixels") && json["hair_pixels"].is_string()) {
         const auto& pixels = json["hair_pixels"].get_ref<const std::string&>();
         if (validHairPixels(pixels)) a.hairPixels = pixels;

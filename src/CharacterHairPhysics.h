@@ -217,7 +217,8 @@ struct HairPhysics {
         const int steps = std::max(1, (int)std::ceil(dt * 240));
         const float h = dt / steps;
         turnTime = std::isfinite(turnTime) ? std::clamp(turnTime, 0.0f, 0.15f) : 0;
-        float lateralLimit = 1.8f;
+        // Keep long tips free while retaining a firm attachment near the root.
+        float lateralLimit = std::max(1.8f, length * 0.6f);
         if (collisions && collisions->bodySide) {
             for (const auto& box : collisions->boxes) {
                 if (!box.body) continue;

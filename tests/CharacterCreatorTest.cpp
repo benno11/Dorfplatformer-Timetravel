@@ -14,6 +14,12 @@
 
 int main(int argc, char** argv) {
     using namespace CharacterCreator;
+    for (const auto& preset : placeholderCharacters) assert(preset.appearance.hairShape[5] == 0);
+    Appearance legacy; legacy.hairStyle = customPartsHairStyle; legacy.hairShape[5] = 16;
+    auto old = save(legacy); old.erase("hair_revision");
+    assert(load(old).hairShape[5] == 0);
+    assert(load(save(legacy)).hairShape[5] == 16);
+
     Appearance a;
     assert(!a.enabled);
     for (const char* part : {"enabled", "skin", "hair_color", "hair_style", "shirt", "pants", "hat", "accent"})
@@ -43,7 +49,7 @@ int main(int argc, char** argv) {
         assert(change(a, "shirt") && save(a) != original);
     }
     assert(change(a, "preset:ranger"));
-    assert(a.hairStyle == customPartsHairStyle && a.hairShape[2] == 17 && a.hairShape[5] == 10);
+    assert(a.hairStyle == customPartsHairStyle && a.hairShape[2] == 17 && a.hairShape[5] == 0);
     const auto beforeUnknownPreset = save(a);
     assert(!change(a, "preset:missing") && save(a) == beforeUnknownPreset);
     a = Appearance{};

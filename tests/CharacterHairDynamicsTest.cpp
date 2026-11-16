@@ -118,7 +118,7 @@ int main() {
             parts.update(1.0f / 60, facing * 300.0f, 0, true, false, facing, 1, &scene, &a);
         const auto tip = parts.sideHair.offset((float)length);
         assert(std::isfinite(tip.x) && std::isfinite(tip.y));
-        assert(std::fabs(tip.x) < width + 0.5f && std::fabs(tip.y) < 2.0f);
+        assert(std::fabs(tip.x) < std::max(width + 0.5f, length * 0.35f) && std::fabs(tip.y) < 2.0f);
     }
     // Facing changes must not reverse world-space spring momentum or mirror
     // the particle chains. Compare a turn with continuing at the same speed.
@@ -175,6 +175,21 @@ int main() {
     HairPhysics::Profile singleProfile{1, 1, 1};
     singlePixel.update(1.0f / 60, 0, 0, 1, nullptr, &singleProfile);
     assert(std::fabs(singlePixel.restSpacing * (HairPhysics::jointCount - 1) - 1) < 0.0001f);
+    // Gameplay now preserves visible motion without truncating at the old cap.
+    for (int length = 1; length <= 20; ++length) {
+        Appearance a; a.hairStyle = customPartsHairStyle;
+        a.hairShape = {3, 3, length, 2, 0, 0};
+        PartPhysics idle, moving;
+        for (int frame = 0; frame < 120; ++frame) {
+            const auto scene = hairBodyCollisions(a, 1, false);
+            idle.update(1.0f / 60, 0, 0, true, false, 1, 1, &scene, &a);
+            moving.update(1.0f / 60, 500, 0, true, false, 1, 1, &scene, &a);
+        }
+        const auto tip = moving.builtInHair.offset(length);
+        assert(std::isfinite(tip.x) && std::isfinite(tip.y));
+        assert(tip.x < idle.builtInHair.offset(length).x);
+        if (length >= 10) assert(tip.x < -1.8f);
+    }
     // Ordinary-length locks must visibly trail at running speed. Previously the
     // fixed lateral cap and weak airflow left a 20-pixel lock moving by about
     // half a pixel, making every length below the floor-rope cutoff look rigid.
