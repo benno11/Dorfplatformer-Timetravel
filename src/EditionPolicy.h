@@ -19,6 +19,7 @@ inline constexpr const char* storageName = lite ? "DorfplatformerTimetravelLite"
 // Lite is an allowlist: future menus and commands require an explicit opt-in.
 inline bool menuAllowed(const std::string& menu) {
     if (!lite) return true;
+    if (menu.rfind("achievement:", 0) == 0) return achievementAvailable(menu.substr(12));
     for (const auto* allowed : {"mainsetting", "mainplay", "saveplay", "worldselect", "savesettings", "savedelete",
         "settingsgeneral", "settingsdisplay", "settingsaudio", "settingscontrols", "settingsdebug",
         "settingsabout", "settingsaboutrevision", "settingsupdater", "achievements", "settingslogging", "gamelog"})

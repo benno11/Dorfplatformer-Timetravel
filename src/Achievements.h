@@ -4,6 +4,7 @@
 #include <deque>
 #include <set>
 #include <string>
+#include <vector>
 #include <nlohmann/json.hpp>
 
 // Shared by all save slots; serialize in the encrypted global savedata_secret, never a slot.
@@ -45,6 +46,33 @@ public:
                 required.begin(), required.end()))
             return unlock("all_campaign_coins") || changed;
         return changed;
+    }
+    struct Requirement { std::string label; int current = 0, total = 1; };
+    std::vector<Requirement> requirements(const std::string& id,
+            const std::set<std::string>& catalog = {}) const {
+        if (id == "all_campaign_coins") {
+            int count = 0;
+            for (const auto& key : catalog) count += campaignCoins_.count(key) != 0;
+            std::vector<Requirement> result{{"Collect every campaign coin and coin box", count, (int)catalog.size()}};
+            std::string level;
+            for (const auto& key : catalog) {
+                const auto name = key.substr(0, key.find(':'));
+                if (name != level) { result.push_back({name, 0, 0}); level = name; }
+                ++result.back().total;
+                result.back().current += campaignCoins_.count(key) != 0;
+            }
+            return result;
+        }
+        if (id.rfind("buttons_world_", 0) == 0) {
+            for (int world = 1; world <= 6; ++world) if (id == "buttons_world_" + std::to_string(world))
+                return {{"Activate area 1 buttons", buttons_.count(world * 10 + 1) ? 1 : 0, 1},
+                        {"Activate area 2 buttons", buttons_.count(world * 10 + 2) ? 1 : 0, 1}};
+        }
+        const char* instruction = id == "complete_level" ? "Complete one level" :
+            id == "beat_boss" ? "Defeat one boss" : id == "complete_world" ? "Complete one campaign world" :
+            id == "ending" ? "Reach either ending" : id == "good_ending" ? "Reach the good ending (future 4)" :
+            id == "beat_hardmode" ? "Complete the Hardmode campaign" : nullptr;
+        return instruction ? std::vector<Requirement>{{instruction, has(id) ? 1 : 0, 1}} : std::vector<Requirement>{};
     }
     nlohmann::json save() const {
         return {{"unlocked", unlocked_}, {"button_areas", buttons_}, {"campaign_coins", campaignCoins_}};

@@ -18,6 +18,8 @@ int main() {
     for (const auto* id : {"complete_level", "beat_boss", "complete_world", "ending", "good_ending",
         "buttons_world_1", "buttons_world_2", "buttons_world_3", "buttons_world_4", "buttons_world_5", "buttons_world_6"})
         require(Edition::achievementAvailable(id), "Campaign achievements remain obtainable in both editions");
+    require(Edition::menuAllowed("achievement:all_campaign_coins"), "Coin requirement submenu remains accessible");
+    require(Edition::menuAllowed("achievement:beat_hardmode") == !Edition::lite, "Hardmode requirements follow edition policy");
     saveRoot = std::filesystem::temp_directory_path() /
         ("df-edition-test-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     struct Cleanup { ~Cleanup() { std::filesystem::remove_all(saveRoot); } } cleanup;

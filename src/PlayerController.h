@@ -33,10 +33,19 @@ struct MovementConfig {
 struct KeyboardBindings {
     SDL_Scancode moveLeft = SDL_SCANCODE_A;
     SDL_Scancode moveRight = SDL_SCANCODE_D;
-    SDL_Scancode moveDown = SDL_SCANCODE_S;
-    SDL_Scancode jump = SDL_SCANCODE_SPACE;
+    SDL_Scancode moveDown = SDL_SCANCODE_SPACE; // Slide; legacy field retained for saves/mods.
+    SDL_Scancode jump = SDL_SCANCODE_W;
     SDL_Scancode pause = SDL_SCANCODE_ESCAPE;
 };
+
+// Only migrate the old default pair. Explicit custom assignments stay intact.
+inline void MigrateLegacySlideBindings(KeyboardBindings& bindings) {
+    if (bindings.moveDown == SDL_SCANCODE_S &&
+        (bindings.jump == SDL_SCANCODE_SPACE || bindings.jump == SDL_SCANCODE_W)) {
+        bindings.moveDown = SDL_SCANCODE_SPACE;
+        bindings.jump = SDL_SCANCODE_W;
+    }
+}
 
 bool RectHitsSolid(const TileMap& map, float x, float y, int w, int h);
 bool RectHitsBossSolid(const TileMap& map, float x, float y, int w, int h);

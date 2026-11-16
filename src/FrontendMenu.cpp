@@ -534,6 +534,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx, bool settingsOnly) {
         slim.getLogLines = ctx.getLogLines; slim.getLogPath = ctx.getLogPath; slim.getLogcatStatus = ctx.getLogcatStatus;
         slim.drawNotifications = ctx.drawNotifications;
         slim.achievements = ctx.achievements;
+        slim.campaignCoinCatalog = ctx.campaignCoinCatalog;
         slim.signIn = [&](const std::string& email, const std::string& password, std::string& error) {
             bool success = false;
             try { success = loginWithGameServer(email, password, error); }

@@ -1,3 +1,5 @@
+cut 8 8
+center
 # DF Slim Menu: about (press any information row to copy its value)
 title "About"
 text "${clipboard_status}"
@@ -22,4 +24,5 @@ button "Timezone: ${about_build_timezone}" copy "${about_build_timezone}"
 button "Updater: ${about_updater_status}" copy "${about_updater_status}"
 button "Open Updater" menu settingsupdater
 button "SDL Revision" menu settingsaboutrevision
+snap left bottom
 button "Back" menu mainsetting

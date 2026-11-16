@@ -5,6 +5,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <set>
 #include <vector>
 
 struct SlimMenuSession;
@@ -22,6 +23,7 @@ struct FrontendMenuContext {
     std::shared_ptr<SlimMenuSession> menuSession;
     GameProgression* progression = nullptr;
     const Achievements* achievements = nullptr;
+    const std::set<std::string>* campaignCoinCatalog = nullptr;
     CharacterCreator::Appearance* characterAppearance = nullptr;
     NativeMods::Loader* mods = nullptr;
     SDL_Window* win = nullptr;

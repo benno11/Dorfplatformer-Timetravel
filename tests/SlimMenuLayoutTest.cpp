@@ -27,6 +27,29 @@ int main() {
         require(aligned.items[2].y + 24 == aligned.body.y + aligned.body.h, "Bottom alignment failed");
         require(aligned.maxScroll == 0, "A fitting menu should not scroll");
 
+        std::vector<Item> docked{
+            {300, 24, Align::Center, Align::Start, true},
+            {120, 54, Align::Start, Align::End, true},
+            {80, 54, Align::Start, Align::Center, true},
+            {80, 54, Align::End, Align::Center, true}
+        };
+        for (int n = 0; n < 20; ++n) docked.push_back({300, 54});
+        const auto fixed = build(960, 540, 1, Align::Center, Align::Center, docked, 8, 12);
+        require(fixed.maxScroll > 0, "Docked menu should still scroll center content");
+        require(fixed.items[0].y + fixed.items[0].h <= fixed.body.y, "Header overlaps center");
+        require(fixed.items[1].y >= fixed.body.y + fixed.body.h, "Footer overlaps center");
+        require(fixed.items[2].x + fixed.items[2].w <= fixed.body.x, "Left dock overlaps center");
+        require(fixed.items[3].x >= fixed.body.x + fixed.body.w, "Right dock overlaps center");
+        for (size_t n = 0; n < 4; ++n) {
+            const auto r = itemRect(fixed, n, (float)fixed.maxScroll);
+            require(r.y == fixed.items[n].y, "Fixed controls moved with scrolling");
+            require(hit(fixed, n, r.x + r.w / 2, r.y + r.h / 2, (float)fixed.maxScroll), "Fixed control cannot be clicked or tapped");
+            require(reveal(fixed, n, 30) == 30, "Selecting a docked control scrolled center");
+        }
+        const auto moving = itemRect(fixed, 4, 30);
+        require(moving.y == fixed.items[4].y - 30, "Center reset did not restore scrolling");
+        require(!hit(fixed, 4, moving.x, fixed.items[0].y, 30), "Clipped center intercepted a fixed header");
+
         const auto smallLeft = build(960, 540, 0.5f, Align::Start, Align::Start, anchors);
         const auto smallRight = build(960, 540, 0.5f, Align::End, Align::End, anchors);
         require(smallLeft.panel.x * 0.5f == 16 && smallLeft.panel.y * 0.5f == 12, "Scaled menu start anchor failed");

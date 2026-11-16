@@ -1,6 +1,9 @@
+cut 8 8
+center
 # DF Slim Menu: extra settings
 title "Extra Settings"
 button "Experimental Features: ${show_experimental_features}" toggle show_experimental_features
 text "More legacy categories unlock through experimental features."
 button "Anonymous Metrics: ${send_anonymous_metrics}" toggle send_anonymous_metrics
+snap left bottom
 button "Back" menu mainsetting

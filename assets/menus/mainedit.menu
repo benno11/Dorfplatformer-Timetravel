@@ -1,6 +1,9 @@
+cut 8 8
+center
 # DF Slim Menu: editor level browser
 title "Level Browser"
 text "Browse local and online levels."
 button "Local Levels" menu locallevels
 button "Online Levels" menu onlinelevels
+snap left bottom
 button "Back" back

@@ -1,3 +1,5 @@
+cut 8 8
+center
 # DF Slim Menu: settings hub
 title "Settings"
 text "Account: ${account_status}"
@@ -16,4 +18,5 @@ button "Achievements" menu achievements
 button "Logging" menu settingslogging
 button "About" menu settingsabout
 button "Updater" menu settingsupdater
+snap left bottom
 button "Back" back

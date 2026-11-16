@@ -20,6 +20,14 @@ std::string ReadTextFile(const std::string& path) {
 bool FileExists(const std::string& path) { return std::filesystem::exists(path); }
 
 int main() {
+    KeyboardBindings bindings;
+    assert(bindings.moveDown == SDL_SCANCODE_SPACE && bindings.jump == SDL_SCANCODE_W);
+    bindings.moveDown = SDL_SCANCODE_S; bindings.jump = SDL_SCANCODE_SPACE;
+    MigrateLegacySlideBindings(bindings);
+    assert(bindings.moveDown == SDL_SCANCODE_SPACE && bindings.jump == SDL_SCANCODE_W);
+    bindings.moveDown = SDL_SCANCODE_LCTRL; bindings.jump = SDL_SCANCODE_SPACE;
+    MigrateLegacySlideBindings(bindings);
+    assert(bindings.moveDown == SDL_SCANCODE_LCTRL && bindings.jump == SDL_SCANCODE_SPACE);
     assert(SDL_Init(0));
     assert(!CampaignCoins::catalog().empty());
     TileMap map;

@@ -1,5 +1,8 @@
+cut 8 8
+center
 # DF Slim Menu: about revision
 title "SDL Revision"
 text "${clipboard_status}"
 button "SDL Revision: ${about_sdl_revision}" copy "${about_sdl_revision}"
+snap left bottom
 button "Back" menu settingsabout

@@ -30,7 +30,8 @@
     "controls": {
       "move_left": 4,
       "move_right": 7,
-      "move_down": 22,
+      "move_down": 44,
+      "slide": 44,
       "jump": 26,
       "pause": 41
     },

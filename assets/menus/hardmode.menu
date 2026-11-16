@@ -1,3 +1,5 @@
+cut 8 8
+center
 title "Hardmode"
 text "20 levels. Any death sends you back to level 1."
 text "Furthest level: ${hardmode_furthest_level}/20"
@@ -8,4 +10,5 @@ if hardmode_save_exists skip 1
 button "Continue Run" hardmode continue
 if hardmode_unlocked skip 1
 button "Practice Levels" menu hardmodepractice
+snap left bottom
 button "Back" menu saveplay

@@ -432,3 +432,47 @@ On death, the player uses the configured Death sprite, rises briefly, then falls
 past the bottom of the screen before respawning. The camera stays fixed during
 the flight, and the sprite ignores collisions and wrapping. Life deduction and
 Hardmode restart rules remain in effect. Pausing also pauses the death flight.
+
+## Fixed edges and center clipping
+
+- `snap left top`, `snap center top`, `snap right bottom`, etc. pin subsequent
+  objects to a content edge inside the screen's panel margins. Top and bottom
+  controls form fixed stacks. `snap left center` / `snap right center` create
+  fixed side stacks. These controls remain visible while the center scrolls.
+- `center` (or `snap center center`) returns subsequent objects to the centered,
+  scrolling content. `align` still aligns normal content; use `center` to leave
+  a fixed edge explicitly.
+- `cut TOP BOTTOM` reserves additional logical pixels above/below the center
+  viewport. It clips drawing and pointer input, without clipping fixed controls.
+  Values are nonnegative; the viewport always retains at least one pixel.
+
+```menu
+title "Example"
+cut 8 8
+snap center top
+text "Always visible header"
+center
+button "Scrollable action" menu settingsgeneral
+snap right center
+button "Audio" menu settingsaudio
+snap left bottom
+button "Back" back
+```
+
+Shipped menus use clipped center content and fixed Back footers; Controls has a
+fixed instruction header, Audio has fixed toggles, and Save Selector docks Save
+Settings at the right. Keyboard/controller focus and mouse/touch hit testing use
+these same bounds. Sliders use dedicated beveled track, fill, and thumb textures
+from `assets/UI`, including keyboard focus highlighting.
+
+Achievement entries open Requirement Progress, showing saved requirement counts.
+Campaign coin progress includes a breakdown for each level with coin sources;
+coin boxes count as one location, and shield boxes/dropped coins do not count.
+Progress remains shared across save slots. Basic event achievements show 0/1;
+world button achievements show separate requirements for areas 1 and 2.
+
+The default controls are Slide on Space and Jump on W or Up Arrow. `bind slide`
+and `${slide}` are the MenuScript names; `move_down` remains a compatibility alias.
+Legacy default S/Space and S/W pairs migrate to Space/W. Other custom bindings
+are preserved. Save data writes the explicit `slide` / `key_slide` fields so a
+later reload does not mistake a custom choice for legacy defaults.

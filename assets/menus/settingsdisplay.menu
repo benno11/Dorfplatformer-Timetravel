@@ -1,3 +1,5 @@
+cut 8 8
+center
 # DF Slim Menu: display settings
 title "Display Settings"
 button "Fullscreen: ${fullscreen}" toggle fullscreen
@@ -8,4 +10,5 @@ button "UI Scale + (${ui_scale_percent}%)" inc ui_scale_percent
 button "UI Scale - (${ui_scale_percent}%)" dec ui_scale_percent
 button "UI Edge Padding + (${ui_edge_padding})" inc ui_edge_padding
 button "UI Edge Padding - (${ui_edge_padding})" dec ui_edge_padding
+snap left bottom
 button "Back" menu mainsetting

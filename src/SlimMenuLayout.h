@@ -18,18 +18,21 @@ struct Item {
     int height = 0;
     Align horizontal = Align::Center;
     Align vertical = Align::Center;
+    bool docked = false;
 };
 
 struct Layout {
     float scale = 1.0f;
     SDL_Rect panel{}, body{};
     std::vector<SDL_Rect> items;
+    std::vector<bool> fixed;
+    std::vector<SDL_Rect> clips;
     int contentHeight = 0;
     int maxScroll = 0;
 };
 
 inline Layout build(int screenW, int screenH, float scale, Align horizontal, Align vertical,
-                    const std::vector<Item>& items) {
+                    const std::vector<Item>& items, int cutTop = 0, int cutBottom = 0) {
     Layout result;
     result.scale = std::isfinite(scale) ? std::clamp(scale, 0.25f, 4.0f) : 1.0f;
     const float s = result.scale;
@@ -50,8 +53,35 @@ inline Layout build(int screenW, int screenH, float scale, Align horizontal, Ali
     result.body = {result.panel.x + leftPad, result.panel.y + topPad,
                    result.panel.w - leftPad - rightPad, result.panel.h - topPad - bottomPad};
     constexpr int gap = 12;
+    const SDL_Rect originalBody = result.body;
+    // Fixed edges reserve space around the scrolling, clipped center.
+    std::array<int, 4> sideHeights{};
+    std::array<int, 4> reserve{}; // top, bottom, left, right
+    auto edge = [](const Item& item) {
+        if (item.vertical == Align::Start) return 0;
+        if (item.vertical == Align::End) return 1;
+        return item.horizontal == Align::Start ? 2 : 3;
+    };
+    for (const auto& item : items) if (item.docked) {
+        const int e = edge(item);
+        if (e < 2) reserve[e] += std::max(1, item.height) + gap;
+        else {
+            reserve[e] = std::max(reserve[e], std::max(1, item.width) + gap);
+            sideHeights[e] += std::max(1, item.height) + gap;
+        }
+    }
+    const int topReserve = std::min(reserve[0], result.body.h - 1);
+    const int bottomReserve = std::min(reserve[1], result.body.h - topReserve - 1);
+    const int leftReserve = std::min(reserve[2], result.body.w - 1);
+    const int rightReserve = std::min(reserve[3], result.body.w - leftReserve - 1);
+    result.body.x += leftReserve; result.body.w -= leftReserve + rightReserve;
+    result.body.y += topReserve; result.body.h -= topReserve + bottomReserve;
+    const int trimTop = std::clamp(cutTop, 0, result.body.h - 1);
+    const int trimBottom = std::clamp(cutBottom, 0, result.body.h - trimTop - 1);
+    result.body.y += trimTop; result.body.h -= trimTop + trimBottom;
     std::array<int, 3> heights{}, counts{};
     for (const auto& item : items) {
+        if (item.docked) continue;
         const int group = (int)item.vertical;
         heights[group] += std::max(1, item.height) + (counts[group]++ ? gap : 0);
     }
@@ -67,7 +97,28 @@ inline Layout build(int screenW, int screenH, float scale, Align horizontal, Ali
     std::array<int, 3> y{0,
         std::clamp((result.contentHeight - heights[1]) / 2, centerMin, std::max(centerMin, centerMax)),
         result.contentHeight - heights[2]};
+    std::array<int, 4> used{};
     for (const auto& item : items) {
+        result.fixed.push_back(item.docked);
+        if (item.docked) {
+            const int e = edge(item);
+            SDL_Rect zone = originalBody;
+            if (e == 0) zone.h = topReserve;
+            if (e == 1) { zone.y += zone.h - bottomReserve; zone.h = bottomReserve; }
+            if (e >= 2) {
+                zone.y += topReserve; zone.h -= topReserve + bottomReserve;
+                zone.w = e == 2 ? leftReserve : rightReserve;
+                if (e == 3) zone.x = originalBody.x + originalBody.w - rightReserve;
+            }
+            const int width = std::clamp(item.width, 1, std::max(1, zone.w));
+            const int height = std::max(1, item.height);
+            result.items.push_back({zone.x + offset(zone.w - width, item.horizontal),
+                zone.y + (e >= 2 ? std::max(0, (zone.h - sideHeights[e] + gap) / 2) : 0) + used[e], width, height});
+            result.clips.push_back(zone);
+            used[e] += height + gap;
+            continue;
+        }
+        result.clips.push_back(result.body);
         const int group = (int)item.vertical;
         const int width = std::clamp(item.width, 1, result.body.w);
         const int height = std::max(1, item.height);
@@ -88,13 +139,18 @@ inline bool contains(const SDL_Rect& rect, float x, float y) {
     return x >= rect.x && x < rect.x + rect.w && y >= rect.y && y < rect.y + rect.h;
 }
 
+inline SDL_Rect itemRect(const Layout& layout, size_t item, float scroll) {
+    return scrolled(layout.items[item], layout.fixed[item] ? 0.0f : scroll);
+}
+
 inline bool hit(const Layout& layout, size_t item, float x, float y, float scroll) {
-    return item < layout.items.size() && contains(layout.body, x, y) &&
-           contains(scrolled(layout.items[item], scroll), x, y);
+    return item < layout.items.size() && contains(layout.clips[item], x, y) &&
+           contains(itemRect(layout, item, scroll), x, y);
 }
 
 inline float reveal(const Layout& layout, size_t item, float scroll) {
     if (item >= layout.items.size()) return std::clamp(scroll, 0.0f, (float)layout.maxScroll);
+    if (layout.fixed[item]) return std::clamp(scroll, 0.0f, (float)layout.maxScroll);
     const auto& rect = layout.items[item];
     if (rect.h >= layout.body.h || rect.y - scroll < layout.body.y) scroll = (float)(rect.y - layout.body.y);
     else if (rect.y + rect.h - scroll > layout.body.y + layout.body.h)

@@ -1,3 +1,5 @@
+cut 8 8
+center
 # DF Slim Menu: save selector
 title "Save Selector"
 text "WARNING: Main levels may be broken after this update."
@@ -6,5 +8,7 @@ text "Active slot: ${active_save_slot}"
 button "Slot 1: ${save_slot_1_status}" save_slot 1
 button "Slot 2: ${save_slot_2_status}" save_slot 2
 button "Slot 3: ${save_slot_3_status}" save_slot 3
+snap right center
 button "Save Settings" menu savesettings
+snap left bottom
 button "Back" back

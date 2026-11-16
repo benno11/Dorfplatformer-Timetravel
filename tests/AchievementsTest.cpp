@@ -37,6 +37,14 @@ int main() {
         require(resumedCoins.has("all_campaign_coins"), "all unique sources unlock achievement");
         require(!resumedCoins.campaignCoin(*required.rbegin(), required), "completion only notifies once");
         require(!coins.campaignCoin("any", {}), "missing campaign catalog cannot unlock");
+        const auto partialCoins = coins.requirements("all_campaign_coins", required);
+        require(partialCoins.front().current == 1 && partialCoins.front().total == 2, "Coin requirement progress uses saved unique sources");
+        const auto completeCoins = resumedCoins.requirements("all_campaign_coins", required);
+        require(completeCoins.front().current == 2 && completeCoins.front().total == 2, "Complete coin requirement progress");
+        const auto worldButtons = a.requirements("buttons_world_1");
+        require(worldButtons.size() == 2 && worldButtons[0].current == 1 && worldButtons[1].current == 0, "Button requirements distinguish completed areas");
+        require(a.requirements("complete_level").front().current == 1, "Completed requirement shown");
+        require(a.requirements("good_ending").front().current == 0, "Incomplete requirement shown");
         Achievements malformed;
         malformed.load({{"unlocked", {false, "invalid", "beat_boss"}}, {"button_areas", {"bad", -1, 999999999999ULL, 13, 61}}});
         require(malformed.has("beat_boss") && !malformed.has("invalid"), "validate persisted entries");

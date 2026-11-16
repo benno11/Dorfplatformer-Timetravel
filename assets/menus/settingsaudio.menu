@@ -1,7 +1,12 @@
+cut 8 8
+center
 # DF Slim Menu: audio settings
 title "Audio Settings"
+snap center top
 button "Menu Music: ${menu_music_enabled}" toggle menu_music_enabled
 button "Mute All: ${mute_all_audio}" toggle mute_all_audio
+center
 slider "Music Volume" music_volume
 slider "Sound Effects Volume" sfx_volume
+snap left bottom
 button "Back" menu mainsetting

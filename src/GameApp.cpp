@@ -1782,6 +1782,7 @@ int RunGameApp(int argc, char** argv) {
             {"move_left", (int)keybinds.moveLeft},
             {"move_right", (int)keybinds.moveRight},
             {"move_down", (int)keybinds.moveDown},
+            {"slide", (int)keybinds.moveDown},
             {"jump", (int)keybinds.jump},
             {"pause", (int)keybinds.pause}
         };
@@ -1831,6 +1832,7 @@ int RunGameApp(int argc, char** argv) {
         j["key_move_left"] = (int)keybinds.moveLeft;
         j["key_move_right"] = (int)keybinds.moveRight;
         j["key_move_down"] = (int)keybinds.moveDown;
+        j["key_slide"] = (int)keybinds.moveDown;
         j["key_jump"] = (int)keybinds.jump;
         j["key_pause"] = (int)keybinds.pause;
         j["ui_scale_percent"] = uiScalePercent;
@@ -1957,6 +1959,8 @@ int RunGameApp(int argc, char** argv) {
                     if (c.contains("move_down")) keybinds.moveDown = parseScancode(c["move_down"], keybinds.moveDown);
                     if (c.contains("jump")) keybinds.jump = parseScancode(c["jump"], keybinds.jump);
                     if (c.contains("pause")) keybinds.pause = parseScancode(c["pause"], keybinds.pause);
+                    if (c.contains("slide")) keybinds.moveDown = parseScancode(c["slide"], keybinds.moveDown);
+                    else MigrateLegacySlideBindings(keybinds);
                 }
                 if (s.contains("gameplay") && s["gameplay"].is_object()) {
                     const auto& g = s["gameplay"];
@@ -2038,6 +2042,8 @@ int RunGameApp(int argc, char** argv) {
             if (j.contains("key_move_down")) keybinds.moveDown = parseScancode(j["key_move_down"], keybinds.moveDown);
             if (j.contains("key_jump")) keybinds.jump = parseScancode(j["key_jump"], keybinds.jump);
             if (j.contains("key_pause")) keybinds.pause = parseScancode(j["key_pause"], keybinds.pause);
+            if (j.contains("key_slide")) keybinds.moveDown = parseScancode(j["key_slide"], keybinds.moveDown);
+            else if (j.contains("key_move_down") || j.contains("key_jump")) MigrateLegacySlideBindings(keybinds);
             if (j.contains("ui_scale_percent") && j["ui_scale_percent"].is_number_integer()) {
                 uiScalePercent = UiScale::clampPercent(j["ui_scale_percent"].get<int>());
             }
@@ -2500,6 +2506,7 @@ int RunGameApp(int argc, char** argv) {
     frontendCtx.getLogcatStatus = [&]() { return logcatStatus; };
     frontendCtx.drawNotifications = drawAchievementToast;
     frontendCtx.achievements = &achievements;
+    frontendCtx.campaignCoinCatalog = &campaignCoinCatalog;
     MigrateLegacyGameProgression(activeSaveSlotIndex);
     GameProgression progression = LoadGameProgression(activeSaveSlotIndex);
     frontendCtx.progression = &progression;
@@ -8848,7 +8855,7 @@ int RunGameApp(int argc, char** argv) {
                 };
                 drawBtnLabel(touchLeftBtn, "L");
                 drawBtnLabel(touchRightBtn, "R");
-                drawBtnLabel(touchDownBtn, "DN");
+                drawBtnLabel(touchDownBtn, debugFreeCamera.active ? "DN" : "SLIDE");
                 drawBtnLabel(touchJumpBtn, debugFreeCamera.active ? "UP" : "JMP");
                 SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
             }

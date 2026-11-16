@@ -72,6 +72,7 @@ struct MenuItem {
     std::string command;
     std::string arg;
     std::string iconPath;
+    bool docked = false;
     SlimMenuLayout::Align horizontal = SlimMenuLayout::Align::Center;
     SlimMenuLayout::Align vertical = SlimMenuLayout::Align::Center;
     SlimMenuLayout::Align labelHorizontal = SlimMenuLayout::Align::Center;
@@ -82,6 +83,7 @@ struct SlimMenu {
     std::string name;
     std::string title;
     std::vector<MenuItem> items;
+    int cutTop = 0, cutBottom = 0;
     float scale = 1.0f;
     SlimMenuLayout::Align horizontal = SlimMenuLayout::Align::Center;
     SlimMenuLayout::Align vertical = SlimMenuLayout::Align::Center;
@@ -139,6 +141,7 @@ struct SlimRuntime {
     bool ownsMenuTexture = true;
     std::unordered_map<std::string, Frame> menuFrames;
     std::unordered_map<std::string, SDL_Texture*> modIcons;
+    std::array<SDL_Texture*, 3> sliderTextures{};
     SDL_Texture* difficultyTexture = nullptr;
     Frame difficultyFrame{};
     bool difficultyAssetLoaded = false;
@@ -171,6 +174,7 @@ struct SlimRuntime {
         if (accountInputWindow) SDL_StopTextInput(accountInputWindow);
         if (menuTexture && ownsMenuTexture) SDL_DestroyTexture(menuTexture);
         if (difficultyTexture) SDL_DestroyTexture(difficultyTexture);
+        for (auto* texture : sliderTextures) if (texture) SDL_DestroyTexture(texture);
         for (const auto& icon : modIcons) if (icon.second) SDL_DestroyTexture(icon.second);
     }
 };
@@ -307,7 +311,7 @@ bool* boolSettingPtr(const std::string& var, SlimMenuContext& ctx) {
 SDL_Scancode* keyBindingPtr(const std::string& var, SlimMenuContext& ctx) {
     if (var == "move_left") return ctx.keyMoveLeft;
     if (var == "move_right") return ctx.keyMoveRight;
-    if (var == "move_down") return ctx.keyMoveDown;
+    if (var == "slide" || var == "move_down") return ctx.keyMoveDown;
     if (var == "jump") return ctx.keyJump;
     if (var == "pause") return ctx.keyPause;
     return nullptr;
@@ -485,6 +489,7 @@ std::string expandVars(std::string text, const SlimRuntime& runtime, const SlimM
         text = replaceAll(text, "${move_left}", contextVarValue("move_left", runtime, ctx));
     if (text.find("${move_right}") != std::string::npos)
         text = replaceAll(text, "${move_right}", contextVarValue("move_right", runtime, ctx));
+    text = replaceAll(text, "${slide}", contextVarValue("slide", runtime, ctx));
     if (text.find("${move_down}") != std::string::npos)
         text = replaceAll(text, "${move_down}", contextVarValue("move_down", runtime, ctx));
     if (text.find("${jump}") != std::string::npos)
@@ -624,6 +629,28 @@ SlimMenu loadMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuC
         }
         return menu;
     }
+    if (name.rfind("achievement:", 0) == 0) {
+        const auto id = name.substr(12);
+        SlimMenu menu; menu.name = name; menu.title = "Requirement Progress";
+        for (const auto& definition : Achievements::definitions) if (id == definition.id) {
+            menu.title = definition.title;
+            if (ctx.achievements) {
+                const auto requirements = ctx.achievements->requirements(id,
+                    ctx.campaignCoinCatalog ? *ctx.campaignCoinCatalog : std::set<std::string>{});
+                for (const auto& requirement : requirements) {
+                    MenuItem item;
+                    item.label = requirement.total > 0 ? requirement.label + ": " + std::to_string(requirement.current) + "/" + std::to_string(requirement.total) : "Campaign progress unavailable";
+                    menu.items.push_back(item);
+                }
+                MenuItem status; status.docked = true; status.vertical = SlimMenuLayout::Align::Start;
+                status.label = ctx.achievements->has(id) ? "Achievement unlocked" : "In progress";
+                menu.items.insert(menu.items.begin(), status);
+            }
+        }
+        MenuItem back; back.type = MenuItem::Type::Button; back.label = "Back";
+        back.command = "menu"; back.arg = "achievements"; menu.items.push_back(back);
+        return menu;
+    }
     if (name == "achievements") {
         SlimMenu menu; menu.name = name; menu.title = "Achievements";
         auto text = [&](const std::string& label) { MenuItem item; item.label = label; menu.items.push_back(item); };
@@ -638,7 +665,10 @@ SlimMenu loadMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuC
         for (const auto& definition : Achievements::definitions) {
             if (!Edition::achievementAvailable(definition.id)) continue;
             const bool earned = ctx.achievements && ctx.achievements->has(definition.id);
-            text(std::string(earned ? "[UNLOCKED] " : "[LOCKED] ") + definition.title);
+            MenuItem entry; entry.type = MenuItem::Type::Button;
+            entry.label = std::string(earned ? "[UNLOCKED] " : "[LOCKED] ") + definition.title;
+            entry.command = "menu"; entry.arg = "achievement:" + std::string(definition.id);
+            menu.items.push_back(entry);
         }
         text("World buttons: activate the buttons in areas 1 and 2.");
         MenuItem back; back.type = MenuItem::Type::Button; back.label = "Back";
@@ -912,6 +942,21 @@ SlimMenu loadMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuC
             } else {
                 SDL_Log("SLIM MENU: invalid alignment at %s:%d", menuPath(name).c_str(), lineInfo.lineNo);
             }
+            ++i;
+        } else if (op == "snap" && parts.size() >= 3) {
+            SlimMenuLayout::Align horizontal, vertical;
+            if (parseMenuAlignment(parts[1], horizontal) && parseMenuAlignment(parts[2], vertical)) {
+                style.horizontal = horizontal; style.vertical = vertical;
+                style.docked = horizontal != SlimMenuLayout::Align::Center || vertical != SlimMenuLayout::Align::Center;
+            }
+            ++i;
+        } else if (op == "center") {
+            style.horizontal = style.vertical = SlimMenuLayout::Align::Center;
+            style.docked = false;
+            ++i;
+        } else if (op == "cut" && parts.size() >= 3) {
+            menu.cutTop = std::clamp(std::atoi(parts[1].c_str()), 0, 4096);
+            menu.cutBottom = std::clamp(std::atoi(parts[2].c_str()), 0, 4096);
             ++i;
         } else if (op == "get" && parts.size() >= 3) {
             const std::string url = makeApiUrl(ctx, expandVars(parts[2], runtime, ctx));
@@ -1815,17 +1860,17 @@ SlimMenuLayout::Layout layoutFor(const SlimMenu& menu, const SlimRuntime& runtim
     for (const auto& item : menu.items) {
         const bool button = item.type != MenuItem::Type::Text;
         if (item.command == "difficulty_badge") {
-            items.push_back({64, 64, item.horizontal, item.vertical});
+            items.push_back({64, 64, item.horizontal, item.vertical, item.docked});
             continue;
         }
         if (item.command == "updater_progress") {
-            items.push_back({buttonWidth, 44, item.horizontal, item.vertical});
+            items.push_back({buttonWidth, 44, item.horizontal, item.vertical, item.docked});
             continue;
         }
         items.push_back({button ? buttonWidth : MeasureTextWidth(2, item.command == "literal_log" ? item.label : expandVars(item.label, runtime, ctx)),
-                         item.type == MenuItem::Type::Slider ? 80 : (button ? 54 : 24), item.horizontal, item.vertical});
+                         item.type == MenuItem::Type::Slider ? 80 : (button ? 54 : 24), item.horizontal, item.vertical, item.docked});
     }
-    return SlimMenuLayout::build(ctx.baseScreenW, ctx.baseScreenH, menu.scale, menu.horizontal, menu.vertical, items);
+    return SlimMenuLayout::build(ctx.baseScreenW, ctx.baseScreenH, menu.scale, menu.horizontal, menu.vertical, items, menu.cutTop, menu.cutBottom);
 }
 
 size_t buttonItemIndex(const SlimMenu& menu, int button) {
@@ -1836,7 +1881,7 @@ size_t buttonItemIndex(const SlimMenu& menu, int button) {
 }
 
 SDL_Rect menuScrollTrack(const SlimMenuLayout::Layout& layout) {
-    return {layout.body.x + layout.body.w + 8, layout.body.y, 6, layout.body.h};
+    return {layout.body.x + layout.body.w + 3, layout.body.y, 6, layout.body.h};
 }
 
 SDL_Rect menuScrollThumb(const SlimMenuLayout::Layout& layout, float scroll) {
@@ -1871,9 +1916,16 @@ int* audioSliderValue(const MenuItem& item, const SlimMenuContext& ctx) {
     return nullptr;
 }
 
+bool drawSliderTexture(SDL_Renderer* renderer, SDL_Texture* texture, const SDL_Rect& rect) {
+    if (!texture || rect.w <= 0 || rect.h <= 0) return false;
+    const SDL_FRect target{(float)rect.x, (float)rect.y, (float)rect.w, (float)rect.h};
+    return SDL_RenderTexture9Grid(renderer, texture, nullptr, 3, 3, 3, 3,
+        std::min(1.0f, std::min(rect.w, rect.h) / 6.0f), &target);
+}
+
 SDL_Rect audioSliderTrack(const SDL_Rect& row) {
     const int inset = std::min(20, (row.w - 1) / 2);
-    return {row.x + inset, row.y + row.h - 24, std::max(1, row.w - 2 * inset), 8};
+    return {row.x + inset, row.y + row.h - 24, std::max(1, row.w - 2 * inset), 12};
 }
 
 void renderMenuExit(SlimRuntime& runtime, const SlimMenuContext& ctx, bool focused) {
@@ -2071,9 +2123,11 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
     for (size_t index = 0; index < menu.items.size(); ++index) {
         const auto& item = menu.items[index];
         const std::string label = item.command == "literal_log" ? item.label : expandVars(item.label, runtime, ctx);
-        SDL_Rect r = SlimMenuLayout::scrolled(layout.items[index], runtime.scrollY);
+        SDL_Rect r = SlimMenuLayout::itemRect(layout, index, runtime.scrollY);
         const bool isSelected = item.type != MenuItem::Type::Text && buttonIndex++ == selected;
-        if (r.y + r.h <= layout.body.y || r.y >= layout.body.y + layout.body.h) continue;
+        const auto& clip = layout.clips[index];
+        SDL_SetRenderClipRect(ctx.ren, &clip);
+        if (r.y + r.h <= clip.y || r.y >= clip.y + clip.h) continue;
         if (item.type == MenuItem::Type::Text) {
             if (item.command == "updater_progress") {
                 DrawGameText(ctx.ren, r.x + (r.w - MeasureTextWidth(2, label)) / 2, r.y, 2, label);
@@ -2105,22 +2159,23 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
             const int* volume = audioSliderValue(item, ctx);
             const int value = volume ? std::clamp(*volume, 0, 128) : 0;
             const std::string sliderLabel = label + ": " + std::to_string((int)std::lround(value * 100.0f / 128.0f)) + "%";
-            SDL_SetRenderDrawColor(ctx.ren, isSelected ? 74 : 45, isSelected ? 100 : 65, isSelected ? 125 : 84, 255);
-            SDL_RenderFillRect(ctx.ren, &r);
-            SDL_SetRenderDrawColor(ctx.ren, isSelected ? 220 : 130, isSelected ? 235 : 155, 255, 255);
-            SDL_RenderRect(ctx.ren, &r);
+            if (!drawMenuSprite(runtime, ctx.ren, "button_genreaic", r, 6.0f)) {
+                SDL_SetRenderDrawColor(ctx.ren, 45, 65, 84, 255);
+                SDL_RenderFillRect(ctx.ren, &r);
+            }
             const int textScale = MeasureTextWidth(2, sliderLabel) <= r.w - 16 ? 2 : 1;
             DrawGameText(ctx.ren, r.x + (r.w - MeasureTextWidth(textScale, sliderLabel)) / 2, r.y + 8, textScale, sliderLabel);
             const SDL_Rect track = audioSliderTrack(r);
             SDL_SetRenderDrawColor(ctx.ren, 24, 35, 48, 255);
-            SDL_RenderFillRect(ctx.ren, &track);
+            if (!drawSliderTexture(ctx.ren, runtime.sliderTextures[0], track)) SDL_RenderFillRect(ctx.ren, &track);
             const int filled = (int)std::lround(track.w * value / 128.0f);
             const SDL_Rect fill{track.x, track.y, filled, track.h};
             SDL_SetRenderDrawColor(ctx.ren, 110, 200, 245, 255);
-            SDL_RenderFillRect(ctx.ren, &fill);
-            const SDL_Rect thumb{track.x + filled - 6, track.y - 6, 12, 20};
+            if (filled > 0 && !drawSliderTexture(ctx.ren, runtime.sliderTextures[1], fill)) SDL_RenderFillRect(ctx.ren, &fill);
+            const SDL_Rect thumb{track.x + filled - 10, track.y - 8, 20, 28};
             SDL_SetRenderDrawColor(ctx.ren, isSelected ? 255 : 210, isSelected ? 255 : 230, 255, 255);
-            SDL_RenderFillRect(ctx.ren, &thumb);
+            if (runtime.sliderTextures[2]) SDL_SetTextureColorMod(runtime.sliderTextures[2], isSelected ? 255 : 210, isSelected ? 255 : 210, isSelected ? 255 : 210);
+            if (!drawSliderTexture(ctx.ren, runtime.sliderTextures[2], thumb)) SDL_RenderFillRect(ctx.ren, &thumb);
             continue;
         }
         if (runtime.menuTexture) {
@@ -2829,6 +2884,11 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
         SDL_SetTextureScaleMode(runtime.menuTexture, SDL_SCALEMODE_NEAREST);
         SDL_SetTextureBlendMode(runtime.menuTexture, SDL_BLENDMODE_BLEND);
     }
+    const char* sliderPaths[] = {"assets/UI/slider-track.png", "assets/UI/slider-fill.png", "assets/UI/slider-thumb.png"};
+    for (size_t i = 0; i < runtime.sliderTextures.size(); ++i) {
+        runtime.sliderTextures[i] = loadTextureSafe(ctx.ren, sliderPaths[i]);
+        if (runtime.sliderTextures[i]) SDL_SetTextureBlendMode(runtime.sliderTextures[i], SDL_BLENDMODE_BLEND);
+    }
     std::string currentMenu = menuName;
     std::string viewedMenu;
     std::string restoreCommand, restoreArgument, restoreLabel;
@@ -2858,6 +2918,12 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
         }
         runtime.buttonAnimations.clear();
         SlimMenu menu = loadMenu(currentMenu, runtime, ctx);
+        // Generated and scripted menus share the fixed Back footer convention.
+        for (auto& item : menu.items) if (item.type == MenuItem::Type::Button && item.label == "Back" && !item.docked) {
+            item.docked = true; item.horizontal = SlimMenuLayout::Align::Start;
+            item.vertical = SlimMenuLayout::Align::End;
+        }
+
         if (ctx.mods && !Edition::lite) {
             NativeMods::Menu extension{menu.name, menu.title, {}};
             for (size_t i = 0; i < menu.items.size(); ++i) {
@@ -2900,7 +2966,7 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
             selected = 0;
             runtime.scrollY = SlimMenuLayout::reveal(layoutFor(menu, runtime, ctx), buttonItemIndex(menu, selected), 0.0f);
         }
-        bool draggingScrollbar = false, touchActive = false, touchDragged = false;
+        bool draggingScrollbar = false, touchActive = false, touchDragged = false, touchCanScroll = false;
         int draggingSlider = -1;
         bool sliderUsesTouch = false;
         bool exitTouchActive = false;
@@ -3081,7 +3147,7 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                 if (!item) return;
                 int* volume = audioSliderValue(*item, ctx);
                 if (!volume) return;
-                const auto row = SlimMenuLayout::scrolled(layout.items[buttonItemIndex(menu, draggingSlider)], runtime.scrollY);
+                const auto row = SlimMenuLayout::itemRect(layout, buttonItemIndex(menu, draggingSlider), runtime.scrollY);
                 const auto track = audioSliderTrack(row);
                 const int value = (int)std::lround(std::clamp((x - track.x) / track.w, 0.0f, 1.0f) * 128.0f);
                 if (value != *volume) adjustInt(item->command, value - *volume, ctx);
@@ -3376,7 +3442,8 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                     continue;
                 }
                 if (e.type == SDL_EVENT_FINGER_DOWN && !touchActive && pointer(e.tfinger.x, e.tfinger.y, true, x, y) &&
-                    SlimMenuLayout::contains(layout.body, x, y)) {
+                    (SlimMenuLayout::contains(layout.body, x, y) || hitButton(x, y) >= 0)) {
+                    touchCanScroll = SlimMenuLayout::contains(layout.body, x, y);
                     touchActive = true;
                     touchDragged = false;
                     trackedFinger = e.tfinger.fingerID;
@@ -3392,7 +3459,7 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                     pointer(e.tfinger.x, e.tfinger.y, true, x, y)) {
                     if (std::abs(y - touchStartY) > 8.0f / layout.scale || std::abs(x - touchStartX) > 8.0f / layout.scale) touchDragged = true;
                     if (draggingSlider >= 0 && sliderUsesTouch) dragVolume(x);
-                    else if (touchDragged) scrollTo(touchStartScroll + touchStartY - y);
+                    else if (touchDragged && touchCanScroll) scrollTo(touchStartScroll + touchStartY - y);
                 }
                 if (touchActive && (e.type == SDL_EVENT_FINGER_UP || e.type == SDL_EVENT_FINGER_CANCELED) && e.tfinger.fingerID == trackedFinger) {
                     if (draggingSlider >= 0 && sliderUsesTouch) {
