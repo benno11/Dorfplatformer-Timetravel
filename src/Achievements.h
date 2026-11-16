@@ -74,6 +74,19 @@ public:
             id == "beat_hardmode" ? "Complete the Hardmode campaign" : nullptr;
         return instruction ? std::vector<Requirement>{{instruction, has(id) ? 1 : 0, 1}} : std::vector<Requirement>{};
     }
+    std::string requirementSummary(const std::string& id,
+            const std::set<std::string>& catalog = {}) const {
+        const auto entries = requirements(id, catalog);
+        std::string summary;
+        const size_t count = id == "all_campaign_coins" ? std::min<size_t>(1, entries.size()) : entries.size();
+        for (size_t i = 0; i < count; ++i) {
+            if (!summary.empty()) summary += "; ";
+            summary += entries[i].label;
+            summary += entries[i].total > 0 ? " (" + std::to_string(entries[i].current) + "/" +
+                std::to_string(entries[i].total) + ")" : " (progress unavailable)";
+        }
+        return summary;
+    }
     nlohmann::json save() const {
         return {{"unlocked", unlocked_}, {"button_areas", buttons_}, {"campaign_coins", campaignCoins_}};
     }

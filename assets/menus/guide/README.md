@@ -532,3 +532,30 @@ The editor uses animated view definitions in `editor.menu`, `editornew.menu`,
 its toolbar and pause controls, prompt titles, field labels, and panel sizes.
 `networkbusy.menu` supplies connection/cancellation overlay text. The editor's
 painting tools and numeric/text input widgets remain engine code.
+
+## Independent snap areas
+
+Each horizontal/vertical anchor pair has its own stack: top-left, top-center,
+top-right, middle-left, middle-right, bottom-left, bottom-center, and bottom-right.
+Adding controls to one fixed stack does not reposition another fixed stack.
+Stacks grow in script order and bottom stacks end at their bottom anchor.
+The scrolling center is clipped using the tallest top/bottom stack, rather than
+adding the heights of different columns together. Side stacks anchor against
+the original content bounds, so headers and footers cannot shift them.
+
+Both `snap left bottom` and `snap bottom left` select bottom-left. Likewise,
+`snap right top` and `snap top right` select top-right. `center` and
+`snap center center` return to the normal scrolling center.
+
+Achievement rows expose `${row.requirements}` as a readable summary including
+saved progress. For example:
+
+```menu
+foreach achievements
+button "${row.title}: ${row.requirements}" menu "achievement:${row.id}"
+endfor
+```
+
+Basic event requirements show 0/1 or 1/1. World button summaries include both
+areas. Campaign coins show the overall collected/required location count; the
+requirement submenu retains the full per-level breakdown.

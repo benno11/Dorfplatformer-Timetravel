@@ -646,7 +646,7 @@ SlimMenu loadMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuC
             ++i;
         } else if (op == "snap" && parts.size() >= 3) {
             SlimMenuLayout::Align horizontal, vertical;
-            if (parseMenuAlignment(parts[1], horizontal) && parseMenuAlignment(parts[2], vertical)) {
+            if (SlimMenuLayout::parseSnap(parts[1], parts[2], horizontal, vertical)) {
                 style.horizontal = horizontal; style.vertical = vertical;
                 style.docked = horizontal != SlimMenuLayout::Align::Center || vertical != SlimMenuLayout::Align::Center;
             }
@@ -1432,10 +1432,15 @@ void prepareMenuData(const std::string& name, SlimRuntime& runtime, const SlimMe
     }
     if (name == "achievements") {
         int unlocked = 0, count = 0;
+        static const std::set<std::string> emptyCatalog;
+        const auto& catalog = ctx.campaignCoinCatalog ? *ctx.campaignCoinCatalog : emptyCatalog;
+        const Achievements emptyProgress;
+        const auto& progress = ctx.achievements ? *ctx.achievements : emptyProgress;
         for (const auto& def : Achievements::definitions) if (Edition::achievementAvailable(def.id)) {
             const bool earned = ctx.achievements && ctx.achievements->has(def.id);
             ++count; unlocked += earned;
-            row("achievements", {{"id",def.id},{"title",def.title},{"state",earned?"UNLOCKED":"LOCKED"}});
+            row("achievements", {{"id",def.id},{"title",def.title},{"state",earned?"UNLOCKED":"LOCKED"},
+                {"requirements",progress.requirementSummary(def.id,catalog)}});
         }
         v["achievement_count"] = std::to_string(count); v["achievement_unlocked"] = std::to_string(unlocked);
     }

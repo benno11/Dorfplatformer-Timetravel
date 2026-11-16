@@ -45,6 +45,15 @@ int main() {
         require(worldButtons.size() == 2 && worldButtons[0].current == 1 && worldButtons[1].current == 0, "Button requirements distinguish completed areas");
         require(a.requirements("complete_level").front().current == 1, "Completed requirement shown");
         require(a.requirements("good_ending").front().current == 0, "Incomplete requirement shown");
+        require(a.requirementSummary("complete_level") == "Complete one level (1/1)", "Achievement row includes earned requirement progress");
+        require(a.requirementSummary("good_ending").find("(0/1)") != std::string::npos, "Locked row includes incomplete progress");
+        const auto buttonSummary = a.requirementSummary("buttons_world_1");
+        require(buttonSummary.find("area 1") != std::string::npos && buttonSummary.find("area 2") != std::string::npos,
+            "Button row includes both requirements");
+        require(coins.requirementSummary("all_campaign_coins", required).find("(1/2)") != std::string::npos,
+            "Coin row includes saved unique source progress");
+        require(coins.requirementSummary("all_campaign_coins", required).find("level_001") == std::string::npos,
+            "Coin summary does not include the entire per-level breakdown");
         Achievements malformed;
         malformed.load({{"unlocked", {false, "invalid", "beat_boss"}}, {"button_areas", {"bad", -1, 999999999999ULL, 13, 61}}});
         require(malformed.has("beat_boss") && !malformed.has("invalid"), "validate persisted entries");

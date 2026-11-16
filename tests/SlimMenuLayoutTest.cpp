@@ -50,6 +50,43 @@ int main() {
         require(moving.y == fixed.items[4].y - 30, "Center reset did not restore scrolling");
         require(!hit(fixed, 4, moving.x, fixed.items[0].y, 30), "Clipped center intercepted a fixed header");
 
+        Align snapX, snapY;
+        require(parseSnap("bottom", "left", snapX, snapY) && snapX == Align::Start && snapY == Align::End,
+                "Vertical-first snap syntax was interpreted as another corner");
+        require(parseSnap("right", "top", snapX, snapY) && snapX == Align::End && snapY == Align::Start,
+                "Horizontal-first snap syntax broke");
+        require(!parseSnap("left", "right", snapX, snapY), "Invalid snap axes were accepted");
+        std::vector<Item> independent;
+        for (Align v : {Align::Start, Align::Center, Align::End})
+            for (Align h : {Align::Start, Align::Center, Align::End})
+                independent.push_back({100, 30, h, v, true});
+        const auto nine = build(960, 540, 1, Align::Center, Align::Center, independent);
+        require(nine.items[0].y == nine.items[1].y && nine.items[1].y == nine.items[2].y,
+                "Top anchors share a stacking cursor");
+        require(nine.items[6].y == nine.items[7].y && nine.items[7].y == nine.items[8].y,
+                "Bottom anchors share a stacking cursor");
+        for (size_t changed = 0; changed < 9; ++changed) {
+            auto expanded = independent;
+            expanded.push_back(independent[changed]);
+            const auto adjusted = build(960, 540, 1, Align::Center, Align::Center, expanded);
+            for (size_t other = 0; other < 9; ++other) if (other != changed)
+                require(adjusted.items[other].x == nine.items[other].x && adjusted.items[other].y == nine.items[other].y,
+                    "Adding to one snap area moved an unrelated area");
+        }
+        // The local-level footer has two four-row columns and a one-row center.
+        std::vector<Item> footer;
+        for (int n = 0; n < 4; ++n) footer.push_back({150, 54, Align::Start, Align::End, true});
+        for (int n = 0; n < 4; ++n) footer.push_back({150, 54, Align::End, Align::End, true});
+        footer.push_back({150, 54, Align::Center, Align::End, true});
+        const auto columns = build(960, 540, 1, Align::Center, Align::Center, footer);
+        require(columns.body.h > 100, "Independent footer columns consumed the sum of all their heights");
+        require(columns.items[3].y == columns.items[7].y && columns.items[7].y == columns.items[8].y,
+                "Footer columns do not end at the same anchor");
+        for (size_t n = 0; n < footer.size(); ++n) {
+            const auto r = itemRect(columns, n, 100);
+            require(hit(columns, n, r.x + r.w / 2, r.y + r.h / 2, 100), "Independent footer lost pointer input");
+        }
+
         const auto smallLeft = build(960, 540, 0.5f, Align::Start, Align::Start, anchors);
         const auto smallRight = build(960, 540, 0.5f, Align::End, Align::End, anchors);
         require(smallLeft.panel.x * 0.5f == 16 && smallLeft.panel.y * 0.5f == 12, "Scaled menu start anchor failed");

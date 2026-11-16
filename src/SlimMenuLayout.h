@@ -5,9 +5,28 @@
 #include <array>
 #include <cmath>
 #include <vector>
+#include <string>
+#include <cctype>
 
 namespace SlimMenuLayout {
 enum class Align { Start, Center, End };
+
+inline bool parseSnap(std::string first, std::string second, Align& horizontal, Align& vertical) {
+    for (char& c : first) c = (char)std::tolower((unsigned char)c);
+    for (char& c : second) c = (char)std::tolower((unsigned char)c);
+    auto axis = [](const std::string& token, bool x, Align& result) {
+        if (token == "center" || token == "middle") result = Align::Center;
+        else if (token == "start" || token == (x ? "left" : "top")) result = Align::Start;
+        else if (token == "end" || token == (x ? "right" : "bottom")) result = Align::End;
+        else return false;
+        return true;
+    };
+    Align x, y;
+    if (!(axis(first, true, x) && axis(second, false, y)) &&
+        !(axis(second, true, x) && axis(first, false, y))) return false;
+    horizontal = x; vertical = y;
+    return true;
+}
 
 inline int offset(int space, Align align) {
     return align == Align::Start ? 0 : (align == Align::End ? space : space / 2);
@@ -54,22 +73,25 @@ inline Layout build(int screenW, int screenH, float scale, Align horizontal, Ali
                    result.panel.w - leftPad - rightPad, result.panel.h - topPad - bottomPad};
     constexpr int gap = 12;
     const SDL_Rect originalBody = result.body;
-    // Fixed edges reserve space around the scrolling, clipped center.
-    std::array<int, 4> sideHeights{};
-    std::array<int, 4> reserve{}; // top, bottom, left, right
-    auto edge = [](const Item& item) {
-        if (item.vertical == Align::Start) return 0;
-        if (item.vertical == Align::End) return 1;
-        return item.horizontal == Align::Start ? 2 : 3;
+    // Each of the nine anchor positions owns its own stack. Reserving the
+    // maximum height at an edge clips the center without concatenating columns.
+    std::array<int, 9> dockHeights{}, dockWidths{}, dockCounts{};
+    auto anchor = [](const Item& item) {
+        return (int)item.vertical * 3 + (int)item.horizontal;
     };
     for (const auto& item : items) if (item.docked) {
-        const int e = edge(item);
-        if (e < 2) reserve[e] += std::max(1, item.height) + gap;
-        else {
-            reserve[e] = std::max(reserve[e], std::max(1, item.width) + gap);
-            sideHeights[e] += std::max(1, item.height) + gap;
-        }
+        const int group = anchor(item);
+        dockHeights[group] += std::max(1, item.height) + (dockCounts[group]++ ? gap : 0);
+        dockWidths[group] = std::max(dockWidths[group], std::max(1, item.width));
     }
+    const std::array<int, 4> reserve{
+        std::max({dockHeights[0], dockHeights[1], dockHeights[2]}) +
+            (dockCounts[0] || dockCounts[1] || dockCounts[2] ? gap : 0),
+        std::max({dockHeights[6], dockHeights[7], dockHeights[8]}) +
+            (dockCounts[6] || dockCounts[7] || dockCounts[8] ? gap : 0),
+        dockWidths[3] + (dockCounts[3] ? gap : 0),
+        dockWidths[5] + (dockCounts[5] ? gap : 0)
+    };
     const int topReserve = std::min(reserve[0], result.body.h - 1);
     const int bottomReserve = std::min(reserve[1], result.body.h - topReserve - 1);
     const int leftReserve = std::min(reserve[2], result.body.w - 1);
@@ -97,25 +119,28 @@ inline Layout build(int screenW, int screenH, float scale, Align horizontal, Ali
     std::array<int, 3> y{0,
         std::clamp((result.contentHeight - heights[1]) / 2, centerMin, std::max(centerMin, centerMax)),
         result.contentHeight - heights[2]};
-    std::array<int, 4> used{};
+    std::array<int, 9> used{};
     for (const auto& item : items) {
         result.fixed.push_back(item.docked);
         if (item.docked) {
-            const int e = edge(item);
-            SDL_Rect zone = originalBody;
-            if (e == 0) zone.h = topReserve;
-            if (e == 1) { zone.y += zone.h - bottomReserve; zone.h = bottomReserve; }
-            if (e >= 2) {
-                zone.y += topReserve; zone.h -= topReserve + bottomReserve;
-                zone.w = e == 2 ? leftReserve : rightReserve;
-                if (e == 3) zone.x = originalBody.x + originalBody.w - rightReserve;
-            }
-            const int width = std::clamp(item.width, 1, std::max(1, zone.w));
+            const int group = anchor(item);
+            const int groupWidth = std::clamp(dockWidths[group], 1, originalBody.w);
+            const int groupHeight = std::max(1, dockHeights[group]);
+            const int width = std::clamp(item.width, 1, groupWidth);
             const int height = std::max(1, item.height);
-            result.items.push_back({zone.x + offset(zone.w - width, item.horizontal),
-                zone.y + (e >= 2 ? std::max(0, (zone.h - sideHeights[e] + gap) / 2) : 0) + used[e], width, height});
-            result.clips.push_back(zone);
-            used[e] += height + gap;
+            const int groupX = originalBody.x + offset(originalBody.w - groupWidth, item.horizontal);
+            const int groupY = originalBody.y + offset(originalBody.h - groupHeight, item.vertical);
+            result.items.push_back({groupX + offset(groupWidth - width, item.horizontal),
+                groupY + used[group], width, height});
+            // Allow the existing hover animation to grow a few pixels without
+            // clipping its border, while keeping drawing inside the menu.
+            const int clipX = std::max(originalBody.x, groupX - gap / 2);
+            const int clipY = std::max(originalBody.y, groupY - gap / 2);
+            SDL_Rect clip{clipX, clipY,
+                std::max(0, std::min(originalBody.x + originalBody.w, groupX + groupWidth + gap / 2) - clipX),
+                std::max(0, std::min(originalBody.y + originalBody.h, groupY + groupHeight + gap / 2) - clipY)};
+            result.clips.push_back(clip);
+            used[group] += height + gap;
             continue;
         }
         result.clips.push_back(result.body);
