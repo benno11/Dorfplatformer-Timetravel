@@ -8,13 +8,13 @@
 
 namespace CharacterCreator {
 
-// Match the renderer's sprite clipping, extending only for uncapped procedural hair.
+// Include simulated procedural hair outside the body, even at capped lengths.
 // Use floating-point bounds so very large saved lengths cannot overflow an SDL_Rect.
 inline SDL_FRect visualBounds(Appearance a, const SDL_FRect& dst, Pose pose = Pose::Idle,
     float time = 0.0f, const PartPhysics* physics = nullptr) {
     a.normalize();
     if (dst.w <= 0 || dst.h <= 0 || !a.sprites.base.empty() || pose == Pose::Death ||
-        !a.uncapHairLength || a.hairStyle != customPartsHairStyle) return dst;
+        (!a.uncapHairLength && !physics) || a.hairStyle != customPartsHairStyle) return dst;
     const float headY = 3 + (physics ? physics->headY.position * 1.3f :
         (pose == Pose::Run ? ((int)(time * 24.0f) % 2) : 0));
     double bottom = 28;
@@ -157,14 +157,15 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& destination
     const float hairRight = dst.w > 0 ? (outputWidth - dst.x) * 16.0f / dst.w : 16;
     const float hairTop = dst.h > 0 ? -dst.y * 28.0f / dst.h : 0.0f;
     const float hairBottom = dst.h > 0 ? std::max(28.0f, (outputHeight - dst.y) * 28.0f / dst.h) : 28.0f;
+    const bool extendHair = a.hairStyle == customPartsHairStyle && (a.uncapHairLength || physics);
     auto block = [&](float x, float y, float w, float h, Color color, Part part = Part::None, int textureY = 0) {
         const float buildScale = a.build == 0 ? 0.88f : (a.build == 2 ? 1.08f : 1.0f);
         x = 8.0f + (x - 8.0f) * buildScale;
         w *= buildScale;
         if (facing < 0) x = 16.0f - x - w;
         const float textureOriginX = x, textureOriginY = y;
-        // Keep ordinary parts inside the sprite; uncapped hair may reach the screen edge.
-        const bool extendedHair = a.uncapHairLength && a.hairStyle == customPartsHairStyle && part == Part::Hair;
+        // Hair follows its simulated bounds; the body stays inside the sprite.
+        const bool extendedHair = extendHair && part == Part::Hair;
         const float right = std::min(extendedHair ? hairRight : 16.0f, x + w), bottom = std::min(extendedHair ? hairBottom : 28.0f, y + h);
         x = std::max(extendedHair ? hairLeft : 0.0f, x);
         y = std::max(extendedHair ? hairTop : 0.0f, y);
@@ -219,10 +220,11 @@ inline void render(SDL_Renderer* ren, Appearance a, const SDL_FRect& destination
             };
             // Account for joint displacement when culling very long or off-screen strands.
             const float margin = HairPhysics::reach * 2 + 2;
-            const double bottom = a.uncapHairLength ? hairBottom : 28.0f;
-            const float horizontalBudget = a.uncapHairLength && physics ? std::max(0.0f, hairRight - hairLeft) : 0;
+            const double bottom = extendHair ? hairBottom : 28.0f;
+            const float horizontalBudget = extendHair && physics ? std::max(0.0f, hairRight - hairLeft) : 0;
             const int rows = (int)std::min((double)length, std::max(0.0, std::ceil(bottom - y + margin + horizontalBudget)));
-            const int first = a.uncapHairLength ? (int)std::min((double)rows,
+            const bool persistent = physics && strandIndex >= 0 && physics->floorHair[strandIndex].initialized;
+            const int first = extendHair && !persistent ? (int)std::min((double)rows,
                 std::max(0.0, std::floor((double)hairTop - y - margin))) : 0;
             const float scale = a.build == 0 ? 0.88f : (a.build == 2 ? 1.08f : 1.0f);
             const float worldWidth = width * scale;

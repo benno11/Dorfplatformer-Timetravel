@@ -288,6 +288,38 @@ int main() {
     assert(SDL_ReadSurfacePixel(foldedPixels, 68, 32, &red, &green, &blue, &alpha));
     assert(red || green || blue); // A collapsed first link cannot hide the remaining tail.
     SDL_DestroySurface(foldedPixels);
+    // Short simulated back hair can extend outside the sprite at any zoom.
+    // Visibility bounds and raster clipping must include the entire strand.
+    for (int length : {10, 20, 21}) for (int facing : {-1, 1}) for (float zoom : {0.5f, 1.0f, 2.0f}) {
+        Appearance shortHair;
+        shortHair.hairStyle = customPartsHairStyle;
+        shortHair.hairShape = {{3, 0, length, 2, 0, 0}};
+        shortHair.uncapHairLength = length > 20;
+        shortHair.build = 1;
+        PartPhysics motion;
+        auto& strand = motion.floorHair[1];
+        strand.update(1.0f / 60, {4, 6.5f}, length, 2, -1, motion.hairCollisions);
+        for (int i = 0; i < strand.count; ++i) {
+            const float distance = i * strand.linkLength;
+            strand.points[i] = {facing > 0 ? 4 - distance : 12 + distance, 6.5f};
+        }
+        const SDL_FRect dst{64, 24, 16 * zoom, 28 * zoom};
+        const auto tip = strand.at(length - 1.0f);
+        const int x = (int)std::floor(dst.x + tip.x * zoom);
+        const int y = (int)std::floor(dst.y + 6.0f * zoom);
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+        render(renderer, shortHair, dst, Pose::Idle, 0, facing, 255, &motion);
+        SDL_Surface* pixels = SDL_RenderReadPixels(renderer, nullptr);
+        assert(pixels);
+        Uint8 r, g, b, a;
+        assert(SDL_ReadSurfacePixel(pixels, x, y, &r, &g, &b, &a));
+        assert(r || g || b);
+        SDL_DestroySurface(pixels);
+        const auto bounds = visualBounds(shortHair, dst, Pose::Idle, 0, &motion);
+        assert(x >= bounds.x && x < bounds.x + bounds.w);
+        assert(y >= bounds.y && y < bounds.y + bounds.h);
+    }
     // Saved lengths may be enormous; rendering work remains bounded by the view.
     hair.hairShape[2] = std::numeric_limits<int>::max();
     PartPhysics longHair;
