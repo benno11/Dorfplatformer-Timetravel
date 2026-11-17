@@ -47,8 +47,12 @@ bool step(TileMap& map, Player& player, int direction, SetTile setTile,
     if (!player.freeMove) for (const auto& move : moves) {
         const auto old = nearPlayer({(move.from%map.w)*tile, (move.from/map.w)*tile, tile, tile}, player, wrapW, wrapH);
         const SDL_FRect body{player.x,player.y,static_cast<float>(player.w),static_cast<float>(player.h)};
-        const bool rider = body.x+body.w > old.x && body.x < old.x+old.w &&
-                           std::fabs(body.y+body.h-old.y) < 0.1f;
+        // PlayerController samples solid tiles through x + w - 1. A player
+        // resting beside a wall can therefore overlap its visual edge by less
+        // than one pixel. Use the same footprint before applying a vertical push.
+        const bool sharesColumn = body.x + body.w - 1 >= old.x && body.x < old.x + old.w;
+        if (!sharesColumn) continue;
+        const bool rider = std::fabs(body.y+body.h-old.y) < 0.1f;
         const SDL_FRect swept{old.x,old.y+std::min(0,direction)*tile,tile,2*tile};
         if (!rider && !overlap(body,swept)) continue;
         const float pushedY = rider ? player.y+direction*tile :

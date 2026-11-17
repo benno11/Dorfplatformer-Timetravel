@@ -11,8 +11,8 @@ struct World {
     void tile(int index,unsigned short id){map.tileIds[index]=id;map.setBlockDefinition(index,id>2?'#':0);}
     void place(int x,int y,unsigned short id=48){tile(y*map.w+x,id);}
     bool blocked(const SDL_FRect& body){
-        for(int y=(int)std::floor(body.y/map.tileSize);y<=(int)std::floor((body.y+body.h-0.001f)/map.tileSize);++y)
-            for(int x=(int)std::floor(body.x/map.tileSize);x<=(int)std::floor((body.x+body.w-0.001f)/map.tileSize);++x)
+        for(int y=(int)std::floor(body.y/map.tileSize);y<=(int)std::floor((body.y+body.h-1)/map.tileSize);++y)
+            for(int x=(int)std::floor(body.x/map.tileSize);x<=(int)std::floor((body.x+body.w-1)/map.tileSize);++x)
                 if(x<0||x>=map.w||y<0||y>=map.h||map.solid[y*map.w+x])return true;
         return false;
     }
@@ -52,6 +52,22 @@ int main(){try {
         World rider;rider.state.tick=direction;rider.place(1,10);rider.place(2,10);rider.player.x=50;rider.player.y=320-rider.player.h;
         const float before=rider.player.y;require(!rider.update(1.0/60),"rider must not be crushed by its own blocks");
         require(rider.player.y==before+(direction ? 32 : -32),"two adjacent blocks must carry rider exactly once");
+    }
+    // Subpixel wall separation allowed by PlayerController must not become a
+    // vertical push into the nearby floor/ceiling when a block moves beside us.
+    for (int tick : {0, 240}) for (float edgeOverlap : {0.0f, 0.25f, 0.99f}) {
+        World beside;
+        beside.state.tick = tick;
+        beside.place(1, 10);
+        beside.place(0, 7, 4);
+        beside.place(0, 12, 4);
+        beside.player.x = 32 - beside.player.w + edgeOverlap;
+        beside.player.y = 320;
+        require(!beside.blocked({beside.player.x, beside.player.y, (float)beside.player.w, (float)beside.player.h}),
+                "side-contact fixture must be a valid player position");
+        require(!beside.update(1.0 / 60), "standing beside a moving block must not crush");
+        require(beside.player.y == 320, "side contact must not push the player vertically");
+        require(beside.at(1, tick ? 11 : 9), "side contact must not stop the block");
     }
     World ghost;ghost.place(1,10);ghost.place(1,7,4);ghost.player.x=33;ghost.player.y=264;ghost.player.freeMove=true;
     require(!ghost.update(1.0/60)&&ghost.player.y==264,"free-move player must not be crushed");
