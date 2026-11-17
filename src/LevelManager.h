@@ -57,7 +57,6 @@ private:
     static std::string levelPathFromId(int levelId);
     static std::vector<char> loadBlockDefs(const std::string& path);
     bool isButtonAreaActive(int worldId, int areaId) const;
-    bool areButtonsActiveUpToArea(int worldId, int areaId) const;
 
     void applyBlockDefAt(TileMap& map, int idx, unsigned short tileId) const;
     void updateLevelMetadata();

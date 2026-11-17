@@ -442,21 +442,47 @@ int main() {
     // Loading a save must select the qualified World 6 variant before spawning.
     manager.setButtonAreaActiveForDebug(6, 1, true);
     manager.setButtonAreaActiveForDebug(6, 2, true);
+    for (int world5Mask = 0; world5Mask < 4; ++world5Mask) {
+        for (int mask = 0; mask < 4; ++mask) {
+            std::vector<int> savedButtons{11, 12};
+            if (world5Mask & 1) savedButtons.push_back(51);
+            if (world5Mask & 2) savedButtons.push_back(52);
+            if (mask & 1) savedButtons.push_back(61);
+            if (mask & 2) savedButtons.push_back(62);
+            for (int area = 1; area <= 3; ++area) {
+                const bool qualified = world5Mask == 3 && (area == 1 || (area == 2 ? (mask & 1) != 0 : mask == 3));
+                const int time = qualified ? 4 : 3;
+                const auto path = manager.levelPathForSavedArea(6, area, savedButtons);
+                assert(!path.empty() && path == manager.levelPathByCode(600 + area * 10 + time));
+                LevelManager runtime;
+                for (int key : savedButtons) runtime.setButtonAreaActiveForDebug(key / 10, key % 10, true);
+                assert(runtime.levelPathByWorldAreaTime(6, area, 3) == path);
+                assert(runtime.levelPathByWorldAreaTime(6, area, 4) == path);
+                const auto bytes = SaveFormat::encode({{"resume_world", 6}, {"resume_level", (area - 1) * 4 + 3},
+                    {"active_button_world_areas", savedButtons}});
+                const auto decoded = SaveFormat::decode(bytes);
+                assert(decoded && manager.levelPathForSavedArea((*decoded)["resume_world"],
+                    ((*decoded)["resume_level"].get<int>() - 1) / 4 + 1,
+                    (*decoded)["active_button_world_areas"].get<std::vector<int>>()) == path);
+            }
+        }
+    }
+    // Completing either World 5 finale must honor both switches, even if
+    // stale World 6 flags are present from another visit.
     for (int mask = 0; mask < 4; ++mask) {
-        std::vector<int> savedButtons{11, 12}; // Other worlds never satisfy World 6.
-        if (mask & 1) savedButtons.push_back(61);
-        if (mask & 2) savedButtons.push_back(62);
-        for (int area = 1; area <= 3; ++area) {
-            const bool qualified = area == 1 || (area == 2 ? (mask & 1) != 0 : mask == 3);
-            const int time = qualified ? 4 : 3;
-            const auto path = manager.levelPathForSavedArea(6, area, savedButtons);
-            assert(!path.empty() && path == manager.levelPathByCode(600 + area * 10 + time));
-            const auto bytes = SaveFormat::encode({{"resume_world", 6}, {"resume_level", (area - 1) * 4 + 3},
-                {"active_button_world_areas", savedButtons}});
-            const auto decoded = SaveFormat::decode(bytes);
-            assert(decoded && manager.levelPathForSavedArea((*decoded)["resume_world"],
-                ((*decoded)["resume_level"].get<int>() - 1) / 4 + 1,
-                (*decoded)["active_button_world_areas"].get<std::vector<int>>()) == path);
+        for (int finale : {533, 534}) {
+            LevelManager route;
+            route.setLevelPath(route.levelPathByCode(finale));
+            route.reloadLevel(map, objects, loaded, player);
+            route.setButtonAreaActiveForDebug(5, 1, (mask & 1) != 0);
+            route.setButtonAreaActiveForDebug(5, 2, (mask & 2) != 0);
+            route.setButtonAreaActiveForDebug(6, 1, true);
+            route.setButtonAreaActiveForDebug(6, 2, true);
+            assert(route.nextLevelPath() == route.levelPathByCode(mask == 3 ? 614 : 613));
+            for (int area = 1; area <= 3; ++area) {
+                assert(route.levelPathByWorldAreaTime(6, area, 4) ==
+                       route.levelPathByCode(600 + area * 10 + (mask == 3 ? 4 : 3)));
+            }
         }
     }
     assert(manager.levelPathForSavedArea(1, 1, {61, 62}) == manager.levelPathByCode(111));

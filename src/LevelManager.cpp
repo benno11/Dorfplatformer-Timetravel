@@ -14,6 +14,16 @@
 #include "ObjectIds.h"
 #include "PlayerController.h"
 
+namespace {
+template <typename HasButton>
+bool qualifiesForWorld6(int area, HasButton hasButton) {
+    if (area < 1 || area > 3 || !hasButton(51) || !hasButton(52)) return false;
+    for (int previous = 1; previous < area; ++previous)
+        if (!hasButton(60 + previous)) return false;
+    return true;
+}
+}
+
 LevelManager::LevelManager()
     : levelNumberList_(loadLevelNumberList("assets/Level Numer List.txt")),
       blockDefs_(loadBlockDefs("assets/blockdefined.txt")) {}
@@ -199,26 +209,6 @@ std::string LevelManager::nextLevelPath() const {
     int world = nextCode / 100;
     int area = (nextCode / 10) % 10;
     int time = nextCode % 10;
-
-    // World 6 route tweak: when moving into/through world 6 and all buttons
-    // completed so far are active, advance to the +1 variant.
-    if (world == 6) {
-        const int requiredArea = (worldId_ == 6) ? levelPartId_ : 0;
-        const bool allButtonsSoFarActive = (requiredArea <= 0) ? true : areButtonsActiveUpToArea(6, requiredArea);
-        if (allButtonsSoFarActive) {
-            const int altId = nextId + 1;
-            if (altId > 0 && altId <= (int)levelNumberList_.size()) {
-                const int altCode = levelNumberList_[altId - 1];
-                if ((nextCode / 10) == (altCode / 10)) {
-                    nextId = altId;
-                    nextCode = altCode;
-                    world = nextCode / 100;
-                    area = (nextCode / 10) % 10;
-                    time = nextCode % 10;
-                }
-            }
-        }
-    }
 
     return levelPathByWorldAreaTime(world, area, time);
 }
@@ -450,10 +440,9 @@ std::string LevelManager::levelPathForSavedArea(int world, int area, const std::
     // World 6's route depends on earlier areas, not the current area's button.
     // Use this save's flags directly; runtime flags may belong to another slot.
     if (world == 6) {
-        bool qualified = true;
-        for (int previous = 1; previous < area; ++previous)
-            qualified = qualified && std::find(buttons.begin(), buttons.end(), 60 + previous) != buttons.end();
-        if (qualified) time = 4;
+        if (qualifiesForWorld6(area, [&](int key) {
+                return std::find(buttons.begin(), buttons.end(), key) != buttons.end();
+            })) time = 4;
     }
     auto path = levelPathByCode(world * 100 + area * 10 + time);
     if (path.empty() && time == 4) path = levelPathByCode(world * 100 + area * 10 + 3);
@@ -464,7 +453,13 @@ std::string LevelManager::levelPathByWorldAreaTime(int world, int area, int time
     if (world <= 0 || area <= 0 || time <= 0) return "";
     int routedTime = time;
     const bool areaButtonActive = isButtonAreaActive(world, area);
-    if (time == 3 && areaButtonActive) {
+    if (world == 6) {
+        // Both World 5 switches unlock this route; each later area also needs
+        // the preceding World 6 switches. Current-area flags cannot bypass it.
+        routedTime = qualifiesForWorld6(area, [&](int key) {
+            return isButtonAreaActive(key / 10, key % 10);
+        }) ? 4 : 3;
+    } else if (time == 3 && areaButtonActive) {
         routedTime = 4;
     }
 
@@ -540,20 +535,6 @@ int LevelManager::nextLevelId(int currentLevelId) {
     if (currentLevelId == 55) return 57;
     if (currentLevelId == 56) return 58;
     return -1;
-}
-
-bool LevelManager::areButtonsActiveUpToArea(int worldId, int areaId) const {
-    if (worldId <= 0 || areaId <= 0) return false;
-    for (int a = 1; a <= areaId; ++a) {
-        const int key = worldId * 10 + a;
-        if (buttonWorldAreasWithButtons_.find(key) == buttonWorldAreasWithButtons_.end()) {
-            continue;
-        }
-        if (!isButtonAreaActive(worldId, a)) {
-            return false;
-        }
-    }
-    return true;
 }
 
 bool LevelManager::isButtonAreaActive(int worldId, int areaId) const {
