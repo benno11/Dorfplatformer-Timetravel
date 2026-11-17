@@ -22,15 +22,15 @@ int main() {
         const float scale = build == 0 ? 0.88f : (build == 2 ? 1.08f : 1.0f);
         float rootX = 8 + (5 - 8) * scale;
         if (facing < 0) rootX = 16 - rootX;
-        const auto p = parts.builtInHair.joints[9];
-        HairPhysics::Point pointer{rootX + p.x * scale, 6.5f + p.y};
+        assert(parts.floorHair[1].initialized);
+        HairPhysics::Point pointer = parts.floorHair[1].at(9);
         // Holding a click that began elsewhere cannot grab a lock accidentally.
         mouse.update(parts, a, Pose::Idle, facing, {-50, -50}, true);
         mouse.update(parts, a, Pose::Idle, facing, pointer, true);
         assert(!mouse.dragging());
         mouse.update(parts, a, Pose::Idle, facing, pointer, false);
         mouse.update(parts, a, Pose::Idle, facing, pointer, true);
-        assert(mouse.dragging() && mouse.strand == 1 && !mouse.floor);
+        assert(mouse.dragging() && mouse.strand == 1 && mouse.floor);
         const int grabbed = mouse.joint;
         pointer.x -= facing * 6;
         pointer.y -= 2;
@@ -38,17 +38,16 @@ int main() {
             mouse.update(parts, a, Pose::Idle, facing, pointer, true);
             parts.update(dt, 0, 0, true, false, facing, 1, nullptr, &a);
         }
-        assert(parts.builtInHair.joints[grabbed].x * facing < -1);
-        const auto held = parts.builtInHair.joints[grabbed];
+        assert((parts.floorHair[1].points[grabbed].x - rootX) * facing < -1);
+        const auto held = parts.floorHair[1].points[grabbed];
         mouse.update(parts, a, Pose::Idle, facing, pointer, false);
-        assert(!mouse.dragging() && parts.builtInHair.mouse.joint == -1);
-        assert(parts.builtInHair.joints[grabbed].x == held.x); // Release preserves position/momentum.
+        assert(!mouse.dragging() && parts.floorHair[1].mouse.joint == -1);
+        assert(parts.floorHair[1].points[grabbed].x == held.x); // Release preserves position/momentum.
         for (int i = 0; i < fps * 3; ++i) parts.update(dt, 0, 0, true, false, facing, 1, nullptr, &a);
-        assert(std::fabs(parts.builtInHair.joints[grabbed].x) < std::fabs(held.x));
+        assert(std::fabs(parts.floorHair[1].points[grabbed].x - rootX) < std::fabs(held.x - rootX));
         assert(parts.builtInHair.joints[0].x == 0 && parts.builtInHair.joints[0].y == 0);
         // Focus/pause cancellation requires a fresh press on return.
-        const auto tip = parts.builtInHair.joints[9];
-        pointer = {rootX + tip.x * scale, 6.5f + tip.y};
+        pointer = parts.floorHair[1].at(9);
         mouse.update(parts, a, Pose::Idle, facing, pointer, true);
         assert(mouse.dragging());
         mouse.update(parts, a, Pose::Idle, facing, pointer, true, false);
@@ -175,20 +174,34 @@ int main() {
     HairPhysics::Profile singleProfile{1, 1, 1};
     singlePixel.update(1.0f / 60, 0, 0, 1, nullptr, &singleProfile);
     assert(std::fabs(singlePixel.restSpacing * (HairPhysics::jointCount - 1) - 1) < 0.0001f);
-    // Gameplay now preserves visible motion without truncating at the old cap.
-    for (int length = 1; length <= 20; ++length) {
+    // Every back-hair length uses the same rope as lengths above 20, and
+    // remains free to move rather than becoming pinned inside the head.
+    for (int length = 1; length <= 22; ++length) for (int facing : {-1, 1}) {
         Appearance a; a.hairStyle = customPartsHairStyle;
+        a.uncapHairLength = length > normalHairLengthLimit;
         a.hairShape = {3, 3, length, 2, 0, 0};
         PartPhysics idle, moving;
         for (int frame = 0; frame < 120; ++frame) {
-            const auto scene = hairBodyCollisions(a, 1, false);
-            idle.update(1.0f / 60, 0, 0, true, false, 1, 1, &scene, &a);
-            moving.update(1.0f / 60, 500, 0, true, false, 1, 1, &scene, &a);
+            auto idleScene = hairBodyCollisions(a, facing, false);
+            auto movingScene = idleScene;
+            addHairWorldBox(idleScene, {-2000, 56, 4000, 32}, {0, 0, 32, 56});
+            addHairWorldBox(movingScene, {-2000, 56, 4000, 32}, {facing * frame * 500.0f / 60, 0, 32, 56});
+            idle.update(1.0f / 60, 0, 0, true, false, facing, 1, &idleScene, &a);
+            moving.update(1.0f / 60, facing * 500, 0, true, false, facing, 1, &movingScene, &a);
         }
-        const auto tip = moving.builtInHair.offset(length);
+        const auto& rope = moving.floorHair[1];
+        assert(rope.initialized && rope.length == length);
+        const auto tip = rope.at(length), idleTip = idle.floorHair[1].at(length);
+        const auto root = rope.points[0], idleRoot = idle.floorHair[1].points[0];
         assert(std::isfinite(tip.x) && std::isfinite(tip.y));
-        assert(tip.x < idle.builtInHair.offset(length).x);
-        if (length >= 10) assert(tip.x < -1.8f);
+        const float movement = ((tip.x - root.x) - (idleTip.x - idleRoot.x)) * facing;
+        assert(std::fabs(movement) > 0.01f);
+        if (length >= 3) assert(movement < -0.05f);
+        for (int i = 1; i < rope.count; ++i) {
+            const float dx = rope.points[i].x - rope.points[i - 1].x;
+            const float dy = rope.points[i].y - rope.points[i - 1].y;
+            assert(std::sqrt(dx * dx + dy * dy) <= rope.linkLength * 1.16f);
+        }
     }
     // Ordinary-length locks must visibly trail at running speed. Previously the
     // fixed lateral cap and weak airflow left a 20-pixel lock moving by about
@@ -201,7 +214,7 @@ int main() {
             movingHair.update(1.0f / 60, 500, 0, 1, nullptr, &profile);
         assert(movingHair.offset(length).x < -std::min(1.0f, length * 0.2f));
     }
-    // Uncapping must not replace short-hair physics with the floor rope. Include
+    // Capped and uncapped back hair share the persistent solver. Include
     // wide locks, jumps, turns, and shrinking a previously floor-length strand.
     for (int length : {0, 1, 2, 3, 4, 6, normalHairLengthLimit}) for (int width : {1, 4}) {
         Appearance capped;
@@ -217,7 +230,14 @@ int main() {
             const auto scene = hairBodyCollisions(capped, facing, false);
             normal.update(1.0f / 60, vx, vy, vy == 0, false, facing, 1, &scene, &capped);
             overrideParts.update(1.0f / 60, vx, vy, vy == 0, false, facing, 1, &scene, &uncapped);
-            assert(!overrideParts.floorHair[0].initialized && !overrideParts.floorHair[1].initialized);
+            assert(!overrideParts.floorHair[0].initialized);
+            assert(overrideParts.floorHair[1].initialized == (length > 0));
+            assert(normal.floorHair[1].initialized == (length > 0));
+            if (length > 0) for (int i = 0; i < normal.floorHair[1].count; ++i) {
+                const auto a = normal.floorHair[1].points[i], b = overrideParts.floorHair[1].points[i];
+                assert(std::isfinite(a.x) && std::isfinite(a.y));
+                assert(a.x == b.x && a.y == b.y);
+            }
             for (int i = 0; i < HairPhysics::jointCount; ++i) {
                 const auto a = normal.builtInHair.joints[i], b = overrideParts.builtInHair.joints[i];
                 assert(std::isfinite(a.x) && std::isfinite(a.y));
@@ -229,7 +249,7 @@ int main() {
         assert(overrideParts.floorHair[1].initialized);
         uncapped.hairShape[2] = length;
         overrideParts.update(1.0f / 60, 0, 0, true, false, 1, 1, nullptr, &uncapped);
-        assert(!overrideParts.floorHair[1].initialized);
+        assert(overrideParts.floorHair[1].initialized == (length > 0));
     }
     HairPhysics::CollisionScene torso;
     torso.bodySide = -1;

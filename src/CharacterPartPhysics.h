@@ -143,7 +143,7 @@ struct PartPhysics {
         hairTurnTime = std::max(0.0f, hairTurnTime - dt);
         if (floorTrailDirection == 0) floorTrailDirection = -direction;
         if (std::fabs(vx) > 20) floorTrailDirection = vx > 0 ? -1.0f : 1.0f;
-        if (appearance && appearance->hairStyle == customPartsHairStyle && appearance->uncapHairLength) {
+        if (appearance && appearance->hairStyle == customPartsHairStyle) {
             const float scale = appearance->build == 0 ? 0.88f : (appearance->build == 2 ? 1.08f : 1.0f);
             const float width = appearance->hairShape[3] * scale;
             const float lean = (sliding ? 2.0f : 0) + headX.position;
@@ -157,11 +157,11 @@ struct PartPhysics {
                     (strand == 1 ? 4.0f : 13.0f - appearance->hairShape[3]);
                 float rootX = 8 + (rootLeft + lean - 8) * scale + width * 0.5f;
                 if (facing < 0) rootX = 16 - rootX;
-                // Uncapping changes the allowed length, not short-hair dynamics.
-                // The floor rope's body ejection can pin a short lock inside the
-                // head. Ordinary lengths already use the regular strand solver.
+                // Back hair uses the persistent solver at every positive length,
+                // so crossing 20 pixels never changes its movement model.
+                // Fringe and side hair retain their ordinary short-lock solver.
                 const int length = appearance->hairShape[strand == 2 ? 5 : strand + 1];
-                if (length <= normalHairLengthLimit) {
+                if (length <= 0 || (strand != 1 && (!appearance->uncapHairLength || length <= normalHairLengthLimit))) {
                     floorHair[strand] = {};
                     continue;
                 }
