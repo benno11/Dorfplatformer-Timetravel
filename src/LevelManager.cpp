@@ -17,7 +17,10 @@
 namespace {
 template <typename HasButton>
 bool qualifiesForWorld6(int area, HasButton hasButton) {
-    if (area < 1 || area > 3 || !hasButton(51) || !hasButton(52)) return false;
+    if (area < 1 || area > 3) return false;
+    for (int world = 1; world <= 5; ++world)
+        for (int buttonArea = 1; buttonArea <= 2; ++buttonArea)
+            if (!hasButton(world * 10 + buttonArea)) return false;
     for (int previous = 1; previous < area; ++previous)
         if (!hasButton(60 + previous)) return false;
     return true;
@@ -454,7 +457,7 @@ std::string LevelManager::levelPathByWorldAreaTime(int world, int area, int time
     int routedTime = time;
     const bool areaButtonActive = isButtonAreaActive(world, area);
     if (world == 6) {
-        // Both World 5 switches unlock this route; each later area also needs
+        // All switches in Worlds 1–5 unlock this route; each later area also needs
         // the preceding World 6 switches. Current-area flags cannot bypass it.
         routedTime = qualifiesForWorld6(area, [&](int key) {
             return isButtonAreaActive(key / 10, key % 10);
