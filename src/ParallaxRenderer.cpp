@@ -86,7 +86,7 @@ void RenderParallaxBackground(
         float verticalFactor;
     };
     Layer layers[3] = {
-        {parallaxLayer0, 255, parallaxLayerScales[0], 0.50f, 0.50f},
+        {parallaxLayer0, 255, parallaxLayerScales[0], 0.22f, 0.22f},
         {parallaxLayer1, 255, parallaxLayerScales[1], 0.50f, 0.50f},
         {parallaxLayer2, 255, parallaxLayerScales[2], 0.78f, 0.78f}
     };
