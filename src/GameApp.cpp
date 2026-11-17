@@ -76,6 +76,7 @@
 #include "LevelManager.h"
 #include "GameProgression.h"
 #include "Achievements.h"
+#include "DeferredAchievementSave.h"
 #include "CampaignCoins.h"
 #include "AchievementToast.h"
 #include "LevelWrap.h"
@@ -1740,15 +1741,25 @@ int RunGameApp(int argc, char** argv) {
 #endif
     };
     applyLoggingSettings();
-    auto saveClientSettings = [&]() {
+    DeferredAchievementSave pendingAchievementSave;
+    auto savePrivateData = [&]() -> bool {
         if (!privateServer.empty() && privateServer != levelServerUrl && privateToken == levelServerAuthToken) {
             levelServerAuthToken.clear(); levelServerAccountUsername.clear();
             SetLevelServerAuthToken(""); SetLevelServerAccountUsername("");
         }
         const nlohmann::json secret = {{"version", 1}, {"achievements", achievements.save()},
             {"account", {{"server_url", levelServerUrl}, {"username", levelServerAccountUsername}, {"auth_token", levelServerAuthToken}}}};
-        if (!secretSave.save(secret)) { reportSecretSaveError(); return; }
+        if (!secretSave.save(secret)) { pendingAchievementSave.failed(SDL_GetTicks()); reportSecretSaveError(); return false; }
         privateServer = levelServerUrl; privateToken = levelServerAuthToken;
+        pendingAchievementSave.saved();
+        return true;
+    };
+    auto flushPendingAchievements = [&](bool force) {
+        if (pendingAchievementSave.pending() && (force || pendingAchievementSave.due(SDL_GetTicks())))
+            (void)savePrivateData();
+    };
+    auto saveClientSettings = [&]() {
+        if (!savePrivateData()) return;
         nlohmann::json j;
         j["logging"] = {{"game_log_enabled", enableGameLog}, {"save_logcat_to_file", saveLogcatToFile}};
         j["custom_character"] = CharacterCreator::save(characterAppearance);
@@ -2490,6 +2501,7 @@ int RunGameApp(int argc, char** argv) {
     };
     Uint64 lastAchievementDraw = SDL_GetTicksNS();
     auto drawAchievementToast = [&](int canvasW, int canvasH) {
+        flushPendingAchievements(false);
         // Draw last in game coordinates so the toast scales with the screen.
         const Uint64 now = SDL_GetTicksNS();
         achievements.tick(static_cast<float>(now - lastAchievementDraw) / 1000000000.0f);
@@ -3679,13 +3691,14 @@ int RunGameApp(int argc, char** argv) {
         levelManager.coinSourceCollected = [&](const std::string& source) {
             if (hardmodeRun || hardmodePractice || !IsCampaignLevelPath(levelManager.levelPath())) return;
             const auto name = std::filesystem::path(levelManager.levelPath()).filename().string();
-            if (achievements.campaignCoin(name + ":" + source, campaignCoinCatalog)) saveClientSettings();
+            if (achievements.campaignCoin(name + ":" + source, campaignCoinCatalog)) pendingAchievementSave.mark(SDL_GetTicks());
         };
         auto transitionToLevelPath = [&](const std::string& path) -> bool {
             if (path.empty()) return false;
             if (hardmodePractice && path != levelManager.levelPath()) return false;
             if (hardmodeRun && HardmodeLevelFromPath(path) == 0) return false;
             clearCheckpoint();
+            flushPendingAchievements(true);
             levelManager.setLevelPath(path);
             syncWorldBackground();
             droppedCoins.clear();
@@ -4161,6 +4174,7 @@ int RunGameApp(int argc, char** argv) {
         constexpr Uint32 kLowPowerSuspendDelayMs = 1250;
 
         auto openPauseMenu = [&]() {
+            flushPendingAchievements(true);
             if (levelCompleteActive) return;
             paused = true;
             pauseMenuClosing = false;
@@ -4198,6 +4212,7 @@ int RunGameApp(int argc, char** argv) {
             }
         };
         auto enterLowPowerSuspend = [&]() {
+            flushPendingAchievements(true);
             if (lowPowerSuspendActive) return;
             paused = true;
             stopDebugButtonEditing();
@@ -4875,6 +4890,8 @@ int RunGameApp(int argc, char** argv) {
                     (void)handleDetailedDebuggerTap(mx, my);
                 }
             }
+            if (e.type == SDL_EVENT_WILL_ENTER_BACKGROUND || e.type == SDL_EVENT_DID_ENTER_BACKGROUND)
+                flushPendingAchievements(true);
             if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST) {
                 if (e.window.windowID == mainWindowId) {
                     mainWindowFocused = false;
@@ -9406,6 +9423,7 @@ int RunGameApp(int argc, char** argv) {
         clearCheckpoint();
         if (!running) break;
         stopReplayRecording(returnToSelect ? "return_to_select" : "level_end");
+        flushPendingAchievements(true);
         audio.unloadLevelMusic();
         // Every way out of a custom level returns to its originating browser.
         if (returnToSelect) {
@@ -9413,6 +9431,7 @@ int RunGameApp(int argc, char** argv) {
         }
     }
 
+    flushPendingAchievements(true);
     gameplayAssetLoader.shutdown();
     waterEffects.reset();
     if (playerTex) SDL_DestroyTexture(playerTex);

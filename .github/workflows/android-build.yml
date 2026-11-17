@@ -30,6 +30,7 @@ jobs:
     outputs:
       release_enabled: ${{ steps.release.outputs.release_enabled }}
       release_tag: ${{ steps.release.outputs.release_tag }}
+      release_name: ${{ steps.release_name.outputs.value }}
 
     steps:
       - name: Checkout game
@@ -72,13 +73,25 @@ jobs:
           echo "release_enabled=$release_enabled" >> "$GITHUB_OUTPUT"
           echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve release name
+        id: release_name
+        shell: bash
+        run: |
+          python3 - <<'PYVERSION'
+          import json, os
+          with open('assets/config.json') as source:
+              name = json.load(source)['version']
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              print('value=' + name, file=output)
+          PYVERSION
+
       - name: Create draft release
         if: steps.release.outputs.release_enabled == 'true' && steps.release.outputs.release_tag != ''
         continue-on-error: true
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ steps.release.outputs.release_tag }}
+          name: ${{ steps.release_name.outputs.value }}
           tag_name: ${{ steps.release.outputs.release_tag }}
           target_commitish: ${{ github.sha }}
           draft: true
@@ -329,7 +342,7 @@ jobs:
         if: needs.prepare_release.outputs.release_enabled == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          name: ${{ needs.prepare_release.outputs.release_tag }}
+          name: ${{ needs.prepare_release.outputs.release_name }}
           tag_name: ${{ needs.prepare_release.outputs.release_tag }}
           target_commitish: ${{ github.sha }}
           draft: true
@@ -535,7 +548,7 @@ jobs:
         if: needs.prepare_release.outputs.release_enabled == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          name: ${{ needs.prepare_release.outputs.release_tag }}
+          name: ${{ needs.prepare_release.outputs.release_name }}
           tag_name: ${{ needs.prepare_release.outputs.release_tag }}
           target_commitish: ${{ github.sha }}
           draft: true
@@ -913,7 +926,7 @@ jobs:
         if: needs.prepare_release.outputs.release_enabled == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          name: ${{ needs.prepare_release.outputs.release_tag }}
+          name: ${{ needs.prepare_release.outputs.release_name }}
           tag_name: ${{ needs.prepare_release.outputs.release_tag }}
           target_commitish: ${{ github.sha }}
           draft: true
