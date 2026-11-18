@@ -214,9 +214,9 @@ jobs:
             }
             $env:SDL3_mixer_DIR = Join-Path $localMixerPrefix "cmake"
             $env:CMAKE_PREFIX_PATH = if ($env:CMAKE_PREFIX_PATH) { "$localMixerPrefix;$env:CMAKE_PREFIX_PATH" } else { $localMixerPrefix }
-            & $vcpkgExe install sdl3 sdl3-image sdl3-ttf curl nlohmann-json --triplet "${{ matrix.triplet }}" --vcpkg-root $vcpkgRoot
+            & $vcpkgExe install sdl3 "sdl3-image[png,jpeg]" sdl3-ttf curl nlohmann-json --triplet "${{ matrix.triplet }}" --vcpkg-root $vcpkgRoot
           } else {
-            & $vcpkgExe install sdl3 sdl3-image sdl3-ttf sdl3-mixer curl nlohmann-json --triplet "${{ matrix.triplet }}" --vcpkg-root $vcpkgRoot
+            & $vcpkgExe install sdl3 "sdl3-image[png,jpeg]" sdl3-ttf "sdl3-mixer[mpg123]" curl nlohmann-json --triplet "${{ matrix.triplet }}" --vcpkg-root $vcpkgRoot
           }
 
       - name: Configure
@@ -656,9 +656,9 @@ jobs:
         run: |
           ./.ci/vcpkg/vcpkg install \
             sdl3 \
-            sdl3-image \
+            "sdl3-image[png,jpeg]" \
             sdl3-ttf \
-            sdl3-mixer \
+            "sdl3-mixer[mpg123]" \
             curl \
             nlohmann-json \
             --triplet "${{ matrix.triplet }}" \

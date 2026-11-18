@@ -248,9 +248,9 @@ install_deps() {
   local install_args=(
     install
     sdl3
-    sdl3-image
+    "sdl3-image[png,jpeg]"
     sdl3-ttf
-    sdl3-mixer
+    "sdl3-mixer[mpg123]"
     curl
     nlohmann-json
     --triplet "$VCPKG_TRIPLET"

@@ -826,6 +826,23 @@ PYTEST
   echo "[ok] iOS configure uses Xcode, iOS SDK, architecture, and dependency toolchain"
 }
 
+validate_media_codec_requirements() {
+  local check="$ROOT_DIR/cmake/RequireMediaCodecs.cmake"
+  cmake -DSDLIMAGE_PNG=ON -DSDLIMAGE_JPG=ON -DSDLMIXER_MP3=ON -DSDLMIXER_WAVE=ON -P "$check"
+  for codec in PNG JPG; do
+    expect_failure "missing-image-$codec" "lacks required $codec decoding" \
+      cmake "-DSDLIMAGE_$codec=OFF" -P "$check"
+  done
+  for codec in MP3 WAVE; do
+    expect_failure "missing-audio-$codec" "lacks required $codec decoding" \
+      cmake "-DSDLMIXER_$codec=OFF" -P "$check"
+  done
+  # Legacy SDL configs that don't advertise capability flags remain usable.
+  cmake -P "$check"
+}
+
+validate_media_codec_requirements
+
 validate_ios_configure
 prepare_smoke_source
 make_fake_macho_tools
