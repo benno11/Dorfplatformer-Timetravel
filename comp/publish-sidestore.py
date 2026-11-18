@@ -52,7 +52,7 @@ def main():
             gh('release', 'create', tag, '--repo', REPO, '--target', chosen['head_sha'], '--prerelease', '--draft',
                '--title', f"iOS SideStore build {build}", '--notes', 'iOS device IPA for the official SideStore source. Re-sign with SideStore to install.')
         asset = root / 'platformer.ipa'; ipa.rename(asset)
-        existing = api(f'releases/tags/{tag}')
+        existing = json.loads(gh('release', 'view', tag, '--repo', REPO, '--json', 'isDraft,assets'))
         assets = [a for a in existing['assets'] if a['name'] == 'platformer.ipa']
         if not assets:
             gh('release','upload',tag,str(asset),'--repo',REPO)
@@ -62,7 +62,7 @@ def main():
             import hashlib
             if hashlib.sha256((downloaded / 'platformer.ipa').read_bytes()).hexdigest() != version['sha256']:
                 raise RuntimeError('Existing immutable SideStore build differs from the source IPA')
-        if api(f'releases/tags/{tag}')['draft']:
+        if existing['isDraft']:
             gh('release', 'edit', tag, '--repo', REPO, '--draft=false')
         print(f"SideStore source generated for verified iOS build {build}")
 
