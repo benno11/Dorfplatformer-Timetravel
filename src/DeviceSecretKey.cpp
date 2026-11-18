@@ -1,4 +1,9 @@
 #include "SecretSave.h"
+#include "Platform.h"
+#if PLATFORMER_IOS
+#include "IosSecretKey.h"
+#include "EditionPolicy.h"
+#endif
 #include "monocypher.h"
 #include <fstream>
 #include <vector>
@@ -57,9 +62,81 @@ static bool wrap(bool encrypt, const std::vector<unsigned char>& input, std::vec
     return ok;
 }
 #endif
+#if PLATFORMER_IOS
+namespace {
+struct IosKeychain {
+    KeychainRead read(const std::string& identity, Key& key) {
+        auto service = CFStringCreateWithCString(nullptr, identity.c_str(), kCFStringEncodingUTF8);
+        const void* names[] = {kSecClass, kSecAttrService, kSecAttrAccount, kSecReturnData, kSecMatchLimit};
+        const void* values[] = {kSecClassGenericPassword, service, CFSTR("savedata_secret"), kCFBooleanTrue, kSecMatchLimitOne};
+        auto query = CFDictionaryCreate(nullptr, names, values, 5, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+        CFTypeRef result = nullptr;
+        auto status = SecItemCopyMatching(query, &result);
+        bool valid = status == errSecSuccess && result && CFGetTypeID(result) == CFDataGetTypeID() && CFDataGetLength((CFDataRef)result) == 32;
+        if (valid) CFDataGetBytes((CFDataRef)result, CFRangeMake(0, 32), key.data());
+        if (result) CFRelease(result);
+        CFRelease(query); CFRelease(service);
+        return valid ? KeychainRead::Found : (status == errSecItemNotFound ? KeychainRead::Missing : KeychainRead::Error);
+    }
+    bool add(const std::string& identity, const Key& key) {
+        auto service = CFStringCreateWithCString(nullptr, identity.c_str(), kCFStringEncodingUTF8);
+        auto data = CFDataCreate(nullptr, key.data(), key.size());
+        const void* names[] = {kSecClass, kSecAttrService, kSecAttrAccount, kSecValueData, kSecAttrAccessible};
+        const void* values[] = {kSecClassGenericPassword, service, CFSTR("savedata_secret"), data, kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly};
+        auto item = CFDictionaryCreate(nullptr, names, values, 5, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+        auto status = SecItemAdd(item, nullptr);
+        CFRelease(item); CFRelease(data); CFRelease(service);
+        if (status != errSecDuplicateItem) return status == errSecSuccess;
+        Key existing{};
+        const bool same = read(identity, existing) == KeychainRead::Found && existing == key;
+        crypto_wipe(existing.data(), existing.size());
+        return same;
+    }
+    template<class Accept>
+    bool visitLegacy(Accept accept) {
+        const void* names[] = {kSecClass, kSecAttrAccount, kSecReturnAttributes, kSecReturnData, kSecMatchLimit};
+        const void* values[] = {kSecClassGenericPassword, CFSTR("savedata_secret"), kCFBooleanTrue, kCFBooleanTrue, kSecMatchLimitAll};
+        auto query = CFDictionaryCreate(nullptr, names, values, 5, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+        CFTypeRef result = nullptr;
+        const auto status = SecItemCopyMatching(query, &result);
+        CFRelease(query);
+        bool found = false;
+        if (status == errSecSuccess && result && CFGetTypeID(result) == CFArrayGetTypeID()) {
+            auto items = (CFArrayRef)result;
+            for (CFIndex i = 0; i < CFArrayGetCount(items) && !found; ++i) {
+                auto raw = CFArrayGetValueAtIndex(items, i);
+                if (!raw || CFGetTypeID(raw) != CFDictionaryGetTypeID()) continue;
+                auto item = (CFDictionaryRef)raw;
+                auto service = (CFStringRef)CFDictionaryGetValue(item, kSecAttrService);
+                auto data = (CFDataRef)CFDictionaryGetValue(item, kSecValueData);
+                if (!service || CFGetTypeID(service) != CFStringGetTypeID() ||
+                    !data || CFGetTypeID(data) != CFDataGetTypeID() || CFDataGetLength(data) != 32) continue;
+                std::vector<char> text(CFStringGetMaximumSizeForEncoding(CFStringGetLength(service), kCFStringEncodingUTF8) + 1);
+                if (!CFStringGetCString(service, text.data(), text.size(), kCFStringEncodingUTF8)) continue;
+                Key candidate{};
+                CFDataGetBytes(data, CFRangeMake(0, 32), candidate.data());
+                found = accept(text.data(), candidate);
+                crypto_wipe(candidate.data(), candidate.size());
+            }
+        }
+        if (result) CFRelease(result);
+        return found;
+    }
+};
+}
+#endif
 bool deviceKey(const std::filesystem::path& root,bool create,Key& key) {
     try {
-#ifdef __APPLE__
+#if PLATFORMER_IOS
+        IosKeychain chain;
+        return loadIosKey(Edition::storageName, create, key, chain, [&](const Key& candidate) {
+            // Store performs the existing signature, AEAD and schema checks.
+            // A provider avoids recursive Keychain access during this probe.
+            Store probe(root, Edition::storageName, [&](bool, Key& out) { out = candidate; return true; });
+            nlohmann::json value;
+            return probe.load(value) == Store::Result::Loaded;
+        });
+#elif defined(__APPLE__)
         auto service=CFStringCreateWithCString(nullptr,("com.Benno111.savedata:"+root.u8string()).c_str(),kCFStringEncodingUTF8);
         const void* names[]={kSecClass,kSecAttrService,kSecAttrAccount,kSecReturnData,kSecMatchLimit};
         const void* values[]={kSecClassGenericPassword,service,CFSTR("savedata_secret"),kCFBooleanTrue,kSecMatchLimitOne};

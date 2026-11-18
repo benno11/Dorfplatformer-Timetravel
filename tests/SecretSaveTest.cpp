@@ -1,4 +1,6 @@
 #include "SecretSave.h"
+#include "IosSecretKey.h"
+#include <map>
 #include "monocypher-ed25519.h"
 #include <cassert>
 #include <fstream>
@@ -8,6 +10,24 @@
 #include <sys/stat.h>
 #endif
 using namespace SecretData;
+struct TestKeychain {
+    std::map<std::string, Key> items;
+    bool unavailable = false, refuseWrites = false;
+    KeychainRead read(const std::string& service, Key& out) {
+        if (unavailable) return KeychainRead::Error;
+        const auto item = items.find(service);
+        if (item == items.end()) return KeychainRead::Missing;
+        out = item->second; return KeychainRead::Found;
+    }
+    bool add(const std::string& service, const Key& key) {
+        if (refuseWrites) return false;
+        return items.emplace(service, key).second;
+    }
+    template<class Accept> bool visitLegacy(Accept accept) {
+        for (const auto& item : items) if (accept(item.first, item.second)) return true;
+        return false;
+    }
+};
 std::string bytes(const std::filesystem::path& p){std::ifstream in(p,std::ios::binary);return {std::istreambuf_iterator<char>(in),{}};}
 void put(const std::filesystem::path& p,const std::string& s){std::ofstream out(p,std::ios::binary);out.write(s.data(),s.size());}
 int main(int argc,char** argv){
@@ -44,6 +64,60 @@ int main(int argc,char** argv){
     publicData["settings"]["network"]={{"level_server_auth_token","token"},{"level_api_account_username","user"},{"level_server_url","safe"}};
     scrubLegacy(publicData);assert(!publicData.contains("achievements")&&!publicData.contains("level_api_auth_token"));
     assert(publicData["settings"]["network"].size()==1);
+    // iOS changes the data-container UUID on update while retaining Documents
+    // and Keychain entries. Migrate only the key that authenticates this save.
+    for (const std::string edition : {"DorfplatformerTimetravel", "DorfplatformerTimetravelLite"}) {
+        const auto containers = root / edition;
+        const auto oldRoot = containers / "old-uuid" / "Documents" / edition;
+        const auto newRoot = containers / "new-uuid" / "Documents" / edition;
+        const auto thirdRoot = containers / "third-uuid" / "Documents" / edition;
+        Store original(oldRoot, edition, provider);
+        assert(original.save(data));
+        const auto originalBytes = bytes(oldRoot / "savedata_secret");
+        std::filesystem::rename(containers / "old-uuid", containers / "new-uuid");
+        TestKeychain chain;
+        Key incorrect{}; incorrect.fill(99);
+        chain.items["com.Benno111.savedata:" + oldRoot.u8string()] = key;
+        chain.items["com.Benno111.savedata:/aaa/Documents/" + edition] = incorrect;
+        chain.items["com.Benno111.savedata:/aaa/Documents/another-edition"] = key;
+        auto updatedProvider = [&](bool create, Key& out) {
+            return loadIosKey(edition, create, out, chain, [&](const Key& candidate) {
+                Store probe(newRoot, edition, [&](bool, Key& value) { value = candidate; return true; });
+                nlohmann::json value;
+                return probe.load(value) == Store::Result::Loaded;
+            });
+        };
+        chain.unavailable = true;
+        Store locked(newRoot, edition, updatedProvider);
+        assert(locked.load(loaded) == Store::Result::Error);
+        assert(!locked.save(data) && bytes(newRoot / "savedata_secret") == originalBytes);
+        chain.unavailable = false;
+        chain.refuseWrites = true;
+        Store writeFailure(newRoot, edition, updatedProvider);
+        assert(writeFailure.load(loaded) == Store::Result::Error);
+        assert(!writeFailure.save(data) && bytes(newRoot / "savedata_secret") == originalBytes);
+        chain.refuseWrites = false;
+        Store migrated(newRoot, edition, updatedProvider);
+        assert(migrated.load(loaded) == Store::Result::Loaded && loaded == data);
+        assert(bytes(newRoot / "savedata_secret") == originalBytes);
+        assert(chain.items.at(iosKeyService(edition)) == key);
+        assert(migrated.save(data));
+        std::filesystem::rename(containers / "new-uuid", containers / "third-uuid");
+        chain.items.erase("com.Benno111.savedata:" + oldRoot.u8string());
+        Store nextUpdate(thirdRoot, edition, [&](bool create, Key& out) {
+            return loadIosKey(edition, create, out, chain, [](const Key&) { return false; });
+        });
+        assert(nextUpdate.load(loaded) == Store::Result::Loaded && loaded == data);
+        assert(nextUpdate.save(data));
+        TestKeychain wrongEdition;
+        wrongEdition.items["com.Benno111.savedata:/aaa/Documents/another-edition"] = key;
+        Key out{};
+        assert(!loadIosKey(edition, false, out, wrongEdition, [](const Key&) { return true; }));
+        assert(wrongEdition.items.count(iosKeyService(edition)) == 0);
+        TestKeychain freshChain;
+        assert(loadIosKey(edition, true, out, freshChain, [](const Key&) { return false; }));
+        assert(freshChain.items.at(iosKeyService(edition)) == out);
+    }
     // RFC 8032, test 1: standard Ed25519 empty-message signature.
     auto unhex=[](const char* hex){std::vector<uint8_t> out;for(size_t i=0;hex[i];i+=2){unsigned b=0;std::sscanf(hex+i,"%2x",&b);out.push_back(b);}return out;};
     auto seed=unhex("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60");
@@ -62,5 +136,5 @@ int main(int argc,char** argv){
     // Optional fixed-key fixture for independent libsodium verification.
     if(argc>1){Store reference(std::filesystem::u8path(argv[1]),"test",provider);assert(reference.save(data));}
     std::filesystem::remove_all(root);
-    std::cout<<"Secret-save encryption, signature, tamper and key-loss tests passed\n";
+    std::cout<<"Secret-save encryption, iOS update migration, signature, tamper and key-loss tests passed\n";
 }
