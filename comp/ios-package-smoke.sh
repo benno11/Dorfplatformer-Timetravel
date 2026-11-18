@@ -196,6 +196,16 @@ make_app() {
 </dict></plist>
 PLIST
 
+  if [[ "${IOS_SMOKE_PLIST_FORMAT:-xml}" == binary ]]; then
+    python3 - "$app/Info.plist" <<'PYPLIST'
+import plistlib
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+path.write_bytes(plistlib.dumps(plistlib.loads(path.read_bytes()), fmt=plistlib.FMT_BINARY))
+PYPLIST
+  fi
+
   cp -R "$SMOKE_ASSETS_DIR" "$app/assets"
   cp "$SMOKE_SOURCE_ROOT/LICENSE" "$app/LICENSE"
   cp "$SMOKE_SOURCE_ROOT/README.md" "$app/README.md"
