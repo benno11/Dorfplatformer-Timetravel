@@ -1,5 +1,6 @@
 set(PLATFORMER_IOS_REQUIRED_BUNDLE_ENTRIES
   "assets/config.json"
+  "assets/certificates/cacert.pem"
   "assets/client_settings.json"
   "assets/log_settings.json"
   "assets/textures.json"

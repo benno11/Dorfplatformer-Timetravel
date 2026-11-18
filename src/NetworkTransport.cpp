@@ -1,4 +1,5 @@
 #include "NetworkTransport.h"
+#include "NetworkTls.h"
 #include "SoundEvents.h"
 #include "AudioSystem.h"
 #include "TextRenderer.h"
@@ -138,6 +139,7 @@ CURLcode PerformNetworkRequest(CURL* curl) {
                 return static_cast<std::atomic<bool>*>(data)->load() ? 1 : 0;
             });
         curl_easy_setopt(curl, CURLOPT_XFERINFODATA, cancelled.get());
+        ConfigureNetworkTls(curl);
         const CURLcode result = curl_easy_perform(curl);
         curl_easy_setopt(curl, CURLOPT_XFERINFODATA, nullptr);
         curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, nullptr);
@@ -146,8 +148,10 @@ CURLcode PerformNetworkRequest(CURL* curl) {
     }, cancelled);
     long status = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
-    if (!cancelled->load() && (result != CURLE_OK || status >= 400))
+    if (!cancelled->load() && (result != CURLE_OK || status >= 400)) {
+        SDL_Log("NET: request failed: %s (curl=%d, HTTP=%ld)", curl_easy_strerror(result), (int)result, status);
         SoundEvents::emit(SoundEvents::Event::Error);
+    }
     return result;
 }
 #endif

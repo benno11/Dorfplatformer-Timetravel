@@ -73,6 +73,7 @@
 #include "LevelSelect.h"
 #include "AssetPath.h"
 #include "NetworkTransport.h"
+#include "NetworkTls.h"
 #include "LevelManager.h"
 #include "GameProgression.h"
 #include "Achievements.h"
@@ -435,6 +436,10 @@ int RunGameApp(int argc, char** argv) {
         if (initialAudioEnv != "<unset>") applyAudioDriverSelection(initialAudioEnv.c_str());
         else applyAudioDriverSelection(nullptr);
         SDL_Quit();
+#if PLATFORMER_IOS
+        // SDL_Quit clears hints, so restore this before each audio init attempt.
+        SDL_SetHint(SDL_HINT_AUDIO_CATEGORY, "playback");
+#endif
         if (SDL_Init(a.flags)) {
             initTrace += std::string(a.label) + ": ok\n";
             logStartup(std::string("init attempt: ") + a.label + " -> ok");
@@ -738,10 +743,12 @@ int RunGameApp(int argc, char** argv) {
         startupLoadingVisible = false;
     };
 
-    win = SDL_CreateWindow(Edition::name, startupWindowW, startupWindowH, SDL_WINDOW_RESIZABLE);
+    const SDL_WindowFlags displayFlags = PLATFORMER_IOS ? SDL_WINDOW_HIGH_PIXEL_DENSITY : 0;
+    const SDL_ScaleMode canvasScaleMode = PLATFORMER_IOS ? SDL_SCALEMODE_NEAREST : SDL_SCALEMODE_LINEAR;
+    win = SDL_CreateWindow(Edition::name, startupWindowW, startupWindowH, SDL_WINDOW_RESIZABLE | displayFlags);
     if (!win) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "SDL_CreateWindow(resizable) failed: %s", SDL_GetError());
-        win = SDL_CreateWindow(Edition::name, startupWindowW, startupWindowH, 0);
+        win = SDL_CreateWindow(Edition::name, startupWindowW, startupWindowH, displayFlags);
     }
     if (!win) {
         reportStartupError("Window Error", std::string("SDL_CreateWindow failed: ") + SDL_GetError(), nullptr);
@@ -849,7 +856,7 @@ int RunGameApp(int argc, char** argv) {
     setStartupProgress(0.40f);
     WaterEffects waterEffects;
     SDL_SetTextureScaleMode(worldTarget, SDL_SCALEMODE_NEAREST);
-    SDL_SetTextureScaleMode(gameTarget, SDL_SCALEMODE_LINEAR);
+    SDL_SetTextureScaleMode(gameTarget, canvasScaleMode);
     SDL_Window* debugWin = nullptr;
     SDL_Renderer* debugRen = nullptr;
     bool showDetailedDebugger = false;
@@ -1401,7 +1408,7 @@ int RunGameApp(int argc, char** argv) {
             return false;
         }
         SDL_SetTextureScaleMode(newWorldTarget, SDL_SCALEMODE_NEAREST);
-        SDL_SetTextureScaleMode(newGameTarget, SDL_SCALEMODE_LINEAR);
+        SDL_SetTextureScaleMode(newGameTarget, canvasScaleMode);
         destroyTextureRef(worldTarget);
         destroyTextureRef(gameTarget);
         worldTarget = newWorldTarget;
@@ -2284,6 +2291,7 @@ int RunGameApp(int argc, char** argv) {
             curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
             curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,
                 +[](char*, size_t size, size_t count, void*) -> size_t { return size * count; });
+            ConfigureNetworkTls(curl);
             const CURLcode rc = curl_easy_perform(curl);
             long code = 0;
             curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
@@ -2665,7 +2673,7 @@ int RunGameApp(int argc, char** argv) {
             return false;
         }
         SDL_SetTextureScaleMode(newWorldTarget, SDL_SCALEMODE_NEAREST);
-        SDL_SetTextureScaleMode(newGameTarget, SDL_SCALEMODE_LINEAR);
+        SDL_SetTextureScaleMode(newGameTarget, canvasScaleMode);
         SDL_DestroyTexture(worldTarget);
         SDL_DestroyTexture(gameTarget);
         worldTarget = newWorldTarget;

@@ -37,7 +37,7 @@ static void useExecutableDirectoryAsWorkingDirectory() {
 static int runMainImpl(int argc, char** argv) {
 #if defined(__linux__) && !defined(__ANDROID__)
     useExecutableDirectoryAsWorkingDirectory();
-#elif defined(__APPLE__) && !PLATFORMER_IOS
+#elif defined(__APPLE__)
     if(const char* base=SDL_GetBasePath()) {
         std::error_code error;std::filesystem::current_path(std::filesystem::u8path(base),error);
     }
