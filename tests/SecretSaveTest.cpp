@@ -45,6 +45,22 @@ int main(int argc,char** argv){
     assert(store.load(loaded)==Store::Result::Loaded&&loaded==data);
     assert(store.save(data));auto second=bytes(path);assert(second!=first);
     Store fresh(root,"test",provider);assert(fresh.load(loaded)==Store::Result::Loaded&&loaded==data);
+    Store notLoaded(root,"test",provider);
+    auto emptyData = data; emptyData["achievements"] = nlohmann::json::object();
+    emptyData["account"]["auth_token"] = "";
+    assert(!notLoaded.save(emptyData) && bytes(path) == second);
+    bool unlocked = false;
+    Store quickUnlock(root,"test",[&](bool create,Key& out) {
+        assert(!create);
+        if (!unlocked) return false;
+        out = key; return true;
+    });
+    assert(quickUnlock.load(loaded) == Store::Result::Unavailable);
+    assert(!quickUnlock.save(emptyData) && bytes(path) == second);
+    unlocked = true;
+    assert(quickUnlock.load(loaded) == Store::Result::Loaded && loaded == data);
+    assert(quickUnlock.save(data));
+    second = bytes(path);
     Store wrongContext(root,"other",provider);assert(wrongContext.load(loaded)==Store::Result::Error);
     KeyProvider wrong=[](bool,Key& out){out.fill(99);return true;};
     Store wrongKey(root,"test",wrong);assert(wrongKey.load(loaded)==Store::Result::Error);
@@ -58,7 +74,7 @@ int main(int argc,char** argv){
     put(path,second);
     bool requestedCreate=false;
     Store missingKey(root,"test",[&](bool create,Key&){requestedCreate=create;return false;});
-    assert(missingKey.load(loaded)==Store::Result::Error&&!requestedCreate);
+    assert(missingKey.load(loaded)==Store::Result::Unavailable&&!requestedCreate);
     assert(!missingKey.save(data)&&bytes(path)==second);
     auto publicData=data;publicData["level_api_auth_token"]="token";
     publicData["settings"]["network"]={{"level_server_auth_token","token"},{"level_api_account_username","user"},{"level_server_url","safe"}};
@@ -89,12 +105,12 @@ int main(int argc,char** argv){
         };
         chain.unavailable = true;
         Store locked(newRoot, edition, updatedProvider);
-        assert(locked.load(loaded) == Store::Result::Error);
+        assert(locked.load(loaded) == Store::Result::Unavailable);
         assert(!locked.save(data) && bytes(newRoot / "savedata_secret") == originalBytes);
         chain.unavailable = false;
         chain.refuseWrites = true;
         Store writeFailure(newRoot, edition, updatedProvider);
-        assert(writeFailure.load(loaded) == Store::Result::Error);
+        assert(writeFailure.load(loaded) == Store::Result::Unavailable);
         assert(!writeFailure.save(data) && bytes(newRoot / "savedata_secret") == originalBytes);
         chain.refuseWrites = false;
         Store migrated(newRoot, edition, updatedProvider);
@@ -130,11 +146,11 @@ int main(int argc,char** argv){
     struct stat st{};assert(!stat((local/".keys/savedata_secret.key").c_str(),&st)&&(st.st_mode&077)==0);
     assert(!stat((local/"savedata_secret").c_str(),&st)&&(st.st_mode&077)==0);
     std::filesystem::remove(local/".keys/savedata_secret.key");Store lost(local,"test");
-    assert(lost.load(loaded)==Store::Result::Error&&!lost.save(data));
+    assert(lost.load(loaded)==Store::Result::Unavailable&&!lost.save(data));
     assert(!std::filesystem::exists(local/".keys/savedata_secret.key"));
 #endif
     // Optional fixed-key fixture for independent libsodium verification.
-    if(argc>1){Store reference(std::filesystem::u8path(argv[1]),"test",provider);assert(reference.save(data));}
+    if(argc>1){Store reference(std::filesystem::u8path(argv[1]),"test",provider);reference.load(loaded);assert(reference.save(data));}
     std::filesystem::remove_all(root);
     std::cout<<"Secret-save encryption, iOS update migration, signature, tamper and key-loss tests passed\n";
 }

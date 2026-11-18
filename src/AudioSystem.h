@@ -14,6 +14,8 @@ public:
 
     bool isReady() const;
     void setSleeping(bool sleeping);
+    void setLoading(bool loading);
+    bool isLoading() const { return loading_; }
 
     void loadGlobalAssets();
     bool gameplayAssetsReady() const;
@@ -42,6 +44,7 @@ public:
     bool isChannelPlaying(int channel) const;
 
 private:
+    bool loading_ = false, sleeping_ = false;
     struct Impl;
     Impl* impl_ = nullptr;
 };

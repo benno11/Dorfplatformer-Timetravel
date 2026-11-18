@@ -12,3 +12,5 @@ set fallback_button_height 30
 set fallback_button_gap 8
 
 control pause "PAUSE" pause
+
+set loading "Loading game..."

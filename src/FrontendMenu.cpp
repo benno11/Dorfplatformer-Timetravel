@@ -954,7 +954,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx, bool settingsOnly) {
         SDL_RenderCopy(ctx.ren, gameTarget, nullptr, &presentDst);
         FlushNativeTextOverlay(ctx.ren);
         AudioSystem::pumpEventSfx();
-        SDL_RenderPresent(ctx.ren);
+        SDL_RenderPresent(ctx.ren); IosAppSleep::framePresented();
     }
     cleanupMenuAssets();
     return FrontendAction::Quit;

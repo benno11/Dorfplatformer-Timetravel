@@ -1963,7 +1963,7 @@ void presentMenuFrame(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenu
     FlushNativeTextOverlay(ctx.ren);
     if (runtime.difficultyPopupOpen) renderDifficultyPopup(runtime, ctx);
     AudioSystem::pumpEventSfx();
-    SDL_RenderPresent(ctx.ren);
+    SDL_RenderPresent(ctx.ren); IosAppSleep::framePresented();
 }
 
 MenuItem* buttonAt(SlimMenu& menu, int selected) {

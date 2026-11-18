@@ -11,7 +11,8 @@ bool randomBytes(unsigned char* out, size_t size);
 bool deviceKey(const std::filesystem::path& root, bool create, Key& key);
 class Store {
 public:
-    enum class Result { Missing, Loaded, Error };
+    // Unavailable is retryable; Error denotes an unsafe or invalid save.
+    enum class Result { Missing, Loaded, Unavailable, Error };
     Store(std::filesystem::path root, std::string context, KeyProvider provider = {});
     ~Store();
     Store(const Store&) = delete;
@@ -27,7 +28,7 @@ private:
     Key encryption_{};
     std::array<unsigned char,64> signing_{};
     Key public_{};
-    bool ready_ = false, blocked_ = false;
+    bool ready_ = false, blocked_ = false, loaded_ = false;
 };
 // Remove only legacy private values; preserve unrelated settings.
 void scrubLegacy(nlohmann::json& value);

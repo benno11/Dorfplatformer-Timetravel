@@ -442,6 +442,7 @@ bool AudioSystem::initialize() {
     impl_->ready = false;
 #endif
 
+    setLoading(loading_);
     return impl_->ready;
 }
 
@@ -481,13 +482,20 @@ void AudioSystem::shutdown() {
     impl_ = nullptr;
 }
 
+void AudioSystem::setLoading(bool loading) {
+    loading_ = loading;
+#if AUDIO_HAS_SDL3_MIXER
+    if (g_mix_mixer) (void)MIX_SetMixerGain(g_mix_mixer, (loading || sleeping_) ? 0.0f : 1.0f);
+#endif
+}
+
 void AudioSystem::setSleeping(bool sleeping) {
+    sleeping_ = sleeping;
 #if AUDIO_HAS_SDL3_MIXER
     if (!g_mix_mixer) return;
     if (sleeping) (void)MIX_PauseAllTracks(g_mix_mixer);
     else (void)MIX_ResumeAllTracks(g_mix_mixer);
-#else
-    (void)sleeping;
+    (void)MIX_SetMixerGain(g_mix_mixer, (sleeping || loading_) ? 0.0f : 1.0f);
 #endif
 }
 

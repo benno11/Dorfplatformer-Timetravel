@@ -17,6 +17,11 @@ Changed or missing level files and invalid snapshots fall back to normal startup
 Leaving a level, dying, or completing it invalidates the old live snapshot.
 Remote URL levels do not use quick-resume snapshots.
 
+During startup and foreground recovery, iOS shows a silent loading frame until
+the complete UI/game frame is presented. Protected private saves are retried
+after unlock; existing private data must load successfully before it can be
+replaced. Temporary key/file failures do not permanently disable the store.
+
 ## SideStore source
 
 Source URL: https://benno11.github.io/Dorfplatformer-Timetravel/source.json

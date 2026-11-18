@@ -567,7 +567,7 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
         DrawGameText(ren, panel.x + 20, panel.y + panel.h - 24, 2, menuScript.text("instructions"));
 
         AudioSystem::pumpEventSfx();
-        SDL_RenderPresent(ren);
+        SDL_RenderPresent(ren); IosAppSleep::framePresented();
         SDL_Delay(16);
     }
 
@@ -699,7 +699,7 @@ bool RunLevelConfigMenu(SDL_Window* win, SDL_Renderer* ren, LevelMeta& config) {
         }
         DrawGameText(ren, 80, 345, 1, menuScript.text("instructions"));
         AudioSystem::pumpEventSfx();
-        SDL_RenderPresent(ren);
+        SDL_RenderPresent(ren); IosAppSleep::framePresented();
         SDL_Delay(16);
     }
     SDL_SetRenderLogicalPresentation(ren, savedW, savedH, savedPresentation);
@@ -1839,7 +1839,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             if (snapshot() != savedSnapshot) saveEditor(false, true);
         }
         AudioSystem::pumpEventSfx();
-        SDL_RenderPresent(ren);
+        SDL_RenderPresent(ren); IosAppSleep::framePresented();
         SDL_Delay(16);
     }
 
@@ -2039,7 +2039,7 @@ std::string RunLocalLevelRenamePrompt(SDL_Window* win, SDL_Renderer* ren, const 
         SDL_RenderDrawRect(ren, &cancelBtn);
         DrawGameText(ren, cancelBtn.x + 34, cancelBtn.y + 12, 2, menuScript.control("cancel").label);
         AudioSystem::pumpEventSfx();
-        SDL_RenderPresent(ren);
+        SDL_RenderPresent(ren); IosAppSleep::framePresented();
         SDL_Delay(16);
     }
     setTextInput(false);
@@ -2153,7 +2153,7 @@ GrowLevelPromptResult RunGrowLevelPrompt(SDL_Window* win, SDL_Renderer* ren, int
         SDL_RenderDrawRect(ren, &cancelBtn);
         DrawGameText(ren, cancelBtn.x + 34, cancelBtn.y + 12, 2, menuScript.control("cancel").label);
         AudioSystem::pumpEventSfx();
-        SDL_RenderPresent(ren);
+        SDL_RenderPresent(ren); IosAppSleep::framePresented();
         SDL_Delay(16);
     }
     return out;

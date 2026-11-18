@@ -8,6 +8,14 @@
 namespace IosAppSleep {
 inline bool sleeping = false;
 inline std::function<void(bool)> callback;
+inline std::function<void()> readyCallback;
+struct ReadyHook {
+    std::function<void()> previous;
+    explicit ReadyHook(std::function<void()> fn) : previous(readyCallback) { readyCallback = std::move(fn); }
+    ~ReadyHook() { readyCallback = std::move(previous); }
+};
+inline void framePresented() { if (readyCallback) readyCallback(); }
+
 // Nested screens can save their own state in addition to the app-level hook.
 struct Hook {
     std::function<void(bool)> previous;
@@ -36,7 +44,9 @@ inline void waitForForeground(SDL_Event* event) {
         observe(*event);
         if (event->type == SDL_EVENT_QUIT || event->type == SDL_EVENT_TERMINATING) return;
         if (event->type == SDL_EVENT_RENDER_TARGETS_RESET || event->type == SDL_EVENT_RENDER_DEVICE_RESET ||
-            event->type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED || event->type == SDL_EVENT_WINDOW_RESIZED)
+            event->type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED || event->type == SDL_EVENT_WINDOW_RESIZED ||
+            event->type == SDL_EVENT_WINDOW_FOCUS_LOST || event->type == SDL_EVENT_WINDOW_FOCUS_GAINED ||
+            event->type == SDL_EVENT_WINDOW_MINIMIZED || event->type == SDL_EVENT_WINDOW_RESTORED)
             deferred.push_back(*event);
     }
     // Owners still receive background then foreground in order, after the

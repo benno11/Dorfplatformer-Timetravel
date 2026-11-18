@@ -103,9 +103,14 @@ Store::Result Store::load(nlohmann::json& value) {
         const auto status=std::filesystem::symlink_status(path_);
         if(status.type()==std::filesystem::file_type::not_found)return Result::Missing;
         if(!std::filesystem::is_regular_file(status)){blocked_=true;return Result::Error;}
-        if (!keys(false) || !decode(readSecretFile(path_),value)) { blocked_=true; return Result::Error; }
+        // Locked iOS files/Keychain entries can become readable after unlock.
+        // Only authenticated corruption permanently blocks this Store instance.
+        if (!keys(false)) return Result::Unavailable;
+        const auto bytes = readSecretFile(path_);
+        if (!decode(bytes,value)) { blocked_=true; return Result::Error; }
+        loaded_ = true;
         return Result::Loaded;
-    } catch (...) { blocked_=true; return Result::Error; }
+    } catch (...) { return Result::Unavailable; }
 }
 bool Store::save(const nlohmann::json& value) {
     if (blocked_) return false;
@@ -113,6 +118,9 @@ bool Store::save(const nlohmann::json& value) {
         const auto status=std::filesystem::symlink_status(path_);
         bool exists=status.type()!=std::filesystem::file_type::not_found;
         if(exists&&!std::filesystem::is_regular_file(status)){blocked_=true;return false;}
+        // An existing file must be loaded into application state before any
+        // caller can replace it, including reentrant lifecycle callbacks.
+        if (exists && !loaded_) return false;
         if (!keys(!exists)) return false;
         nlohmann::json old;
         if (exists && !decode(readSecretFile(path_),old)) { blocked_=true; return false; }
@@ -126,7 +134,9 @@ bool Store::save(const nlohmann::json& value) {
         crypto_wipe(plain.data(),plain.size());
         crypto_ed25519_sign(bytes.data()+bytes.size()-64,signing_.data(),bytes.data(),bytes.size()-64);
         std::filesystem::create_directories(root_);
-        return replace(path_,bytes);
+        const bool saved = replace(path_,bytes);
+        if (saved) loaded_ = true;
+        return saved;
     } catch (...) { return false; }
 }
 void scrubLegacy(nlohmann::json& j) {

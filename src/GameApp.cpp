@@ -1,3 +1,4 @@
+#include "SilentLoadingScreen.h"
 #include "IosQuickResume.h"
 #include "IosAppSleep.h"
 #include "MenuScriptTemplate.h"
@@ -605,6 +606,7 @@ int RunGameApp(int argc, char** argv) {
         SDL_Log("Failed to initialize text renderer with assets/Fonts/Main.ttf");
     }
     AudioSystem audio;
+    audio.setLoading(PLATFORMER_IOS);
     audio.setLoopingEnabled(true);
     bool audioRecoveryEnabled = true;
     int audioRecoverFailures = 0;
@@ -1751,15 +1753,51 @@ int RunGameApp(int argc, char** argv) {
 #endif
     };
     applyLoggingSettings();
+    bool privateDataInitialized = false, privateLoadPending = false;
+    const auto loadingLabel = MenuScript::view(ReadTextFile("assets/menus/pause.menu")).text("loading");
+    auto loadPrivateData = [&]() {
+        nlohmann::json privateData;
+        const auto privateResult = secretSave.load(privateData);
+        privateDataInitialized = privateResult == SecretData::Store::Result::Loaded || privateResult == SecretData::Store::Result::Missing;
+        privateLoadPending = PLATFORMER_IOS && privateResult == SecretData::Store::Result::Unavailable;
+        if (privateResult == SecretData::Store::Result::Loaded) {
+            achievements.load(privateData["achievements"]);
+            const auto& account = privateData["account"];
+            privateServer = account["server_url"].get<std::string>();
+            privateToken = account["auth_token"].get<std::string>();
+            levelServerAuthToken.clear(); levelServerAccountUsername.clear();
+            if (privateServer == levelServerUrl) {
+                levelServerAuthToken = privateToken;
+                levelServerAccountUsername = account["username"].get<std::string>();
+            }
+        } else if (privateResult == SecretData::Store::Result::Error ||
+                   (!PLATFORMER_IOS && privateResult == SecretData::Store::Result::Unavailable)) {
+            // Never fall back to unauthenticated legacy values if a private save exists.
+            achievements = Achievements{};
+            levelServerAuthToken.clear(); levelServerAccountUsername.clear();
+            reportSecretSaveError();
+        }
+        if (privateResult == SecretData::Store::Result::Unavailable) {
+            levelServerAuthToken.clear(); levelServerAccountUsername.clear();
+        }
+        SetLevelServerAuthToken(levelServerAuthToken);
+        SetLevelServerAccountUsername(levelServerAccountUsername);
+        return privateResult;
+    };
     DeferredAchievementSave pendingAchievementSave;
     auto savePrivateData = [&]() -> bool {
+        if (!privateDataInitialized) return false;
         if (!privateServer.empty() && privateServer != levelServerUrl && privateToken == levelServerAuthToken) {
             levelServerAuthToken.clear(); levelServerAccountUsername.clear();
             SetLevelServerAuthToken(""); SetLevelServerAccountUsername("");
         }
         const nlohmann::json secret = {{"version", 1}, {"achievements", achievements.save()},
             {"account", {{"server_url", levelServerUrl}, {"username", levelServerAccountUsername}, {"auth_token", levelServerAuthToken}}}};
-        if (!secretSave.save(secret)) { pendingAchievementSave.failed(SDL_GetTicks()); reportSecretSaveError(); return false; }
+        if (!secretSave.save(secret)) {
+            pendingAchievementSave.failed(SDL_GetTicks());
+            if (!PLATFORMER_IOS || (!IosAppSleep::sleeping && !audio.isLoading())) reportSecretSaveError();
+            return false;
+        }
         privateServer = levelServerUrl; privateToken = levelServerAuthToken;
         pendingAchievementSave.saved();
         return true;
@@ -1922,7 +1960,14 @@ int RunGameApp(int argc, char** argv) {
     };
     IosAppSleep::Hook appSleep([&](bool asleep) {
         if (asleep) saveClientSettings();
+        else if (PLATFORMER_IOS) {
+            audio.setLoading(true);
+            DrawSilentLoadingScreen(ren, loadingLabel);
+        }
         audio.setSleeping(asleep);
+    });
+    IosAppSleep::ReadyHook loadingComplete([&]() {
+        if (PLATFORMER_IOS && !privateLoadPending) audio.setLoading(false);
     });
     {
         auto applyClientSettingsJson = [&](const nlohmann::json& j) {
@@ -2138,24 +2183,7 @@ int RunGameApp(int argc, char** argv) {
                 SDL_Log("Initialized client settings from placeholder: %s", placeholderPath.c_str());
             }
         }
-        nlohmann::json privateData;
-        const auto privateResult = secretSave.load(privateData);
-        if (privateResult == SecretData::Store::Result::Loaded) {
-            achievements.load(privateData["achievements"]);
-            const auto& account = privateData["account"];
-            privateServer = account["server_url"].get<std::string>();
-            privateToken = account["auth_token"].get<std::string>();
-            levelServerAuthToken.clear(); levelServerAccountUsername.clear();
-            if (privateServer == levelServerUrl) {
-                levelServerAuthToken = privateToken;
-                levelServerAccountUsername = account["username"].get<std::string>();
-            }
-        } else if (privateResult == SecretData::Store::Result::Error) {
-            // Never fall back to unauthenticated legacy values if a private save exists.
-            achievements = Achievements{};
-            levelServerAuthToken.clear(); levelServerAccountUsername.clear();
-            reportSecretSaveError();
-        }
+        (void)loadPrivateData();
         saveClientSettings();
     }
 #if PLATFORMER_MOBILE
@@ -2714,9 +2742,24 @@ int RunGameApp(int argc, char** argv) {
             SDL_Log("Could not show server migration notice: %s", SDL_GetError());
         }
     }
+    // Never write defaults over a private save that is still protected after
+    // unlock. Retry reads on the main thread behind a silent loading frame.
+    for (int attempt = 0; privateLoadPending && running && attempt < 50; ++attempt) {
+        SDL_Event event{};
+        while (IosAppSleep::pollEvent(&event))
+            if (event.type == SDL_EVENT_QUIT || event.type == SDL_EVENT_TERMINATING) running = false;
+        if (!running) break;
+        DrawSilentLoadingScreen(ren, loadingLabel);
+        (void)loadPrivateData();
+        if (privateLoadPending) SDL_Delay(100);
+    }
+    if (privateLoadPending && running) {
+        privateLoadPending = false;
+        reportSecretSaveError();
+    }
     std::function<bool()> saveGameToDisk;
     IosQuickResume::Store quickResume(appSaveRootPath, Edition::storageName);
-    auto pendingQuickResume = PLATFORMER_IOS ? quickResume.load() : std::optional<nlohmann::json>{};
+    auto pendingQuickResume = PLATFORMER_IOS && privateDataInitialized ? quickResume.load() : std::optional<nlohmann::json>{};
     while (running) {
         if (pendingQuickResume) {
             const auto path = pendingQuickResume->at("snapshot").at("level_path").get<std::string>();
@@ -2752,6 +2795,10 @@ int RunGameApp(int argc, char** argv) {
         selectedLevelPath = frontendSelectedLevelPath;
         customLevelName = frontendSelectedLevelName;
         if (selectedLevelPath.empty()) selectedLevelPath = "assets/levels/level_001.txt";
+        if (PLATFORMER_IOS) {
+            audio.setLoading(true);
+            DrawSilentLoadingScreen(ren, loadingLabel);
+        }
         if (!loadGameplayAssets()) {
             if (!assetLoadCanceled) reportStartupError("Asset Loading Error", "Could not prepare gameplay assets.", win);
             break;
@@ -9196,6 +9243,7 @@ int RunGameApp(int argc, char** argv) {
         SDL_RenderCopy(ren, gameTarget, nullptr, &nativeTextPresentDst);
         FlushNativeTextOverlay(ren);
         SDL_RenderPresent(ren);
+        IosAppSleep::framePresented();
         {
             const Uint32 presentedAt = SDL_GetTicks();
             const Uint64 presentedAtNs = SDL_GetTicksNS();
