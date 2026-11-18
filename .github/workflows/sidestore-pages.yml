@@ -1,0 +1,48 @@
+name: Publish SideStore source
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: [Build Game]
+    types: [completed]
+    branches: [main]
+  schedule:
+    - cron: '23 */6 * * *'
+  push:
+    branches: [main]
+    paths: ['comp/*sidestore*.py', '.github/workflows/sidestore-pages.yml']
+permissions:
+  contents: write
+  actions: read
+  pages: write
+  id-token: write
+concurrency:
+  group: sidestore-pages
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Check source generator
+        run: python3 -m unittest discover -s comp -p test_sidestore.py
+      - name: Publish verified IPA and generate source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 comp/publish-sidestore.py --output public
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sidestore-source
+          path: public
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+      - name: Deploy source
+        id: deployment
+        uses: actions/deploy-pages@v4
