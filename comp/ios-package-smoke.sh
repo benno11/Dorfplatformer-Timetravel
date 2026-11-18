@@ -233,7 +233,14 @@ positive_smoke() {
     -DEXPECTED_IOS_CODE_SIGNING_REQUIRED=OFF \
     -P "$ROOT_DIR/cmake/ValidateIosPackageManifest.cmake"
 
-  find "$out" -maxdepth 1 -type f -printf '%f %s bytes\n' | sort
+  python3 - "$out" <<'PYFILES'
+import sys
+from pathlib import Path
+
+for path in sorted(Path(sys.argv[1]).iterdir(), key=lambda item: item.name):
+    if path.is_file():
+        print(f"{path.name} {path.stat().st_size} bytes")
+PYFILES
 }
 
 expect_failure() {
