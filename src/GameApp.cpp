@@ -3685,9 +3685,10 @@ int RunGameApp(int argc, char** argv) {
             levelManager.addCoins(savedGameRoot.value("coin_count", 0));
             playerInvincibleTimer = savedGameRoot.value("player_invincible_timer", playerInvincibleTimer);
             levelLoadDeathGraceTimer = savedGameRoot.value("level_load_death_grace_timer", levelLoadDeathGraceTimer);
-            playerSpawnLockFrames = savedGameRoot.value("player_spawn_lock_frames", playerSpawnLockFrames);
-            playerSpawnLockX = savedGameRoot.value("player_spawn_lock_x", playerSpawnLockX);
-            playerSpawnLockY = savedGameRoot.value("player_spawn_lock_y", playerSpawnLockY);
+            const auto restoredLock = IosQuickResume::restoredSpawnLock(savedGameRoot, kPlayerSpawnLockFrames, player.x, player.y);
+            playerSpawnLockFrames = restoredLock.frames;
+            playerSpawnLockX = restoredLock.x;
+            playerSpawnLockY = restoredLock.y;
             cameraSmoothingSuppressTimer = savedGameRoot.value("camera_smoothing_suppress_timer", cameraSmoothingSuppressTimer);
             cameraLookAheadX = savedGameRoot.value("camera_look_ahead_x", cameraLookAheadX);
             minCamXOverride = savedGameRoot.value("min_cam_x_override", minCamXOverride);
@@ -4685,6 +4686,7 @@ int RunGameApp(int argc, char** argv) {
                     {"active_button_world_areas",levelManager.activeButtonWorldAreas()},
                     {"level_timer_seconds",levelTimerSeconds},{"lives_count",livesCount},{"score_count",scoreCount},{"coin_count",levelManager.coinCount()},
                     {"player_invincible_timer",playerInvincibleTimer},{"level_load_death_grace_timer",levelLoadDeathGraceTimer},
+                    {"player_spawn_lock_frames",playerSpawnLockFrames},{"player_spawn_lock_x",playerSpawnLockX},{"player_spawn_lock_y",playerSpawnLockY},
                     {"cycling_blocks",{{"tick",cyclingBlocks.tick},{"remainder",cyclingBlocks.remainder}}}
                 };
                 state["objects"] = nlohmann::json::array();

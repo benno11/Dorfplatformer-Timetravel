@@ -18,6 +18,16 @@ int main() {
         {"objects",Json::array({{{"id","12"},{"x",64.0},{"y",32.0},{"platform_elapsed",2.5}}})},
         {"coin_count",9},{"active_button_world_areas",{11,12,51}},
         {"checkpoint",{{"active",true},{"level_path","assets/levels/level_001.txt"},{"tile_x",1},{"tile_y",1}}}};
+    auto lock = restoredSpawnLock(state, 6, state["player"]["x"], state["player"]["y"]);
+    assert(lock.frames == 0 && lock.x == 31.5f && lock.y == 42.25f);
+    // The first resumed gameplay frame must not snap to the level spawn.
+    float x = state["player"]["x"], y = state["player"]["y"];
+    if (lock.frames > 0) { x = lock.x; y = lock.y; }
+    assert(x == 31.5f && y == 42.25f);
+    state["player_spawn_lock_frames"] = 3;
+    state["player_spawn_lock_x"] = 31.5f; state["player_spawn_lock_y"] = 42.25f;
+    lock = restoredSpawnLock(state, 6, state["player"]["x"], state["player"]["y"]);
+    assert(lock.frames == 3 && lock.x == x && lock.y == y);
     Store store(root,"full");
     assert(!store.load());
     const auto stamp = revision("original level");

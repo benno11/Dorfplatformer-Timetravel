@@ -1,6 +1,7 @@
 #pragma once
 #include <nlohmann/json.hpp>
 #include <chrono>
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -22,6 +23,13 @@
 
 namespace IosQuickResume {
 using Json = nlohmann::json;
+struct SpawnLock { int frames; float x, y; };
+inline SpawnLock restoredSpawnLock(const Json& snapshot, int maximumFrames, float playerX, float playerY) {
+    // Older snapshots omitted the lock: never inherit a fresh level spawn lock.
+    return {std::clamp(snapshot.value("player_spawn_lock_frames", 0), 0, maximumFrames),
+        snapshot.value("player_spawn_lock_x", playerX),
+        snapshot.value("player_spawn_lock_y", playerY)};
+}
 inline std::string revision(const std::string& bytes) {
     uint64_t hash = 14695981039346656037ull;
     for (unsigned char byte : bytes) { hash ^= byte; hash *= 1099511628211ull; }
