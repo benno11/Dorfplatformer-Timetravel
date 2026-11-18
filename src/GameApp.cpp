@@ -1,3 +1,4 @@
+#include "IosAppSleep.h"
 #include "MenuScriptTemplate.h"
 #include "CoinLauncher.h"
 #include "GameApp.h"
@@ -923,7 +924,7 @@ int RunGameApp(int argc, char** argv) {
     };
     auto pumpAssetLoading = [&](float progress) -> bool {
         SDL_Event event;
-        while (SDL_PollEvent(&event)) {
+        while (IosAppSleep::pollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT || (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && event.window.windowID == SDL_GetWindowID(win))) {
                 assetLoadCanceled = true;
                 SDL_PushEvent(&event);
@@ -1918,6 +1919,10 @@ int RunGameApp(int argc, char** argv) {
             } catch (...) { reportSecretSaveError(); }
         }
     };
+    IosAppSleep::Hook appSleep([&](bool asleep) {
+        if (asleep) saveClientSettings();
+        audio.setSleeping(asleep);
+    });
     {
         auto applyClientSettingsJson = [&](const nlohmann::json& j) {
             if (j.contains("achievements")) achievements.load(j["achievements"]);
@@ -2403,7 +2408,7 @@ int RunGameApp(int argc, char** argv) {
 
         while (running) {
             SDL_Event ev;
-            while (SDL_PollEvent(&ev)) {
+            while (IosAppSleep::pollEvent(&ev)) {
                 if (ev.type == SDL_EVENT_QUIT) {
                     running = false;
                     return;
@@ -4869,7 +4874,7 @@ int RunGameApp(int argc, char** argv) {
 
         const SDL_WindowID mainWindowId = SDL_GetWindowID(win);
         const bool embeddedDetailedDebugger = (showDetailedDebugger && debugWin == win && debugRen == ren);
-        while (SDL_PollEvent(&e)) {
+        while (IosAppSleep::pollEvent(&e)) {
             if (PLATFORMER_IOS && !paused && !deathSequenceActive && !levelCompleteActive &&
                 TouchPauseButton::pressed(e, win, touchPauseButton, kBaseScreenW, kBaseScreenH)) {
                 activeTouches.clear();
@@ -4908,8 +4913,17 @@ int RunGameApp(int argc, char** argv) {
                     (void)handleDetailedDebuggerTap(mx, my);
                 }
             }
-            if (e.type == SDL_EVENT_WILL_ENTER_BACKGROUND || e.type == SDL_EVENT_DID_ENTER_BACKGROUND)
+            if (e.type == SDL_EVENT_WILL_ENTER_BACKGROUND || e.type == SDL_EVENT_DID_ENTER_BACKGROUND) {
                 flushPendingAchievements(true);
+                activeTouches.clear();
+                hairMouse.release(characterParts);
+                openPauseMenu();
+            }
+            if (e.type == SDL_EVENT_DID_ENTER_FOREGROUND) {
+                lastTicks = SDL_GetTicks(); lastTicksNs = SDL_GetTicksNS();
+                lastPresentTicks = lastTicks; lastPresentTicksNs = lastTicksNs;
+                nextPresentTicks = lastTicks;
+            }
             if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST) {
                 if (e.window.windowID == mainWindowId) {
                     mainWindowFocused = false;

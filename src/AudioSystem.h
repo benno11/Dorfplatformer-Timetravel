@@ -13,6 +13,7 @@ public:
     void shutdown();
 
     bool isReady() const;
+    void setSleeping(bool sleeping);
 
     void loadGlobalAssets();
     bool gameplayAssetsReady() const;

@@ -1,3 +1,4 @@
+#include "IosAppSleep.h"
 #include "MenuScriptTemplate.h"
 #include "BuildInfo.h"
 #include "LevelSelect.h"
@@ -457,7 +458,7 @@ NewLevelPromptResult RunNewLevelPrompt(SDL_Window* win, SDL_Renderer* ren) {
         };
 
         SDL_Event e;
-        while (SDL_PollEvent(&e)) {
+        while (IosAppSleep::pollEvent(&e)) {
             if (e.type == SDL_QUIT) { running = false; break; }
             if (isTextInputEventType(e.type) && selectedRow == 0) {
                 if (out.name.size() < 48) {
@@ -634,7 +635,7 @@ bool RunLevelConfigMenu(SDL_Window* win, SDL_Renderer* ren, LevelMeta& config) {
     };
     while (running) {
         SDL_Event e;
-        while (SDL_PollEvent(&e)) {
+        while (IosAppSleep::pollEvent(&e)) {
             if (e.type == SDL_EVENT_QUIT) { SDL_PushEvent(&e); running = false; break; }
             if (e.type == SDL_EVENT_KEY_DOWN) {
                 const auto key = e.key.key;
@@ -830,6 +831,13 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         if (exitAfter) running = false;
         return true;
     };
+    IosAppSleep::Hook editorSleep([&](bool asleep) {
+        if (asleep) {
+            if (snapshot() != savedSnapshot) saveEditor(false, true);
+            paused = true;
+            editorFingerActive = fingerPainting = fingerPaletteScroll = fingerGridPanning = middlePanning = false;
+        } else nextAutosave = SDL_GetTicks() + 15000;
+    });
     auto pauseAction = [&](int action) {
         pauseSel = action;
 
@@ -1106,7 +1114,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         for (int i = 0; i < 4; ++i) pauseBtns[i] = {pausePanel.x + 16, pausePanel.y + 76 + i * (pauseButtonH + 8), pauseButtonW, pauseButtonH};
 
         SDL_Event e;
-        while (running && SDL_PollEvent(&e)) {
+        while (running && IosAppSleep::pollEvent(&e)) {
             editorInput.handleEvent(e);
             if (e.type == SDL_QUIT) { running = false; break; }
             if (SDL_GetTicks() < inputBlockUntilTicks) continue;
@@ -1952,7 +1960,7 @@ std::string RunLocalLevelRenamePrompt(SDL_Window* win, SDL_Renderer* ren, const 
         };
         setTextInput(true, &rowName);
         SDL_Event e;
-        while (SDL_PollEvent(&e)) {
+        while (IosAppSleep::pollEvent(&e)) {
             if (e.type == SDL_QUIT) { SDL_PushEvent(&e); running = false; break; }
             if (e.type == SDL_TEXTINPUT
 #if defined(SDL_EVENT_TEXT_INPUT)
@@ -2076,7 +2084,7 @@ GrowLevelPromptResult RunGrowLevelPrompt(SDL_Window* win, SDL_Renderer* ren, int
             if (SDL_PointInRect(&pt, &cancelBtn)) { running = false; return; }
         };
         SDL_Event e;
-        while (SDL_PollEvent(&e)) {
+        while (IosAppSleep::pollEvent(&e)) {
             if (e.type == SDL_QUIT) { SDL_PushEvent(&e); running = false; break; }
             if (e.type == SDL_KEYDOWN && e.key.repeat == 0) {
                 if (e.key.key == SDLK_ESCAPE || e.key.key == SDLK_AC_BACK) { running = false; break; }

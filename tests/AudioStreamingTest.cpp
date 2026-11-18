@@ -29,6 +29,12 @@ int main(){
     require(Mix_PlayMusicCompat(music,-1)==0,"streaming music start");
     require(MIX_GetTrackGain(g_mix_channels[a])==0.0f,"new muted SFX track must remain silent");
     require(std::fabs(MIX_GetTrackGain(g_mix_music_track)-0.5f)<0.01f,"music volume must apply to new streams");
+    audio.setSleeping(true);
+    require(MIX_TrackPaused(g_mix_music_track), "backgrounding must pause music");
+    require(MIX_TrackPaused(g_mix_channels[a]), "backgrounding must pause effects");
+    require(g_mix_streams.size() == 3, "sleep must preserve streaming file positions");
+    audio.setSleeping(false);
+    require(!MIX_TrackPaused(g_mix_music_track), "foregrounding must resume music");
     Mix_VolumeMusicCompat(128);
     require(MIX_GetTrackGain(g_mix_channels[a])==0.0f,"music volume must not change SFX gain");
     SDL_Delay(350);mix_collect_streams();

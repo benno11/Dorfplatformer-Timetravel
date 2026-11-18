@@ -1,3 +1,4 @@
+#include "IosAppSleep.h"
 #include "EditionPolicy.h"
 #include "BuildInfo.h"
 #include "FrontendMenu.h"
@@ -616,7 +617,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx, bool settingsOnly) {
         if (ctx.applyMenuMusicToggle) ctx.applyMenuMusicToggle();
         SDL_Event e;
         int eventsProcessed = 0;
-        while (eventsProcessed++ < 256 && SDL_PollEvent(&e)) {
+        while (eventsProcessed++ < 256 && IosAppSleep::pollEvent(&e)) {
             menuInput.handleEvent(e);
             if (e.type == SDL_QUIT) { running = false; break; }
             if ((e.type == SDL_EVENT_WINDOW_RESIZED || e.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) &&

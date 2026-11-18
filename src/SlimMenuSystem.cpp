@@ -1,3 +1,4 @@
+#include "IosAppSleep.h"
 #include "EditionPolicy.h"
 #include "NativeMods.h"
 #include "Achievements.h"
@@ -2887,7 +2888,7 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                     }
                 }
             };
-            while (SDL_PollEvent(&e)) {
+            while (IosAppSleep::pollEvent(&e)) {
                 int activate = -1;
                 if (e.type == SDL_EVENT_QUIT) {
                     *ctx.running = false;

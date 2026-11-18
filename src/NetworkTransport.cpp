@@ -1,3 +1,4 @@
+#include "IosAppSleep.h"
 #include "NetworkTransport.h"
 #include "NetworkTls.h"
 #include "SoundEvents.h"
@@ -65,6 +66,14 @@ NetworkBusyScreen::~NetworkBusyScreen() {
 
 void NetworkBusyScreen::frame(std::atomic<bool>& cancelled) {
     SDL_PumpEvents();
+#if PLATFORMER_IOS
+    SDL_Event lifecycle{};
+    if (SDL_PeepEvents(&lifecycle, 1, SDL_GETEVENT, SDL_EVENT_WILL_ENTER_BACKGROUND, SDL_EVENT_DID_ENTER_BACKGROUND) > 0) {
+        IosAppSleep::observe(lifecycle);
+        if (IosAppSleep::sleeping) IosAppSleep::waitForForeground(&lifecycle);
+        if (lifecycle.type == SDL_EVENT_QUIT || lifecycle.type == SDL_EVENT_TERMINATING) cancelled.store(true);
+    }
+#endif
     SDL_Event event;
     if (SDL_PeepEvents(&event, 1, SDL_PEEKEVENT, SDL_EVENT_QUIT, SDL_EVENT_QUIT) > 0) {
         cancelled.store(true);

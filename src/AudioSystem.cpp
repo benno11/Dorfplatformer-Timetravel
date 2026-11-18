@@ -481,6 +481,16 @@ void AudioSystem::shutdown() {
     impl_ = nullptr;
 }
 
+void AudioSystem::setSleeping(bool sleeping) {
+#if AUDIO_HAS_SDL3_MIXER
+    if (!g_mix_mixer) return;
+    if (sleeping) (void)MIX_PauseAllTracks(g_mix_mixer);
+    else (void)MIX_ResumeAllTracks(g_mix_mixer);
+#else
+    (void)sleeping;
+#endif
+}
+
 bool AudioSystem::isReady() const { return impl_ && impl_->ready; }
 
 void AudioSystem::setLoopingEnabled(bool enabled) {
