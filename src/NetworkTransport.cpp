@@ -71,7 +71,10 @@ void NetworkBusyScreen::frame(std::atomic<bool>& cancelled) {
     if (SDL_PeepEvents(&lifecycle, 1, SDL_GETEVENT, SDL_EVENT_WILL_ENTER_BACKGROUND, SDL_EVENT_DID_ENTER_BACKGROUND) > 0) {
         IosAppSleep::observe(lifecycle);
         if (IosAppSleep::sleeping) IosAppSleep::waitForForeground(&lifecycle);
-        if (lifecycle.type == SDL_EVENT_QUIT || lifecycle.type == SDL_EVENT_TERMINATING) cancelled.store(true);
+        if (lifecycle.type == SDL_EVENT_QUIT || lifecycle.type == SDL_EVENT_TERMINATING) {
+            cancelled.store(true);
+            SDL_PushEvent(&lifecycle);
+        }
     }
 #endif
     SDL_Event event;
