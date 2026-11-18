@@ -74,6 +74,7 @@
 #include "AssetPath.h"
 #include "NetworkTransport.h"
 #include "NetworkTls.h"
+#include "TouchPauseButton.h"
 #include "LevelManager.h"
 #include "GameProgression.h"
 #include "Achievements.h"
@@ -4814,6 +4815,7 @@ int RunGameApp(int argc, char** argv) {
         bool inputDown = false;
         int screenW = kBaseScreenW;
         int screenH = kBaseScreenH;
+        const auto touchPauseButton = TouchPauseButton::layout(win, kBaseScreenW, kBaseScreenH);
         const float mobileUiScale = UiScale::multiplier(uiScalePercent);
         const float minScreenDim = std::min((float)screenW, (float)screenH);
         const float baseUiSize = std::clamp(minScreenDim * 0.16f, 110.0f, 190.0f);
@@ -4827,7 +4829,8 @@ int RunGameApp(int argc, char** argv) {
         const float cameraButtonW=std::clamp(180.0f*mobileUiScale,140.0f,240.0f);
         const float cameraButtonH=std::clamp(52.0f*mobileUiScale,44.0f,72.0f);
         const SDL_FRect touchCameraBtn{screenW-uiPad-cameraButtonW,
-            std::max(76.0f,screenH*0.12f),cameraButtonW,cameraButtonH};
+            std::max({76.0f, screenH * 0.12f, PLATFORMER_IOS ?
+                static_cast<float>(touchPauseButton.y + touchPauseButton.h + 16) : 0.0f}),cameraButtonW,cameraButtonH};
         bool touchLeft = false;
         bool touchRight = false;
         bool touchDown = false;
@@ -4867,6 +4870,13 @@ int RunGameApp(int argc, char** argv) {
         const SDL_WindowID mainWindowId = SDL_GetWindowID(win);
         const bool embeddedDetailedDebugger = (showDetailedDebugger && debugWin == win && debugRen == ren);
         while (SDL_PollEvent(&e)) {
+            if (PLATFORMER_IOS && !paused && !deathSequenceActive && !levelCompleteActive &&
+                TouchPauseButton::pressed(e, win, touchPauseButton, kBaseScreenW, kBaseScreenH)) {
+                activeTouches.clear();
+                openPauseMenu();
+                SoundEvents::emit(SoundEvents::Event::Click);
+                continue;
+            }
             input.handleEvent(e);
             {
                 InputSystem::DetectionEvent ev;
@@ -9017,6 +9027,9 @@ int RunGameApp(int argc, char** argv) {
             }
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
         }
+
+        if (PLATFORMER_IOS && !paused && !deathSequenceActive && !levelCompleteActive)
+            TouchPauseButton::draw(ren, touchPauseButton, pauseMenuScript.control("pause").label);
 
         if (hasTouchScreenDevice && !paused && debugToolsEnabled()) {
             SDL_SetRenderDrawBlendMode(ren,SDL_BLENDMODE_BLEND);

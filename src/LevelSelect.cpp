@@ -3,6 +3,7 @@
 #include "LevelSelect.h"
 #include "AssetPath.h"
 #include "NetworkTransport.h"
+#include "TouchPauseButton.h"
 
 #include <SDL3_image/SDL_image.h>
 
@@ -1040,6 +1041,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
     while (running) {
         int winW = 0, winH = 0;
         getWindowSizeInPixelsCompat(win, winW, winH);
+        const auto touchPauseButton = TouchPauseButton::layout(win, winW, winH, true);
         const int margin = std::clamp(std::min(winW, winH) / 80, 6, 12);
         // Keep the canvas useful on phone-sized windows while allowing larger,
         // finger-friendly controls when more room is available.
@@ -1108,6 +1110,13 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             editorInput.handleEvent(e);
             if (e.type == SDL_QUIT) { running = false; break; }
             if (SDL_GetTicks() < inputBlockUntilTicks) continue;
+            if (PLATFORMER_IOS && !paused && TouchPauseButton::pressed(e, win, touchPauseButton, winW, winH)) {
+                editorFingerActive = fingerPainting = false;
+                paused = true;
+                pauseSel = 0;
+                SoundEvents::emit(SoundEvents::Event::Click);
+                continue;
+            }
             if (!paused) {
                 SDL_Point toolPoint{};
                 const bool mouseTool = e.type == SDL_EVENT_MOUSE_BUTTON_DOWN && e.button.button == SDL_BUTTON_LEFT && e.button.which != SDL_TOUCH_MOUSEID;
@@ -1793,6 +1802,9 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             SDL_RenderFillRect(ren, &thumb);
         }
 
+
+        if (PLATFORMER_IOS && !paused)
+            TouchPauseButton::draw(ren, touchPauseButton, menuScript.control("pause").label);
 
         if (paused) {
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);

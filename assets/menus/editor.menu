@@ -19,3 +19,5 @@ control config "LEVEL CONFIG" config
 control object_config "CONFIGURE OBJECT" object_config
 control pan "PAN" pan
 control delete "DELETE" delete
+
+control pause "PAUSE" pause

@@ -10,3 +10,5 @@ set fallback_height 180
 set fallback_button_width 70
 set fallback_button_height 30
 set fallback_button_gap 8
+
+control pause "PAUSE" pause
