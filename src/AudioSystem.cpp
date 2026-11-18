@@ -379,6 +379,7 @@ bool AudioSystem::initialize() {
 #if defined(__ANDROID__)
     impl_->usingJavaBackend = AndroidAudioBridge::initialize();
     impl_->ready = impl_->usingJavaBackend;
+    applyOutputGain();
     return impl_->ready;
 #endif
 
@@ -482,21 +483,49 @@ void AudioSystem::shutdown() {
     impl_ = nullptr;
 }
 
+void AudioSystem::applyOutputGain() {
+    const float gain = (loading_ || sleeping_) ? 0.0f : pauseGain_;
+#if defined(__ANDROID__)
+    if (impl_ && impl_->usingJavaBackend) {
+        AndroidAudioBridge::applyVolumes(muted_ || gain == 0.0f,
+            static_cast<int>(musicVolume_ * gain), static_cast<int>(sfxVolume_ * gain));
+    }
+#endif
+#if AUDIO_HAS_SDL3_MIXER
+    if (g_mix_mixer) (void)MIX_SetMixerGain(g_mix_mixer, gain);
+#endif
+}
+
+void AudioSystem::updateGameplayPause(bool paused, float elapsedSeconds) {
+    // Reverse from the current gain so rapid pause toggles never jump in volume.
+    if (!(elapsedSeconds > 0.0f)) return;
+    const float step = std::min(elapsedSeconds, 0.2f) / 0.2f;
+    const float next = paused ? std::max(0.0f, pauseGain_ - step)
+                              : std::min(1.0f, pauseGain_ + step);
+    if (next == pauseGain_) return;
+    pauseGain_ = next;
+    applyOutputGain();
+}
+
+void AudioSystem::resetGameplayPause() {
+    pauseGain_ = 1.0f;
+    applyOutputGain();
+}
+
 void AudioSystem::setLoading(bool loading) {
     loading_ = loading;
-#if AUDIO_HAS_SDL3_MIXER
-    if (g_mix_mixer) (void)MIX_SetMixerGain(g_mix_mixer, (loading || sleeping_) ? 0.0f : 1.0f);
-#endif
+    applyOutputGain();
 }
 
 void AudioSystem::setSleeping(bool sleeping) {
     sleeping_ = sleeping;
 #if AUDIO_HAS_SDL3_MIXER
-    if (!g_mix_mixer) return;
-    if (sleeping) (void)MIX_PauseAllTracks(g_mix_mixer);
-    else (void)MIX_ResumeAllTracks(g_mix_mixer);
-    (void)MIX_SetMixerGain(g_mix_mixer, (sleeping || loading_) ? 0.0f : 1.0f);
+    if (g_mix_mixer) {
+        if (sleeping) (void)MIX_PauseAllTracks(g_mix_mixer);
+        else (void)MIX_ResumeAllTracks(g_mix_mixer);
+    }
 #endif
+    applyOutputGain();
 }
 
 bool AudioSystem::isReady() const { return impl_ && impl_->ready; }
@@ -622,10 +651,11 @@ void AudioSystem::unloadGlobalAssets() {
 }
 
 void AudioSystem::applyVolumes(bool muteAllAudio, int musicVolume, int sfxVolume) {
+    muted_ = muteAllAudio; musicVolume_ = musicVolume; sfxVolume_ = sfxVolume;
     if (!isReady() || impl_->shuttingDown) return;
 #if defined(__ANDROID__)
     if (impl_->usingJavaBackend) {
-        AndroidAudioBridge::applyVolumes(muteAllAudio, musicVolume, sfxVolume);
+        applyOutputGain();
         return;
     }
 #endif

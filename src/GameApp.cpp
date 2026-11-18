@@ -4954,6 +4954,7 @@ int RunGameApp(int argc, char** argv) {
                 }), droppedCoins.end());
             }
             // Keep level music looping even if backend loop handling stops unexpectedly.
+            audio.updateGameplayPause(paused, dt);
             audio.ensureLevelMusic(paused, deathSequenceActive, levelCompleteActive);
             {
                 const float target = levelCompleteActive ? 1.0f : 0.0f;
@@ -9636,6 +9637,7 @@ int RunGameApp(int argc, char** argv) {
         stopReplayRecording(returnToSelect ? "return_to_select" : "level_end");
         flushPendingAchievements(true);
         audio.unloadLevelMusic();
+        audio.resetGameplayPause();
         // Every way out of a custom level returns to its originating browser.
         if (returnToSelect) {
             continue;

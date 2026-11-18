@@ -16,6 +16,8 @@ public:
     void setSleeping(bool sleeping);
     void setLoading(bool loading);
     bool isLoading() const { return loading_; }
+    void updateGameplayPause(bool paused, float elapsedSeconds);
+    void resetGameplayPause();
 
     void loadGlobalAssets();
     bool gameplayAssetsReady() const;
@@ -44,7 +46,11 @@ public:
     bool isChannelPlaying(int channel) const;
 
 private:
+    void applyOutputGain();
     bool loading_ = false, sleeping_ = false;
+    float pauseGain_ = 1.0f;
+    bool muted_ = false;
+    int musicVolume_ = 128, sfxVolume_ = 128;
     struct Impl;
     Impl* impl_ = nullptr;
 };
