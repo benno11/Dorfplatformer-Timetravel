@@ -1,3 +1,4 @@
+#include "IosQuickResume.h"
 #include "IosAppSleep.h"
 #include "MenuScriptTemplate.h"
 #include "CoinLauncher.h"
@@ -2714,7 +2715,23 @@ int RunGameApp(int argc, char** argv) {
         }
     }
     std::function<bool()> saveGameToDisk;
+    IosQuickResume::Store quickResume(appSaveRootPath, Edition::storageName);
+    auto pendingQuickResume = PLATFORMER_IOS ? quickResume.load() : std::optional<nlohmann::json>{};
     while (running) {
+        if (pendingQuickResume) {
+            const auto path = pendingQuickResume->at("snapshot").at("level_path").get<std::string>();
+            bool compatible = false;
+            try {
+                const auto source = ReadTextFile(path);
+                compatible = !source.empty() && IosQuickResume::revision(source) == pendingQuickResume->at("level_revision");
+            } catch (...) {}
+            if (!compatible) {
+                quickResume.clear(); pendingQuickResume.reset();
+            } else activeSaveSlotIndex = pendingQuickResume->at("slot").get<int>();
+        }
+        const bool restoringQuickResume = pendingQuickResume.has_value();
+        nlohmann::json quickSnapshot = restoringQuickResume ? pendingQuickResume->at("snapshot") : nlohmann::json();
+        pendingQuickResume.reset();
         if (assetLoadCanceled) break;
         if (!gameplayAssetsLoaded) startAssetPreparation(gameplayAssetLoader, gameplayRequests());
         recoverAudioIfNeeded(false);
@@ -2724,7 +2741,11 @@ int RunGameApp(int argc, char** argv) {
         frontendSelectedLevelPath.clear();
         frontendSelectedLevelName.clear();
         refreshDebuggerDebugOverride();
-        FrontendAction action = runFrontendMenu(frontendCtx);
+        FrontendAction action = FrontendAction::StartGame;
+        if (restoringQuickResume) {
+            frontendSelectedLevelPath = quickSnapshot.at("level_path").get<std::string>();
+            frontendSelectedLevelName = quickSnapshot.value("custom_level_name", std::string());
+        } else action = runFrontendMenu(frontendCtx);
         saveClientSettings();
         if (!running || action == FrontendAction::Quit) break;
 
@@ -2736,12 +2757,13 @@ int RunGameApp(int argc, char** argv) {
             break;
         }
         applyAudioVolumes();
-        bool loadSavedGame = false;
-        nlohmann::json savedGameRoot;
+        bool loadSavedGame = restoringQuickResume;
+        nlohmann::json savedGameRoot = std::move(quickSnapshot);
         if (Edition::lite && (selectedLevelPath == kStartHardmodeToken ||
             selectedLevelPath == kContinueHardmodeToken || HardmodePracticeLevel(selectedLevelPath) > 0 ||
             HardmodeLevelFromPath(selectedLevelPath) > 0)) continue;
-        const int practiceLevel = HardmodePracticeLevel(selectedLevelPath);
+        const int practiceLevel = restoringQuickResume && savedGameRoot.value("hardmode_practice", false) ?
+            HardmodeLevelFromPath(savedGameRoot.value("level_path", std::string())) : HardmodePracticeLevel(selectedLevelPath);
         const bool hardmodePractice = practiceLevel > 0;
         if (hardmodePractice) selectedLevelPath = HardmodeLevelPath(practiceLevel);
         const bool continueHardmode = selectedLevelPath == kContinueHardmodeToken;
@@ -3400,6 +3422,7 @@ int RunGameApp(int argc, char** argv) {
             if (showIntroCard) playSceneIntroCard();
         };
         auto startLevelCompleteSequence = [&]() {
+            if (PLATFORMER_IOS) quickResume.clear();
             if (levelCompleteActive) return;
             player.slideTime = 0.0f;
             levelCompleteActive = true;
@@ -3463,7 +3486,8 @@ int RunGameApp(int argc, char** argv) {
         auto restoreSavedButtons = [&]() {
             levelManager.clearButtonAreasForDebug();
             if (hardmodeRun || hardmodePractice) return;
-            const auto buttons = LoadGameButtonStates(activeSaveSlotIndex);
+            const auto buttons = restoringQuickResume ? savedGameRoot.value("active_button_world_areas", std::vector<int>{}) :
+                LoadGameButtonStates(activeSaveSlotIndex);
             const int currentKey = levelManager.worldId() * 10 + levelManager.levelPartId();
             bool pressed = false;
             for (const int key : buttons) {
@@ -3573,6 +3597,17 @@ int RunGameApp(int argc, char** argv) {
                 }
             }
             refreshObjectIdCache();
+            if (restoringQuickResume) {
+                if (savedGameRoot.contains("parameter_contacts") && savedGameRoot["parameter_contacts"].size() == objects.size())
+                    parameterContacts = savedGameRoot["parameter_contacts"].get<std::vector<bool>>();
+                if (savedGameRoot.contains("shell_states") && savedGameRoot["shell_states"].size() == shellChrakerStates.size())
+                    for (size_t i = 0; i < shellChrakerStates.size(); ++i) {
+                        const auto& entry = savedGameRoot["shell_states"][i];
+                        shellChrakerStates[i].time = entry.value("time", 0.0f);
+                        shellChrakerStates[i].facing = entry.value("facing", -1);
+                        shellChrakerStates[i].cycling = entry.value("cycling", false);
+                    }
+            }
             resetLevelWrapTriggerState();
             if (savedGameRoot.contains("meta") && savedGameRoot["meta"].is_object()) {
                 const auto& savedMeta = savedGameRoot["meta"];
@@ -3676,7 +3711,14 @@ int RunGameApp(int argc, char** argv) {
             currentLevelId = loadedLevelId();
             levelReloadTitleTimer = 0.0f;
             refreshLevelTitle();
-            playSceneIntroCard();
+            if (!restoringQuickResume) playSceneIntroCard();
+            if (restoringQuickResume) {
+                player.jumpHeld = player.jumpWasDown = player.slideWasDown = false;
+                if (savedGameRoot.contains("cycling_blocks")) {
+                    cyclingBlocks.tick = std::clamp(savedGameRoot["cycling_blocks"].value("tick", 0), 0, CyclingBlock::cycleTicks - 1);
+                    cyclingBlocks.remainder = std::clamp(savedGameRoot["cycling_blocks"].value("remainder", 0.0), 0.0, 1.0);
+                }
+            }
         } else {
             reloadLevel();
             restoreSavedButtons();
@@ -3684,7 +3726,8 @@ int RunGameApp(int argc, char** argv) {
         if (!running) break;
 
         bool levelRunning = true;
-        bool paused = false;
+        bool paused = restoringQuickResume;
+        std::function<void()> saveQuickResume;
         ButtonAnimations pauseButtonAnimations;
         bool deathSequenceActive = false;
         bool deathLifeDeducted = false;
@@ -3702,6 +3745,15 @@ int RunGameApp(int argc, char** argv) {
             int value = 1;
         };
         std::vector<DroppedCoin> droppedCoins;
+        if (restoringQuickResume && savedGameRoot.contains("dropped_coins")) {
+            for (const auto& entry : savedGameRoot["dropped_coins"]) {
+                DroppedCoin coin;
+                coin.x = entry.value("x", 0.0f); coin.y = entry.value("y", 0.0f);
+                coin.vx = entry.value("vx", 0.0f); coin.vy = entry.value("vy", 0.0f);
+                coin.life = entry.value("life", 12.0f); coin.noPickupTimer = entry.value("no_pickup_timer", 0.0f);
+                coin.value = entry.value("value", 1); droppedCoins.push_back(coin);
+            }
+        }
         levelManager.coinSourceCollected = [&](const std::string& source) {
             if (hardmodeRun || hardmodePractice || !IsCampaignLevelPath(levelManager.levelPath())) return;
             const auto name = std::filesystem::path(levelManager.levelPath()).filename().string();
@@ -3711,6 +3763,7 @@ int RunGameApp(int argc, char** argv) {
             if (path.empty()) return false;
             if (hardmodePractice && path != levelManager.levelPath()) return false;
             if (hardmodeRun && HardmodeLevelFromPath(path) == 0) return false;
+            if (PLATFORMER_IOS) quickResume.clear();
             clearCheckpoint();
             flushPendingAchievements(true);
             levelManager.setLevelPath(path);
@@ -3718,6 +3771,7 @@ int RunGameApp(int argc, char** argv) {
             droppedCoins.clear();
             reloadLevel();
             if (Edition::lite && saveGameToDisk) (void)saveGameToDisk();
+            if (saveQuickResume) saveQuickResume();
             return true;
         };
         float fastTravelCooldown = 0.0f;
@@ -4124,6 +4178,7 @@ int RunGameApp(int argc, char** argv) {
             }
         };
         auto beginDeathSequence = [&]() {
+            if (PLATFORMER_IOS) quickResume.clear();
             if (deathSequenceActive) return;
             float screenX = player.x - lastRenderCamX;
             if (wrapTriggerXActive && map.w > 0) screenX = std::remainder(screenX - kGameplayViewW * 0.5f, (float)(map.w * map.tileSize)) + kGameplayViewW * 0.5f;
@@ -4192,6 +4247,7 @@ int RunGameApp(int argc, char** argv) {
             if (levelCompleteActive) return;
             paused = true;
             pauseMenuClosing = false;
+            if (saveQuickResume) saveQuickResume();
         };
         auto closePauseMenu = [&]() {
             if (!paused) return;
@@ -4217,6 +4273,7 @@ int RunGameApp(int argc, char** argv) {
                 paused = false;
                 pauseMenuAnim = 0.0f;
                 pauseMenuClosing = false;
+                if (saveQuickResume) saveQuickResume();
             } else if (action.action == "menu") {
                 pauseSettingsRequested = true;
             } else if (action.action == "quit") {
@@ -4553,6 +4610,72 @@ int RunGameApp(int argc, char** argv) {
             refreshObjectIdCache();
         };
 
+        std::string quickResumeLevel, quickResumeRevision;
+        saveQuickResume = [&]() {
+            if (!PLATFORMER_IOS) return;
+            try {
+                const auto path = levelManager.levelPath();
+                flushPendingAchievements(true);
+                if (deathSequenceActive || levelCompleteActive || path.find("://") != std::string::npos) {
+                    quickResume.clear(); return;
+                }
+                if (path != quickResumeLevel) {
+                    quickResumeLevel = path;
+                    const auto source = ReadTextFile(path);
+                    quickResumeRevision = source.empty() ? std::string() : IosQuickResume::revision(source);
+                }
+                nlohmann::json state = {
+                    {"level_path", path}, {"custom_level_name", customLevelName},
+                    {"allow_next_level_progression", allowNextLevelProgression}, {"hardmode_practice",hardmodePractice},
+                    {"map", {{"w",map.w},{"h",map.h},{"tile_size",map.tileSize},{"tile_ids",map.tileIds},{"bg",map.bg}}},
+                    {"player", {{"x",player.x},{"y",player.y},{"vx",player.vx},{"vy",player.vy},{"w",player.w},{"h",player.h},
+                        {"onGround",player.onGround},{"hasShield",player.hasShield},{"inWater",player.inWater},{"drownTimer",player.drownTimer},
+                        {"facing",player.facing},{"anim",player.anim},{"animTime",player.animTime},{"slideTime",player.slideTime},
+                        {"slideDirection",player.slideDirection},{"tilePushDirection",player.tilePushDirection},{"tile12BounceActive",player.tile12BounceActive}}},
+                    {"meta", {{"world",meta.world},{"area",meta.area},{"time",meta.time},{"wrap_x",wrapTriggerXActive},{"wrap_y",wrapTriggerYActive},
+                        {"theme_override",meta.themeOverride},{"bouncy_tile_12",meta.bouncyTile12}}},
+                    {"checkpoint", {{"active",checkpointActive},{"level_path",checkpointLevelPath},{"tile_x",checkpointTileX},{"tile_y",checkpointTileY}}},
+                    {"active_button_world_areas",levelManager.activeButtonWorldAreas()},
+                    {"level_timer_seconds",levelTimerSeconds},{"lives_count",livesCount},{"score_count",scoreCount},{"coin_count",levelManager.coinCount()},
+                    {"player_invincible_timer",playerInvincibleTimer},{"level_load_death_grace_timer",levelLoadDeathGraceTimer},
+                    {"cycling_blocks",{{"tick",cyclingBlocks.tick},{"remainder",cyclingBlocks.remainder}}}
+                };
+                state["objects"] = nlohmann::json::array();
+                for (size_t i = 0; i < objects.size(); ++i) {
+                    const auto& object = objects[i];
+                    nlohmann::json entry = {{"id",object.id},{"x",object.x},{"y",object.y},{"layer",object.layer}};
+                    if (object.parameterValue) entry["parameter_value"] = *object.parameterValue;
+                    if (i < movingPlatformStates.size()) {
+                        entry["platform_elapsed"] = movingPlatformStates[i].elapsed;
+                        entry["platform_started"] = movingPlatformStates[i].started;
+                    }
+                    state["objects"].push_back(std::move(entry));
+                }
+                state["boss"] = {{"active",bossState.active},{"world",bossState.world},{"source_world",bossState.sourceWorld},
+                    {"health",bossState.health},{"max_health",bossState.maxHealth},{"x",bossState.x},{"y",bossState.y},
+                    {"vx",bossState.vx},{"vy",bossState.vy},{"phase",bossState.phase},{"hurt_flash",bossState.hurtFlash},
+                    {"activation_cooldown",bossState.activationCooldown},{"replay_index",static_cast<uint64_t>(bossState.replayIndex)},
+                    {"replay_frame_acc",bossState.replayFrameAcc},{"rainbow_timer",bossState.rainbowTimer},
+                    {"secret_shot_timer",bossState.secretShotTimer},{"secret_touch_damage_cooldown",bossState.secretTouchDamageCooldown},
+                    {"boss_player_contact_cooldown",bossState.bossPlayerContactCooldown}};
+                state["parameter_contacts"] = parameterContacts;
+                state["shell_states"] = nlohmann::json::array();
+                for (const auto& shell : shellChrakerStates) state["shell_states"].push_back({{"time",shell.time},{"facing",shell.facing},{"cycling",shell.cycling}});
+                state["dropped_coins"] = nlohmann::json::array();
+                for (const auto& coin : droppedCoins) state["dropped_coins"].push_back({{"x",coin.x},{"y",coin.y},{"vx",coin.vx},{"vy",coin.vy},{"life",coin.life},{"no_pickup_timer",coin.noPickupTimer},{"value",coin.value}});
+                state["secret_fireballs"] = nlohmann::json::array();
+                for (const auto& shot : secretFireballs) state["secret_fireballs"].push_back({{"x",shot.x},{"y",shot.y},{"vx",shot.vx},{"vy",shot.vy},{"timer",shot.timer},{"phase",shot.phase}});
+                state["secret_explosions"] = nlohmann::json::array();
+                for (const auto& blast : secretExplosions) state["secret_explosions"].push_back({{"x",blast.x},{"y",blast.y},{"radius",blast.radius},{"life",blast.life},{"hitPlayer",blast.hitPlayer},{"hitBoss",blast.hitBoss}});
+                if (!quickResume.save(state, activeSaveSlotIndex, quickResumeRevision)) SDL_Log("Quick resume snapshot could not be saved");
+            } catch (const std::exception& error) {
+                SDL_Log("Quick resume snapshot skipped: %s", error.what());
+            }
+        };
+        IosAppSleep::Hook quickResumeSleep([&](bool asleep) { if (asleep) saveQuickResume(); });
+        Uint64 nextQuickResume = SDL_GetTicks() + 5000;
+        saveQuickResume();
+
         while (levelRunning) {
             if (assetLoadCanceled) { running = false; break; }
             if (!debugToolsEnabled() && debugWin && debugWin != win) {
@@ -4560,6 +4683,9 @@ int RunGameApp(int argc, char** argv) {
                 SDL_HideWindow(debugWin);
             }
             recoverAudioIfNeeded(true);
+            if (PLATFORMER_IOS && SDL_GetTicks() >= nextQuickResume) {
+                saveQuickResume(); nextQuickResume = SDL_GetTicks() + 5000;
+            }
             const Uint64 nowNs = SDL_GetTicksNS();
             const double dtPrecise = (double)(nowNs - lastTicksNs) / 1000000000.0;
             const float dt = GameplayDeltaTime(dtPrecise);
@@ -4890,7 +5016,8 @@ int RunGameApp(int argc, char** argv) {
                     SDL_Log("controller %s: id=%d name=\"%s\" connected=%d", typeStr, (int)ev.id, ev.name.c_str(), ev.connectedCount);
                 }
             }
-            if (e.type == SDL_QUIT) {
+            if (e.type == SDL_QUIT || (PLATFORMER_IOS && e.type == SDL_EVENT_TERMINATING)) {
+                if (saveQuickResume) saveQuickResume();
                 if (hardmodeRun) (void)saveGameToDisk();
                 running = false; levelRunning = false;
             }
@@ -9454,6 +9581,7 @@ int RunGameApp(int argc, char** argv) {
             SDL_RenderPresent(debugRen);
         }
         }
+        if (PLATFORMER_IOS && running && (returnToSelect || !levelRunning)) quickResume.clear();
         if (restartRequested && saveGameToDisk) (void)saveGameToDisk();
         clearCheckpoint();
         if (!running) break;

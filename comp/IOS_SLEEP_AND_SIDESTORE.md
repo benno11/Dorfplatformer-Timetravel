@@ -6,6 +6,17 @@ frames. Gameplay stays paused on return; unsaved editor changes are autosaved.
 The app does not request background audio or other persistent background modes.
 iOS can still reclaim a suspended app under memory pressure.
 
+## Quick resume
+
+iOS keeps a separate `quick_resume.cbor` in the edition's save directory. A live
+snapshot is written every five seconds and when backgrounding. On cold launch,
+a compatible snapshot skips the menu and intro and restores gameplay paused.
+Player, map, coins, checkpoints, moving platforms and boss state are retained.
+Normal progression slots and encrypted private saves keep their existing formats.
+Changed or missing level files and invalid snapshots fall back to normal startup.
+Leaving a level, dying, or completing it invalidates the old live snapshot.
+Remote URL levels do not use quick-resume snapshots.
+
 ## SideStore source
 
 Source URL: https://benno11.github.io/Dorfplatformer-Timetravel/source.json
