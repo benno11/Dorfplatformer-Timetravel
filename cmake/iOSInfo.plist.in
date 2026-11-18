@@ -79,6 +79,8 @@
   <string>LaunchScreen</string>
   <key>UIRequiresFullScreen</key>
   <true/>
+  <key>UIApplicationExitsOnSuspend</key>
+  <false/>
   <key>UIApplicationSupportsIndirectInputEvents</key>
   <true/>
   <key>UIFileSharingEnabled</key>
