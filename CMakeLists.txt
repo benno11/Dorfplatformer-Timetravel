@@ -337,8 +337,12 @@ if(APPLE AND IOS)
   }
 }
 ]=])
-  set_source_files_properties("${PLATFORMER_IOS_LAUNCH_STORYBOARD}" PROPERTIES
-    MACOSX_PACKAGE_LOCATION Resources
+  # Xcode only runs actool for catalogs in the Resources build phase.
+  # Merely listing the directory in target_sources leaves Assets.car unbuilt.
+  set_source_files_properties(
+    "${PLATFORMER_IOS_LAUNCH_STORYBOARD}"
+    "${PLATFORMER_IOS_ASSET_CATALOG}"
+    PROPERTIES MACOSX_PACKAGE_LOCATION Resources
   )
   target_sources(platformer PRIVATE
     "${PLATFORMER_IOS_LAUNCH_STORYBOARD}"
