@@ -57,7 +57,7 @@ bool cacheMethods(JNIEnv* env) {
     g_methods.shutdown = env->GetStaticMethodID(g_bridge_class, "shutdown", "()V");
     g_methods.loadGlobalAssets = env->GetStaticMethodID(g_bridge_class, "loadGlobalAssets", "()V");
     g_methods.unloadGlobalAssets = env->GetStaticMethodID(g_bridge_class, "unloadGlobalAssets", "()V");
-    g_methods.applyVolumes = env->GetStaticMethodID(g_bridge_class, "applyVolumes", "(ZII)V");
+    g_methods.applyVolumes = env->GetStaticMethodID(g_bridge_class, "applyVolumes", "(ZIIF)V");
     g_methods.applyMenuMusicToggle = env->GetStaticMethodID(g_bridge_class, "applyMenuMusicToggle", "(Z)V");
     g_methods.setLoopingEnabled = env->GetStaticMethodID(g_bridge_class, "setLoopingEnabled", "(Z)V");
     g_methods.loadLevelMusic = env->GetStaticMethodID(g_bridge_class, "loadLevelMusic", "(Ljava/lang/String;)V");
@@ -148,14 +148,14 @@ void loadGlobalAssets() { callVoid(g_methods.loadGlobalAssets); }
 
 void unloadGlobalAssets() { callVoid(g_methods.unloadGlobalAssets); }
 
-void applyVolumes(bool muteAllAudio, int musicVolume, int sfxVolume) {
+void applyVolumes(bool muteAllAudio, int musicVolume, int sfxVolume, float gameplayGain) {
     withEnv([&](JNIEnv* env) {
         if (!env || !g_bridge_class || !g_methods.applyVolumes) return 0;
         env->CallStaticVoidMethod(g_bridge_class,
                                   g_methods.applyVolumes,
                                   muteAllAudio ? JNI_TRUE : JNI_FALSE,
                                   static_cast<jint>(musicVolume),
-                                  static_cast<jint>(sfxVolume));
+                                  static_cast<jint>(sfxVolume), static_cast<jfloat>(gameplayGain));
         return 0;
     });
 }

@@ -12,7 +12,7 @@ void shutdown();
 void loadGlobalAssets();
 void unloadGlobalAssets();
 
-void applyVolumes(bool muteAllAudio, int musicVolume, int sfxVolume);
+void applyVolumes(bool muteAllAudio, int musicVolume, int sfxVolume, float gameplayGain = 1.0f);
 void applyMenuMusicToggle(bool menuMusicEnabled);
 void setLoopingEnabled(bool enabled);
 

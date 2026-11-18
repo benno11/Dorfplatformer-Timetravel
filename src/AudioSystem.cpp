@@ -35,7 +35,7 @@ namespace { AudioSystem* eventAudio = nullptr; }
 
 #if AUDIO_HAS_SDL3_MIXER
 namespace {
-struct Mix_Chunk { std::string path; float gain = 1.0f; };
+struct Mix_Chunk { std::string path; float gain = 1.0f; bool uiSound = false; };
 using Mix_Music = Mix_Chunk;
 
 static MIX_Mixer* g_mix_mixer = nullptr;
@@ -43,6 +43,18 @@ static std::vector<MIX_Track*> g_mix_channels;
 static MIX_Track* g_mix_music_track = nullptr;
 static bool g_mix_initialized = false;
 static float g_music_gain = 1.0f;
+static float g_gameplay_gain = 1.0f;
+struct TrackGain { float volume; bool uiSound; };
+static std::unordered_map<MIX_Track*, TrackGain> g_track_gains;
+static void mix_set_gain(MIX_Track* track, float volume, bool uiSound = false) {
+    g_track_gains[track] = {volume, uiSound};
+    (void)MIX_SetTrackGain(track, volume * (uiSound ? 1.0f : g_gameplay_gain));
+}
+static void mix_gameplay_gain(float gain) {
+    g_gameplay_gain = gain;
+    for (const auto& entry : g_track_gains)
+        (void)MIX_SetTrackGain(entry.first, entry.second.volume * (entry.second.uiSound ? 1.0f : gain));
+}
 static std::unordered_map<MIX_Track*, SDL_IOStream*> g_mix_streams;
 
 static void mix_release_stream(MIX_Track* track) {
@@ -166,7 +178,7 @@ static int Mix_PlayChannelCompat(int channel, Mix_Chunk* chunk, int loops) {
     if (!mix_stream_file(t,chunk->path)) {
         SDL_Log("Could not stream SFX '%s': %s",chunk->path.c_str(),SDL_GetError());return -1;
     }
-    (void)MIX_SetTrackGain(t,chunk->gain);
+    mix_set_gain(t,chunk->gain,chunk->uiSound);
     const SDL_PropertiesID props = SDL_CreateProperties();
     if (!props) return -1;
     SDL_SetNumberProperty(props, MIX_PROP_PLAY_LOOPS_NUMBER, loops);
@@ -183,7 +195,7 @@ static int Mix_PlayMusicCompat(Mix_Music* music, int loops) {
     if (!mix_stream_file(g_mix_music_track,music->path)) {
         SDL_Log("Could not stream music '%s': %s",music->path.c_str(),SDL_GetError());return -1;
     }
-    (void)MIX_SetTrackGain(g_mix_music_track,g_music_gain);
+    mix_set_gain(g_mix_music_track,g_music_gain);
     const SDL_PropertiesID props = SDL_CreateProperties();
     if (!props) return -1;
     SDL_SetNumberProperty(props, MIX_PROP_PLAY_LOOPS_NUMBER, loops);
@@ -226,18 +238,18 @@ static int Mix_VolumeMusicCompat(int volume) {
     if (!g_mix_mixer) return volume;
     const float gain = std::clamp(volume / 128.0f, 0.0f, 1.0f);
     g_music_gain=gain;
-    if (g_mix_music_track) (void)MIX_SetTrackGain(g_mix_music_track, gain);
+    if (g_mix_music_track) mix_set_gain(g_mix_music_track, gain);
     return volume;
 }
 
 static int Mix_VolumeCompat(int channel, int volume) {
     const float gain = std::clamp(volume / 128.0f, 0.0f, 1.0f);
     if (channel < 0) {
-        for (MIX_Track* t : g_mix_channels) if (t) (void)MIX_SetTrackGain(t, gain);
+        for (MIX_Track* t : g_mix_channels) if (t) mix_set_gain(t, gain, g_track_gains[t].uiSound);
         return volume;
     }
     MIX_Track* t = mix_track_at(channel);
-    if (t) (void)MIX_SetTrackGain(t, gain);
+    if (t) mix_set_gain(t, gain, g_track_gains[t].uiSound);
     return volume;
 }
 
@@ -268,6 +280,7 @@ static void Mix_CloseAudioCompat() {
         }
     }
     g_mix_channels.clear();
+    g_track_gains.clear();
     if (g_mix_mixer) {
         MIX_DestroyMixer(g_mix_mixer);
         g_mix_mixer = nullptr;
@@ -484,15 +497,17 @@ void AudioSystem::shutdown() {
 }
 
 void AudioSystem::applyOutputGain() {
-    const float gain = (loading_ || sleeping_) ? 0.0f : pauseGain_;
+    const float gain = (loading_ || sleeping_) ? 0.0f : 1.0f;
 #if defined(__ANDROID__)
     if (impl_ && impl_->usingJavaBackend) {
-        AndroidAudioBridge::applyVolumes(muted_ || gain == 0.0f,
-            static_cast<int>(musicVolume_ * gain), static_cast<int>(sfxVolume_ * gain));
+        AndroidAudioBridge::applyVolumes(muted_ || gain == 0.0f, musicVolume_, sfxVolume_, pauseGain_);
     }
 #endif
 #if AUDIO_HAS_SDL3_MIXER
-    if (g_mix_mixer) (void)MIX_SetMixerGain(g_mix_mixer, gain);
+    if (g_mix_mixer) {
+        (void)MIX_SetMixerGain(g_mix_mixer, gain);
+        mix_gameplay_gain(pauseGain_);
+    }
 #endif
 }
 
@@ -567,6 +582,7 @@ void AudioSystem::loadGlobalAssets() {
             Impl::PreparedSounds sounds;
             for (size_t i = 0; i < paths.size(); ++i) {
                 sounds.chunks[i] = Mix_LoadWAVCompat(paths[i].c_str());
+                if (sounds.chunks[i] && i >= 8) sounds.chunks[i]->uiSound = true;
                 if (!sounds.chunks[i]) SDL_Log("Could not load sfx '%s': %s", paths[i].c_str(), SDL_GetError());
             }
             return sounds;

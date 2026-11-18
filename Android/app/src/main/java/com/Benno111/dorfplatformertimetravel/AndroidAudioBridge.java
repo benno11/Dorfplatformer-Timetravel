@@ -43,6 +43,8 @@ public final class AndroidAudioBridge {
     private static float musicVolume = 1.0f;
     private static float sfxVolume = 1.0f;
     private static boolean muteAllAudio;
+    private static float gameplayGain = 1.0f;
+    private static final java.util.HashSet<Integer> uiStreams = new java.util.HashSet<>();
 
     private AndroidAudioBridge() {}
 
@@ -103,8 +105,9 @@ public final class AndroidAudioBridge {
         }
     }
 
-    public static void applyVolumes(boolean muteAllAudioValue, int musicVolumeValue, int sfxVolumeValue) {
+    public static void applyVolumes(boolean muteAllAudioValue, int musicVolumeValue, int sfxVolumeValue, float gameplayGainValue) {
         synchronized (LOCK) {
+            gameplayGain = Math.max(0.0f, Math.min(1.0f, gameplayGainValue));
             muteAllAudio = muteAllAudioValue;
             musicVolume = clampVolume(musicVolumeValue);
             sfxVolume = clampVolume(sfxVolumeValue);
@@ -198,7 +201,7 @@ public final class AndroidAudioBridge {
 
     public static void playEventSfx(int event) {
         synchronized (LOCK) {
-            if (event >= 0 && event < eventSoundIds.length) playSoundLocked(eventSoundIds[event]);
+            if (event >= 0 && event < eventSoundIds.length) playSoundLocked(eventSoundIds[event], event >= 3);
         }
     }
 
@@ -263,7 +266,7 @@ public final class AndroidAudioBridge {
     }
 
     private static float appliedMusicVolume() {
-        return muteAllAudio ? 0.0f : musicVolume;
+        return muteAllAudio ? 0.0f : musicVolume * gameplayGain;
     }
 
     private static float appliedSfxVolume() {
@@ -281,7 +284,8 @@ public final class AndroidAudioBridge {
 
         final float sfx = appliedSfxVolume();
         for (int i=0; i<activeStreams.size(); ++i) {
-            try { activeStreams.valueAt(i).setVolume(sfx,sfx); }
+            final float gain = sfx * (uiStreams.contains(activeStreams.keyAt(i)) ? 1.0f : gameplayGain);
+            try { activeStreams.valueAt(i).setVolume(gain,gain); }
             catch (IllegalStateException ignored) {}
         }
     }
@@ -390,10 +394,13 @@ public final class AndroidAudioBridge {
     private static void finishStreamLocked(int id, MediaPlayer player) {
         if (activeStreams.get(id) != player) return;
         activeStreams.remove(id);
+        uiStreams.remove(id);
         releasePlayerLocked(player);
     }
 
-    private static int playSoundLocked(int soundId) {
+    private static int playSoundLocked(int soundId) { return playSoundLocked(soundId, false); }
+
+    private static int playSoundLocked(int soundId, boolean uiSound) {
         final String assetPath=soundAssets.get(soundId);
         final Context context=getContext();
         if (!initialized || assetPath==null || context==null) return -1;
@@ -410,10 +417,11 @@ public final class AndroidAudioBridge {
             final float volume=appliedSfxVolume();
             player.setVolume(volume,volume);
             activeStreams.put(id,player);
+            if (uiSound) uiStreams.add(id);
             player.setOnPreparedListener(mp -> {
                 synchronized (LOCK) {
                     if(activeStreams.get(id)!=mp)return;
-                    try { final float gain=appliedSfxVolume();mp.setVolume(gain,gain);mp.start(); }
+                    try { final float gain=appliedSfxVolume() * (uiSound ? 1.0f : gameplayGain);mp.setVolume(gain,gain);mp.start(); }
                     catch(IllegalStateException error){finishStreamLocked(id,mp);}
                 }
             });
@@ -425,6 +433,7 @@ public final class AndroidAudioBridge {
             return id;
         } catch (Throwable error) {
             activeStreams.remove(id);
+            uiStreams.remove(id);
             releasePlayerLocked(player);
             Log.i(TAG,"Could not stream SFX " + assetPath,error);
             return -1;
@@ -435,6 +444,7 @@ public final class AndroidAudioBridge {
         final ArrayList<MediaPlayer> players=new ArrayList<>();
         for(int i=0;i<activeStreams.size();++i)players.add(activeStreams.valueAt(i));
         activeStreams.clear();
+        uiStreams.clear();
         for(MediaPlayer player:players)releasePlayerLocked(player);
     }
 }
