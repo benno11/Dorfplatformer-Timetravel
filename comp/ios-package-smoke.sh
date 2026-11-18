@@ -32,6 +32,15 @@ def quoted_entries(path):
 entries = quoted_entries(root / "cmake" / "IosRequiredBundleEntries.cmake")
 project_files = quoted_entries(root / "cmake" / "IosBundledProjectFiles.cmake")
 
+# Check the real tree before synthesizing fixtures. Otherwise obsolete required
+# paths are silently invented here and only fail after a full Xcode build.
+missing = [rel for rel in entries if not (root / rel).is_file()]
+if missing:
+    raise SystemExit("Required iOS source assets are missing: " + ", ".join(missing))
+menus = {p.relative_to(root).as_posix() for p in (root / "assets/menus").glob("*.menu")}
+if menus - set(entries):
+    raise SystemExit("iOS menu requirements are incomplete: " + ", ".join(sorted(menus - set(entries))))
+
 for rel in entries + project_files:
     path = source_root / rel
     path.parent.mkdir(parents=True, exist_ok=True)
