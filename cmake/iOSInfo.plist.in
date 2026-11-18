@@ -7,7 +7,7 @@
   <key>CFBundleDisplayName</key>
   <string>${PLATFORMER_IOS_PRODUCT_NAME}</string>
   <key>CFBundleExecutable</key>
-  <string>${PLATFORMER_IOS_PRODUCT_NAME}</string>
+  <string>${MACOSX_BUNDLE_EXECUTABLE_NAME}</string>
   <key>CFBundleIconFile</key>
   <string>AppIcon.png</string>
   <key>CFBundleIconFiles</key>

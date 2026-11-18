@@ -238,6 +238,9 @@ if(PLATFORMER_LITE_EDITION AND NOT ANDROID AND NOT WIN32 AND NOT IOS)
   set_target_properties(platformer PROPERTIES OUTPUT_NAME "platformer-lite")
 endif()
 if(APPLE AND IOS)
+  # Each SDK has its own build tree (comp/ios.sh). Avoid Xcode leaking a
+  # literal ${EFFECTIVE_PLATFORM_NAME} into TARGET_BUNDLE_DIR and copy paths.
+  set_property(GLOBAL PROPERTY XCODE_EMIT_EFFECTIVE_PLATFORM_NAME OFF)
   set(PLATFORMER_IOS_PACKAGE_DIR "${CMAKE_BINARY_DIR}/ios-package/${CMAKE_CFG_INTDIR}" CACHE PATH "Directory for iOS package artifacts")
   set(PLATFORMER_IOS_PAYLOAD_DIR "${PLATFORMER_IOS_PACKAGE_DIR}/Payload")
   set(PLATFORMER_IOS_IPSW_PATH "${CMAKE_BINARY_DIR}/${PLATFORMER_PRODUCT_NAME}-${CMAKE_CFG_INTDIR}.ipsw")
@@ -355,7 +358,7 @@ if(APPLE AND IOS)
     endif()
   endforeach()
   set_target_properties(platformer PROPERTIES
-    OUTPUT_NAME "${PLATFORMER_IOS_PRODUCT_NAME}"
+    OUTPUT_NAME "platformer"
     MACOSX_BUNDLE ON
     MACOSX_BUNDLE_ICON_FILE "AppIcon.png"
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/cmake/iOSInfo.plist.in"
