@@ -30,7 +30,7 @@
 				<key>spriteSourceSize</key>
 				<string>{21,32}</string>
 				<key>textureRect</key>
-				<string>{{764,176},{21,32}}</string>
+				<string>{{834,176},{21,32}}</string>
 				<key>textureRotated</key>
 				<false/>
 			</dict>
@@ -45,7 +45,7 @@
 				<key>spriteSourceSize</key>
 				<string>{32,32}</string>
 				<key>textureRect</key>
-				<string>{{785,176},{32,32}}</string>
+				<string>{{764,194},{32,32}}</string>
 				<key>textureRotated</key>
 				<false/>
 			</dict>
@@ -60,7 +60,7 @@
 				<key>spriteSourceSize</key>
 				<string>{32,32}</string>
 				<key>textureRect</key>
-				<string>{{817,176},{32,32}}</string>
+				<string>{{796,194},{32,32}}</string>
 				<key>textureRotated</key>
 				<false/>
 			</dict>
@@ -105,7 +105,37 @@
 				<key>spriteSourceSize</key>
 				<string>{26,26}</string>
 				<key>textureRect</key>
-				<string>{{849,176},{26,26}}</string>
+				<string>{{855,176},{26,26}}</string>
+				<key>textureRotated</key>
+				<false/>
+			</dict>
+			<key>spiek_1.png</key>
+			<dict>
+				<key>aliases</key>
+				<array/>
+				<key>spriteOffset</key>
+				<string>{0,0}</string>
+				<key>spriteSize</key>
+				<string>{35,18}</string>
+				<key>spriteSourceSize</key>
+				<string>{35,18}</string>
+				<key>textureRect</key>
+				<string>{{764,176},{35,18}}</string>
+				<key>textureRotated</key>
+				<false/>
+			</dict>
+			<key>spiek_2.png</key>
+			<dict>
+				<key>aliases</key>
+				<array/>
+				<key>spriteOffset</key>
+				<string>{0,0}</string>
+				<key>spriteSize</key>
+				<string>{35,18}</string>
+				<key>spriteSourceSize</key>
+				<string>{35,18}</string>
+				<key>textureRect</key>
+				<string>{{799,176},{35,18}}</string>
 				<key>textureRotated</key>
 				<false/>
 			</dict>
