@@ -657,9 +657,8 @@ int RunGameApp(int argc, char** argv) {
             SDL_Log("Adaptive aspect target: %dx%d (display %dx%d)", kBaseScreenW, kBaseScreenH, displayMode->w, displayMode->h);
         }
     }
-    // Gameplay framing stays at a fixed 3x camera zoom; the world target itself
-    // stays at base resolution and the camera/render scale handle the sizing.
-    constexpr float kGameplayZoom = 3.0f;
+    // Smaller canvases use a smaller world scale while retaining native targets.
+    float kGameplayZoom = 3.0f * UiScale::menuScreenMultiplier(kBaseScreenW, kBaseScreenH);
     int kGameplayViewW = std::max(1, (int)std::lround((float)kBaseScreenW / kGameplayZoom));
     int kGameplayViewH = std::max(1, (int)std::lround((float)kBaseScreenH / kGameplayZoom));
 
@@ -840,6 +839,7 @@ int RunGameApp(int argc, char** argv) {
     getWindowSizeInPixelsCompat(win, kBaseScreenW, kBaseScreenH);
     kBaseScreenW = std::max(1, kBaseScreenW);
     kBaseScreenH = std::max(1, kBaseScreenH);
+    kGameplayZoom = 3.0f * UiScale::menuScreenMultiplier(kBaseScreenW, kBaseScreenH);
     kGameplayViewW = std::max(1, (int)std::lround(kBaseScreenW / kGameplayZoom));
     kGameplayViewH = std::max(1, (int)std::lround(kBaseScreenH / kGameplayZoom));
 #endif
@@ -2696,8 +2696,9 @@ int RunGameApp(int argc, char** argv) {
         const int newBaseH = PLATFORMER_IOS ? winH : 1080;
         int newBaseW = PLATFORMER_IOS ? winW : std::max(1280, (int)std::lround((float)newBaseH * aspect));
         if (!PLATFORMER_IOS && (newBaseW & 1) != 0) ++newBaseW;
-        const int newGameplayW = std::max(1, (int)std::lround((float)newBaseW / kGameplayZoom));
-        const int newGameplayH = std::max(1, (int)std::lround((float)newBaseH / kGameplayZoom));
+        const float newGameplayZoom = 3.0f * UiScale::menuScreenMultiplier(newBaseW, newBaseH);
+        const int newGameplayW = std::max(1, (int)std::lround((float)newBaseW / newGameplayZoom));
+        const int newGameplayH = std::max(1, (int)std::lround((float)newBaseH / newGameplayZoom));
 
         if (!force &&
             newBaseW == kBaseScreenW && newBaseH == kBaseScreenH &&
@@ -2723,6 +2724,7 @@ int RunGameApp(int argc, char** argv) {
         gameTarget = newGameTarget;
         kBaseScreenW = newBaseW;
         kBaseScreenH = newBaseH;
+        kGameplayZoom = newGameplayZoom;
         kGameplayViewW = newGameplayW;
         kGameplayViewH = newGameplayH;
         frontendCtx.gameTarget = gameTarget;
@@ -5005,7 +5007,7 @@ int RunGameApp(int argc, char** argv) {
         int screenW = kBaseScreenW;
         int screenH = kBaseScreenH;
         const auto touchPauseButton = TouchPauseButton::layout(win, kBaseScreenW, kBaseScreenH);
-        const float mobileUiScale = UiScale::multiplier(uiScalePercent);
+        const float mobileUiScale = UiScale::multiplier(uiScalePercent) * UiScale::menuScreenMultiplier(screenW, screenH);
         const float minScreenDim = std::min((float)screenW, (float)screenH);
         const float baseUiSize = std::clamp(minScreenDim * 0.16f, 110.0f, 190.0f);
         float uiSize = std::clamp(baseUiSize * 2.0f * mobileUiScale, 96.0f, minScreenDim * 0.45f);
