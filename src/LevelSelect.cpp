@@ -1,3 +1,4 @@
+#include "DefaultTiles.h"
 #include "TileRendering.h"
 #include "IosAppSleep.h"
 #include "MenuScriptTemplate.h"
@@ -746,7 +747,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
     }
 
     const std::vector<unsigned short> palette{
-        2, 7, 12, 13,
+        2, 7, 100, 101, 102, 103, 12, 13,
         14, 15, 16, 17, 18, 19, 20,
         24, 29, 30, 41, 49,
         51, 52, 53, 54, 55,
@@ -925,7 +926,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         return true;
     };
     auto isAutoTileId = [](unsigned short id) -> bool {
-        return (id >= 3 && id <= 11) || (id >= 38 && id <= 40);
+        return DefaultTiles::contains(id);
     };
     auto autoTileForCell = [&](int cx, int cy) -> unsigned short {
         auto occupied = [&](int x, int y) -> bool {
@@ -938,28 +939,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         const bool l = occupied(cx - 1, cy);
         const bool r = occupied(cx + 1, cy);
 
-        // One-block-height strip variant.
-        if (!u && !d) {
-            if (!l && r) return 39;   // left end
-            if (l && !r) return 40;   // right end
-            return 38;                // middle / single
-        }
-        // Top edge variants.
-        if (!u) {
-            if (!l) return 9;         // up-left
-            if (!r) return 11;        // up-right
-            return 10;                // up-middle
-        }
-        // Bottom edge variants.
-        if (!d) {
-            if (!l) return 3;         // bottom-left
-            if (!r) return 5;         // bottom-right
-            return 4;                 // bottom-middle
-        }
-        // Vertical middle variants.
-        if (!l) return 6;             // left-middle
-        if (!r) return 8;             // right-middle
-        return 7;                     // middle
+        return DefaultTiles::select(u, d, l, r);
     };
     auto refreshAutoTileAround = [&](int cx, int cy) {
         for (int y = cy - 1; y <= cy + 1; ++y) {
