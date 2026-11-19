@@ -1,4 +1,5 @@
 #include "SlimMenuLayout.h"
+#include "UiScale.h"
 #include "DifficultySelector.h"
 
 #include <iostream>
@@ -14,6 +15,19 @@ void require(bool condition, const char* message) {
 int main() {
     using namespace SlimMenuLayout;
     try {
+        require(UiScale::menuScreenMultiplier(960, 540) < UiScale::menuScreenMultiplier(1920, 1080),
+                "Small canvases must use smaller menu controls");
+        require(UiScale::menuScreenMultiplier(3840, 2160) == 1.0f,
+                "Large displays must preserve the authored menu size");
+        for (const auto screen : {SDL_Point{640,360}, SDL_Point{960,540}, SDL_Point{1280,720}, SDL_Point{1920,1080}}) {
+            const float scale = UiScale::menuScreenMultiplier(screen.x, screen.y);
+            const auto responsive = build(screen.x, screen.y, scale, Align::Center, Align::Center,
+                {{300,54}, {300,54}, {300,54}});
+            for (const auto& item : responsive.items) {
+                require(item.x * scale >= 0 && (item.x + item.w) * scale <= screen.x,
+                        "Responsive menu controls must fit horizontally");
+            }
+        }
         const std::vector<Item> anchors{
             {200, 24, Align::Start, Align::Start},
             {300, 54, Align::Center, Align::Center},

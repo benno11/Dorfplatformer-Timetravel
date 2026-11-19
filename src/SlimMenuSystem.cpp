@@ -568,6 +568,8 @@ SlimMenu loadMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuC
     prepareMenuData(name, runtime, ctx);
     SlimMenu menu;
     menu.name = name;
+    const float screenScale = UiScale::menuScreenMultiplier(ctx.baseScreenW, ctx.baseScreenH);
+    menu.scale = screenScale;
     MenuItem style;
     auto source = runtime.scriptSources.find(name);
     if (source == runtime.scriptSources.end()) {
@@ -626,7 +628,7 @@ SlimMenu loadMenu(const std::string& name, SlimRuntime& runtime, const SlimMenuC
             char* end = nullptr;
             const float value = std::strtof(parts[1].c_str(), &end);
             if (end != parts[1].c_str() && *end == '\0' && std::isfinite(value) && value > 0.0f) {
-                menu.scale = std::clamp(value, 0.25f, 4.0f);
+                menu.scale = std::clamp(value * screenScale, 0.25f, 4.0f);
             } else {
                 SDL_Log("SLIM MENU: invalid scale at %s:%d", menuPath(name).c_str(), lineInfo.lineNo);
             }
@@ -1550,7 +1552,7 @@ void prepareMenuData(const std::string& name, SlimRuntime& runtime, const SlimMe
 
 SlimMenuLayout::Layout layoutFor(const SlimMenu& menu, const SlimRuntime& runtime, const SlimMenuContext& ctx) {
     std::vector<SlimMenuLayout::Item> items;
-    const int buttonWidth = std::clamp(ctx.baseScreenW * 2 / 5, 220, 520);
+    const int buttonWidth = std::clamp((int)(ctx.baseScreenW / menu.scale) * 2 / 5, 220, 520);
     for (const auto& item : menu.items) {
         const bool button = item.type != MenuItem::Type::Text;
         if (item.command == "difficulty_badge") {

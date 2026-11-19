@@ -8755,7 +8755,7 @@ int RunGameApp(int argc, char** argv) {
             const Uint8 pausePanelAlpha = (Uint8)std::clamp((int)std::lround(255.0f * pauseEase), 0, 255);
             const Uint8 pauseButtonAlpha = (Uint8)std::clamp((int)std::lround(255.0f * pauseButtonT), 0, 255);
             const int pauseSlideY = -(int)std::lround((1.0f - pauseEase) * (float)screenH * 0.55f);
-            const float uiButtonScale = UiScale::multiplier(uiScalePercent);
+            const float uiButtonScale = UiScale::multiplier(uiScalePercent) * UiScale::menuScreenMultiplier(screenW, screenH);
             auto scaleRectCentered = [&](const SDL_Rect& in) -> SDL_Rect {
                 return UiScale::scaleRectCentered(in, uiButtonScale);
             };

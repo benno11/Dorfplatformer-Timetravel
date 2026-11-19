@@ -34,6 +34,13 @@ inline float multiplier(int percent) {
     return std::clamp(static_cast<float>(clampPercent(percent)) / 100.0f, 0.5f, 4.0f);
 }
 
+// Keep the existing desktop appearance, shrink authored controls on smaller
+// canvases, and avoid scaling text below half size.
+inline float menuScreenMultiplier(int width, int height) {
+    return std::clamp(std::min(std::max(1, width) / 1920.0f,
+                               std::max(1, height) / 1080.0f), 0.5f, 1.0f);
+}
+
 inline float settingsMultiplier(int percent) {
     return std::clamp(multiplier(percent) * 2.0f, 1.0f, 4.7f);
 }

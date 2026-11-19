@@ -46,7 +46,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx, bool settingsOnly) {
     std::string& levelServerUrl = ctx.levelServerUrl ? *ctx.levelServerUrl : networkServerUrlLocal;
     std::string& levelServerAuthToken = ctx.levelServerAuthToken ? *ctx.levelServerAuthToken : networkAuthTokenLocal;
     std::string& levelServerAccountUsername = ctx.levelServerAccountUsername ? *ctx.levelServerAccountUsername : networkUsernameLocal;
-    auto uiButtonScale = [&]() { return UiScale::multiplier(uiScalePercent); };
+    auto uiButtonScale = [&]() { return UiScale::multiplier(uiScalePercent) * UiScale::menuScreenMultiplier(ctx.baseScreenW, ctx.baseScreenH); };
     auto fpsBadgeScale = [&]() { return UiScale::settingsMultiplier(uiScalePercent); };
     constexpr float kMenuAuthorW = 960.0f;
     constexpr float kMenuAuthorH = 540.0f;
@@ -65,13 +65,13 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx, bool settingsOnly) {
     };
     auto mainMenuScale = [&]() -> float {
         const float canvas = menuCanvasScale();
-        const float desired = uiButtonScale();
+        const float desired = std::max(uiButtonScale(), 44.0f / (112.0f * canvas));
         const float desiredBtnW = 112.0f * canvas * desired;
         const float desiredGap = 44.0f * canvas * desired;
         const float desiredTotalW = desiredBtnW * 3.0f + desiredGap * 2.0f;
         const float maxTotalW = std::max(260.0f, (float)ctx.baseScreenW - 120.0f);
         const float fit = (desiredTotalW > 0.0f) ? std::min(1.0f, maxTotalW / desiredTotalW) : 1.0f;
-        return std::clamp(desired * fit, 0.55f, 5.0f);
+        return std::clamp(desired * fit, 0.25f, 5.0f);
     };
     auto scaleRectCentered = [&](const SDL_Rect& in, float scale) -> SDL_Rect {
         return UiScale::scaleRectCentered(in, scale);
