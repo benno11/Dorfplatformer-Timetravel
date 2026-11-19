@@ -607,3 +607,18 @@ The same path works for new and existing levels. Place it after Save & Resume.
 Brush sizes now paint exactly N by N cells, including 2, 4, 6, and 8. Even sizes
 extend one extra cell right/down, with preview and painting kept identical.
 Comma/period step through every size; clipping at the map edge remains active.
+
+
+Platform variables are available in menu text and conditions:
+
+- `${platform}`: lowercase SDL platform name (`ios`, `android`, `windows`, `linux`, etc.).
+- `platform_ios`: true only for iOS; false on desktop, Android, tvOS and Mac Catalyst.
+
+For example, omit a control on iOS:
+
+```text
+when platform_ios
+otherwise
+button "Updater" menu settingsupdater
+endwhen
+```

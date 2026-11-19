@@ -1,3 +1,4 @@
+#include "Platform.h"
 #include "IosAppSleep.h"
 #include "EditionPolicy.h"
 #include "NativeMods.h"
@@ -351,6 +352,8 @@ std::string contextVarValue(const std::string& name, const SlimRuntime& runtime,
         return value ? "true" : "false";
     }
     const std::string var = normalizeVarName(name);
+    if (var == "platform") return PLATFORMER_IOS ? "ios" : toLowerAscii(SDL_GetPlatform() ? SDL_GetPlatform() : "unknown");
+    if (var == "platform_ios") return PLATFORMER_IOS ? "true" : "false";
     auto it = runtime.vars.find(var);
     if (it != runtime.vars.end()) return it->second;
     if (var == "world_select_unlocked") return ctx.progression && ctx.progression->worldSelectUnlocked ? "true" : "false";
@@ -398,7 +401,7 @@ bool varIsTruthy(const std::string& name, const SlimRuntime& runtime, const Slim
 
 std::string expandVars(std::string text, const SlimRuntime& runtime, const SlimMenuContext& ctx) {
     if (text.find("${") == std::string::npos) return text;
-    for (const char* name : {"account_email", "account_password", "about_game_name", "about_sandbox_version", "clipboard_status", "game_log_enabled", "save_logcat_to_file"})
+    for (const char* name : {"platform", "platform_ios", "account_email", "account_password", "about_game_name", "about_sandbox_version", "clipboard_status", "game_log_enabled", "save_logcat_to_file"})
         text = replaceAll(text, "${" + std::string(name) + "}", contextVarValue(name, runtime, ctx));
     for (const char* var : {"world_select_unlocked", "hardmode_unlocked", "hardmode_complete", "hardmode_furthest_level", "hardmode_save_exists"}) {
         const std::string placeholder = "${" + std::string(var) + "}";

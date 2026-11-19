@@ -9,6 +9,9 @@ if debugger_attached skip 1
 button "Debug" menu settingsdebug
 button "Achievements" menu achievements
 button "About" menu settingsabout
+when platform_ios
+otherwise
 button "Updater" menu settingsupdater
+endwhen
 snap center bottom
 button "Back" back
