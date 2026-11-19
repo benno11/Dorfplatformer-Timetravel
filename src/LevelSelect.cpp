@@ -1,3 +1,4 @@
+#include "TileRendering.h"
 #include "IosAppSleep.h"
 #include "MenuScriptTemplate.h"
 #include "BuildInfo.h"
@@ -1572,7 +1573,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 SDL_Rect rc{gridX + x * cell - viewX, gridY + y * cell - viewY, cell, cell};
                 const Frame* f = (id < blocksFrameById.size()) ? blocksFrameById[id] : nullptr;
                 if (blocksTex && f) {
-                    renderFrame(ren, blocksTex, *f, rc);
+                    renderTileFrame(ren, blocksTex, *f, SDL_FRect{(float)rc.x,(float)rc.y,(float)rc.w,(float)rc.h});
                 } else {
                     Uint8 r, g, b;
                     tileColor(id, r, g, b);

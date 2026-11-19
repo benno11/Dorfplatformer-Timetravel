@@ -91,6 +91,7 @@
 #include "EditorObjectTools.h"
 #include "FrontendMenu.h"
 #include "GameSupport.h"
+#include "TileRendering.h"
 #include "ButtonAnimation.h"
 #include "DeathAnimation.h"
 #include "SignpostRendering.h"
@@ -7829,7 +7830,6 @@ int RunGameApp(int argc, char** argv) {
                     if (mapY < 0) mapY += map.h;
                 }
                 const int row = mapY * map.w;
-                const int screenY = (int)(y * tileSizeF - camY);
                 for (int x = tileMinX; x <= tileMaxX; x++) {
                     int mapX = x;
                     if (renderWrapX) {
@@ -7865,8 +7865,8 @@ int RunGameApp(int argc, char** argv) {
                     }
                     if (!frame) continue;
 
-                    SDL_Rect dst{(int)(x * tileSizeF - camX), screenY, map.tileSize, map.tileSize};
-                    renderFrame(ren, blocksTex, *frame, dst);
+                    SDL_FRect dst{x * tileSizeF - camX, y * tileSizeF - camY, tileSizeF, tileSizeF};
+                    renderTileFrame(ren, blocksTex, *frame, dst);
                 }
             }
         } else {
@@ -8580,9 +8580,9 @@ int RunGameApp(int argc, char** argv) {
                         }
                         if (!frame && id < (int)blocksFrameById.size()) frame = blocksFrameById[id];
                         if (!frame) continue;
-                        const SDL_Rect dst{(int)(x * (float)map.tileSize - camX), (int)(y * (float)map.tileSize - camY),
-                            map.tileSize, map.tileSize};
-                        renderFrame(ren, blocksTex, *frame, dst);
+                        const SDL_FRect dst{x * (float)map.tileSize - camX, y * (float)map.tileSize - camY,
+                            (float)map.tileSize, (float)map.tileSize};
+                        renderTileFrame(ren, blocksTex, *frame, dst);
                     }
                 }
                 SDL_SetTextureBlendMode(blocksTex, previousBlend);
