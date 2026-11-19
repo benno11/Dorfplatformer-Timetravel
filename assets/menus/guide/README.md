@@ -1,0 +1,624 @@
+# DF Slim Menu Guide
+
+Menus are `.menu` text files in `assets/menus`. The title screen loads:
+
+- `mainplay.menu` from the Play button.
+- `mainedit.menu` from the Editor button.
+- `mainsetting.menu` from the Settings button.
+
+The Play menu selects a save slot. Slots with ending unlocks open the generated
+`saveplay` menu, offering Continue Adventure, World Select, and Hardmode according
+to that slot's progress. Both campaign and Hardmode snapshots and all unlocks live
+in the slot's `saves/save_slot_N.json`; deleting the slot removes all of them.
+Existing global unlocks and the old Hardmode run migrate once into the active slot,
+with the original files archived using the `.migrated` suffix.
+
+All script menus use `assets/Sheets/DF_Menus-uhd.png` and its `.plist` for window panels,
+buttons, toggle checkboxes, and back/close icons. Toggle icons follow the setting value
+automatically; no additional script commands are needed. The selected button is brighter
+for keyboard navigation. If the atlas is unavailable, menus use plain panels and buttons.
+
+Menu switches are immediate, with no fade animation. Script sources and level lists
+are cached for the menu session, and script menus reuse the frontend's loaded atlas.
+Online lists and moderator permissions load in the background. Use the generated
+level browser's Refresh button to fetch updates; uploads, deletions, votes, ratings,
+and editor changes invalidate the relevant cached list automatically. Returning to
+the title screen ends the session, so reopening menus also reloads script changes.
+
+Commands:
+
+- `title "Text"` sets the menu title.
+- `scale 0.8` scales the whole menu, including text, buttons, icons, and spacing (default `1`, range `0.25` to `4`).
+- `menu_align right bottom` anchors the scaled panel in the screen (default `center center`).
+- `align left top` aligns subsequent text/button objects within the content area on both axes (default `center center`).
+- `text_align left center` aligns labels within subsequent objects on both axes (default `center center`).
+- `text "Text"` draws static text. Variables use `${name}`.
+- `button "Label" menu othermenu` opens another `.menu`.
+- `button "Updater" menu settingsupdater` opens the generated updater screen with live status, versions, release notes, progress, and the check/install action. It uses the existing platform updater and disables its action while busy or unavailable.
+- `button "Label" campaign` opens the save selector.
+- `button "Label" levels` opens the Slim level browser.
+- `button "Label" custom` opens the Slim level browser.
+- `button "Label" menu editlevels` opens the editor level browser menu.
+- `button "Label" menu locallevels` opens the generated local-level pages.
+- `button "Label" menu onlinelevels` opens the generated online-level pages.
+- `button "Label" create_level` opens the local level editor for a new level.
+- `button "Label" level_page local:next` goes to the next local-level page.
+- `button "Label" level_page online:prev` goes to the previous online-level page.
+- `button "Label" level_filter online:hard` filters online levels by difficulty.
+- `button "Label" saved` starts the active save.
+- `button "Label" save_slot 1` selects slot 1 and starts it; empty slots begin a new game.
+- `button "Label" select_save 1` selects slot 1 without starting the game.
+- `button "Label" delete_save 1` deletes slot 1.
+- `button "Label" start assets/levels/level_001.txt` starts a specific level path.
+- `button "Label" toggle menu_music_enabled` toggles a boolean setting.
+- `button "Label" inc music_volume` or `dec music_volume` changes a numeric setting.
+- `slider "Music Volume" music_volume` and `slider "Sound Effects Volume" sfx_volume` create volume sliders with percentage labels. Click/tap or drag to adjust; Up/Down selects a control and Left/Right adjusts it with the keyboard or controller D-pad. Home/End sets the selected slider to 0%/100%. Changes apply immediately and are saved.
+- `button "Label" get var=/api/path` performs a GET request and stores the response in `${var}`.
+- `button "Label" back` returns to the title screen.
+- Every scripted/generated menu has a fixed top-left Exit button that returns directly to the title screen. It is disabled while that menu has an active online-level, account-role, or scripted GET request, and automatically enables when the requests finish. Escape, controller Back, and `back` commands respect the same restriction. Navigate Up from the first control to focus Exit, then press Enter/controller Accept.
+- `button "Label" quit` closes the game.
+- `if var skip 2` skips the next 2 menu lines when `var` is boolean false.
+- `if var false skip 2` is the same, written more explicitly.
+
+Supported built-in variables include `${username}`, `${api}`, `${active_save_slot}`, `${save_slot_1_status}`, `${save_slot_2_status}`, `${save_slot_3_status}`, `${save_slot_1_exists}`, `${save_slot_2_exists}`, and `${save_slot_3_exists}`. Data fetched with `get` is saved as a variable for the current menu session.
+
+The Account menu uses `account_edit email`, `account_edit password`, and
+`account_login` for the built-in sign-in form. `${account_email}` and
+`${account_password}` show field labels (passwords are always masked).
+`account_signed_in`, `account_signed_out`, and `account_needs_repair` control
+the appropriate actions with `if`. Credentials remain outside menu variables
+and saved menu sessions. `account_logout`, `account_repair`, and `account_open`
+use the existing session and browser account tools.
+
+## Scrolling, scale, and alignment
+
+Menus automatically scroll vertically when their content exceeds the visible area.
+Use the mouse wheel, drag the scrollbar, or swipe up/down on a touchscreen. Arrow
+keys select buttons and scroll them into view. Page Up/Down move through buttons
+by a page; Home/End select the first/last button. In menus containing only text,
+these keys scroll the content instead. The title stays fixed while content scrolls.
+Buttons clipped outside the content area cannot be clicked.
+
+Horizontal alignment accepts `left`, `center`, and `right`. Vertical alignment
+accepts `top`, `center`, and `bottom`; `left`/`right` are also accepted as aliases
+for `top`/`bottom`. Alignment directives affect subsequent objects, so place an
+`align` line before an individual object to give it its own alignment.
+
+Objects with the same vertical alignment form a stack in script order. Top stacks
+start at the top, bottom stacks end at the bottom, and center stacks occupy the
+middle space between them. Stacks avoid overlapping; overflowing stacks become
+one scrollable area. Text and buttons participate in the same layout.
+
+`menu_align` positions the entire scaled panel. Scales above `1` enlarge its
+contents while keeping the panel inside the screen and making overflow scrollable.
+`text_align` controls a label inside its object, independently of the object's
+position. Existing scripts default to scale `1` and centered alignment.
+
+```menu
+title "Layout Example"
+scale 0.8
+menu_align center center
+
+align left top
+text "This text sits at the top left."
+
+align center center
+text_align left center
+button "Display Settings" menu settingsdisplay
+button "Audio Settings" menu settingsaudio
+
+align right bottom
+text_align center center
+button "Back" back
+```
+
+Save slot status values:
+
+- `ACTIVE`: the slot is currently selected.
+- `READY`: the slot has save data.
+- `EMPTY`: the slot has no save data.
+
+Generated local and online level menus:
+
+- `editlevels.menu` is the editor-side menu that links to local and online browsing.
+- `locallevels` and `onlinelevels` are generated by the engine.
+- The generated local-level page includes a Create button that opens the editor.
+- Selecting a generated level opens a dedicated detail page before launching it.
+- Each generated page shows up to 10 levels.
+- Online pages request only that page's metadata from the server using `page`, `page_size=10`, and `filter`. Changing the page or filter requests the new page; late responses for older selections are ignored. Update the game and server together to enable this API.
+- Page controls are `level_page local:prev`, `level_page local:next`, `level_page online:prev`, and `level_page online:next`.
+- Filter controls are `level_filter local:all`, `level_filter local:unrated`, `level_filter online:all`, `level_filter online:easy`, `level_filter online:medium`, `level_filter online:hard`, and `level_filter online:unrated`.
+- Difficulty filters mean easy `1-3`, medium `4-6`, hard `7-9`, and unrated `0` or missing difficulty.
+- Local levels usually have no server difficulty, so they appear under `all` and `unrated`.
+
+Level detail pages:
+
+- Local level details show name, difficulty, verification state, and actions for Play, Edit, Rename, Resize, Upload, Delete, and Back.
+- Rename keeps the level in the same folder and adds a numeric suffix if the name is already taken.
+- Resize accepts 5–400 tiles per dimension, keeps the top-left area, and fills new space with empty tiles. Cropping tiles or objects at the right/bottom edges requires confirmation. Saving a resize clears verification.
+- Online level details show name, difficulty, and actions for Play, Update Download, and Back.
+- Moderator accounts also see Set Difficulty on online level details. It opens a popup with ratings `1`–`9`, Unrated (clear the rating), Apply, and Cancel. Mouse/touch selects an option; arrow keys or the controller D-pad navigate, Enter/Accept selects, and Escape/Back cancels. Number keys select ratings directly. Apply saves the selected rating; Cancel leaves the previous rating unchanged.
+- `Update Download` refreshes the downloaded/cached copy of that online level from the server.
+- Uploading a local level requires verification.
+
+Level verification:
+
+- A local level becomes verified when it is beaten.
+- Editing and saving a local level clears verification.
+- Verification is stored in `level_verification/` under the app save folder, separate from level files. Existing `<level file>.verify.json` records migrate there when accessed; records use stable path-based filenames so same-named levels remain separate.
+- The upload command refuses unverified local levels.
+
+## Get Command
+
+`get` downloads text from a URL and stores the response in a menu variable.
+
+Button `get` requests run in the background while the menu remains usable. A loading
+indicator appears until the response is applied on the main thread. Repeated requests
+for the same variable are ignored while one is pending. Leaving the menu session
+discards its results safely. Top-level `get` waits with a loading screen so subsequent
+`set` and `if` lines can use the downloaded value in script order.
+
+There are two ways to use it:
+
+```menu
+get variable_name /api/path
+button "Load Data" get variable_name=/api/path
+```
+
+The top-level `get` runs when the menu is loaded. The button form runs only when the button is pressed.
+
+The variable name goes on the left side. After the request finishes, the response can be shown with `${variable_name}`:
+
+```menu
+get server_status /api/status
+text "Server: ${server_status}"
+```
+
+Button example:
+
+```menu
+button "Refresh Status" get server_status=/api/status
+text "Server: ${server_status}"
+```
+
+Relative URLs use the configured game server URL. If the configured game server is `https://example.com`, then `/api/status` becomes `https://example.com/api/status`.
+
+Absolute URLs are used as-is:
+
+```menu
+get news https://example.com/news.txt
+```
+
+Variables can be used inside the request path:
+
+```menu
+get player_info /api/player/${username}
+text "${player_info}"
+```
+
+If the game server URL is empty, the HTTP request fails, or curl/HTTP support is unavailable in the build, the variable is saved as an empty string. The raw response body is stored; JSON is not parsed automatically.
+
+Use `if` after `get` to hide lines when a response is empty or false-like:
+
+```menu
+get show_bonus /api/menus/show-bonus
+if show_bonus skip 1
+button "Bonus" menu bonus
+```
+
+## Default API
+
+The default game API is configured in `assets/config.json`:
+
+```text
+http://critique-unsmooth.tun.ply.gg:49642/
+```
+
+Slim menu `get` uses this value when the request path is relative. For example:
+
+```menu
+get health /health
+```
+
+requests:
+
+```text
+http://critique-unsmooth.tun.ply.gg:49642/health
+```
+
+Useful default GET endpoints for menus:
+
+- `/health` returns server health, for example `{"status":"ok","api_version":1}`.
+- `/api.json` returns the service descriptor and API version.
+- `/levels.json?shallow=true` returns an object of level IDs mapped to `true`.
+- `/levels.json?metadata=true` returns shared level metadata.
+- `/levels/<id>.json` returns one full shared level object.
+- `/levels/<id>/data.json` returns one shared level's raw level data as a JSON string.
+- `/update-manifest.json` returns updater metadata when the server operator has published it.
+
+Examples:
+
+```menu
+get api_info /api.json
+text "${api_info}"
+
+get level_ids /levels.json?shallow=true
+text "${level_ids}"
+
+get first_level /levels/example-level/data.json
+text "${first_level}"
+```
+
+Account and upload endpoints exist on the same API, but slim-menu `get` should not be used for them because they need POST, PUT, DELETE, JSON bodies, or auth headers:
+
+- `/api/auth/register`
+- `/api/auth/login`
+- `/api/auth/lookup`
+- `/api/auth/update`
+- `/api/auth/logout`
+- `PUT /levels/<id>.json`
+- `DELETE /levels/<id>.json`
+- `PUT /levels/<id>/difficulty`
+
+The generated online level detail page uses `/api/auth/lookup` to decide whether the signed-in account is a moderator. Set Difficulty is hidden unless the lookup response contains a moderator/admin signal such as `mod`, `moderator`, `isMod`, `isModerator`, `admin`, `isAdmin`, a `role` of `mod`, `moderator`, `admin`, or `owner`, or the same values inside `roles`, `claims`, or `customClaims`.
+
+When a moderator presses Rate, the client sends:
+
+```json
+{ "difficulty": 1 }
+```
+
+to `PUT /levels/<id>/difficulty` with the account bearer token. Values are `0-9`; `0` clears the rating.
+
+Example:
+
+```menu
+set show_extra false
+if show_extra skip 1
+button "Extra Button" back
+```
+
+### Boss Barrier tile
+
+The local level editor's Tiles palette includes **Boss Barrier (98)**. Place it
+like a normal tile to block boss movement. Players can walk and jump through it;
+it is invisible during normal gameplay and visible in the editor and debug
+overlays. Tile ID 98 is reserved for this behavior and needs no texture or
+block-definition entry.
+
+### Clipboard buttons
+
+`button "Version: ${about_version}" copy "${about_version}"` displays a value
+and copies the expanded argument to the system clipboard when activated.
+`${clipboard_status}` shows a confirmation or failure message. This command is
+available in both editions and supports mouse, touch, and keyboard navigation.
+
+Menu buttons automatically ease into a small lift on hover or keyboard/controller
+focus, and compress while pressed with a mouse or touch. Activation also gives
+buttons a short press response. Animations affect drawing only, so button hitboxes
+and scrolling stay stable.
+
+### Level parameter objects (object values format 1)
+
+The editor's Objects palette includes eight setters. Placing one uses its default
+value. Select **Configure Object** (F3), then tap the placed setter on the active
+layer to enter its value and layer. Cancel and invalid input leave the previous
+object intact. Delete mode removes objects on the active layer.
+These invisible, non-solid 32-pixel triggers activate when the player enters them;
+leaving and re-entering activates them again. Overlapping setters apply in file
+order. Death/restart reloads the level's original settings.
+
+| Object ID | Parameter | Values |
+| --- | --- | --- |
+| 1100 | Level ID | 0 to 2147483647; 0 uses the filename ID |
+| 1101 | Theme override | 0 to 7; 0 uses the world's theme |
+| 1102 | Horizontal wrapping | 0 off, 1 on |
+| 1103 | Vertical wrapping | 0 off, 1 on |
+| 1104 | World | 0 to 7; 0 uses the path-derived world |
+| 1105 | Area | 0 to 3; 0 uses the path-derived area |
+| 1106 | Time period | 0 to 4; 0 uses the path-derived period |
+| 1107 | Bouncy tile 12 | 0 off, 1 on |
+
+Changing world/area/time updates the active level configuration, music, title,
+and time-period tint. Theme changes update the background; wrap changes update
+collision and rendering. These are the existing numeric level settings, not new
+physics controls. Level dimensions, names, and the file format version are not
+runtime parameters.
+
+The level remains `DFLVL4`. Its `OBJ` section keeps the original ID/X/Y triples,
+followed by an optional versioned extension:
+
+```text
+OBJ 2
+1106 128 256
+1102 192 256
+OBJPARAM1 2
+0 3
+1 1
+```
+
+Each extension row contains the zero-based index in `OBJ`, then its integer
+value. This example sets time period 3 and enables horizontal wrapping. Readers
+must reject unsupported `OBJPARAM` versions, duplicate/out-of-range indices,
+truncated values, and values outside a known setter's range. Unknown object IDs
+and their numeric values are retained by the editor for future extensions.
+
+Older clients can enumerate the reserved IDs using their existing `OBJ` reader;
+they ignore the trailing value extension and do not execute setters. This does
+not add a warning to already-released clients. Saving with an older editor can
+strip the extension; a setter without its value is inert in newer clients rather
+than silently applying zero. Save games preserve setter values and changed level
+settings.
+
+### Editor controls, saves, and object layers
+
+The editor sidebar, palette, pause menu, and configuration dialogs use the menu
+atlas. Available object sprites are shown on the canvas and in the palette.
+
+- **Esc / controller Back** opens the pause menu: Resume, Save & Resume,
+  Save & Exit, and Exit. Save & Resume keeps the editor open; Save & Exit returns
+  to the browser. The old bottom Save/Exit controls are removed. **S** saves while
+  continuing to edit.
+- Changes autosave every **15 seconds** to the same level file, using atomic file
+  replacement. Exit flushes pending changes. Unchanged levels are not repeatedly
+  written. Save failures stay visible and can be retried from the pause menu.
+- **Configure Object / F3** selects the configuration tool. Tap an existing object
+  on the active layer. Setters expose their numeric value; every object exposes
+  its layer. Both prompts must be accepted before any change is committed.
+  **Level Config / F2** continues to configure the level itself.
+- Layer **-/+** controls or **[ / ]** select layers **0-9**. Each layer can contain
+  an object in the same grid cell. Other layers remain visible but dimmed; only
+  the active layer is edited or deleted. Higher layers draw in front of lower
+  layers during gameplay, with file order preserved within a layer. Layers do not
+  change collision or trigger activation.
+- Placing the same object again preserves it and its configured values. Placing
+  a different object overrides the cell on the active layer. Removing an object
+  requires **Delete** mode (button or Delete key); a right click alone cannot
+  remove it. **C** clears tiles and active-layer objects only while Delete is on.
+
+Nonzero object layers are saved after the legacy triples using an optional
+extension (which may appear before or after `OBJPARAM1`):
+
+```text
+OBJLAYER1 2
+0 1
+3 4
+```
+
+Each row is a zero-based object index followed by its layer, 0-9. Unlisted objects
+use layer 0. Unsupported versions, repeated sections, duplicate/out-of-range
+indices, invalid layer values, and incomplete rows are rejected. Extension
+loading is atomic: malformed layer data cannot partially apply parameter values.
+Older readers still enumerate all ID/X/Y triples but ignore the new layers;
+resaving in an older editor can strip them. Object values and layers survive
+resizing and save-game snapshots.
+
+### Level upgrades
+
+Opening a chunk-encoded legacy level or a `DFLVL2`/`DFLVL3` level in the editor
+schedules an upgrade to `DFLVL4` on its next save, autosave, or exit. The original
+file is copied to `<level-path>.pre-upgrade.bak` before any replacement. Existing
+backups are never overwritten: additional backups get numbered suffixes. If the
+backup cannot be created, the upgrade does not replace the original.
+
+A shared current-format writer preserves the decoded tile IDs and object
+positions, along with level settings, parameter values, and object layers.
+Legacy wrap-control objects retain their behavior. Repeated upgrades are stable;
+current-format files do not create migration backups. Missing parameter values
+stay missing rather than acquiring guessed values. Playing bundled or downloaded
+levels only decodes them in memory and never rewrites their source files.
+
+Truncated modern tile/object data, invalid known object extensions, unknown
+extension sections, and unsupported modern formats are rejected instead of being
+silently resaved with lost content. Legacy encoding is tracked separately from
+its numeric version so a legacy file numbered 4 still receives the upgrade.
+
+### Brushes and in-game controls
+
+The editor's Brush -/+ controls select square brushes of 1x1, 3x3, 5x5, 7x7, or
+9x9 cells. Comma/period also decrease/increase the size. A canvas hover outline
+previews the affected cells. Brushes paint and erase tiles or objects, clipping
+at level edges. Object brushes respect the active layer and Delete mode;
+Configure Object always targets a single object.
+
+The gameplay pause menu has the main-menu gear button inside the pause window's
+top-right corner. It opens the
+existing settings menu and returns to the paused game. Keyboard/controller Up
+focuses Settings, and Down returns to Resume. Audio, display, controls, and debug
+settings apply without restarting the level. Time spent in settings does not
+advance gameplay, score payouts, or a paused death animation.
+
+On death, the player uses the configured Death sprite, rises briefly, then falls
+past the bottom of the screen before respawning. The camera stays fixed during
+the flight, and the sprite ignores collisions and wrapping. Life deduction and
+Hardmode restart rules remain in effect. Pausing also pauses the death flight.
+
+## Fixed edges and center clipping
+
+- `snap left top`, `snap center top`, `snap right bottom`, etc. pin subsequent
+  objects to a content edge inside the screen's panel margins. Top and bottom
+  controls form fixed stacks. `snap left center` / `snap right center` create
+  fixed side stacks. These controls remain visible while the center scrolls.
+- `center` (or `snap center center`) returns subsequent objects to the centered,
+  scrolling content. `align` still aligns normal content; use `center` to leave
+  a fixed edge explicitly.
+- `cut TOP BOTTOM` reserves additional logical pixels above/below each column
+  viewport. It clips drawing and pointer input, without clipping fixed controls.
+  Values are nonnegative; the viewport always retains at least one pixel.
+
+```menu
+title "Example"
+cut 8 8
+snap center top
+text "Always visible header"
+center
+button "Scrollable action" menu settingsgeneral
+snap right center
+button "Audio" menu settingsaudio
+snap left bottom
+button "Back" back
+```
+
+Shipped menus use clipped center content and fixed Back footers; Controls has a
+fixed instruction header, Audio has fixed toggles, and Save Selector docks Save
+Settings at the right. Keyboard/controller focus and mouse/touch hit testing use
+these same bounds. Sliders use dedicated beveled track, fill, and thumb textures
+from `assets/UI`, including keyboard focus highlighting.
+
+Achievement entries open Requirement Progress, showing saved requirement counts.
+Campaign coin progress includes a breakdown for each level with coin sources;
+coin boxes count as one location, and shield boxes/dropped coins do not count.
+Progress remains shared across save slots. Basic event achievements show 0/1;
+world button achievements show separate requirements for areas 1 and 2.
+
+The default controls are Slide on Space and Jump on W or Up Arrow. `bind slide`
+and `${slide}` are the MenuScript names; `move_down` remains a compatibility alias.
+Legacy default S/Space and S/W pairs migrate to Space/W. Other custom bindings
+are preserved. Save data writes the explicit `slide` / `key_slide` fields so a
+later reload does not mistake a custom choice for legacy defaults.
+
+## Templates and dynamic data
+
+All menu definitions live in `assets/menus/*.menu`. Static menus and generated
+menus use the same loader; C++ supplies values and row collections rather than
+creating buttons or navigation entries.
+
+- `when variable` / `otherwise` / `endwhen` conditionally include a block.
+  `otherwise` is optional. Blocks may nest; the existing `if ... skip` syntax
+  still works for older scripts.
+- `foreach collection` / `endfor` repeats its block for each data row.
+  `${row.field}` reads a row value; `when row.flag` tests a row field.
+- Titles and button arguments support `${variables}`, just like labels.
+- `text "${description}" wrap` wraps paragraphs to the menu width.
+- A button's optional fifth token supplies an icon path.
+- `text "${row.text}" literal_log` displays literal log messages.
+
+```menu
+title "Achievements"
+foreach achievements
+button "[${row.state}] ${row.title}" menu "achievement:${row.id}"
+endfor
+snap left bottom
+button "Back" back
+```
+
+Collections supplied by the game include `achievements`, `requirements`,
+`log_lines`, `mods`, `worlds`, `practice_levels`, `levels`, `character_presets`,
+`imported_characters`, `hair_shapes`, and `character_parts`. They supply game data;
+labels, visibility, menu destinations, and commands are defined by the templates.
+Repeated values are substituted into already-tokenized fields, so names and
+server/log text cannot inject new MenuScript commands.
+
+`title.menu`, `pause.menu`, `quitconfirm.menu`, and `difficulty.menu` describe
+animated views. Their existing renderers retain their animation, input handling,
+and sprite styling. These files use:
+
+```menu
+title "PAUSED"
+control resume "RESUME" resume "" Continuebtn
+control settings "S" menu mainsetting settingbtn
+set button_scale 0.75
+```
+
+`control ID LABEL ACTION [DESTINATION] [SPRITE]` defines an animated control.
+`set KEY VALUE` supplies presentation values consumed by that view, including
+button sizes, spacing, panel dimensions, and explanatory text. Control IDs bind
+to the existing game actions; edit labels, destinations, sprites, and documented
+measurements without rebuilding C++. Platform-native file pickers and operating
+system permission dialogs remain platform UI.
+
+The editor uses animated view definitions in `editor.menu`, `editornew.menu`,
+`editorconfig.menu`, `editorinput.menu`, and `editorresize.menu`. These supply
+its toolbar and pause controls, prompt titles, field labels, and panel sizes.
+`networkbusy.menu` supplies connection/cancellation overlay text. The editor's
+painting tools and numeric/text input widgets remain engine code.
+
+## Independent snap areas
+
+Each horizontal/vertical anchor pair has its own stack: top-left, top-center,
+top-right, middle-left, middle-right, bottom-left, bottom-center, and bottom-right.
+Adding controls to one fixed stack does not reposition another fixed stack.
+Stacks grow in script order and bottom stacks end at their bottom anchor.
+Each horizontal column clips its middle content against only its own top and
+bottom stacks. Side stacks anchor against their own column bounds. Headers or
+footers in a different column cannot shift or shorten the center list.
+
+Both `snap left bottom` and `snap bottom left` select bottom-left. Likewise,
+`snap right top` and `snap top right` select top-right. `center` and
+`snap center center` return to the normal scrolling center.
+
+Achievement rows expose `${row.requirements}` as a readable summary including
+saved progress. For example:
+
+```menu
+foreach achievements
+button "${row.title}: ${row.requirements}" menu "achievement:${row.id}"
+endfor
+```
+
+Basic event requirements show 0/1 or 1/1. World button summaries include both
+areas. Campaign coins show the overall collected/required location count; the
+requirement submenu retains the full per-level breakdown.
+
+
+## Clipping by horizontal snap zone
+
+When side snap controls are present, the content bounds split into left, center,
+and right columns. Controls are sized to fit their column. A bottom-left stack
+only cuts the left column; a bottom-right stack only cuts the right column.
+The center list stays visible down to its own bottom-center controls, regardless
+of how tall either side footer becomes. Menus with only center controls retain
+full-width content.
+
+Each middle viewport applies its own top/bottom cuts, drawing clip, pointer hit
+bounds, and scroll limit. The scrollbar stays inside the center column. Explicit
+`cut` padding still applies to each column. The Online Levels menu now uses the
+same side footer arrangement as Local Levels.
+
+## Canvas presentation
+
+The canvas stretches independently along X and Y to fill the complete target
+resolution. Aspect-ratio letterboxing and rounding borders are removed, including
+from difficulty/configuration dialogs and the network loading snapshot. Mouse
+and touch positions use the same transformation. UI scaling changes controls
+inside the canvas rather than shrinking the final canvas into an inset rectangle.
+
+
+Achievement rows also expose `row.unlocked` as `true` or `false`. Use it directly
+in a condition rather than comparing the display-oriented `row.state` string:
+
+```menu
+foreach achievements
+when row.unlocked
+button "${row.title}" copy "${row.title}"
+otherwise
+button "${row.requirements}" copy "${row.requirements}"
+endwhen
+endfor
+```
+
+The value follows saved global achievement progress, including after restarting.
+`row.state` remains available for menus that display `UNLOCKED` / `LOCKED` labels.
+
+The editor pause menu follows file order. `control exit "SAVE & PLAY" save_play`
+saves the level and starts it on success; failed saves keep the editor open.
+The same path works for new and existing levels. Place it after Save & Resume.
+
+Brush sizes now paint exactly N by N cells, including 2, 4, 6, and 8. Even sizes
+extend one extra cell right/down, with preview and painting kept identical.
+Comma/period step through every size; clipping at the map edge remains active.
+
+
+Platform variables are available in menu text and conditions:
+
+- `${platform}`: lowercase SDL platform name (`ios`, `android`, `windows`, `linux`, etc.).
+- `platform_ios`: true only for iOS; false on desktop, Android, tvOS and Mac Catalyst.
+
+For example, omit a control on iOS:
+
+```text
+when platform_ios
+otherwise
+button "Updater" menu settingsupdater
+endwhen
+```
