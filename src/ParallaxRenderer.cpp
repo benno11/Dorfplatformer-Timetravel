@@ -91,18 +91,21 @@ void RenderParallaxBackground(
         {parallaxLayer2, 255, parallaxLayerScales[2], 0.78f, 0.78f}
     };
 
+    // Atlas layers may have different dimensions/rotation. Fit one shared
+    // canvas, then scale each layer into it instead of fitting each separately.
+    const Frame* canvas = parallaxLayer1 ? parallaxLayer1 : (parallaxLayer0 ? parallaxLayer0 : parallaxLayer2);
+    const float canvasW = static_cast<float>(canvas->rotated ? canvas->rect.h : canvas->rect.w);
+    const float canvasH = static_cast<float>(canvas->rotated ? canvas->rect.w : canvas->rect.h);
+    if (canvasW <= 0 || canvasH <= 0) return;
+    const float fitScale = std::min(worldViewW * kParallaxBaseWidthFactor / canvasW,
+                                    worldViewH * kParallaxBaseHeightFactor / canvasH);
     SDL_SetTextureBlendMode(active->texture, SDL_BLENDMODE_BLEND);
     for (const auto& layer : layers) {
         const Frame* f = layer.frame;
         if (!f) continue;
-        const int srcW = f->rotated ? f->rect.h : f->rect.w;
-        const int srcH = f->rotated ? f->rect.w : f->rect.h;
-        const float targetW = std::max(1.0f, (float)worldViewW * kParallaxBaseWidthFactor);
-        const float targetH = std::max(1.0f, (float)worldViewH * kParallaxBaseHeightFactor);
-        const float fitScale = std::min(targetW / (float)srcW, targetH / (float)srcH);
         const float parallaxScale = std::max(0.01f, fitScale * layer.scale);
-        const int fw = std::max(1, (int)std::lround((float)srcW * parallaxScale));
-        const int fh = std::max(1, (int)std::lround((float)srcH * parallaxScale));
+        const int fw = std::max(1, (int)std::lround(canvasW * parallaxScale));
+        const int fh = std::max(1, (int)std::lround(canvasH * parallaxScale));
         if (fw <= 0 || fh <= 0) continue;
 
         const float oxRaw = camX * layer.horizontalFactor;

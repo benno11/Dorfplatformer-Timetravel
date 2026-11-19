@@ -835,6 +835,14 @@ int RunGameApp(int argc, char** argv) {
     networkRuntime.cancellingLabel = networkMenuScript.text("cancelling");
     networkRuntime.cancelHint = networkMenuScript.text("cancel_hint");
     setStartupProgress(0.30f);
+#if PLATFORMER_IOS
+    // SDL's high-density window size is in physical display pixels.
+    getWindowSizeInPixelsCompat(win, kBaseScreenW, kBaseScreenH);
+    kBaseScreenW = std::max(1, kBaseScreenW);
+    kBaseScreenH = std::max(1, kBaseScreenH);
+    kGameplayViewW = std::max(1, (int)std::lround(kBaseScreenW / kGameplayZoom));
+    kGameplayViewH = std::max(1, (int)std::lround(kBaseScreenH / kGameplayZoom));
+#endif
     SDL_Texture* gameTarget = SDL_CreateTexture(
         ren,
         SDL_PIXELFORMAT_RGBA8888,
@@ -2685,9 +2693,9 @@ int RunGameApp(int argc, char** argv) {
 
         float aspect = (float)winW / (float)winH;
         aspect = std::clamp(aspect, 4.0f / 3.0f, 32.0f / 9.0f);
-        const int newBaseH = 1080;
-        int newBaseW = std::max(1280, (int)std::lround((float)newBaseH * aspect));
-        if ((newBaseW & 1) != 0) ++newBaseW;
+        const int newBaseH = PLATFORMER_IOS ? winH : 1080;
+        int newBaseW = PLATFORMER_IOS ? winW : std::max(1280, (int)std::lround((float)newBaseH * aspect));
+        if (!PLATFORMER_IOS && (newBaseW & 1) != 0) ++newBaseW;
         const int newGameplayW = std::max(1, (int)std::lround((float)newBaseW / kGameplayZoom));
         const int newGameplayH = std::max(1, (int)std::lround((float)newBaseH / kGameplayZoom));
 
