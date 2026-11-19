@@ -1847,17 +1847,13 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
                      r.y + SlimMenuLayout::offset(r.h - textScale * 10, item.labelVertical), textScale, label);
             continue;
         }
-        r = runtime.buttonAnimations.drawRect((int)index, r, isSelected, ctx.win,
+        if (item.type != MenuItem::Type::Slider) r = runtime.buttonAnimations.drawRect((int)index, r, isSelected, ctx.win,
             ctx.baseScreenW, ctx.baseScreenH, layout.scale, !runtime.difficultyPopupOpen &&
             !(item.command == "updater" && !runtime.updater.canAct()));
         if (item.type == MenuItem::Type::Slider) {
             const int* volume = audioSliderValue(item, ctx);
             const int value = volume ? std::clamp(*volume, 0, 128) : 0;
             const std::string sliderLabel = label + ": " + std::to_string((int)std::lround(value * 100.0f / 128.0f)) + "%";
-            if (!drawMenuSprite(runtime, ctx.ren, "button_genreaic", r, 6.0f)) {
-                SDL_SetRenderDrawColor(ctx.ren, 45, 65, 84, 255);
-                SDL_RenderFillRect(ctx.ren, &r);
-            }
             const int textScale = MeasureTextWidth(2, sliderLabel) <= r.w - 16 ? 2 : 1;
             DrawGameText(ctx.ren, r.x + (r.w - MeasureTextWidth(textScale, sliderLabel)) / 2, r.y + 8, textScale, sliderLabel);
             const SDL_Rect track = audioSliderTrack(r);
@@ -1867,7 +1863,9 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
             const SDL_Rect fill{track.x, track.y, filled, track.h};
             SDL_SetRenderDrawColor(ctx.ren, 110, 200, 245, 255);
             if (filled > 0 && !drawSliderTexture(ctx.ren, runtime.sliderTextures[1], fill)) SDL_RenderFillRect(ctx.ren, &fill);
-            const SDL_Rect thumb{track.x + filled - 10, track.y - 8, 20, 28};
+            const SDL_Rect baseThumb{track.x + filled - 10, track.y - 8, 20, 28};
+            const SDL_Rect thumb = runtime.buttonAnimations.drawRect((int)index, baseThumb, isSelected, ctx.win,
+                ctx.baseScreenW, ctx.baseScreenH, layout.scale, !runtime.difficultyPopupOpen);
             SDL_SetRenderDrawColor(ctx.ren, isSelected ? 255 : 210, isSelected ? 255 : 230, 255, 255);
             if (runtime.sliderTextures[2]) SDL_SetTextureColorMod(runtime.sliderTextures[2], isSelected ? 255 : 210, isSelected ? 255 : 210, isSelected ? 255 : 210);
             if (!drawSliderTexture(ctx.ren, runtime.sliderTextures[2], thumb)) SDL_RenderFillRect(ctx.ren, &thumb);
