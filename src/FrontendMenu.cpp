@@ -611,6 +611,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx, bool settingsOnly) {
         }
         if (ctx.pollUpdaterAutoRelaunch) ctx.pollUpdaterAutoRelaunch();
         if (!running) break;
+        if (PLATFORMER_IOS && ctx.updateDynamicResolution) ctx.updateDynamicResolution();
         SDL_Texture* gameTarget = ctx.gameTargetRef && *ctx.gameTargetRef ? *ctx.gameTargetRef : ctx.gameTarget;
         if (!gameTarget) { SDL_Delay(1); continue; }
         SetTextScaleMultiplier(UiScale::multiplier(uiScalePercent));
@@ -712,6 +713,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx, bool settingsOnly) {
             const Frame* bgBack = getBgFrame("far");
             const Frame* bgMiddle = getBgFrame("middle");
             if (!bgMiddle) bgMiddle = getBgFrame("mid");
+            const Frame* bgFront = getBgFrame("front");
 
             struct MenuParallaxLayer {
                 const Frame* frame;
@@ -723,19 +725,21 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx, bool settingsOnly) {
             MenuParallaxLayer layers[] = {
                 {bgBack, 0.015f, 0.0f, 255.0f, 1.0f},
                 {bgMiddle, 0.045f, 10.0f, 255.0f, 1.0f},
-                {bgMiddle, 0.075f, 20.0f, 255.0f, 1.0f},
+                {bgFront ? bgFront : bgMiddle, 0.075f, 20.0f, 255.0f, 1.0f},
             };
             const Uint64 ticks = SDL_GetTicks();
-            const float bgScale = std::clamp(menuCanvasScale() * mainMenuScale() * 0.80f, 0.5f, 3.0f);
+            const Frame* canvas = bgMiddle ? bgMiddle : (bgBack ? bgBack : bgFront);
+            const int canvasW = canvas ? (canvas->rotated ? canvas->rect.h : canvas->rect.w) : 1;
+            const int canvasH = canvas ? (canvas->rotated ? canvas->rect.w : canvas->rect.h) : 1;
+            const float bgScale = 0.80f * std::min(ctx.baseScreenW * 0.75f / std::max(1, canvasW),
+                                                 ctx.baseScreenH * 0.75f / std::max(1, canvasH));
             const float canvasScale = menuCanvasScale();
             const float canvasBottomY = menuCanvasOriginY() + kMenuAuthorH * canvasScale;
             for (const auto& layer : layers) {
                 if (!layer.frame) continue;
-                const int srcW = layer.frame->rotated ? layer.frame->rect.h : layer.frame->rect.w;
-                const int srcH = layer.frame->rotated ? layer.frame->rect.w : layer.frame->rect.h;
-                const float layerScale = std::clamp(bgScale * layer.scaleMul, 0.5f, 3.0f);
-                int fw = std::max(1, (int)std::lround((float)srcW * layerScale));
-                int fh = std::max(1, (int)std::lround((float)srcH * layerScale));
+                const float layerScale = std::max(0.01f, bgScale * layer.scaleMul);
+                int fw = std::max(1, (int)std::lround((float)canvasW * layerScale));
+                int fh = std::max(1, (int)std::lround((float)canvasH * layerScale));
                 float ox = std::fmod((float)ticks * layer.speed * layerScale, (float)fw);
                 if (ox < 0.0f) ox += (float)fw;
                 int y = (int)std::lround(canvasBottomY - (float)fh + layer.yBias * canvasScale);
