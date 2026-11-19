@@ -41,3 +41,21 @@ The app remains unsigned unless CI signing is configured; SideStore re-signs it.
 Run local source tests with:
 
     python3 -m unittest discover -s comp -p test_sidestore.py
+
+### Update channels
+
+- Prerelease: https://benno11.github.io/Dorfplatformer-Timetravel/prerelease/source.json
+- Nightly: https://benno11.github.io/Dorfplatformer-Timetravel/nightly/source.json
+
+The original `/source.json` remains a nightly alias for existing subscribers.
+The landing page offers both channels. They share the actual IPA bundle identifier;
+subscribe to your preferred channel to avoid competing updates for the same app.
+
+Nightly selects the newest supported successful main-branch iOS device build.
+Prerelease pins the newest successful device build available at Tuesday 00:00 UTC,
+starting from November 10, 2026. Its choice is stored in the immutable weekly
+`sidestore-prerelease-YYYY-MM-DD` release. When initializing a week with no supported
+build before its cutoff, the oldest available supported build initializes the pin.
+Builds before 417 are excluded because they lacked working iOS media decoders.
+These iOS pins are independent of desktop/Android prerelease selections, which
+may not include an installable iOS binary.
