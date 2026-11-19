@@ -59,3 +59,7 @@ build before its cutoff, the oldest available supported build initializes the pi
 Builds before 417 are excluded because they lacked working iOS media decoders.
 These iOS pins are independent of desktop/Android prerelease selections, which
 may not include an installable iOS binary.
+
+A manual iOS prerelease pin from `pin-prerelease.yml` overrides the automatic
+SideStore selection for the current week. Re-publish the SideStore source after
+pinning to apply it immediately; nightly remains independent.

@@ -44,6 +44,26 @@ def release_info(tag):
         raise RuntimeError(result.stderr)
     return json.loads(result.stdout)
 
+def manual_selection(manifest, runs, cutoff):
+    if manifest.get('pin_mode') != 'manual' or manifest.get('snapshot_date') != str(cutoff.date()):
+        return None
+    build = manifest['version_id']
+    if manifest.get('source_release') != f'draft-main-{build}':
+        raise ValueError('Invalid manual iOS prerelease source')
+    run = next((r for r in runs if r['run_number'] == build and r['head_sha'] == manifest['commit']), None)
+    if run is None:
+        raise ValueError('Manual iOS prerelease workflow run was not found')
+    return run
+
+def read_manual_selection(runs, cutoff):
+    tag = 'prerelease-ios-arm64-full'
+    info = release_info(tag)
+    if not info or not any(a['name'] == 'update-manifest.json' for a in info['assets']):
+        return None
+    with tempfile.TemporaryDirectory() as directory:
+        gh('release', 'download', tag, '--repo', REPO, '--pattern', 'update-manifest.json', '--dir', directory)
+        return manual_selection(json.loads((Path(directory) / 'update-manifest.json').read_text()), runs, cutoff)
+
 def publish_ipa(run, module, output, channel):
     build = run['run_number']
     tag = f'sidestore-build-{build}'
@@ -90,6 +110,12 @@ def main():
     module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
     output = Path(args.output)
     publish_ipa(nightly, module, output / 'nightly', 'nightly')
+    manual = read_manual_selection(runs, cutoff)
+    if manual is not None:
+        verified, _ = select_runs([manual], lambda r: api(f"actions/runs/{r['id']}/jobs?per_page=100")['jobs'], cutoff)
+        publish_ipa(verified, module, output / 'prerelease', 'prerelease')
+        module.landing(output, ['prerelease', 'nightly'])
+        return
     # Persist the weekly choice publicly. Later successful builds cannot move it.
     tag = f'sidestore-prerelease-{cutoff.date()}'
     info = release_info(tag)

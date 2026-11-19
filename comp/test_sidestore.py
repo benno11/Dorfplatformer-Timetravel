@@ -68,3 +68,16 @@ class Channels(unittest.TestCase):
         nightly, bootstrap = publisher.select_runs(runs, jobs, cutoff - dt.timedelta(days=7))
         self.assertEqual(bootstrap['run_number'], 417)
         self.assertEqual(publisher.boundary(cutoff + dt.timedelta(days=6)), cutoff)
+
+
+class ManualPrerelease(unittest.TestCase):
+    def test_current_week_pin_overrides_weekly_choice(self):
+        import datetime as dt
+        cutoff = dt.datetime(2026, 11, 17, tzinfo=dt.timezone.utc)
+        run = dict(run_number=429, head_sha='chosen')
+        pin = dict(pin_mode='manual', snapshot_date='2026-11-17', version_id=429,
+                   source_release='draft-main-429', commit='chosen')
+        self.assertEqual(publisher.manual_selection(pin, [run], cutoff), run)
+        self.assertIsNone(publisher.manual_selection({**pin, 'snapshot_date':'2026-11-10'}, [run], cutoff))
+        with self.assertRaises(ValueError):
+            publisher.manual_selection(pin, [{**run, 'head_sha':'other'}], cutoff)
