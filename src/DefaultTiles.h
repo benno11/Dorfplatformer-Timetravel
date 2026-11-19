@@ -23,23 +23,19 @@ inline unsigned short select(bool up, bool down, bool left, bool right) {
     if (!right) return 8;
     return 7;
 }
-// New transition variants inspect the neighboring cell in the requested
-// direction. Outer edges retain their original variants and air stays air.
+// Grass extends into a wall which continues above the current cell. Inspect
+// the adjacent grass cell, not the wall's own top/bottom neighbors.
 template<class Occupied>
 inline unsigned short selectAt(int x, int y, Occupied occupied) {
-    const auto baseAt = [&](int column) {
-        return select(occupied(column,y-1), occupied(column,y+1),
-                      occupied(column-1,y), occupied(column+1,y));
-    };
-    const auto base = baseAt(x);
-    if (base == 38) {
-        if (occupied(x+1,y) && baseAt(x+1) == 40) return 100; // r
-        if (occupied(x-1,y) && baseAt(x-1) == 39) return 103; // l
-    }
-    if (base == 10) {
-        if (occupied(x-1,y) && baseAt(x-1) == 9) return 101;  // l
-        if (occupied(x+1,y) && baseAt(x+1) == 11) return 102; // r
-    }
+    const auto base = select(occupied(x,y-1), occupied(x,y+1),
+                             occupied(x-1,y), occupied(x+1,y));
+    if (!occupied(x,y-1)) return base; // Exposed grass keeps the old edge rules.
+    const bool rightGrass = occupied(x+1,y) && !occupied(x+1,y-1);
+    const bool leftGrass = occupied(x-1,y) && !occupied(x-1,y-1);
+    if (rightGrass && !occupied(x+1,y+1)) return 100; // slim, grass to right
+    if (leftGrass && !occupied(x-1,y+1)) return 103;  // slim, grass to left
+    if (leftGrass) return 101;                     // normal, grass to left
+    if (rightGrass) return 102;                    // normal, grass to right
     return base;
 }
 }
