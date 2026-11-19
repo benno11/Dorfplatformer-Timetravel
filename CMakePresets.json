@@ -1,0 +1,45 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "production",
+      "displayName": "Production (no tests)",
+      "binaryDir": "${sourceDir}/build/production",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "BUILD_TESTING": "OFF"
+      }
+    },
+    {
+      "name": "tests",
+      "displayName": "Test build",
+      "binaryDir": "${sourceDir}/build/tests",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "BUILD_TESTING": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "production",
+      "configurePreset": "production",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "tests",
+      "configurePreset": "tests",
+      "configuration": "Debug"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "tests",
+      "configurePreset": "tests",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

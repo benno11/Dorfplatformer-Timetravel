@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
-cmake --build build --parallel
+cmake --preset production
+cmake --build --preset production --parallel
 
 if [[ "${*:-}" == *"--run"* ]]; then
-  if [[ -x "./build/platformer" ]]; then
-    exec ./build/platformer
+  if [[ -x "./build/production/platformer" ]]; then
+    exec ./build/production/platformer
   fi
 fi

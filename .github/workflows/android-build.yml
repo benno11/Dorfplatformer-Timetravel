@@ -231,6 +231,7 @@ jobs:
           }
           cmake -S . -B build-ci -G Ninja `
             -DCMAKE_BUILD_TYPE=RelWithDebInfo `
+            -DBUILD_TESTING=OFF `
             -DPLATFORMER_LITE_EDITION="$env:PLATFORMER_LITE_EDITION" `
             -DCMAKE_TOOLCHAIN_FILE="$vcpkgRoot/scripts/buildsystems/vcpkg.cmake" `
             -DVCPKG_TARGET_TRIPLET="${{ matrix.triplet }}" `

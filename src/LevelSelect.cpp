@@ -934,16 +934,11 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             if (x < 0 || y < 0 || x >= gridW || y >= gridH) return true;
             return isAutoTileId(grid[y * gridW + x]);
         };
-        const bool u = occupied(cx, cy - 1);
-        const bool d = occupied(cx, cy + 1);
-        const bool l = occupied(cx - 1, cy);
-        const bool r = occupied(cx + 1, cy);
-
-        return DefaultTiles::select(u, d, l, r);
+        return DefaultTiles::selectAt(cx, cy, occupied);
     };
     auto refreshAutoTileAround = [&](int cx, int cy) {
         for (int y = cy - 1; y <= cy + 1; ++y) {
-            for (int x = cx - 1; x <= cx + 1; ++x) {
+            for (int x = cx - 2; x <= cx + 2; ++x) {
                 if (x < 0 || y < 0 || x >= gridW || y >= gridH) continue;
                 const int idx = y * gridW + x;
                 if (!isAutoTileId(grid[idx])) continue;
