@@ -6,7 +6,7 @@ control settings "S" menu mainsetting settingbtn
 set panel_sprite Panel
 set button_scale 0.75
 set fallback_width 280
-set fallback_height 180
+set fallback_height 240
 set fallback_button_width 70
 set fallback_button_height 30
 set fallback_button_gap 8
@@ -17,3 +17,6 @@ set loading "Loading game..."
 
 control music "Music" music_volume
 control sfx "SFX" sfx_volume
+
+set controls_top 76
+set fallback_controls_top 62

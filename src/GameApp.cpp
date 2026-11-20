@@ -8838,7 +8838,7 @@ int RunGameApp(int argc, char** argv) {
                 const int settingsSize = std::max({contH, restartH, exitH});
                 int totalW = settingsSize + contW + restartW + exitW + spacing * 3;
                 int startX = screenW / 2 - totalW / 2;
-                int centerY = screenH / 2 + (int)std::lround(30.0f * actionButtonScale) + pauseSlideY;
+                int centerY = panelDst.y + (int)std::lround(pauseMenuScript.number("controls_top") * uiButtonScale) + settingsSize / 2;
 
                 pauseBtnSettings = {startX, centerY - settingsSize / 2, settingsSize, settingsSize};
                 startX += settingsSize + spacing;
@@ -8876,7 +8876,7 @@ int RunGameApp(int argc, char** argv) {
                 const int buttonH = std::max(1, (int)std::lround(pauseMenuScript.number("fallback_button_height") * uiButtonScale));
                 const int gap = std::max(4, (int)std::lround(pauseMenuScript.number("fallback_button_gap") * uiButtonScale));
                 const int startX = screenW / 2 - (buttonH + 3 * buttonW + 3 * gap) / 2;
-                const int buttonY = screenH / 2 + (int)std::lround(10 * uiButtonScale) + pauseSlideY;
+                const int buttonY = panel.y + (int)std::lround(pauseMenuScript.number("fallback_controls_top") * uiButtonScale);
                 pauseBtnSettings = {startX, buttonY, buttonH, buttonH};
                 SDL_Rect resumeBtn{startX + buttonH + gap, buttonY, buttonW, buttonH};
                 SDL_Rect restartBtn{resumeBtn.x + buttonW + gap, buttonY, buttonW, buttonH};
@@ -8923,7 +8923,7 @@ int RunGameApp(int argc, char** argv) {
                                             pauseBtnExit.y+pauseBtnExit.h,pauseBtnSettings.y+pauseBtnSettings.h});
             pauseAudioSliders.layout(screenW,screenH,audioBottom-pauseSlideY,std::clamp(uiButtonScale,0.5f,1.5f),pauseSlideY);
             pauseAudioSliders.draw(ren,pauseButtonAnimations,win,screenW,screenH,musicVolume,sfxVolume,pauseSelection,
-                                   pauseButtonAlpha,pauseMenuScript.control("music").label,pauseMenuScript.control("sfx").label);
+                                   pauseButtonAlpha);
         }
         if (levelCompleteUiLerp > 0.001f) {
             const int centerY = screenH / 2;
