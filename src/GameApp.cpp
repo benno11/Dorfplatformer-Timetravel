@@ -442,8 +442,9 @@ int RunGameApp(int argc, char** argv) {
         else applyAudioDriverSelection(nullptr);
         SDL_Quit();
 #if PLATFORMER_IOS
-        // SDL_Quit clears hints, so restore this before each audio init attempt.
-        SDL_SetHint(SDL_HINT_AUDIO_CATEGORY, "playback");
+        // SDL's default playback session mixes with other apps. Explicit
+        // "playback" disables MixWithOthers and interrupts background audio.
+        SDL_ResetHint(SDL_HINT_AUDIO_CATEGORY);
 #endif
         if (SDL_Init(a.flags)) {
             initTrace += std::string(a.label) + ": ok\n";
