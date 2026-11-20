@@ -12,6 +12,8 @@ class PauseAudioSliders {
     int drag_=-1;
     SDL_FingerID finger_=0;
     bool touch_=false;
+    std::array<float,2> displayed_{};
+    Uint64 lastDraw_=0;
 public:
     std::array<SDL_Rect,2> tracks{},rows{};
     explicit PauseAudioSliders(SDL_Renderer* renderer) {
@@ -27,7 +29,7 @@ public:
         const int top=std::min(buttonBottom+8,height-rowH*2-16)+slideY;
         for(int i=0;i<2;++i){
             rows[i]={width/2-w/2,top+i*rowH,w,rowH};
-            tracks[i]={rows[i].x+40,rows[i].y+rowH/2-4,w-96,8};
+            tracks[i]={rows[i].x+40,rows[i].y+rowH/2-4,w-56,8};
         }
     }
     bool input(const SDL_Event& e,SDL_Window* window,int width,int height,int& music,int& sfx,int& selected,bool& changed) {
@@ -71,13 +73,17 @@ public:
     }
     void draw(SDL_Renderer* renderer,ButtonAnimations& animations,SDL_Window* window,int width,int height,
               int music,int sfx,int selected,Uint8 alpha) {
-        const auto sprite=[&](int index,const SDL_Rect& rect){
+        const Uint64 now=SDL_GetTicksNS();
+        const bool firstFrame=lastDraw_==0 || now-lastDraw_>250000000;
+        const float dt=lastDraw_ ? std::min(0.1f,(now-lastDraw_)/1000000000.0f) : 0;
+        lastDraw_=now;
+        const auto sprite=[&](int index,const SDL_FRect& rect){
             if(rect.w<=0)return;
             if(textures_[index]) {
                 SDL_SetTextureAlphaMod(textures_[index],alpha);
                 SDL_SetTextureBlendMode(textures_[index],SDL_BLENDMODE_BLEND);
             }
-            if(!DrawSliderTexture(renderer,textures_[index],rect)) {
+            if(!DrawSliderTextureF(renderer,textures_[index],rect)) {
                 SDL_SetRenderDrawColor(renderer,120,190,230,alpha);SDL_RenderFillRect(renderer,&rect);
             }
         };
@@ -85,8 +91,11 @@ public:
         for(int i=0;i<2;++i){
             const int value=i==0?music:sfx;
             const auto& row=rows[i];const auto& track=tracks[i];
-            const std::string percent=std::to_string((int)std::lround(value*100.0f/128))+"%";
-            DrawTextColored(renderer,track.x+track.w+12,track.y-1,1,percent,SDL_Color{0,0,0,alpha});
+            // Ease the visual position only; input and audio keep their immediate value.
+            const float target=value/128.0f;
+            if(firstFrame) displayed_[i]=target;
+            else displayed_[i]+=(target-displayed_[i])*(1.0f-std::exp(-28.0f*dt));
+            if(std::fabs(displayed_[i]-target)<0.0001f)displayed_[i]=target;
             SDL_SetRenderDrawColor(renderer,0,0,0,alpha);
             // Pixel-art music note and speaker icons.
             const int x=row.x+8,y=row.y+row.h/2-8;
@@ -100,11 +109,13 @@ public:
                 SDL_RenderLine(renderer,x+13,y+16,x+6,y+10);
                 SDL_RenderLine(renderer,x+18,y-2,x+22,y+5);SDL_RenderLine(renderer,x+22,y+5,x+18,y+12);
             }
-            sprite(0,track);
-            const int fill=(int)std::lround(track.w*value/128.0f);
-            sprite(1,SDL_Rect{track.x,track.y,fill,track.h});
-            const SDL_Rect thumb{track.x+fill-8,track.y-9,16,26};
-            sprite(2,animations.drawRect(4+i,thumb,selected==4+i,window,width,height));
+            sprite(0,SDL_FRect{(float)track.x,(float)track.y,(float)track.w,(float)track.h});
+            const float fill=track.w*displayed_[i];
+            sprite(1,SDL_FRect{(float)track.x,(float)track.y,fill,(float)track.h});
+            const int rounded=(int)std::lround(fill);
+            const SDL_Rect thumb{track.x+rounded-8,track.y-9,16,26};
+            const auto animated=animations.drawRect(4+i,thumb,selected==4+i,window,width,height);
+            sprite(2,SDL_FRect{animated.x+fill-rounded,(float)animated.y,(float)animated.w,(float)animated.h});
         }
     }
 };
