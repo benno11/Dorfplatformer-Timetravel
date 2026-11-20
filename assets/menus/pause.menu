@@ -14,3 +14,6 @@ set fallback_button_gap 8
 control pause "PAUSE" pause
 
 set loading "Loading game..."
+
+control music "Music" music_volume
+control sfx "SFX" sfx_volume

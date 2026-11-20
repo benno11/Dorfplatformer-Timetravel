@@ -93,6 +93,7 @@
 #include "GameSupport.h"
 #include "TileRendering.h"
 #include "ButtonAnimation.h"
+#include "PauseAudioSliders.h"
 #include "DeathAnimation.h"
 #include "SignpostRendering.h"
 #include "AsyncAssetLoader.h"
@@ -4289,6 +4290,8 @@ int RunGameApp(int argc, char** argv) {
         int updateFpsDisplay = 0;
         int renderFpsDisplay = 0;
 
+        PauseAudioSliders pauseAudioSliders(ren);
+        bool pauseVolumeDirty=false;
         SDL_Rect pauseBtnContinue{0,0,0,0};
         SDL_Rect pauseBtnRestart{0,0,0,0};
         SDL_Rect pauseBtnExit{0,0,0,0};
@@ -5062,7 +5065,35 @@ int RunGameApp(int argc, char** argv) {
 
         const SDL_WindowID mainWindowId = SDL_GetWindowID(win);
         const bool embeddedDetailedDebugger = (showDetailedDebugger && debugWin == win && debugRen == ren);
+        if (!paused || pauseMenuClosing) {
+            pauseAudioSliders.cancel();
+            if(pauseVolumeDirty) {saveClientSettings();pauseVolumeDirty=false;}
+        }
         while (IosAppSleep::pollEvent(&e)) {
+            const bool slidersInteractive=paused && !pauseMenuClosing && pauseMenuAnim>=0.98f;
+            if (slidersInteractive) {
+                bool changed=false;
+                bool consumed=pauseAudioSliders.input(e,win,kBaseScreenW,kBaseScreenH,musicVolume,sfxVolume,pauseSelection,changed);
+                const bool key=e.type==SDL_EVENT_KEY_DOWN;
+                const bool pad=e.type==SDL_EVENT_GAMEPAD_BUTTON_DOWN;
+                const bool up=(key && e.key.key==SDLK_UP) || (pad && e.gbutton.button==SDL_GAMEPAD_BUTTON_DPAD_UP);
+                const bool down=(key && e.key.key==SDLK_DOWN) || (pad && e.gbutton.button==SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+                if(up || down) {
+                    if(down) pauseSelection=pauseSelection<4?4:5;
+                    else pauseSelection=pauseSelection==5?4:0;
+                    consumed=true;
+                } else if(pauseSelection>=4) {
+                    const bool left=InputSystem::isLeftEvent(e),right=InputSystem::isRightEvent(e);
+                    if(left || right) {
+                        int& volume=pauseSelection==4?musicVolume:sfxVolume;
+                        const int next=std::clamp(volume+(right?4:-4),0,128);
+                        changed=changed || volume!=next;volume=next;consumed=true;
+                    }
+                }
+                if(changed) { applyAudioVolumes(); pauseVolumeDirty=true; }
+                if(pauseVolumeDirty && !pauseAudioSliders.dragging()) {saveClientSettings();pauseVolumeDirty=false;}
+                if(consumed) continue;
+            }
             if (PLATFORMER_IOS && !paused && !deathSequenceActive && !levelCompleteActive &&
                 TouchPauseButton::pressed(e, win, touchPauseButton, kBaseScreenW, kBaseScreenH)) {
                 activeTouches.clear();
@@ -8888,6 +8919,11 @@ int RunGameApp(int argc, char** argv) {
                 DrawTextColored(ren, settingsDraw.x + (settingsDraw.w - MeasureTextWidth(2, pauseMenuScript.control("settings").label)) / 2,
                     settingsDraw.y + (settingsDraw.h - 20) / 2, 2, pauseMenuScript.control("settings").label, SDL_Color{255,255,255,pauseButtonAlpha});
             }
+            const int audioBottom=std::max({pauseBtnContinue.y+pauseBtnContinue.h,pauseBtnRestart.y+pauseBtnRestart.h,
+                                            pauseBtnExit.y+pauseBtnExit.h,pauseBtnSettings.y+pauseBtnSettings.h});
+            pauseAudioSliders.layout(screenW,screenH,audioBottom-pauseSlideY,std::clamp(uiButtonScale,0.5f,1.5f),pauseSlideY);
+            pauseAudioSliders.draw(ren,pauseButtonAnimations,win,screenW,screenH,musicVolume,sfxVolume,pauseSelection,
+                                   pauseButtonAlpha,pauseMenuScript.control("music").label,pauseMenuScript.control("sfx").label);
         }
         if (levelCompleteUiLerp > 0.001f) {
             const int centerY = screenH / 2;
@@ -9649,6 +9685,7 @@ int RunGameApp(int argc, char** argv) {
             SDL_RenderPresent(debugRen);
         }
         }
+        if(pauseVolumeDirty) saveClientSettings();
         if (PLATFORMER_IOS && running && (returnToSelect || !levelRunning)) quickResume.clear();
         if (restartRequested && saveGameToDisk) (void)saveGameToDisk();
         clearCheckpoint();
