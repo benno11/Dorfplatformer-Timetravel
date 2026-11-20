@@ -43,6 +43,8 @@ struct SlimMenuContext {
     bool* running = nullptr;
     bool* fullscreen = nullptr;
     bool* vsyncEnabled = nullptr;
+    int* gameplayFpsCap = nullptr;
+    int* renderFpsCap = nullptr;
     bool* clampCamX = nullptr;
     bool* defaultShowFpsCounter = nullptr;
     bool* defaultShowDetailedDebugger = nullptr;

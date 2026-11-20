@@ -1,3 +1,4 @@
+#include "FrameRateCaps.h"
 #include "SliderTexture.h"
 #include "Platform.h"
 #include "IosAppSleep.h"
@@ -356,6 +357,8 @@ std::string contextVarValue(const std::string& name, const SlimRuntime& runtime,
     }
     const std::string var = normalizeVarName(name);
     if (var == "platform") return PLATFORMER_IOS ? "ios" : toLowerAscii(SDL_GetPlatform() ? SDL_GetPlatform() : "unknown");
+    if (var == "gameplay_fps_cap") return FrameRateCaps::label(ctx.gameplayFpsCap ? *ctx.gameplayFpsCap : 0);
+    if (var == "render_fps_cap") return FrameRateCaps::label(ctx.renderFpsCap ? *ctx.renderFpsCap : 60);
     if (var == "platform_ios") return PLATFORMER_IOS ? "true" : "false";
     auto it = runtime.vars.find(var);
     if (it != runtime.vars.end()) return it->second;
@@ -404,7 +407,7 @@ bool varIsTruthy(const std::string& name, const SlimRuntime& runtime, const Slim
 
 std::string expandVars(std::string text, const SlimRuntime& runtime, const SlimMenuContext& ctx) {
     if (text.find("${") == std::string::npos) return text;
-    for (const char* name : {"platform", "platform_ios", "account_email", "account_password", "about_game_name", "about_sandbox_version", "clipboard_status", "game_log_enabled", "save_logcat_to_file"})
+    for (const char* name : {"gameplay_fps_cap", "render_fps_cap", "platform", "platform_ios", "account_email", "account_password", "about_game_name", "about_sandbox_version", "clipboard_status", "game_log_enabled", "save_logcat_to_file"})
         text = replaceAll(text, "${" + std::string(name) + "}", contextVarValue(name, runtime, ctx));
     for (const char* var : {"world_select_unlocked", "hardmode_unlocked", "hardmode_complete", "hardmode_furthest_level", "hardmode_save_exists"}) {
         const std::string placeholder = "${" + std::string(var) + "}";
@@ -2021,8 +2024,12 @@ bool adjustInt(const std::string& name, int delta, SlimMenuContext& ctx) {
     if (var == "sfx_volume") target = ctx.sfxVolume;
     if (var == "ui_scale_percent") target = ctx.uiScalePercent;
     if (var == "ui_edge_padding") target = ctx.uiEdgePadding;
+    if (var == "gameplay_fps_cap") target = ctx.gameplayFpsCap;
+    if (var == "render_fps_cap") target = ctx.renderFpsCap;
     if (!target) return false;
-    if (var == "ui_scale_percent") {
+    if (var == "gameplay_fps_cap" || var == "render_fps_cap") {
+        *target=FrameRateCaps::step(*target,delta);
+    } else if (var == "ui_scale_percent") {
         *target = UiScale::stepPercent(*target, delta > 0 ? 1 : -1);
         SetTextScaleMultiplier(UiScale::multiplier(*target));
         if (ctx.updateDynamicResolution) ctx.updateDynamicResolution();
@@ -2697,6 +2704,7 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
         presentMenuFrame(menu, runtime, ctx, selected);
         SDL_Event e;
         while (ctx.running && *ctx.running) {
+            const Uint64 frameStartNs=SDL_GetTicksNS();
             if (ctx.pollUpdaterAutoRelaunch) ctx.pollUpdaterAutoRelaunch();
             if (!*ctx.running) return SlimMenuExit::Quit;
             if (currentMenu == "settingsupdater" && readUpdaterState(ctx) != runtime.updater) goto next_menu;
@@ -3242,7 +3250,7 @@ SlimMenuExit RunSlimMenu(SlimMenuContext& ctx, const std::string& menuName) {
                 }
             }
             presentMenuFrame(menu, runtime, ctx, selected, &layout);
-            SDL_Delay(16);
+            FrameRateCaps::wait(frameStartNs,ctx.renderFpsCap ? *ctx.renderFpsCap : 60);
         }
 next_menu:
         continue;

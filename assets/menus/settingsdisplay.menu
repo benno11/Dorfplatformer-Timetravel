@@ -3,6 +3,9 @@ center
 # DF Slim Menu: display settings
 title "Display Settings"
 button "Fullscreen: ${fullscreen}" toggle fullscreen
+button "Gameplay FPS: ${gameplay_fps_cap}" inc gameplay_fps_cap
+button "Render FPS: ${render_fps_cap}" inc render_fps_cap
+text "VSync may limit rendering to the display refresh rate." wrap
 button "VSync: ${vsync_enabled}" toggle vsync_enabled
 button "Native Text Resolution: ${native_text_resolution_enabled}" toggle native_text_resolution_enabled
 button "Water Effects: ${water_effects_enabled}" toggle water_effects_enabled

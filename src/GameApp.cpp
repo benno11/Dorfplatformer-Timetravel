@@ -1,3 +1,4 @@
+#include "FrameRateCaps.h"
 #include "SilentLoadingScreen.h"
 #include "IosQuickResume.h"
 #include "IosAppSleep.h"
@@ -1692,6 +1693,7 @@ int RunGameApp(int argc, char** argv) {
     bool showExperimentalFeatures = false;
     CharacterCreator::Appearance characterAppearance;
     bool levelSelectEnabled = true;
+    int gameplayFpsCap=0, renderFpsCap=60;
     bool menuMusicEnabled = true;
     bool muteAllAudio = false;
     bool showOptionalSidebar = true;
@@ -1834,6 +1836,7 @@ int RunGameApp(int argc, char** argv) {
             {"fullscreen", savedFullscreen},
             {"water_effects_enabled", waterEffectsEnabled},
             {"vsync", vsyncEnabled},
+            {"gameplay_fps_cap",gameplayFpsCap},{"render_fps_cap",renderFpsCap},
             {"ui_scale_percent", uiScalePercent}
         };
         settings["camera"] = {
@@ -1887,6 +1890,7 @@ int RunGameApp(int argc, char** argv) {
         // Legacy flat keys kept for backward compatibility.
         j["fullscreen"] = savedFullscreen;
         j["vsync"] = vsyncEnabled;
+        j["gameplay_fps_cap"]=gameplayFpsCap; j["render_fps_cap"]=renderFpsCap;
         j["show_optional_sidebar"] = showOptionalSidebar;
         j["native_text_resolution"] = nativeTextResolutionEnabled;
         j["water_effects_enabled"] = waterEffectsEnabled;
@@ -1998,6 +2002,8 @@ int RunGameApp(int argc, char** argv) {
                 const auto& s = j["settings"];
                 if (s.contains("display") && s["display"].is_object()) {
                     const auto& d = s["display"];
+                    if(d.contains("gameplay_fps_cap") && d["gameplay_fps_cap"].is_number_integer()) gameplayFpsCap=FrameRateCaps::sanitize(d["gameplay_fps_cap"].get<int>());
+                    if(d.contains("render_fps_cap") && d["render_fps_cap"].is_number_integer()) renderFpsCap=FrameRateCaps::sanitize(d["render_fps_cap"].get<int>());
                     if (d.contains("fullscreen") && d["fullscreen"].is_boolean()) fullscreen = d["fullscreen"].get<bool>();
                     if (d.contains("vsync") && d["vsync"].is_boolean()) vsyncEnabled = d["vsync"].get<bool>();
                     if (d.contains("water_effects_enabled") && d["water_effects_enabled"].is_boolean())
@@ -2139,6 +2145,8 @@ int RunGameApp(int argc, char** argv) {
             if (j.contains("native_text_resolution") && j["native_text_resolution"].is_boolean()) {
                 nativeTextResolutionEnabled = j["native_text_resolution"].get<bool>();
             }
+            if(j.contains("gameplay_fps_cap") && j["gameplay_fps_cap"].is_number_integer()) gameplayFpsCap=FrameRateCaps::sanitize(j["gameplay_fps_cap"].get<int>());
+            if(j.contains("render_fps_cap") && j["render_fps_cap"].is_number_integer()) renderFpsCap=FrameRateCaps::sanitize(j["render_fps_cap"].get<int>());
             if (j.contains("water_effects_enabled") && j["water_effects_enabled"].is_boolean()) {
                 waterEffectsEnabled = j["water_effects_enabled"].get<bool>();
             }
@@ -2596,6 +2604,7 @@ int RunGameApp(int argc, char** argv) {
     frontendCtx.running = &running;
     frontendCtx.fullscreen = &fullscreen;
     frontendCtx.vsyncEnabled = &vsyncEnabled;
+    frontendCtx.gameplayFpsCap=&gameplayFpsCap;frontendCtx.renderFpsCap=&renderFpsCap;
     frontendCtx.clampCamX = &clampCamX;
     frontendCtx.defaultShowFpsCounter = &defaultShowFpsCounter;
     frontendCtx.defaultShowDetailedDebugger = &defaultShowDetailedDebugger;
@@ -4274,7 +4283,7 @@ int RunGameApp(int argc, char** argv) {
         Uint32 lastPresentTicks = lastTicks;
         Uint64 lastPresentTicksNs = lastTicksNs;
         Uint64 lastScoreFrameTicksNs = lastTicksNs;
-        Uint32 nextPresentTicks = lastTicks;
+        Uint64 nextPresentNs = lastTicksNs;
         Uint32 nextGarbageCollectTicks = lastTicks + 5000;
         bool mainWindowFocused = true;
         bool mainWindowMinimized = false;
@@ -4356,7 +4365,7 @@ int RunGameApp(int argc, char** argv) {
             lastTicksNs = SDL_GetTicksNS();
             lastPresentTicks = lastTicks;
             lastPresentTicksNs = lastTicksNs;
-            nextPresentTicks = lastTicks;
+            nextPresentNs = lastTicksNs;
             SDL_Log("Low power mode: suspended reloadable assets");
         };
         auto exitLowPowerSuspend = [&]() -> bool {
@@ -4397,7 +4406,7 @@ int RunGameApp(int argc, char** argv) {
             lastTicksNs = SDL_GetTicksNS();
             lastPresentTicks = lastTicks;
             lastPresentTicksNs = lastTicksNs;
-            nextPresentTicks = lastTicks;
+            nextPresentNs = lastTicksNs;
             SDL_Log("Low power mode: restored gameplay assets");
             return true;
         };
@@ -4751,7 +4760,8 @@ int RunGameApp(int argc, char** argv) {
                 saveQuickResume(); nextQuickResume = SDL_GetTicks() + 5000;
             }
             const Uint64 nowNs = SDL_GetTicksNS();
-            const double dtPrecise = (double)(nowNs - lastTicksNs) / 1000000000.0;
+            const bool updateDue=!gameplayFpsCap || nowNs-lastTicksNs>=FrameRateCaps::period(gameplayFpsCap);
+            const double dtPrecise = updateDue ? (double)(nowNs - lastTicksNs) / 1000000000.0 : 0.0;
             const float dt = GameplayDeltaTime(dtPrecise);
             AudioSystem::pumpEventSfx();
             if (debugFreeCamera.active && !debugToolsEnabled()) {
@@ -4759,8 +4769,8 @@ int RunGameApp(int argc, char** argv) {
                 exclusionCamera.reset();
             }
             const MovementConfig activeMovement = CharacterCreator::movementFor(characterAppearance, movementCfg, showExperimentalFeatures);
-            if (!paused) spikeImpact.remaining = std::max(0.0f, spikeImpact.remaining - dt);
-            if (!paused) {
+            if (updateDue && !paused) spikeImpact.remaining = std::max(0.0f, spikeImpact.remaining - dt);
+            if (updateDue && !paused) {
                 for (auto it = bumperImpacts.begin(); it != bumperImpacts.end();) {
                     it->second.update(dt);
                     if (it->second.remaining <= 0.0f && it->second.cooldownRemaining <= 0.0f) it = bumperImpacts.erase(it);
@@ -4776,7 +4786,7 @@ int RunGameApp(int argc, char** argv) {
                 bumperSparks.erase(std::remove_if(bumperSparks.begin(), bumperSparks.end(),
                     [](const BumperSpark& spark) { return spark.life <= 0.0f; }), bumperSparks.end());
             }
-            lastTicksNs = nowNs;
+            if(updateDue) lastTicksNs = nowNs;
             lastTicks = SDL_GetTicks();
             SetTextScaleMultiplier(UiScale::multiplier(uiScalePercent));
             auto isVerticalWrapEnabledAtX = [&](float) -> bool {
@@ -4784,7 +4794,7 @@ int RunGameApp(int argc, char** argv) {
             };
             // Suspension unloads the render targets and sprite frames. Keep its
             // pause intact until focus returns and the assets have been restored.
-            if (levelCompleteActive && !lowPowerSuspendActive) {
+            if (updateDue && levelCompleteActive && !lowPowerSuspendActive) {
                 paused = false;
                 pauseMenuAnim = 0.0f;
                 pauseMenuClosing = false;
@@ -4803,7 +4813,7 @@ int RunGameApp(int argc, char** argv) {
                 }
             }
             updateFpsAccumSec += dtPrecise;
-            ++updateFpsAccumFrames;
+            if(updateDue) ++updateFpsAccumFrames;
             if (updateFpsAccumSec >= kFpsDisplayUpdatePeriodSec) {
                 updateFpsDisplayValue = (updateFpsAccumSec > 0.0) ? (double)updateFpsAccumFrames / updateFpsAccumSec : 0.0;
                 if (updateFpsSmoothed <= 0.0) updateFpsSmoothed = updateFpsDisplayValue;
@@ -4813,7 +4823,7 @@ int RunGameApp(int argc, char** argv) {
                 updateFpsAccumSec = std::fmod(updateFpsAccumSec, kFpsDisplayUpdatePeriodSec);
                 updateFpsAccumFrames = 0;
             }
-            if (!paused && !deathSequenceActive && !levelCompleteActive && !lowPowerSuspendActive) {
+            if (updateDue && !paused && !deathSequenceActive && !levelCompleteActive && !lowPowerSuspendActive) {
                 const auto activated = LevelParameters::update(player, map, objects, parameterContacts,
                     meta, wrapTriggerXActive, wrapTriggerYActive);
                 if (!activated.empty()) {
@@ -4849,7 +4859,7 @@ int RunGameApp(int argc, char** argv) {
                 }
             }
             frameMsHistoryHead = (frameMsHistoryHead + 1) % (int)frameMsHistory.size();
-            if (!paused && !deathSequenceActive) {
+            if (updateDue && !paused && !deathSequenceActive) {
                 levelTimerSeconds += dt;
                 levelReloadTitleTimer = std::max(0.0f, levelReloadTitleTimer - dt);
             }
@@ -4883,7 +4893,7 @@ int RunGameApp(int argc, char** argv) {
             if (levelLoadDeathGraceTimer > 0.0f) {
                 levelLoadDeathGraceTimer = std::max(0.0f, levelLoadDeathGraceTimer - dt);
             }
-            if (!paused && !deathSequenceActive && !droppedCoins.empty()) {
+            if (updateDue && !paused && !deathSequenceActive && !droppedCoins.empty()) {
                 auto tileSolidAt = [&](float wx, float wy) -> bool {
                     const int tx = (int)std::floor(wx / map.tileSize);
                     const int ty = (int)std::floor(wy / map.tileSize);
@@ -4982,12 +4992,12 @@ int RunGameApp(int argc, char** argv) {
                     levelCompleteUiLerp = std::max(target, levelCompleteUiLerp - speed * dt);
                 }
             }
-            if (levelCompleteActive && !lowPowerSuspendActive && !levelCompleteCounting) {
+            if (updateDue && levelCompleteActive && !lowPowerSuspendActive && !levelCompleteCounting) {
                 if (!audio.isReady() || levelCompleteAudioChannel < 0 || !audio.isChannelPlaying(levelCompleteAudioChannel)) {
                     levelCompleteCounting = true;
                 }
             }
-            if (levelCompleteActive && !lowPowerSuspendActive && levelCompleteCounting && !paused) {
+            if (updateDue && levelCompleteActive && !lowPowerSuspendActive && levelCompleteCounting && !paused) {
                 if (levelCompleteCoinBonus <= 0 && levelCompleteTimeScore <= 0) {
                     if (!levelCompleteNextPath.empty()) {
                         const int completedWorldId = levelManager.worldId();
@@ -5142,7 +5152,7 @@ int RunGameApp(int argc, char** argv) {
             if (e.type == SDL_EVENT_DID_ENTER_FOREGROUND) {
                 lastTicks = SDL_GetTicks(); lastTicksNs = SDL_GetTicksNS();
                 lastPresentTicks = lastTicks; lastPresentTicksNs = lastTicksNs;
-                nextPresentTicks = lastTicks;
+                nextPresentNs = lastTicksNs;
             }
             if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST) {
                 if (e.window.windowID == mainWindowId) {
@@ -5476,7 +5486,7 @@ int RunGameApp(int argc, char** argv) {
             if (showDetailedDebugger != defaultShowDetailedDebugger) toggleDetailedDebugger();
             const Uint64 resumedTicks = SDL_GetTicksNS();
             lastTicksNs = lastPresentTicksNs = lastScoreFrameTicksNs = resumedTicks;
-            lastTicks = lastPresentTicks = nextPresentTicks = SDL_GetTicks();
+            lastTicks = lastPresentTicks = SDL_GetTicks(); nextPresentNs=resumedTicks;
             activeTouches.clear();
             SDL_FlushEvent(SDL_EVENT_KEY_DOWN);
             SDL_FlushEvent(SDL_EVENT_MOUSE_BUTTON_DOWN);
@@ -5522,6 +5532,7 @@ int RunGameApp(int argc, char** argv) {
             }
         }
 
+        if(updateDue) {
         if (deathSequenceActive && !paused) {
             deathTimer += dt;
             deathFlight.advance(dtPrecise);
@@ -7562,9 +7573,10 @@ int RunGameApp(int argc, char** argv) {
             player.x = modPlayer.x; player.y = modPlayer.y; player.vx = modPlayer.velocity_x; player.vy = modPlayer.velocity_y;
             player.onGround = modPlayer.on_ground != 0; player.facing = modPlayer.facing < 0 ? -1 : 1; player.hasShield = modPlayer.has_shield != 0;
         }
+        } // gameplay update
         RENDER_ONLY:
         if (paused || !mainWindowFocused) hairMouse.release(characterParts);
-        if (!paused) {
+        if (updateDue && !paused) {
             if (showExperimentalFeatures && characterAppearance.enabled) {
                 const bool hairSliding = player.slideTime > 0.0f;
                 const float hairHeight = hairSliding ? std::max(1.0f, std::round(player.h * 0.65f)) : (float)player.h;
@@ -7588,17 +7600,15 @@ int RunGameApp(int argc, char** argv) {
             }
         }
         {
-            const int targetPresentIntervalMs =
-                (powerManagementEnabled && mainWindowMinimized) ? 250 :
-                (powerManagementEnabled && (!mainWindowFocused || paused)) ? 33 : 16;
-            const Uint32 renderNow = SDL_GetTicks();
-            if (renderNow < nextPresentTicks) {
+            const Uint64 renderNow = SDL_GetTicksNS();
+            if (renderNow < nextPresentNs) {
                 // Skip rendering on this tick so simulation updates can run independently.
                 SDL_Delay(1);
                 continue;
             }
         }
 
+        const Uint64 renderFrameStartedNs=SDL_GetTicksNS();
         // Award score once per displayed frame, after the render-throttle gate.
         // Simulation-only ticks must not silently consume the visible tally.
         {
@@ -9317,11 +9327,9 @@ int RunGameApp(int argc, char** argv) {
                 renderFpsAccumSec = std::fmod(renderFpsAccumSec, kFpsDisplayUpdatePeriodSec);
                 renderFpsAccumFrames = 0;
             }
-            // Keep render cadence capped while updates remain independent.
-            const int targetPresentIntervalMs =
-                (powerManagementEnabled && mainWindowMinimized) ? 250 :
-                (powerManagementEnabled && (!mainWindowFocused || paused)) ? 33 : 16;
-            nextPresentTicks = presentedAt + (Uint32)targetPresentIntervalMs;
+            // Rendering is independent from the gameplay update cap.
+            nextPresentNs = renderFrameStartedNs + FrameRateCaps::renderPeriod(renderFpsCap,powerManagementEnabled,
+                                                                       !mainWindowFocused || paused,mainWindowMinimized);
         }
         if (showDetailedDebugger && debugRen && debugWin && !embeddedDetailedDebugger) {
             int dbgW = 0, dbgH = 0;

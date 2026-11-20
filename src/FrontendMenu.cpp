@@ -1,3 +1,4 @@
+#include "FrameRateCaps.h"
 #include "IosAppSleep.h"
 #include "EditionPolicy.h"
 #include "BuildInfo.h"
@@ -490,6 +491,8 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx, bool settingsOnly) {
         slim.running = ctx.running;
         slim.fullscreen = ctx.fullscreen;
         slim.vsyncEnabled = ctx.vsyncEnabled;
+        slim.gameplayFpsCap = ctx.gameplayFpsCap;
+        slim.renderFpsCap = ctx.renderFpsCap;
         slim.clampCamX = ctx.clampCamX;
         slim.defaultShowFpsCounter = ctx.defaultShowFpsCounter;
         slim.defaultShowDetailedDebugger = ctx.defaultShowDetailedDebugger;
@@ -601,6 +604,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx, bool settingsOnly) {
     int fpsFramesSinceSample = 0;
     int menuFps = 0;
     while (running) {
+        const Uint64 frameStartNs=SDL_GetTicksNS();
         const Uint64 frameTicks = SDL_GetTicks();
         ++fpsFramesSinceSample;
         const Uint64 sampleElapsed = frameTicks - fpsLastSampleTicks;
@@ -959,6 +963,7 @@ FrontendAction runFrontendMenu(FrontendMenuContext& ctx, bool settingsOnly) {
         FlushNativeTextOverlay(ctx.ren);
         AudioSystem::pumpEventSfx();
         SDL_RenderPresent(ctx.ren); IosAppSleep::framePresented();
+        FrameRateCaps::wait(frameStartNs,ctx.renderFpsCap ? *ctx.renderFpsCap : 60);
     }
     cleanupMenuAssets();
     return FrontendAction::Quit;
