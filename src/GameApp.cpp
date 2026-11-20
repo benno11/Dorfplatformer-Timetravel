@@ -8581,8 +8581,12 @@ int RunGameApp(int argc, char** argv) {
                             }
                             if (!frame && id < (int)blocksFrameById.size()) frame = blocksFrameById[id];
                             if (!frame) continue;
-                            const SDL_FRect dst{x * (float)map.tileSize - camX, y * (float)map.tileSize - camY,
-                                (float)map.tileSize, (float)map.tileSize};
+                            // Overlap only internal water joins; keep shores and the
+                            // exposed surface aligned with the actual water bounds.
+                            const float overlapAbove = WaterVisuals::wet(map, x, y - 1, renderWrapX, renderWrapY) ? 2.0f : 0.0f;
+                            const float overlapBelow = WaterVisuals::wet(map, x, y + 1, renderWrapX, renderWrapY) ? 2.0f : 0.0f;
+                            const SDL_FRect dst{x * (float)map.tileSize - camX, y * (float)map.tileSize - camY - overlapAbove,
+                                (float)map.tileSize, (float)map.tileSize + overlapAbove + overlapBelow};
                             renderTileFrame(ren, blocksTex, *frame, dst);
                         }
                     }
