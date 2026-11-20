@@ -147,6 +147,8 @@ struct SlimRuntime {
     std::unordered_map<std::string, SDL_Texture*> modIcons;
     MenuScript::View difficultyMenu;
     std::array<SDL_Texture*, 3> sliderTextures{};
+    struct SliderMotion {float value=0; Uint64 ticks=0;};
+    std::unordered_map<std::string, SliderMotion> sliderMotion;
     SDL_Texture* difficultyTexture = nullptr;
     Frame difficultyFrame{};
     bool difficultyAssetLoaded = false;
@@ -1857,16 +1859,28 @@ void renderMenu(const SlimMenu& menu, SlimRuntime& runtime, const SlimMenuContex
             const SDL_Rect track = audioSliderTrack(r);
             SDL_SetRenderDrawColor(ctx.ren, 24, 35, 48, 255);
             if (!drawSliderTexture(ctx.ren, runtime.sliderTextures[0], track)) SDL_RenderFillRect(ctx.ren, &track);
-            const int filled = (int)std::lround(track.w * value / 128.0f);
-            const SDL_Rect fill{track.x, track.y, filled, track.h};
+            auto& motion=runtime.sliderMotion[menu.name+":"+item.command+":"+std::to_string(index)];
+            const auto now=SDL_GetTicksNS();
+            const float target=value/128.0f;
+            if(!motion.ticks || now-motion.ticks>250000000) motion.value=target;
+            else {
+                const float dt=std::min(0.1f,(now-motion.ticks)/1000000000.0f);
+                motion.value+=(target-motion.value)*(1.0f-std::exp(-28.0f*dt));
+            }
+            if(std::fabs(motion.value-target)<0.0001f)motion.value=target;
+            motion.ticks=now;
+            const float filled=track.w*motion.value;
+            const SDL_FRect fill{(float)track.x,(float)track.y,filled,(float)track.h};
             SDL_SetRenderDrawColor(ctx.ren, 110, 200, 245, 255);
-            if (filled > 0 && !drawSliderTexture(ctx.ren, runtime.sliderTextures[1], fill)) SDL_RenderFillRect(ctx.ren, &fill);
-            const SDL_Rect baseThumb{track.x + filled - 10, track.y - 8, 20, 28};
+            if (filled > 0 && !DrawSliderTextureF(ctx.ren, runtime.sliderTextures[1], fill)) SDL_RenderFillRect(ctx.ren, &fill);
+            const int rounded=(int)std::lround(filled);
+            const SDL_Rect baseThumb{track.x + rounded - 10, track.y - 8, 20, 28};
             const SDL_Rect thumb = runtime.buttonAnimations.drawRect((int)index, baseThumb, isSelected, ctx.win,
                 ctx.baseScreenW, ctx.baseScreenH, layout.scale, !runtime.difficultyPopupOpen);
             SDL_SetRenderDrawColor(ctx.ren, isSelected ? 255 : 210, isSelected ? 255 : 230, 255, 255);
             if (runtime.sliderTextures[2]) SDL_SetTextureColorMod(runtime.sliderTextures[2], isSelected ? 255 : 210, isSelected ? 255 : 210, isSelected ? 255 : 210);
-            if (!drawSliderTexture(ctx.ren, runtime.sliderTextures[2], thumb)) SDL_RenderFillRect(ctx.ren, &thumb);
+            const SDL_FRect smoothThumb{thumb.x+filled-rounded,(float)thumb.y,(float)thumb.w,(float)thumb.h};
+            if (!DrawSliderTextureF(ctx.ren, runtime.sliderTextures[2], smoothThumb)) SDL_RenderFillRect(ctx.ren, &smoothThumb);
             continue;
         }
         if (runtime.menuTexture) {
