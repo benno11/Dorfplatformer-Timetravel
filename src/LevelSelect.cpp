@@ -1,3 +1,4 @@
+#include "EditorCanvas.h"
 #include "DefaultTiles.h"
 #include "TileRendering.h"
 #include "IosAppSleep.h"
@@ -713,6 +714,11 @@ bool RunLevelConfigMenu(SDL_Window* win, SDL_Renderer* ren, LevelMeta& config) {
 
 std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::string& initialPath = "",
                                 const std::string& newLevelName = "", int newLevelW = -1, int newLevelH = -1, bool* playRequested = nullptr) {
+    EditorCanvas canvas(ren);
+    struct EditorMusicGuard {
+        EditorMusicGuard() { AudioSystem::setEditorActive(true); }
+        ~EditorMusicGuard() { AudioSystem::setEditorActive(false); }
+    } editorMusic;
     if (playRequested) *playRequested = false;
     const auto menuScript = MenuScript::view(ReadTextFile("assets/menus/editor.menu"));
     const auto pauseIds = menuScript.ordered({"resume", "save_resume", "exit", "save_exit"});
@@ -1023,6 +1029,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
     };
 
     while (running) {
+        canvas.prepare();
         int winW = 0, winH = 0;
         getWindowSizeInPixelsCompat(win, winW, winH);
         const auto touchPauseButton = TouchPauseButton::layout(win, winW, winH, true);
@@ -1101,6 +1108,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 SoundEvents::emit(SoundEvents::Event::Click);
                 continue;
             }
+            canvas.mouseEvent(e);
             if (!paused) {
                 SDL_Point toolPoint{};
                 const bool mouseTool = e.type == SDL_EVENT_MOUSE_BUTTON_DOWN && e.button.button == SDL_BUTTON_LEFT && e.button.which != SDL_TOUCH_MOUSEID;
@@ -1146,6 +1154,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             if (e.type == SDL_MOUSEWHEEL && !paused) {
                 float mx = 0.0f, my = 0.0f;
                 SDL_GetMouseState(&mx, &my);
+                canvas.mousePoint(mx, my);
                 SDL_Point pt{(int)std::lround(mx), (int)std::lround(my)};
                 if (SDL_PointInRect(&pt, &paletteViewport)) {
                     const int wheelY = (int)std::lround(e.wheel.y);
@@ -1658,6 +1667,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         if (!paused && !configureObjects && !touchPanMode && SDL_GetMouseFocus() == win) {
             float mx = 0, my = 0;
             SDL_GetMouseState(&mx, &my);
+                canvas.mousePoint(mx, my);
             if (mx >= gridX && mx < gridX + gridViewW && my >= gridY && my < gridY + gridViewH) {
                 const int cx = ((int)mx - gridX + viewX) / cell, cy = ((int)my - gridY + viewY) / cell;
                 SDL_SetRenderDrawColor(ren, touchEraseMode ? 255 : 140, touchEraseMode ? 95 : 220, 130, 255);

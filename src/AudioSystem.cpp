@@ -691,7 +691,15 @@ void AudioSystem::applyVolumes(bool muteAllAudio, int musicVolume, int sfxVolume
 #endif
 }
 
+void AudioSystem::setEditorActive(bool active) {
+    if (!eventAudio) return;
+    eventAudio->editorActive_ = active;
+    eventAudio->applyMenuMusicToggle(eventAudio->menuMusicRequested_);
+}
+
 void AudioSystem::applyMenuMusicToggle(bool menuMusicEnabled) {
+    menuMusicRequested_ = menuMusicEnabled;
+    menuMusicEnabled = menuMusicEnabled && !editorActive_;
     if (!isReady() || impl_->shuttingDown) return;
 #if defined(__ANDROID__)
     if (impl_->usingJavaBackend) {

@@ -86,6 +86,18 @@ int main(){
     require(menu&&Mix_PlayMusicCompat(menu,-1)==0,"MP3 music must stream");
     Mix_HaltMusicCompat();require(g_mix_streams.empty(),"halt must release file handles");
     Mix_FreeChunkCompat(mp3);Mix_FreeMusicCompat(menu);
+    audio.loadGlobalAssets();
+    audio.applyMenuMusicToggle(true);
+    require(Mix_PlayingMusicCompat(), "Menu music must start before editing");
+    AudioSystem::setEditorActive(true);
+    require(!Mix_PlayingMusicCompat(), "Editor must silence menu music");
+    audio.applyMenuMusicToggle(true);
+    require(!Mix_PlayingMusicCompat(), "Menu refresh must not restart music inside the editor");
+    AudioSystem::setEditorActive(false);
+    require(Mix_PlayingMusicCompat(), "Leaving editor must restore enabled menu music");
+    audio.applyMenuMusicToggle(false);
+    AudioSystem::setEditorActive(true); AudioSystem::setEditorActive(false);
+    require(!Mix_PlayingMusicCompat(), "Editor must preserve disabled menu music preference");
     audio.setLoading(true);
     audio.shutdown();require(g_mix_streams.empty(),"shutdown leaked file streams");
     require(audio.initialize(), "audio backend must recover during loading");

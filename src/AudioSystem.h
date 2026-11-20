@@ -37,6 +37,7 @@ public:
     void haltAllChannels();
 
     static void pumpEventSfx();
+    static void setEditorActive(bool active);
 
     void playCoinSfx();
     void playLoseSfx();
@@ -48,6 +49,7 @@ public:
 private:
     void applyOutputGain();
     bool loading_ = false, sleeping_ = false;
+    bool editorActive_ = false, menuMusicRequested_ = false;
     float pauseGain_ = 1.0f;
     bool muted_ = false;
     int musicVolume_ = 128, sfxVolume_ = 128;
