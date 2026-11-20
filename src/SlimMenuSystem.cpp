@@ -1,3 +1,4 @@
+#include "SliderTexture.h"
 #include "Platform.h"
 #include "IosAppSleep.h"
 #include "EditionPolicy.h"
@@ -1612,10 +1613,7 @@ int* audioSliderValue(const MenuItem& item, const SlimMenuContext& ctx) {
 }
 
 bool drawSliderTexture(SDL_Renderer* renderer, SDL_Texture* texture, const SDL_Rect& rect) {
-    if (!texture || rect.w <= 0 || rect.h <= 0) return false;
-    const SDL_FRect target{(float)rect.x, (float)rect.y, (float)rect.w, (float)rect.h};
-    return SDL_RenderTexture9Grid(renderer, texture, nullptr, 3, 3, 3, 3,
-        std::min(1.0f, std::min(rect.w, rect.h) / 6.0f), &target);
+    return DrawSliderTexture(renderer, texture, rect);
 }
 
 SDL_Rect audioSliderTrack(const SDL_Rect& row) {

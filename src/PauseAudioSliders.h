@@ -1,6 +1,7 @@
 #pragma once
 #include "GameSupport.h"
 #include "UiScale.h"
+#include "SliderTexture.h"
 #include "TextRenderer.h"
 #include "CanvasPresentation.h"
 #include "ButtonAnimation.h"
@@ -72,8 +73,13 @@ public:
               int music,int sfx,int selected,Uint8 alpha,const std::string& musicLabel,const std::string& sfxLabel) {
         const auto sprite=[&](int index,const SDL_Rect& rect){
             if(rect.w<=0)return;
-            if(textures_[index]) {SDL_SetTextureAlphaMod(textures_[index],alpha);SDL_SetTextureBlendMode(textures_[index],SDL_BLENDMODE_BLEND);SDL_RenderCopy(renderer,textures_[index],nullptr,&rect);}
-            else {SDL_SetRenderDrawColor(renderer,120,190,230,alpha);SDL_RenderFillRect(renderer,&rect);}
+            if(textures_[index]) {
+                SDL_SetTextureAlphaMod(textures_[index],alpha);
+                SDL_SetTextureBlendMode(textures_[index],SDL_BLENDMODE_BLEND);
+            }
+            if(!DrawSliderTexture(renderer,textures_[index],rect)) {
+                SDL_SetRenderDrawColor(renderer,120,190,230,alpha);SDL_RenderFillRect(renderer,&rect);
+            }
         };
         SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_BLEND);
         for(int i=0;i<2;++i){
