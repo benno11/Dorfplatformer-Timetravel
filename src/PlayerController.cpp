@@ -69,6 +69,38 @@ bool RectHitsBossSolid(const TileMap& map, float x, float y, int w, int h) {
     return rectHitsActorSolid(map, x, y, w, h, true);
 }
 
+// Sweep the player box along one axis against tile faces and thin platforms.
+// This is the leading-face raycast in Minkowski-expanded obstacle space.
+static float sweepSolidAxis(const TileMap& map, const Player& player, float distance, bool horizontal) {
+    if (distance == 0 || map.tileSize <= 0) return distance;
+    float allowed = std::fabs(distance);
+    const float left=player.x, right=player.x+player.w-1;
+    const float top=player.y, bottom=player.y+player.h-1;
+    const auto obstacle = [&](float x,float y,float w,float h) {
+        float hit;
+        if(horizontal) {
+            if(bottom<y || top>=y+h) return;
+            if(distance>0) { if(right>x) return; hit=x-right; }
+            else { if(left<x+w) return; hit=left-(x+w); }
+        } else {
+            if(right<x || left>=x+w) return;
+            if(distance>0) { if(bottom>y) return; hit=y-bottom; }
+            else { if(top<y+h) return; hit=top-(y+h); }
+        }
+        if(hit<=allowed) allowed=std::max(0.0f,hit-0.001f);
+    };
+    const int t=map.tileSize;
+    const int x0=(int)std::floor((left+(horizontal?std::min(0.0f,distance):0))/t);
+    const int x1=(int)std::floor((right+(horizontal?std::max(0.0f,distance):0))/t);
+    const int y0=(int)std::floor((top+(!horizontal?std::min(0.0f,distance):0))/t);
+    const int y1=(int)std::floor((bottom+(!horizontal?std::max(0.0f,distance):0))/t);
+    for(int y=y0;y<=y1;++y) for(int x=x0;x<=x1;++x)
+        if(map.getSolid(g_horizontalWrapCollision?wrapTileX(x,map.w):x,
+                        g_verticalWrapCollision?wrapTileY(y,map.h):y)) obstacle(x*(float)t,y*(float)t,t,t);
+    if(g_dynamicSolids) for(const auto& r:*g_dynamicSolids) obstacle(r.x,r.y,r.w,r.h);
+    return distance<0 ? -allowed : allowed;
+}
+
 static bool rectHitsSemiSolidDown(const TileMap& map, float oldY, float newY, float x, int w, int h) {
     int t = map.tileSize;
     int left = (int)std::floor(x / t);
@@ -264,6 +296,20 @@ PlayerUpdateResult UpdatePlayerMovement(
     const bool slidePressed = downHeld && !player.slideWasDown;
     player.slideWasDown = downHeld;
     if (!EjectPlayerFromSolid(player, map)) {
+        // A deep embed must not lock out input. Permit slow, deliberate escape
+        // only while overlapping; stop the moment the body reaches clear space.
+        const bool upHeld = touchJump || gamepadJump || keyHeld(keys,keybinds.jump) || keys[SDL_SCANCODE_UP];
+        float dx=move, dy=(downHeld ? 1.0f : 0.0f)-(upHeld ? 1.0f : 0.0f);
+        const float length=std::sqrt(dx*dx+dy*dy);
+        if(length>1) { dx/=length; dy/=length; }
+        const float travel=160.0f*std::clamp(dt,0.0f,0.1f);
+        const int steps=std::max(1,(int)std::ceil(travel));
+        for(int step=0;step<steps && RectHitsSolid(map,player.x,player.y,player.w,player.h);++step) {
+            player.x+=dx*travel/steps; player.y+=dy*travel/steps;
+        }
+        player.vx=player.vy=0; player.onGround=false;
+        player.slideTime=0; player.jumpBufferTime=0;
+        player.jumpWasDown=upHeld;
         return PlayerUpdateResult::Normal;
     }
 
@@ -412,6 +458,10 @@ PlayerUpdateResult UpdatePlayerMovement(
         if (sliding && onSlideContact) {
             onSlideContact({newX, player.y, (float)player.w, (float)player.h});
         }
+        const float sweptX=sweepSolidAxis(map,player,xStep,true);
+        if (std::fabs(sweptX-xStep)>0.0001f) {
+            player.x+=sweptX; player.vx=0; player.tilePushDirection=0; break;
+        }
         if (!RectHitsSolid(map, newX, player.y, player.w, player.h)) {
             player.x = newX;
             continue;
@@ -432,6 +482,10 @@ PlayerUpdateResult UpdatePlayerMovement(
     for (int step = 0; step < ySteps; ++step) {
         const float oldY = player.y;
         const float newY = oldY + yStep;
+        const float sweptY=sweepSolidAxis(map,player,yStep,false);
+        if (std::fabs(sweptY-yStep)>0.0001f) {
+            player.y+=sweptY; player.vy=0; player.onGround=yStep>0; break;
+        }
         if (!RectHitsSolid(map, player.x, newY, player.w, player.h)) {
             if (yStep > 0.0f && rectHitsSemiSolidDown(map, oldY, newY, player.x, player.w, player.h)) {
                 const int bottomTile = (int)std::floor((newY + player.h - 1) / map.tileSize);

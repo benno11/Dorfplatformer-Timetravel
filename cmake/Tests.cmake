@@ -228,6 +228,11 @@ if(BUILD_TESTING AND NOT ANDROID AND NOT IOS)
   target_link_libraries(async_network_test PRIVATE Threads::Threads)
   add_test(NAME async_network COMMAND async_network_test)
   set_tests_properties(async_network PROPERTIES TIMEOUT 15)
+  add_executable(player_movement_sweep_test tests/PlayerMovementSweepTest.cpp src/PlayerController.cpp src/TileMap.cpp)
+  target_include_directories(player_movement_sweep_test PRIVATE src)
+  target_link_libraries(player_movement_sweep_test PRIVATE ${SDL3_LINK_TARGET})
+  target_compile_definitions(player_movement_sweep_test PRIVATE SDL_ENABLE_OLD_NAMES=1)
+  add_test(NAME player_movement_sweep COMMAND player_movement_sweep_test)
   add_executable(player_controller_test
     tests/PlayerControllerTest.cpp
     src/PlayerController.cpp
