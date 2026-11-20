@@ -146,6 +146,28 @@ int main(int argc, char** argv) {
             SDL_RenderFillRect(ren, &player);
         };
         {
+            SDL_SetRenderTarget(ren,scene);
+            SDL_SetRenderScale(ren,2,2);
+            SDL_SetRenderDrawColor(ren,20,30,40,255); SDL_RenderClear(ren);
+            WaterEffects uniform;
+            require(uniform.compositeOverlay(ren,[&]() {
+                SDL_SetRenderDrawBlendMode(ren,SDL_BLENDMODE_NONE);
+                SDL_SetRenderDrawColor(ren,15,70,115,90);
+                const SDL_FRect first{16,16,64,32},second{48,16,64,32};
+                SDL_RenderFillRect(ren,&first); SDL_RenderFillRect(ren,&second);
+            }), "Composite water overlay");
+            SDL_Surface* result=SDL_RenderReadPixels(ren,nullptr);
+            require(result != nullptr, "Read uniform overlay");
+            const auto single=pixel(result,40,48),overlap=pixel(result,120,48),other=pixel(result,200,48);
+            require(single.r==overlap.r && single.g==overlap.g && single.b==overlap.b &&
+                    single.r==other.r && single.g==other.g && single.b==other.b,
+                    "Overlapping water must blend exactly once with uniform color");
+            require(single.b>40, "The water layer must remain visible");
+            const auto dry=pixel(result,4,4);
+            require(dry.r==20 && dry.g==30 && dry.b==40, "Water blending must not alter dry pixels");
+            SDL_DestroySurface(result);
+        }
+        {
             WaterEffects effects;
             drawScene();
             SDL_Surface* before = SDL_RenderReadPixels(ren, nullptr);

@@ -172,6 +172,8 @@ inline Interaction interact(const TileMap& map, const SDL_FRect& body,
 
 class WaterEffects {
     SDL_Texture* snapshot_ = nullptr;
+    SDL_Texture* overlay_ = nullptr;
+    int overlayW_ = 0, overlayH_ = 0;
     int snapshotW_ = 0, snapshotH_ = 0;
     struct Ripple { float x, y, age, strength; };
     std::vector<Ripple> ripples_;
@@ -182,9 +184,47 @@ public:
     ~WaterEffects() { reset(); }
     void reset() {
         if (snapshot_) SDL_DestroyTexture(snapshot_);
+        if (overlay_) SDL_DestroyTexture(overlay_);
+        overlay_ = nullptr; overlayW_ = overlayH_ = 0;
         snapshot_ = nullptr;
         snapshotW_ = snapshotH_ = 0;
         ripples_.clear();
+    }
+    // Draw overlapping water into one RGBA layer with replacement blending,
+    // then blend that layer once. Coverage overlap must never add brightness.
+    template<class Draw>
+    bool compositeOverlay(SDL_Renderer* ren, Draw draw) {
+        SDL_Texture* target = SDL_GetRenderTarget(ren);
+        int width=0, height=0;
+        if (!SDL_GetCurrentRenderOutputSize(ren,&width,&height)) return false;
+        if (overlay_ && (width != overlayW_ || height != overlayH_)) {
+            SDL_DestroyTexture(overlay_); overlay_ = nullptr;
+        }
+        if (!overlay_) {
+            overlay_ = SDL_CreateTexture(ren,SDL_PIXELFORMAT_RGBA8888,SDL_TEXTUREACCESS_TARGET,width,height);
+            if (!overlay_) return false;
+            overlayW_=width; overlayH_=height;
+            SDL_SetTextureBlendMode(overlay_,SDL_BLENDMODE_ADD);
+            SDL_SetTextureScaleMode(overlay_,SDL_SCALEMODE_NEAREST);
+        }
+        float sx=1,sy=1; SDL_GetRenderScale(ren,&sx,&sy);
+        SDL_Rect viewport{},clip{}; SDL_GetRenderViewport(ren,&viewport); SDL_GetRenderClipRect(ren,&clip);
+        const bool clipped=SDL_RenderClipEnabled(ren), viewportSet=SDL_RenderViewportSet(ren);
+        Uint8 r,g,b,a; SDL_GetRenderDrawColor(ren,&r,&g,&b,&a);
+        SDL_BlendMode blend; SDL_GetRenderDrawBlendMode(ren,&blend);
+        if (!SDL_SetRenderTarget(ren,overlay_)) return false;
+        SDL_SetRenderScale(ren,1,1); SDL_SetRenderViewport(ren,nullptr); SDL_SetRenderClipRect(ren,nullptr);
+        SDL_SetRenderDrawColor(ren,0,0,0,0); SDL_RenderClear(ren);
+        SDL_SetRenderScale(ren,sx,sy); SDL_SetRenderViewport(ren,viewportSet ? &viewport : nullptr);
+        SDL_SetRenderClipRect(ren,clipped ? &clip : nullptr);
+        draw();
+        SDL_SetRenderTarget(ren,target);
+        SDL_SetRenderScale(ren,1,1); SDL_SetRenderViewport(ren,nullptr); SDL_SetRenderClipRect(ren,nullptr);
+        const bool rendered=SDL_RenderTexture(ren,overlay_,static_cast<const SDL_FRect*>(nullptr),static_cast<const SDL_FRect*>(nullptr));
+        SDL_SetRenderScale(ren,sx,sy); SDL_SetRenderViewport(ren,viewportSet ? &viewport : nullptr);
+        SDL_SetRenderClipRect(ren,clipped ? &clip : nullptr);
+        SDL_SetRenderDrawColor(ren,r,g,b,a); SDL_SetRenderDrawBlendMode(ren,blend);
+        return rendered;
     }
     void splash(float x, float y, float speed) {
         if (ripples_.size() >= 32) ripples_.erase(ripples_.begin());

@@ -8562,29 +8562,31 @@ int RunGameApp(int argc, char** argv) {
                 SDL_GetTextureBlendMode(blocksTex, &previousBlend);
                 SDL_GetTextureAlphaMod(blocksTex, &previousAlpha);
                 SDL_GetTextureColorMod(blocksTex, &previousRed, &previousGreen, &previousBlue);
-                SDL_SetTextureBlendMode(blocksTex, SDL_BLENDMODE_ADD);
+                SDL_SetTextureBlendMode(blocksTex, SDL_BLENDMODE_NONE);
                 SDL_SetTextureAlphaMod(blocksTex, 85);
                 SDL_SetTextureColorMod(blocksTex, 75, 150, 205);
-                for (int y = tileMinY; y <= tileMaxY; ++y) {
-                    for (int x = tileMinX; x <= tileMaxX; ++x) {
-                        if (!WaterVisuals::wet(map, x, y, renderWrapX, renderWrapY)) continue;
-                        const int mx = (x % map.w + map.w) % map.w;
-                        const int my = (y % map.h + map.h) % map.h;
-                        const int sourceId = map.tileIds[my * map.w + mx];
-                        const int id = sourceId == 29 ? 41 : sourceId;
-                        const Frame* frame = nullptr;
-                        const auto tile = tileFrameById.find(id);
-                        if (tile != tileFrameById.end()) {
-                            const auto found = blocksFrameByName.find(tile->second);
-                            if (found != blocksFrameByName.end()) frame = &found->second;
+                waterEffects.compositeOverlay(ren, [&]() {
+                    for (int y = tileMinY; y <= tileMaxY; ++y) {
+                        for (int x = tileMinX; x <= tileMaxX; ++x) {
+                            if (!WaterVisuals::wet(map, x, y, renderWrapX, renderWrapY)) continue;
+                            const int mx = (x % map.w + map.w) % map.w;
+                            const int my = (y % map.h + map.h) % map.h;
+                            const int sourceId = map.tileIds[my * map.w + mx];
+                            const int id = sourceId == 29 ? 41 : sourceId;
+                            const Frame* frame = nullptr;
+                            const auto tile = tileFrameById.find(id);
+                            if (tile != tileFrameById.end()) {
+                                const auto found = blocksFrameByName.find(tile->second);
+                                if (found != blocksFrameByName.end()) frame = &found->second;
+                            }
+                            if (!frame && id < (int)blocksFrameById.size()) frame = blocksFrameById[id];
+                            if (!frame) continue;
+                            const SDL_FRect dst{x * (float)map.tileSize - camX, y * (float)map.tileSize - camY,
+                                (float)map.tileSize, (float)map.tileSize};
+                            renderTileFrame(ren, blocksTex, *frame, dst);
                         }
-                        if (!frame && id < (int)blocksFrameById.size()) frame = blocksFrameById[id];
-                        if (!frame) continue;
-                        const SDL_FRect dst{x * (float)map.tileSize - camX, y * (float)map.tileSize - camY,
-                            (float)map.tileSize, (float)map.tileSize};
-                        renderTileFrame(ren, blocksTex, *frame, dst);
                     }
-                }
+                });
                 SDL_SetTextureBlendMode(blocksTex, previousBlend);
                 SDL_SetTextureAlphaMod(blocksTex, previousAlpha);
                 SDL_SetTextureColorMod(blocksTex, previousRed, previousGreen, previousBlue);
