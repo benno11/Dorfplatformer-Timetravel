@@ -51,15 +51,21 @@ public:
     std::vector<Requirement> requirements(const std::string& id,
             const std::set<std::string>& catalog = {}) const {
         if (id == "all_campaign_coins") {
-            int count = 0;
-            for (const auto& key : catalog) count += campaignCoins_.count(key) != 0;
-            std::vector<Requirement> result{{"Collect every campaign coin and coin box", count, (int)catalog.size()}};
+            const auto coinValue = [](const std::string& key) { return key.find(":box:") != std::string::npos ? 5 : 1; };
+            int count = 0, total = 0;
+            for (const auto& key : catalog) {
+                const int value = coinValue(key);
+                total += value;
+                if (campaignCoins_.count(key)) count += value;
+            }
+            std::vector<Requirement> result{{"Collect every campaign coin and coin box", count, total}};
             std::string level;
             for (const auto& key : catalog) {
                 const auto name = key.substr(0, key.find(':'));
                 if (name != level) { result.push_back({name, 0, 0}); level = name; }
-                ++result.back().total;
-                result.back().current += campaignCoins_.count(key) != 0;
+                const int value = coinValue(key);
+                result.back().total += value;
+                if (campaignCoins_.count(key)) result.back().current += value;
             }
             return result;
         }

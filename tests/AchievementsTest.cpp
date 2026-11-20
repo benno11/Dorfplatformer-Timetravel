@@ -38,9 +38,10 @@ int main() {
         require(!resumedCoins.campaignCoin(*required.rbegin(), required), "completion only notifies once");
         require(!coins.campaignCoin("any", {}), "missing campaign catalog cannot unlock");
         const auto partialCoins = coins.requirements("all_campaign_coins", required);
-        require(partialCoins.front().current == 1 && partialCoins.front().total == 2, "Coin requirement progress uses saved unique sources");
+        require(partialCoins.front().current == 1 && partialCoins.front().total == 6, "Coin requirement progress uses saved unique sources");
         const auto completeCoins = resumedCoins.requirements("all_campaign_coins", required);
-        require(completeCoins.front().current == 2 && completeCoins.front().total == 2, "Complete coin requirement progress");
+        require(completeCoins.front().current == 6 && completeCoins.front().total == 6, "Complete coin requirement progress");
+        require(completeCoins.back().current == 5 && completeCoins.back().total == 5, "A collected box counts as five coins in its level");
         const auto worldButtons = a.requirements("buttons_world_1");
         require(worldButtons.size() == 2 && worldButtons[0].current == 1 && worldButtons[1].current == 0, "Button requirements distinguish completed areas");
         require(a.requirements("complete_level").front().current == 1, "Completed requirement shown");
@@ -50,7 +51,7 @@ int main() {
         const auto buttonSummary = a.requirementSummary("buttons_world_1");
         require(buttonSummary.find("area 1") != std::string::npos && buttonSummary.find("area 2") != std::string::npos,
             "Button row includes both requirements");
-        require(coins.requirementSummary("all_campaign_coins", required).find("(1/2)") != std::string::npos,
+        require(coins.requirementSummary("all_campaign_coins", required).find("(1/6)") != std::string::npos,
             "Coin row includes saved unique source progress");
         require(coins.requirementSummary("all_campaign_coins", required).find("level_001") == std::string::npos,
             "Coin summary does not include the entire per-level breakdown");
