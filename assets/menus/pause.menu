@@ -4,9 +4,11 @@ control restart "RESTART" restart "" Retartbtn
 control quit "QUIT" quit "" exitbtn
 control settings "S" menu mainsetting settingbtn
 set panel_sprite Panel
+set panel_width 400
+set panel_height 280
 set button_scale 0.75
-set fallback_width 280
-set fallback_height 240
+set fallback_width 360
+set fallback_height 220
 set fallback_button_width 70
 set fallback_button_height 30
 set fallback_button_gap 8

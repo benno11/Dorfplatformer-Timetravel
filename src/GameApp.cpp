@@ -8821,11 +8821,13 @@ int RunGameApp(int argc, char** argv) {
 
             if (hasPanel && hasContinue && hasRestart && hasExit) {
                 const Frame& panelFrame = pauseFrames[pauseMenuScript.text("panel_sprite")];
+                const int panelWidth=(int)pauseMenuScript.number("panel_width");
+                const int panelHeight=(int)pauseMenuScript.number("panel_height");
                 SDL_Rect panelDst = scaleRectCentered(SDL_Rect{
-                    screenW / 2 - panelFrame.rect.w / 2,
-                    screenH / 2 - panelFrame.rect.h / 2,
-                    panelFrame.rect.w,
-                    panelFrame.rect.h
+                    screenW / 2 - panelWidth / 2,
+                    screenH / 2 - panelHeight / 2,
+                    panelWidth,
+                    panelHeight
                 });
                 panelDst.y += pauseSlideY;
                 SDL_SetTextureAlphaMod(pauseTex, pausePanelAlpha);
