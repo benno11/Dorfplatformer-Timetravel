@@ -61,6 +61,7 @@ set(PLATFORMER_IOS_REQUIRED_BUNDLE_ENTRIES
   "assets/UI/slider-track.png"
   "assets/UI/slider-fill.png"
   "assets/UI/slider-thumb.png"
+  "assets/Sheets/DF_DefaultTerrain.png"
   "assets/UI/music-icon.png"
   "assets/UI/sfx-icon.png"
   "assets/UI/pause-icon.png"

@@ -93,6 +93,7 @@
 #include "FrontendMenu.h"
 #include "GameSupport.h"
 #include "TileRendering.h"
+#include "GeneratedTerrain.h"
 #include "ButtonAnimation.h"
 #include "PauseAudioSliders.h"
 #include "DeathAnimation.h"
@@ -899,6 +900,7 @@ int RunGameApp(int argc, char** argv) {
     SDL_Texture* pauseTex = nullptr;
     std::unordered_map<std::string, Frame> pauseFrames;
 
+    GeneratedTerrain generatedTerrain;
     SDL_Texture* blocksTex = nullptr;
     std::vector<FrameEntry> blocksFrameList;
     std::unordered_map<std::string, Frame> blocksFrameByName;
@@ -1550,6 +1552,7 @@ int RunGameApp(int argc, char** argv) {
         }
     };
     auto unloadGameplayAssets = [&]() {
+        generatedTerrain.reset();
         gameplayAssetsLoaded = false;
         gameplayAssetLoader.shutdown();
         waterEffects.reset();
@@ -1664,7 +1667,8 @@ int RunGameApp(int argc, char** argv) {
         if (bgTexWorld5) SDL_DestroyTexture(bgTexWorld5);
         if (bgTexWorld6) SDL_DestroyTexture(bgTexWorld6);
         if (introCardTex) SDL_DestroyTexture(introCardTex);
-        if (blocksTex) SDL_DestroyTexture(blocksTex);
+        generatedTerrain.reset();
+    if (blocksTex) SDL_DestroyTexture(blocksTex);
         if (entitiesTex) SDL_DestroyTexture(entitiesTex);
         if (bossesTex) SDL_DestroyTexture(bossesTex);
         if (endSignTex) SDL_DestroyTexture(endSignTex);
@@ -3399,6 +3403,7 @@ int RunGameApp(int argc, char** argv) {
             bumperSparks.clear();
             playerWaterState = {};
             levelManager.reloadLevel(map, objects, meta, player, preserveButtons);
+            if(!generatedTerrain.regenerate(ren,levelManager.levelPath())) SDL_Log("Generated terrain unavailable; using packed terrain atlas");
             ++modLevelGeneration;
             parameterContacts.clear();
             if (hardmodeRun) {
@@ -5080,6 +5085,7 @@ int RunGameApp(int argc, char** argv) {
             if(pauseVolumeDirty) {saveClientSettings();pauseVolumeDirty=false;}
         }
         while (IosAppSleep::pollEvent(&e)) {
+            if(e.type==SDL_EVENT_RENDER_TARGETS_RESET || e.type==SDL_EVENT_RENDER_DEVICE_RESET) generatedTerrain.reset();
             const bool slidersInteractive=paused && !pauseMenuClosing && pauseMenuAnim>=0.98f;
             if (slidersInteractive) {
                 bool changed=false;
@@ -7883,6 +7889,16 @@ int RunGameApp(int argc, char** argv) {
                     if (id == TileIds::BossBarrier) continue;
                     if (id == 0 || (waterEffectsEnabled && map.water[row + mapX])) continue;
 
+                    if(currentWorldId!=3 && currentWorldId!=6 && DefaultTiles::contains(id)) {
+                        if(generatedTerrain.needsBuild())generatedTerrain.regenerate(ren,levelManager.levelPath());
+                        const auto occupied=[&](int tx,int ty){
+                            if(renderWrapX)tx=(tx%map.w+map.w)%map.w;
+                            if(renderWrapY)ty=(ty%map.h+map.h)%map.h;
+                            if(tx<0 || ty<0 || tx>=map.w || ty>=map.h)return true;
+                            return DefaultTiles::contains(map.tileIds[ty*map.w+tx]);
+                        };
+                        if(generatedTerrain.draw(ren,id,mapX,mapY,SDL_FRect{x*tileSizeF-camX,y*tileSizeF-camY,tileSizeF,tileSizeF},occupied))continue;
+                    }
                     const Frame* frame = nullptr;
                     if (id == 24) {
                         frame = cycleFrames[cycleIndex];
@@ -9714,6 +9730,7 @@ int RunGameApp(int argc, char** argv) {
     gameplayAssetLoader.shutdown();
     waterEffects.reset();
     if (playerTex) SDL_DestroyTexture(playerTex);
+    generatedTerrain.reset();
     if (blocksTex) SDL_DestroyTexture(blocksTex);
     if (entitiesTex) SDL_DestroyTexture(entitiesTex);
     if (bossesTex) SDL_DestroyTexture(bossesTex);

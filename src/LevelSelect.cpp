@@ -1,6 +1,7 @@
 #include "EditorCanvas.h"
 #include "PauseUiIcons.h"
 #include "DefaultTiles.h"
+#include "GeneratedTerrain.h"
 #include "TileRendering.h"
 #include "IosAppSleep.h"
 #include "MenuScriptTemplate.h"
@@ -895,6 +896,8 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
         0x9f, 0x61, 0xff);
     if (blocksTex) SDL_SetTextureScaleMode(blocksTex, SDL_SCALEMODE_NEAREST);
     auto blocksFrameList = loadPlistFrameList(texPath("plists", "blocks", "assets/Sheets/DF_Blocks-uhd.plist"));
+    GeneratedTerrain generatedTerrain;
+    generatedTerrain.regenerate(ren,initialPath);
     std::unordered_map<std::string, Frame> blocksFrameByName;
     blocksFrameByName.reserve(blocksFrameList.size());
     for (const auto& e : blocksFrameList) blocksFrameByName[e.name] = e.frame;
@@ -1100,6 +1103,9 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
 
         SDL_Event e;
         while (running && IosAppSleep::pollEvent(&e)) {
+            if(e.type==SDL_EVENT_RENDER_TARGETS_RESET || e.type==SDL_EVENT_RENDER_DEVICE_RESET) {
+                generatedTerrain.reset();generatedTerrain.regenerate(ren,initialPath);
+            }
             editorInput.handleEvent(e);
             if (e.type == SDL_QUIT) { running = false; break; }
             if (SDL_GetTicks() < inputBlockUntilTicks) continue;
@@ -1557,6 +1563,11 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
             for (int x = drawX0; x <= drawX1; ++x) {
                 unsigned short id = grid[y * gridW + x];
                 SDL_Rect rc{gridX + x * cell - viewX, gridY + y * cell - viewY, cell, cell};
+                const auto occupied=[&](int tx,int ty){
+                    if(tx<0 || ty<0 || tx>=gridW || ty>=gridH)return true;
+                    return DefaultTiles::contains(grid[ty*gridW+tx]);
+                };
+                if(generatedTerrain.draw(ren,id,x,y,SDL_FRect{(float)rc.x,(float)rc.y,(float)rc.w,(float)rc.h},occupied))continue;
                 const Frame* f = (id < blocksFrameById.size()) ? blocksFrameById[id] : nullptr;
                 if (blocksTex && f) {
                     renderTileFrame(ren, blocksTex, *f, SDL_FRect{(float)rc.x,(float)rc.y,(float)rc.w,(float)rc.h});
