@@ -29,6 +29,23 @@ int main(){
     require(TerrainVariants::quarters(255^64)[2]==18,"Missing lower-left diagonal has a matching inside corner");
     require(TerrainVariants::quarters(255^128)[3]==19,"Missing lower-right diagonal has a matching inside corner");
     require(SDL_Init(0),"SDL init");
+    {
+        SDL_Surface* grass=SDL_CreateSurface(64,32,SDL_PIXELFORMAT_RGBA32);
+        auto* bytes=static_cast<Uint8*>(grass->pixels);
+        const auto put=[&](int x,int y,SDL_Color c){auto* p=bytes+y*grass->pitch+x*4;p[0]=c.r;p[1]=c.g;p[2]=c.b;p[3]=c.a;};
+        for(int y=0;y<32;++y)for(int x=0;x<64;++x)put(x,y,{80,40,20,255});
+        for(int y=0;y<8;++y)for(int x=0;x<32;++x){put(x,y,{20,(Uint8)(80+x),10,255});put(x+32,y,{40,150,30,255});}
+        put(34,2,{0,0,0,255});put(35,2,{0,0,0,0});put(36,2,{80,40,20,255});
+        TerrainVariants::normalizeGrass(grass,2,2,0);
+        for(int y=0;y<8;++y)for(int x=0;x<32;++x){
+            if(y==2 && x>=2 && x<=4)continue;
+            const auto* a=bytes+y*grass->pitch+x*4;const auto* b=a+32*4;
+            require(a[0]==b[0] && a[1]==b[1] && a[2]==b[2] && a[3]==b[3],"Grass shapes must use one repeating fill");
+        }
+        const auto* outline=bytes+2*grass->pitch+34*4;
+        require(outline[0]==0 && outline[3]==255 && outline[7]==0 && outline[8]==80,"Grass normalization must preserve outlines, cutouts and dirt");
+        SDL_DestroySurface(grass);
+    }
     SDL_Surface* output=SDL_CreateSurface(256,64,SDL_PIXELFORMAT_RGBA8888);
     SDL_Renderer* renderer=SDL_CreateSoftwareRenderer(output);require(renderer,"Renderer");
     {

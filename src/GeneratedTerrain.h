@@ -15,6 +15,27 @@ inline std::array<int,4> quarters(unsigned mask) {
              !d?(l?4:5):(!l?16:(!dl?18:17)),
              !d?(r?7:6):(!r?13:(!dr?19:12))}};
 }
+// Use the original straight grass strip as the common color pattern for every
+// grass shape. Alpha, black outlines, and dirt pixels remain untouched.
+inline void normalizeGrass(SDL_Surface* surface,int columns,int tiles,int reference) {
+    auto pixel=[&](int x,int y){return static_cast<Uint8*>(surface->pixels)+y*surface->pitch+x*4;};
+    std::array<std::array<Uint8,4>,32*16> pattern{};
+    for(int y=0;y<16;++y)for(int x=0;x<32;++x){
+        const auto* source=pixel(reference%columns*32+x,reference/columns*32+y);
+        std::copy(source,source+4,pattern[y*32+x].begin());
+    }
+    const auto green=[](const auto& p){return p[3] && p[1]>p[0] && p[1]>p[2];};
+    for(int tile=0;tile<tiles;++tile)for(int y=0;y<32;++y)for(int x=0;x<32;++x){
+        auto* target=pixel(tile%columns*32+x,tile/columns*32+y);
+        if(!green(target))continue;
+        // Edge tips can extend below the straight strip: continue its nearest
+        // green color rather than introducing brown gaps into the grass shape.
+        for(int row=std::min(y,15);row>=0;--row){
+            const auto& color=pattern[row*32+x];
+            if(green(color)){std::copy(color.begin(),color.begin()+3,target);break;}
+        }
+    }
+}
 template<class Occupied> unsigned mask(int x,int y,Occupied occupied) {
     const int offsets[8][2]={{0,-1},{0,1},{-1,0},{1,0},{-1,-1},{1,-1},{-1,1},{1,1}};
     unsigned result=0;
@@ -93,12 +114,22 @@ public:
                 }
             }
         }
+        SDL_Surface* readback=ok?SDL_RenderReadPixels(renderer,nullptr):nullptr;
+        SDL_Surface* pixels=readback?SDL_ConvertSurface(readback,SDL_PIXELFORMAT_RGBA32):nullptr;
+        if(readback)SDL_DestroySurface(readback);
+        SDL_Texture* normalized=nullptr;
+        if(pixels){
+            TerrainVariants::normalizeGrass(pixels,columns_,(int)layouts.size(),lookup_[12]);
+            normalized=SDL_CreateTextureFromSurface(renderer,pixels);
+            SDL_DestroySurface(pixels);
+        }
         SDL_SetRenderTarget(renderer,target);
         SDL_SetRenderLogicalPresentation(renderer,lw,lh,logical);SDL_SetRenderScale(renderer,sx,sy);
         SDL_SetRenderViewport(renderer,viewportSet?&viewport:nullptr);SDL_SetRenderClipRect(renderer,clipped?&clip:nullptr);
         SDL_SetRenderDrawColor(renderer,red,green,blue,alpha);SDL_SetRenderDrawBlendMode(renderer,blend);
-        if(!ok){SDL_DestroyTexture(generated);return false;}
-        atlas_=generated;SDL_SetTextureBlendMode(atlas_,SDL_BLENDMODE_BLEND);SDL_SetTextureScaleMode(atlas_,SDL_SCALEMODE_NEAREST);
+        SDL_DestroyTexture(generated);
+        if(!ok || !normalized){if(normalized)SDL_DestroyTexture(normalized);return false;}
+        atlas_=normalized;SDL_SetTextureBlendMode(atlas_,SDL_BLENDMODE_BLEND);SDL_SetTextureScaleMode(atlas_,SDL_SCALEMODE_NEAREST);
         return true;
     }
     template<class Occupied>
