@@ -15,22 +15,6 @@ inline std::array<int,4> quarters(unsigned mask) {
              !d?(l?4:5):(!l?16:(!dl?18:17)),
              !d?(r?7:6):(!r?13:(!dr?19:12))}};
 }
-// Transform the complete 32px soil pattern, rather than mirroring each
-// 16px quadrant in place (which reverses its joins at the center).
-inline int interiorSource(int corner,unsigned variant) {
-    constexpr int soil[4]={15,10,17,12};
-    return soil[corner ^ (variant&3)];
-}
-inline uint32_t seed(const std::string& level) {
-    uint32_t value=2166136261u;
-    for(unsigned char c:level){value^=c;value*=16777619u;}
-    return value;
-}
-inline unsigned style(uint32_t level,int x,int y) {
-    uint32_t h=level ^ uint32_t(x)*73856093u ^ uint32_t(y)*19349663u;
-    h^=h>>16;h*=0x7feb352du;h^=h>>15;
-    return h%4;
-}
 template<class Occupied> unsigned mask(int x,int y,Occupied occupied) {
     const int offsets[8][2]={{0,-1},{0,1},{-1,0},{1,0},{-1,-1},{1,-1},{-1,1},{1,1}};
     unsigned result=0;
@@ -44,7 +28,6 @@ class GeneratedTerrain {
     SDL_Texture* atlas_=nullptr;
     std::array<int,256> lookup_{};
     int columns_=1;
-    uint32_t seed_=0;
     bool needsBuild_=true;
 public:
     GeneratedTerrain()=default;
@@ -54,9 +37,8 @@ public:
     void reset(){if(atlas_)SDL_DestroyTexture(atlas_);if(source_)SDL_DestroyTexture(source_);atlas_=source_=nullptr;needsBuild_=true;}
     bool ready()const{return atlas_!=nullptr;}
     bool needsBuild()const{return needsBuild_;}
-    bool regenerate(SDL_Renderer* renderer,const std::string& level) {
+    bool regenerate(SDL_Renderer* renderer,const std::string& /*level*/) {
         needsBuild_=false;
-        seed_=TerrainVariants::seed(level);
         if(atlas_){SDL_DestroyTexture(atlas_);atlas_=nullptr;}
         if(!source_)source_=loadTextureSafe(renderer,"assets/Sheets/DF_DefaultTerrain.png");
         if(!source_)return false;
@@ -70,8 +52,8 @@ public:
             if(inserted.second)layouts.push_back(q);
             lookup_[mask]=inserted.first->second;
         }
-        columns_=std::max(1,(int)std::ceil(std::sqrt(layouts.size()*4.0)));
-        const int rows=((int)layouts.size()*4+columns_-1)/columns_;
+        columns_=std::max(1,(int)std::ceil(std::sqrt((double)layouts.size())));
+        const int rows=((int)layouts.size()+columns_-1)/columns_;
         SDL_Texture* generated=SDL_CreateTexture(renderer,SDL_PIXELFORMAT_RGBA8888,SDL_TEXTUREACCESS_TARGET,columns_*32,rows*32);
         if(!generated)return false;
         SDL_Texture* target=SDL_GetRenderTarget(renderer);
@@ -88,28 +70,15 @@ public:
         SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);SDL_SetRenderDrawColor(renderer,0,0,0,0);SDL_RenderClear(renderer);
         SDL_SetTextureBlendMode(source_,SDL_BLENDMODE_NONE);SDL_SetTextureScaleMode(source_,SDL_SCALEMODE_NEAREST);
         bool ok=true;
-        for(int layout=0;layout<(int)layouts.size();++layout)for(int variant=0;variant<4;++variant){
-            const int index=layout*4+variant;
+        for(int layout=0;layout<(int)layouts.size();++layout){
+            const int index=layout;
             for(int corner=0;corner<4;++corner){
                 const int shape=layouts[layout][corner];
-                const bool interior=shape==10 || shape==12 || shape==15 || shape==17 || shape>=18;
-                const int piece=interior ? TerrainVariants::interiorSource(corner,variant) : shape;
                 const int basePiece=shape>=18 ? (shape==18?17:12) : shape;
                 const SDL_FRect baseSrc{(float)(basePiece%6*16),(float)(basePiece/6*16),16,16};
-                const SDL_FRect src{(float)(piece%6*16),(float)(piece/6*16),16,16};
                 const int tileX=index%columns_*32,tileY=index/columns_*32;
                 const SDL_FRect dst{(float)(tileX+corner%2*16),(float)(tileY+corner/2*16),16,16};
                 ok=SDL_RenderTexture(renderer,source_,&baseSrc,&dst) && ok;
-                if(interior && variant) {
-                    // Keep a common two-pixel seam around every variation.
-                    // Alternate patterns may change the interior, never move joins.
-                    const SDL_Rect inner{tileX+2,tileY+2,28,28};
-                    SDL_SetRenderClipRect(renderer,&inner);
-                    const auto flip=static_cast<SDL_FlipMode>(
-                        (variant&1 ? SDL_FLIP_HORIZONTAL : 0) | (variant&2 ? SDL_FLIP_VERTICAL : 0));
-                    ok=SDL_RenderTextureRotated(renderer,source_,&src,&dst,0,nullptr,flip) && ok;
-                    SDL_SetRenderClipRect(renderer,nullptr);
-                }
                 if(shape==18 || shape==19) {
                     // Missing lower diagonal: align the small dirt inside corner
                     // with the hole, without placing grass upside down.
@@ -135,7 +104,7 @@ public:
     template<class Occupied>
     bool draw(SDL_Renderer* renderer,unsigned short id,int x,int y,const SDL_FRect& dst,Occupied occupied)const{
         if(!atlas_ || !DefaultTiles::contains(id))return false;
-        const int index=lookup_[TerrainVariants::mask(x,y,occupied)]*4+TerrainVariants::style(seed_,x,y);
+        const int index=lookup_[TerrainVariants::mask(x,y,occupied)];
         renderTileFrame(renderer,atlas_,Frame{{index%columns_*32,index/columns_*32,32,32},false},dst);
         return true;
     }
