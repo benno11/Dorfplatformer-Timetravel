@@ -1,0 +1,250 @@
+{
+  "meta": {
+    "image": "original-tileset.png",
+    "size": {
+      "w": 96,
+      "h": 48
+    },
+    "tileSize": 16,
+    "columns": 6,
+    "rows": 3,
+    "padding": 0,
+    "artwork": "Original source pixels, losslessly trimmed; no redraw"
+  },
+  "frames": {
+    "sprite_00": {
+      "frame": {
+        "x": 0,
+        "y": 0,
+        "w": 16,
+        "h": 16
+      },
+      "originalCanvas": {
+        "w": 32,
+        "h": 32,
+        "trimBounds": "16x16+16+0"
+      }
+    },
+    "sprite_01": {
+      "frame": {
+        "x": 16,
+        "y": 0,
+        "w": 16,
+        "h": 16
+      },
+      "originalCanvas": {
+        "w": 32,
+        "h": 32,
+        "trimBounds": "16x16+16+0"
+      }
+    },
+    "sprite_02": {
+      "frame": {
+        "x": 32,
+        "y": 0,
+        "w": 16,
+        "h": 16
+      },
+      "originalCanvas": {
+        "w": 32,
+        "h": 32,
+        "trimBounds": "16x16+0+0"
+      }
+    },
+    "sprite_03": {
+      "frame": {
+        "x": 48,
+        "y": 0,
+        "w": 16,
+        "h": 16
+      },
+      "originalCanvas": {
+        "w": 32,
+        "h": 32,
+        "trimBounds": "16x16+0+0"
+      }
+    },
+    "sprite_04": {
+      "frame": {
+        "x": 64,
+        "y": 0,
+        "w": 16,
+        "h": 16
+      },
+      "originalCanvas": {
+        "w": 32,
+        "h": 32,
+        "trimBounds": "16x16+0+16"
+      }
+    },
+    "sprite_05": {
+      "frame": {
+        "x": 80,
+        "y": 0,
+        "w": 16,
+        "h": 16
+      },
+      "originalCanvas": {
+        "w": 32,
+        "h": 32,
+        "trimBounds": "16x16+0+16"
+      }
+    },
+    "sprite_06": {
+      "frame": {
+        "x": 0,
+        "y": 16,
+        "w": 16,
+        "h": 16
+      },
+      "originalCanvas": {
+        "w": 32,
+        "h": 32,
+        "trimBounds": "16x16+16+16"
+      }
+    },
+    "sprite_07": {
+      "frame": {
+        "x": 16,
+        "y": 16,
+        "w": 16,
+        "h": 16
+      },
+      "originalCanvas": {
+        "w": 32,
+        "h": 32,
+        "trimBounds": "16x16+16+16"
+      }
+    },
+    "sprite_08": {
+      "frame": {
+        "x": 32,
+        "y": 16,
+        "w": 16,
+        "h": 16
+      },
+      "originalCanvas": {
+        "w": 32,
+        "h": 32,
+        "trimBounds": "16x16+0+0"
+      }
+    },
+    "sprite_09": {
+      "frame": {
+        "x": 48,
+        "y": 16,
+        "w": 16,
+        "h": 16
+      },
+      "originalCanvas": {
+        "w": 32,
+        "h": 32,
+        "trimBounds": "16x16+16+0"
+      }
+    },
+    "sprite_10": {
+      "frame": {
+        "x": 64,
+        "y": 16,
+        "w": 16,
+        "h": 16
+      },
+      "originalCanvas": {
+        "w": 32,
+        "h": 32,
+        "trimBounds": "16x16+16+0"
+      }
+    },
+    "sprite_11": {
+      "frame": {
+        "x": 80,
+        "y": 16,
+        "w": 16,
+        "h": 16
+      },
+      "originalCanvas": {
+        "w": 32,
+        "h": 32,
+        "trimBounds": "16x16+16+0"
+      }
+    },
+    "sprite_12": {
+      "frame": {
+        "x": 0,
+        "y": 32,
+        "w": 16,
+        "h": 16
+      },
+      "originalCanvas": {
+        "w": 32,
+        "h": 32,
+        "trimBounds": "16x16+16+16"
+      }
+    },
+    "sprite_13": {
+      "frame": {
+        "x": 16,
+        "y": 32,
+        "w": 16,
+        "h": 16
+      },
+      "originalCanvas": {
+        "w": 32,
+        "h": 32,
+        "trimBounds": "16x16+16+16"
+      }
+    },
+    "sprite_14": {
+      "frame": {
+        "x": 32,
+        "y": 32,
+        "w": 16,
+        "h": 16
+      },
+      "originalCanvas": {
+        "w": 32,
+        "h": 32,
+        "trimBounds": "16x16+0+0"
+      }
+    },
+    "sprite_15": {
+      "frame": {
+        "x": 48,
+        "y": 32,
+        "w": 16,
+        "h": 16
+      },
+      "originalCanvas": {
+        "w": 32,
+        "h": 32,
+        "trimBounds": "16x16+0+0"
+      }
+    },
+    "sprite_16": {
+      "frame": {
+        "x": 64,
+        "y": 32,
+        "w": 16,
+        "h": 16
+      },
+      "originalCanvas": {
+        "w": 32,
+        "h": 32,
+        "trimBounds": "16x16+0+16"
+      }
+    },
+    "sprite_17": {
+      "frame": {
+        "x": 80,
+        "y": 32,
+        "w": 16,
+        "h": 16
+      },
+      "originalCanvas": {
+        "w": 32,
+        "h": 32,
+        "trimBounds": "16x16+0+16"
+      }
+    }
+  }
+}
