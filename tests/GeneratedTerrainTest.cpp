@@ -46,6 +46,23 @@ int main(){
         require(outline[0]==0 && outline[3]==255 && outline[7]==0 && outline[8]==80,"Grass normalization must preserve outlines, cutouts and dirt");
         SDL_DestroySurface(grass);
     }
+    {
+        SDL_Surface* soil=SDL_CreateSurface(64,32,SDL_PIXELFORMAT_RGBA32);
+        auto* bytes=static_cast<Uint8*>(soil->pixels);
+        const auto put=[&](int x,int y,SDL_Color c){auto* p=bytes+y*soil->pitch+x*4;p[0]=c.r;p[1]=c.g;p[2]=c.b;p[3]=c.a;};
+        for(int y=0;y<32;++y)for(int x=0;x<32;++x){put(x,y,{(Uint8)(100+x),(Uint8)(30+y),15,255});put(x+32,y,{180,60,20,255});}
+        put(33,5,{0,0,0,255});put(34,5,{0,0,0,0});put(35,5,{20,100,10,255});
+        TerrainVariants::normalizeSoil(soil,2,2,0);
+        for(int y=0;y<32;++y)for(int x=0;x<32;++x){
+            if(y==5 && x>=1 && x<=3)continue;
+            const auto* a=bytes+y*soil->pitch+x*4;const auto* b=a+32*4;
+            require(a[0]==b[0] && a[1]==b[1] && a[2]==b[2] && a[3]==b[3],"Side and bottom soil must share the interior pattern phase");
+        }
+        const auto* edge=bytes+5*soil->pitch+33*4;
+        require(edge[0]==0 && edge[3]==255 && edge[7]==0 && edge[8]==20 && edge[9]==100,
+                "Soil normalization must preserve outlines, cutouts and grass");
+        SDL_DestroySurface(soil);
+    }
     SDL_Surface* output=SDL_CreateSurface(256,64,SDL_PIXELFORMAT_RGBA8888);
     SDL_Renderer* renderer=SDL_CreateSoftwareRenderer(output);require(renderer,"Renderer");
     {

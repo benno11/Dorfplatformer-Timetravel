@@ -36,6 +36,22 @@ inline void normalizeGrass(SDL_Surface* surface,int columns,int tiles,int refere
         }
     }
 }
+// Side and bottom pieces must share the same soil phase as enclosed blocks.
+// Their source images contain edge-specific dirt patterns; keep their contours,
+// but use the common original interior for the brown fill everywhere.
+inline void normalizeSoil(SDL_Surface* surface,int columns,int tiles,int reference) {
+    auto pixel=[&](int x,int y){return static_cast<Uint8*>(surface->pixels)+y*surface->pitch+x*4;};
+    std::array<std::array<Uint8,4>,32*32> pattern{};
+    for(int y=0;y<32;++y)for(int x=0;x<32;++x){
+        const auto* source=pixel(reference%columns*32+x,reference/columns*32+y);
+        std::copy(source,source+4,pattern[y*32+x].begin());
+    }
+    for(int tile=0;tile<tiles;++tile)for(int y=0;y<32;++y)for(int x=0;x<32;++x){
+        auto* target=pixel(tile%columns*32+x,tile/columns*32+y);
+        if(target[3] && target[0]>target[1] && target[0]>target[2])
+            std::copy(pattern[y*32+x].begin(),pattern[y*32+x].begin()+3,target);
+    }
+}
 template<class Occupied> unsigned mask(int x,int y,Occupied occupied) {
     const int offsets[8][2]={{0,-1},{0,1},{-1,0},{1,0},{-1,-1},{1,-1},{-1,1},{1,1}};
     unsigned result=0;
@@ -120,6 +136,7 @@ public:
         SDL_Texture* normalized=nullptr;
         if(pixels){
             TerrainVariants::normalizeGrass(pixels,columns_,(int)layouts.size(),lookup_[12]);
+            TerrainVariants::normalizeSoil(pixels,columns_,(int)layouts.size(),lookup_[255]);
             normalized=SDL_CreateTextureFromSurface(renderer,pixels);
             SDL_DestroySurface(pixels);
         }
