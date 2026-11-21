@@ -16,6 +16,7 @@ int main() {
   SDL_SetRenderScale(renderer,zoom,zoom);
   for(int y=-1;y<12;++y) for(int x=-1;x<12;++x)
    renderTileFrame(renderer,texture,Frame{src,rotated},SDL_FRect{x*16.0f-0.7f,y*16.0f-0.3f,16,16});
+  float sx=0,sy=0;SDL_GetRenderScale(renderer,&sx,&sy);require(sx==zoom && sy==zoom);
   SDL_RenderPresent(renderer);
   SDL_ScaleMode mode; SDL_GetTextureScaleMode(texture,&mode); require(mode==SDL_SCALEMODE_LINEAR);
   for(int y=1;y<127;++y) for(int x=1;x<127;++x) {

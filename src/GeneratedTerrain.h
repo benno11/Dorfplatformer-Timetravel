@@ -9,11 +9,17 @@
 namespace TerrainVariants {
 // Eight neighbors: up, down, left, right, upper-left, upper-right, lower-left, lower-right.
 inline std::array<int,4> quarters(unsigned mask) {
-    const bool u=mask&1,d=mask&2,l=mask&4,r=mask&8,ul=mask&16,ur=mask&32;
+    const bool u=mask&1,d=mask&2,l=mask&4,r=mask&8,ul=mask&16,ur=mask&32,dl=mask&64,dr=mask&128;
     return {{!u?(l?2:3):(!l?14:(!ul?8:15)),
              !u?(r?1:0):(!r?11:(!ur?9:10)),
-             !d?(l?4:5):(!l?16:17),
-             !d?(r?7:6):(!r?13:12)}};
+             !d?(l?4:5):(!l?16:(!dl?18:17)),
+             !d?(r?7:6):(!r?13:(!dr?19:12))}};
+}
+// Transform the complete 32px soil pattern, rather than mirroring each
+// 16px quadrant in place (which reverses its joins at the center).
+inline int interiorSource(int corner,unsigned variant) {
+    constexpr int soil[4]={15,10,17,12};
+    return soil[corner ^ (variant&3)];
 }
 inline uint32_t seed(const std::string& level) {
     uint32_t value=2166136261u;
@@ -85,15 +91,37 @@ public:
         for(int layout=0;layout<(int)layouts.size();++layout)for(int variant=0;variant<4;++variant){
             const int index=layout*4+variant;
             for(int corner=0;corner<4;++corner){
-                int piece=layouts[layout][corner];
-                const bool interior=piece==10 || piece==12 || piece==15 || piece==17;
-                if(interior && variant>=2){
-                    if(piece==10)piece=15;else if(piece==15)piece=10;else if(piece==12)piece=17;else piece=12;
-                }
+                const int shape=layouts[layout][corner];
+                const bool interior=shape==10 || shape==12 || shape==15 || shape==17 || shape>=18;
+                const int piece=interior ? TerrainVariants::interiorSource(corner,variant) : shape;
+                const int basePiece=shape>=18 ? (shape==18?17:12) : shape;
+                const SDL_FRect baseSrc{(float)(basePiece%6*16),(float)(basePiece/6*16),16,16};
                 const SDL_FRect src{(float)(piece%6*16),(float)(piece/6*16),16,16};
-                const SDL_FRect dst{(float)(index%columns_*32+corner%2*16),(float)(index/columns_*32+corner/2*16),16,16};
-                const auto flip=interior && variant%2 ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
-                ok=SDL_RenderTextureRotated(renderer,source_,&src,&dst,0,nullptr,flip) && ok;
+                const int tileX=index%columns_*32,tileY=index/columns_*32;
+                const SDL_FRect dst{(float)(tileX+corner%2*16),(float)(tileY+corner/2*16),16,16};
+                ok=SDL_RenderTexture(renderer,source_,&baseSrc,&dst) && ok;
+                if(interior && variant) {
+                    // Keep a common two-pixel seam around every variation.
+                    // Alternate patterns may change the interior, never move joins.
+                    const SDL_Rect inner{tileX+2,tileY+2,28,28};
+                    SDL_SetRenderClipRect(renderer,&inner);
+                    const auto flip=static_cast<SDL_FlipMode>(
+                        (variant&1 ? SDL_FLIP_HORIZONTAL : 0) | (variant&2 ? SDL_FLIP_VERTICAL : 0));
+                    ok=SDL_RenderTextureRotated(renderer,source_,&src,&dst,0,nullptr,flip) && ok;
+                    SDL_SetRenderClipRect(renderer,nullptr);
+                }
+                if(shape==18 || shape==19) {
+                    // Missing lower diagonal: align the small dirt inside corner
+                    // with the hole, without placing grass upside down.
+                    const bool right=shape==19;
+                    const float edge=right ? 14.0f : 0.0f;
+                    SDL_SetRenderDrawColor(renderer,0,0,0,255);
+                    const SDL_FRect above{dst.x+edge,dst.y+12,2,2};
+                    const SDL_FRect side{dst.x+(right?12.0f:2.0f),dst.y+14,2,2};
+                    SDL_RenderFillRect(renderer,&above);SDL_RenderFillRect(renderer,&side);
+                    SDL_SetRenderDrawColor(renderer,0,0,0,0);
+                    const SDL_FRect cutout{dst.x+edge,dst.y+14,2,2};SDL_RenderFillRect(renderer,&cutout);
+                }
             }
         }
         SDL_SetRenderTarget(renderer,target);

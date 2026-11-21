@@ -11,6 +11,29 @@ inline void renderTileFrame(SDL_Renderer* renderer, SDL_Texture* texture, const 
         !SDL_GetTextureSize(texture,&tw,&th) || tw<=0 || th<=0) return;
     const float left=(std::floor(dst.x*sx)-0.01f)/sx, right=(std::ceil((dst.x+dst.w)*sx)+0.01f)/sx;
     const float top=(std::floor(dst.y*sy)-0.01f)/sy, bottom=(std::ceil((dst.y+dst.h)*sy)+0.01f)/sy;
+    if(!frame.rotated && !SDL_RenderViewportSet(renderer)) {
+        SDL_ScaleMode previous=SDL_SCALEMODE_NEAREST;
+        SDL_GetTextureScaleMode(texture,&previous);SDL_SetTextureScaleMode(texture,SDL_SCALEMODE_NEAREST);
+        // Render snapped physical coordinates directly. Dividing by a fractional
+        // zoom and multiplying again can truncate the shared edge a pixel apart.
+        SDL_Rect clip{};const bool clipped=SDL_RenderClipEnabled(renderer);
+        if(clipped)SDL_GetRenderClipRect(renderer,&clip);
+        SDL_SetRenderScale(renderer,1,1);
+        if(clipped){
+            const int x=(int)std::floor(clip.x*sx),y=(int)std::floor(clip.y*sy);
+            const SDL_Rect physical{x,y,(int)std::ceil((clip.x+clip.w)*sx)-x,(int)std::ceil((clip.y+clip.h)*sy)-y};
+            SDL_SetRenderClipRect(renderer,&physical);
+        }
+        const SDL_FRect source{(float)frame.rect.x,(float)frame.rect.y,(float)frame.rect.w,(float)frame.rect.h};
+        const float x0=std::round(dst.x*sx),y0=std::round(dst.y*sy);
+        const float x1=std::round((dst.x+dst.w)*sx),y1=std::round((dst.y+dst.h)*sy);
+        const SDL_FRect target{x0,y0,x1-x0,y1-y0};
+        SDL_RenderTexture(renderer,texture,&source,&target);
+        SDL_SetRenderScale(renderer,sx,sy);
+        if(clipped)SDL_SetRenderClipRect(renderer,&clip);
+        SDL_SetTextureScaleMode(texture,previous);
+        return;
+    }
     const float u0=(frame.rect.x+0.5f)/tw, v0=(frame.rect.y+0.5f)/th;
     const float u1=(frame.rect.x+frame.rect.w-0.5f)/tw, v1=(frame.rect.y+frame.rect.h-0.5f)/th;
     SDL_FPoint uv[4]={{u0,v0},{u1,v0},{u1,v1},{u0,v1}};
