@@ -63,6 +63,21 @@ int main(){
                 "Soil normalization must preserve outlines, cutouts and grass");
         SDL_DestroySurface(soil);
     }
+    {
+        SDL_Surface* edges=SDL_CreateSurface(96,32,SDL_PIXELFORMAT_RGBA32);
+        SDL_FillSurfaceRect(edges,nullptr,SDL_MapSurfaceRGBA(edges,90,45,20,255));
+        std::vector<std::array<int,4>> shapes{TerrainVariants::quarters(255),TerrainVariants::quarters(1|2|8),TerrainVariants::quarters(1|4|8)};
+        TerrainVariants::normalizeEdges(edges,3,shapes,0);
+        const auto at=[&](int tile,int x,int y){return static_cast<Uint8*>(edges->pixels)+y*edges->pitch+(tile*32+x)*4;};
+        for(int y=0;y<32;++y){
+            require(at(1,0,y)[0]==0 && at(1,1,y)[0]==0 && at(1,2,y)[0]==90,"Side outline must join continuously through both quarters");
+            require(at(1,31,y)[0]==90,"Connected side must have no outside outline");
+        }
+        for(int x=0;x<32;++x)
+            require(at(2,x,30)[0]==0 && at(2,x,31)[0]==0 && at(2,x,29)[0]==90,"Underside outline must join continuously across both quarters");
+        require(at(0,0,31)[0]==90,"Enclosed terrain must retain its original interior");
+        SDL_DestroySurface(edges);
+    }
     SDL_Surface* output=SDL_CreateSurface(256,64,SDL_PIXELFORMAT_RGBA8888);
     SDL_Renderer* renderer=SDL_CreateSoftwareRenderer(output);require(renderer,"Renderer");
     {
