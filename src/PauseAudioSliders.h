@@ -2,6 +2,7 @@
 #include "GameSupport.h"
 #include "UiScale.h"
 #include "SliderTexture.h"
+#include "PauseUiIcons.h"
 #include "TextRenderer.h"
 #include "CanvasPresentation.h"
 #include "ButtonAnimation.h"
@@ -9,6 +10,7 @@
 
 class PauseAudioSliders {
     std::array<SDL_Texture*,3> textures_{};
+    PauseUiIcons icons_;
     int drag_=-1;
     SDL_FingerID finger_=0;
     bool touch_=false;
@@ -16,13 +18,14 @@ class PauseAudioSliders {
     Uint64 lastDraw_=0;
 public:
     std::array<SDL_Rect,2> tracks{},rows{};
-    explicit PauseAudioSliders(SDL_Renderer* renderer) {
+    explicit PauseAudioSliders(SDL_Renderer* renderer) : icons_(renderer) {
         const char* paths[]={"assets/UI/slider-track.png","assets/UI/slider-fill.png","assets/UI/slider-thumb.png"};
         if(renderer) for(int i=0;i<3;++i) textures_[i]=loadTextureSafe(renderer,paths[i]);
     }
     ~PauseAudioSliders(){for(auto* texture:textures_)if(texture)SDL_DestroyTexture(texture);}
     void cancel(){drag_=-1;}
     bool dragging() const {return drag_>=0;}
+    SDL_Texture* pauseIcon() const {return icons_.pause();}
     void layout(int width,int height,int buttonBottom,float scale,int slideY=0) {
         const int rowH=std::max(44,(int)std::lround(44*scale));
         const int w=std::min(width-32,std::max(220,(int)std::lround(360*scale)));
@@ -99,7 +102,11 @@ public:
             SDL_SetRenderDrawColor(renderer,0,0,0,alpha);
             // Pixel-art music note and speaker icons.
             const int x=row.x+8,y=row.y+row.h/2-8;
-            if(i==0){
+            if(auto* icon=icons_.audio(i)) {
+                SDL_SetTextureAlphaMod(icon,alpha);
+                const SDL_Rect dst{row.x+4,row.y+row.h/2-16,32,32};
+                SDL_RenderCopy(renderer,icon,nullptr,&dst);
+            } else if(i==0){
                 SDL_RenderLine(renderer,x+8,y-8,x+8,y+9);SDL_RenderLine(renderer,x+8,y-8,x+20,y-11);
                 SDL_RenderLine(renderer,x+20,y-11,x+20,y+6);
                 SDL_Rect a{x,y+6,9,6},b{x+12,y+3,9,6};SDL_RenderFillRect(renderer,&a);SDL_RenderFillRect(renderer,&b);

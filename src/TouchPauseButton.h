@@ -36,7 +36,18 @@ inline bool pressed(const SDL_Event& event, SDL_Window* window, const SDL_Rect& 
     } else return false;
     return SDL_PointInRect(&point, &button);
 }
-inline void draw(SDL_Renderer* renderer, const SDL_Rect& button, const std::string& label) {
+inline void draw(SDL_Renderer* renderer, const SDL_Rect& button, const std::string& label, SDL_Texture* icon = nullptr) {
+    if(icon) {
+        SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(renderer,240,245,250,225);
+        SDL_RenderFillRect(renderer,&button);
+        SDL_SetRenderDrawColor(renderer,32,46,65,255);SDL_RenderRect(renderer,&button);
+        const int size=std::max(1,(int)(std::min(button.w,button.h)*0.8f));
+        const SDL_Rect dst{button.x+(button.w-size)/2,button.y+(button.h-size)/2,size,size};
+        SDL_SetTextureAlphaMod(icon,255);
+        SDL_RenderCopy(renderer,icon,nullptr,&dst);
+        return;
+    }
     SDL_SetRenderDrawColor(renderer, 32, 46, 65, 255);
     SDL_RenderFillRect(renderer, &button);
     SDL_SetRenderDrawColor(renderer, 210, 225, 245, 255);

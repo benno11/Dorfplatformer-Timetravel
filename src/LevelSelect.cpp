@@ -1,4 +1,5 @@
 #include "EditorCanvas.h"
+#include "PauseUiIcons.h"
 #include "DefaultTiles.h"
 #include "TileRendering.h"
 #include "IosAppSleep.h"
@@ -715,6 +716,7 @@ bool RunLevelConfigMenu(SDL_Window* win, SDL_Renderer* ren, LevelMeta& config) {
 std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::string& initialPath = "",
                                 const std::string& newLevelName = "", int newLevelW = -1, int newLevelH = -1, bool* playRequested = nullptr) {
     EditorCanvas canvas(ren);
+    PauseUiIcons editorIcons(ren);
     struct EditorMusicGuard {
         EditorMusicGuard() { AudioSystem::setEditorActive(true); }
         ~EditorMusicGuard() { AudioSystem::setEditorActive(false); }
@@ -1798,7 +1800,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
 
 
         if (PLATFORMER_IOS && !paused)
-            TouchPauseButton::draw(ren, touchPauseButton, menuScript.control("pause").label);
+            TouchPauseButton::draw(ren, touchPauseButton, menuScript.control("pause").label,editorIcons.pause());
 
         if (paused) {
             SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);

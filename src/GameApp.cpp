@@ -9283,7 +9283,7 @@ int RunGameApp(int argc, char** argv) {
         }
 
         if (PLATFORMER_IOS && !paused && !deathSequenceActive && !levelCompleteActive)
-            TouchPauseButton::draw(ren, touchPauseButton, pauseMenuScript.control("pause").label);
+            TouchPauseButton::draw(ren, touchPauseButton, pauseMenuScript.control("pause").label,pauseAudioSliders.pauseIcon());
 
         if (hasTouchScreenDevice && !paused && debugToolsEnabled()) {
             SDL_SetRenderDrawBlendMode(ren,SDL_BLENDMODE_BLEND);
