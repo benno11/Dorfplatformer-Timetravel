@@ -52,32 +52,6 @@ inline void normalizeSoil(SDL_Surface* surface,int columns,int tiles,int referen
             std::copy(pattern[y*32+x].begin(),pattern[y*32+x].begin()+3,target);
     }
 }
-// Rebuild exposed soil edges from the common fill so source-quarter notches
-// cannot interrupt a continuous wall or underside. Grass quarters stay intact.
-inline void normalizeEdges(SDL_Surface* surface,int columns,
-                           const std::vector<std::array<int,4>>& layouts,int reference) {
-    auto pixel=[&](int tile,int x,int y){return static_cast<Uint8*>(surface->pixels)+(tile/columns*32+y)*surface->pitch+(tile%columns*32+x)*4;};
-    std::array<std::array<Uint8,4>,32*32> soil{};
-    for(int y=0;y<32;++y)for(int x=0;x<32;++x)
-        std::copy(pixel(reference,x,y),pixel(reference,x,y)+4,soil[y*32+x].begin());
-    for(int tile=0;tile<(int)layouts.size();++tile){
-        const auto& q=layouts[tile];
-        const bool left=q[0]==3 || q[0]==14, right=q[1]==0 || q[1]==11;
-        const bool bottom=q[2]==4 || q[2]==5;
-        for(int y=0;y<32;++y)for(int x=0;x<32;++x){
-            const bool side=(x<16 && q[0]==14) || (x>=16 && q[1]==11);
-            if(!(y>=16 && (bottom || left || right)) && !side)continue;
-            // Only replace the exposed side quarter, not its adjacent interior
-            // quarter (which can contain an inside grass corner).
-            if(y>=16 && !bottom && !((x<16 && left)||(x>=16 && right)))continue;
-            auto* target=pixel(tile,x,y);
-            std::copy(soil[y*32+x].begin(),soil[y*32+x].end(),target);
-            if((left && x<2)||(right && x>=30)||(bottom && y>=30)){
-                target[0]=target[1]=target[2]=0;target[3]=255;
-            }
-        }
-    }
-}
 template<class Occupied> unsigned mask(int x,int y,Occupied occupied) {
     const int offsets[8][2]={{0,-1},{0,1},{-1,0},{1,0},{-1,-1},{1,-1},{-1,1},{1,1}};
     unsigned result=0;
@@ -163,7 +137,6 @@ public:
         if(pixels){
             TerrainVariants::normalizeGrass(pixels,columns_,(int)layouts.size(),lookup_[12]);
             TerrainVariants::normalizeSoil(pixels,columns_,(int)layouts.size(),lookup_[255]);
-            TerrainVariants::normalizeEdges(pixels,columns_,layouts,lookup_[255]);
             normalized=SDL_CreateTextureFromSurface(renderer,pixels);
             SDL_DestroySurface(pixels);
         }

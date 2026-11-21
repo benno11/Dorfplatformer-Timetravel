@@ -64,18 +64,27 @@ int main(){
         SDL_DestroySurface(soil);
     }
     {
-        SDL_Surface* edges=SDL_CreateSurface(96,32,SDL_PIXELFORMAT_RGBA32);
+        // The source outlines deliberately have teeth and transparent notches.
+        // Color normalization must retain that pattern, not straighten it.
+        SDL_Surface* edges=SDL_CreateSurface(64,32,SDL_PIXELFORMAT_RGBA32);
         SDL_FillSurfaceRect(edges,nullptr,SDL_MapSurfaceRGBA(edges,90,45,20,255));
-        std::vector<std::array<int,4>> shapes{TerrainVariants::quarters(255),TerrainVariants::quarters(1|2|8),TerrainVariants::quarters(1|4|8)};
-        TerrainVariants::normalizeEdges(edges,3,shapes,0);
-        const auto at=[&](int tile,int x,int y){return static_cast<Uint8*>(edges->pixels)+y*edges->pitch+(tile*32+x)*4;};
-        for(int y=0;y<32;++y){
-            require(at(1,0,y)[0]==0 && at(1,1,y)[0]==0 && at(1,2,y)[0]==90,"Side outline must join continuously through both quarters");
-            require(at(1,31,y)[0]==90,"Connected side must have no outside outline");
+        auto at=[&](int x,int y){return static_cast<Uint8*>(edges->pixels)+y*edges->pitch+x*4;};
+        for(int y=0;y<32;++y)for(int x=0;x<32;++x){
+            auto* p=at(32+x,y);
+            if(x<(y/4)%3 || y>=32-(x/4)%3){p[0]=p[1]=p[2]=0;p[3]=0;}
+            else if(x<(y/4)%3+2 || y>=30-(x/4)%3){p[0]=p[1]=p[2]=0;}
         }
-        for(int x=0;x<32;++x)
-            require(at(2,x,30)[0]==0 && at(2,x,31)[0]==0 && at(2,x,29)[0]==90,"Underside outline must join continuously across both quarters");
-        require(at(0,0,31)[0]==90,"Enclosed terrain must retain its original interior");
+        std::array<std::array<Uint8,4>,1024> original{};
+        for(int y=0;y<32;++y)for(int x=0;x<32;++x)
+            std::copy(at(32+x,y),at(32+x,y)+4,original[y*32+x].begin());
+        TerrainVariants::normalizeGrass(edges,2,2,0);
+        TerrainVariants::normalizeSoil(edges,2,2,0);
+        for(int y=0;y<32;++y)for(int x=0;x<32;++x){
+            const auto& before=original[y*32+x];const auto* after=at(32+x,y);
+            require(after[3]==before[3],"Patterned side and underside cutouts must survive normalization");
+            if(before[0]==0)require(after[0]==0 && after[1]==0 && after[2]==0,
+                "Original patterned outlines must not be replaced by straight borders");
+        }
         SDL_DestroySurface(edges);
     }
     SDL_Surface* output=SDL_CreateSurface(256,64,SDL_PIXELFORMAT_RGBA8888);
