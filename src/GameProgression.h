@@ -34,3 +34,5 @@ bool IsCampaignLevelPath(const std::string& path);
 std::string HardmodeResumePath(const std::string& savedPath, bool failed);
 std::string HardmodePracticeSelection(int level);
 int HardmodePracticeLevel(const std::string& selection);
+
+bool CanPracticeHardmodeLevel(int level, const GameProgression& progression, const std::vector<int>& buttons);

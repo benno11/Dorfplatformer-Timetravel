@@ -1481,8 +1481,15 @@ void prepareMenuData(const std::string& name, SlimRuntime& runtime, const SlimMe
     flag("hardmode_unlocked",!Edition::lite&&ctx.progression&&ctx.progression->hardmodeUnlocked);
     if (name=="worldselect") for(int world=1;world<=7;++world) if(Edition::worldSelectable(world))
         row("worlds",{{"number",std::to_string(world)}});
-    if (name=="hardmodepractice") for(int level=1;level<=kHardmodeLevelCount;++level)
-        row("practice_levels",{{"number",std::to_string(level)}});
+    const auto practiceButtons=LoadGameButtonStates(slot);
+    bool practiceAvailable=false;
+    for(int level=1;level<=kHardmodeLevelCount;++level) {
+        const bool unlocked=!Edition::lite && ctx.progression && CanPracticeHardmodeLevel(level,*ctx.progression,practiceButtons);
+        practiceAvailable=practiceAvailable || unlocked;
+        if(name=="hardmodepractice") row("practice_levels",{{"number",std::to_string(level)},
+            {"world",std::to_string((level-1)/3+1)},{"unlocked",unlocked?"true":"false"}});
+    }
+    flag("hardmode_practice_available",practiceAvailable);
     flag("character_available",ctx.characterAppearance&&ctx.showExperimentalFeatures&&*ctx.showExperimentalFeatures);
     if (name.rfind("character",0)==0 && ctx.characterAppearance) {
         auto a=*ctx.characterAppearance; a.normalize();
@@ -2273,8 +2280,11 @@ SlimMenuExit execute(MenuItem& item, SlimRuntime& runtime, SlimMenuContext& ctx,
         return SlimMenuExit::StartGame;
     }
     if (command == "hardmode_practice") {
-        if (!ctx.progression || !ctx.progression->hardmodeUnlocked || !ctx.selectedLevelPath) return SlimMenuExit::Continue;
-        const auto selection = HardmodePracticeSelection(std::atoi(arg.c_str()));
+        const int level=std::atoi(arg.c_str());
+        const int slot=ctx.activeSaveSlotIndex?*ctx.activeSaveSlotIndex:0;
+        if (Edition::lite || !ctx.progression || !ctx.selectedLevelPath ||
+            !CanPracticeHardmodeLevel(level,*ctx.progression,LoadGameButtonStates(slot))) return SlimMenuExit::Continue;
+        const auto selection = HardmodePracticeSelection(level);
         if (selection.empty()) return SlimMenuExit::Continue;
         *ctx.selectedLevelPath = selection;
         if (ctx.selectedLevelName) ctx.selectedLevelName->clear();

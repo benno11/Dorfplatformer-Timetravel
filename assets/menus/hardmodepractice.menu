@@ -2,12 +2,13 @@ cut 8 8
 center
 title "Hardmode Practice"
 text "Practice does not affect run progress or completion."
-when hardmode_unlocked
+text "Activate both buttons in a world to unlock its practice levels."
 foreach practice_levels
+when row.unlocked
 button "Level ${row.number}" hardmode_practice "${row.number}"
-endfor
 otherwise
-text "Reach the good ending to unlock Hardmode."
+text "Level ${row.number} - World ${row.world} locked"
 endwhen
+endfor
 snap center bottom
 button "Back" menu hardmode

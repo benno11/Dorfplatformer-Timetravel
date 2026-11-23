@@ -8,7 +8,7 @@ if hardmode_unlocked skip 1
 button "Start New Run" hardmode new
 if hardmode_save_exists skip 1
 button "Continue Run" hardmode continue
-if hardmode_unlocked skip 1
+if hardmode_practice_available skip 1
 button "Practice Levels" menu hardmodepractice
 snap center bottom
 button "Back" menu saveplay

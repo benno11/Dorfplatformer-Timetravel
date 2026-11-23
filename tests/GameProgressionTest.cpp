@@ -26,6 +26,21 @@ int main() {
         }
     } cleanup{saveRoot, temp};
     try {
+        for(int world=1;world<=6;++world) {
+            for(int level=1;level<=kHardmodeLevelCount;++level) {
+                const bool belongs=(level-1)/3+1==world;
+                require(CanPracticeHardmodeLevel(level,{}, {world*10+1,world*10+2})==belongs,
+                    "Both world buttons unlock exactly that world's practice levels");
+                require(!CanPracticeHardmodeLevel(level,{}, {world*10+1}),"One button must not unlock practice");
+                require(!CanPracticeHardmodeLevel(level,{}, {world*10+2}),"Second button alone must not unlock practice");
+            }
+        }
+        require(!CanPracticeHardmodeLevel(1,{}, {11,22}),"Buttons from different worlds cannot unlock practice");
+        GameProgression allPractice;allPractice.hardmodeUnlocked=true;
+        for(int level=1;level<=kHardmodeLevelCount;++level)
+            require(CanPracticeHardmodeLevel(level,allPractice,{}),"Existing full unlock retains all practice levels");
+        require(!CanPracticeHardmodeLevel(0,allPractice,{}) && !CanPracticeHardmodeLevel(21,allPractice,{}),
+            "Invalid levels cannot be practiced");
         auto progression = LoadGameProgression();
         require(!progression.worldSelectUnlocked && !progression.hardmodeUnlocked && !progression.hardmodeComplete,
             "New profiles must start locked");

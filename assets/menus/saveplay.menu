@@ -7,7 +7,7 @@ endwhen
 when world_select_unlocked
 button "World Select" menu worldselect
 endwhen
-when hardmode_unlocked
+when hardmode_practice_available
 button "Hardmode" menu hardmode
 endwhen
 snap center bottom

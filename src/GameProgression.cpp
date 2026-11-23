@@ -263,3 +263,13 @@ int HardmodePracticeLevel(const std::string& selection) {
         if (selection == HardmodePracticeSelection(level)) return level;
     return 0;
 }
+
+bool CanPracticeHardmodeLevel(int level, const GameProgression& progression, const std::vector<int>& buttons) {
+    if (level < 1 || level > kHardmodeLevelCount) return false;
+    if (progression.hardmodeUnlocked) return true;
+    const int world = (level - 1) / 3 + 1;
+    // The final world has no campaign button pair; it retains the ending unlock.
+    if (world > 6) return false;
+    return std::find(buttons.begin(), buttons.end(), world * 10 + 1) != buttons.end() &&
+        std::find(buttons.begin(), buttons.end(), world * 10 + 2) != buttons.end();
+}
