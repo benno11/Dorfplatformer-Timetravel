@@ -28,6 +28,13 @@ int main(){
     require(TerrainVariants::quarters(255^32)[1]==9,"Missing upper-right diagonal adds grass transition");
     require(TerrainVariants::quarters(255^64)[2]==18,"Missing lower-left diagonal has a matching inside corner");
     require(TerrainVariants::quarters(255^128)[3]==19,"Missing lower-right diagonal has a matching inside corner");
+    require(DefaultTiles::joins(83,1,0) && DefaultTiles::joins(83,0,-1),"Descending slope joins at its filled left and bottom edges");
+    require(!DefaultTiles::joins(83,-1,0) && !DefaultTiles::joins(83,0,1),"Descending slope leaves its open top/right edges exposed");
+    require(DefaultTiles::joins(86,-1,0) && DefaultTiles::joins(86,0,-1),"Ascending slope joins at its filled right and bottom edges");
+    require(!DefaultTiles::joins(86,1,0),"Ascending slope leaves its open left edge exposed");
+    require(DefaultTiles::joins(84,1,-1) && !DefaultTiles::joins(84,0,-1),"Small left slope only connects its filled corner");
+    require(DefaultTiles::joins(87,-1,-1) && !DefaultTiles::joins(87,0,-1),"Small right slope only connects its filled corner");
+    require(DefaultTiles::joins(85,0,1) && DefaultTiles::joins(85,1,0),"Slope infill connects like soil");
     require(SDL_Init(0),"SDL init");
     {
         SDL_Surface* grass=SDL_CreateSurface(64,32,SDL_PIXELFORMAT_RGBA32);

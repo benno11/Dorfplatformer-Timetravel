@@ -3,6 +3,24 @@ namespace DefaultTiles {
 inline bool contains(unsigned short id) {
     return (id >= 3 && id <= 11) || (id >= 38 && id <= 40) || (id >= 100 && id <= 103);
 }
+// A slope joins only along filled corners/edges, not across its empty half.
+// dx/dy locate the neighboring tile relative to the block being rendered.
+inline bool joins(unsigned short id, int dx, int dy) {
+    if (contains(id)) return true;
+    unsigned corners = 0; // top-left, top-right, bottom-left, bottom-right
+    switch (id) {
+        case 83: corners = 1|4|8; break;
+        case 84: corners = 4; break;
+        case 85: corners = 1|2|4|8; break;
+        case 86: corners = 2|4|8; break;
+        case 87: corners = 8; break;
+        default: return false;
+    }
+    const unsigned facing = dy < 0 ? (dx < 0 ? 8u : dx > 0 ? 4u : 12u)
+        : dy > 0 ? (dx < 0 ? 2u : dx > 0 ? 1u : 3u)
+        : dx < 0 ? 10u : 5u;
+    return (corners & facing) == facing;
+}
 inline unsigned short select(bool up, bool down, bool left, bool right) {
     if (!up && !down) {
         if (!left && right) return 39;

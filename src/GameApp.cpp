@@ -7892,10 +7892,11 @@ int RunGameApp(int argc, char** argv) {
                     if(currentWorldId!=3 && currentWorldId!=6 && DefaultTiles::contains(id)) {
                         if(generatedTerrain.needsBuild())generatedTerrain.regenerate(ren,levelManager.levelPath());
                         const auto occupied=[&](int tx,int ty){
+                            const int dx=tx-mapX,dy=ty-mapY;
                             if(renderWrapX)tx=(tx%map.w+map.w)%map.w;
                             if(renderWrapY)ty=(ty%map.h+map.h)%map.h;
                             if(tx<0 || ty<0 || tx>=map.w || ty>=map.h)return true;
-                            return DefaultTiles::contains(map.tileIds[ty*map.w+tx]);
+                            return DefaultTiles::joins(map.tileIds[ty*map.w+tx],dx,dy);
                         };
                         if(generatedTerrain.draw(ren,id,mapX,mapY,SDL_FRect{x*tileSizeF-camX,y*tileSizeF-camY,tileSizeF,tileSizeF},occupied))continue;
                     }

@@ -1565,7 +1565,7 @@ std::string RunLocalLevelEditor(SDL_Window* win, SDL_Renderer* ren, const std::s
                 SDL_Rect rc{gridX + x * cell - viewX, gridY + y * cell - viewY, cell, cell};
                 const auto occupied=[&](int tx,int ty){
                     if(tx<0 || ty<0 || tx>=gridW || ty>=gridH)return true;
-                    return DefaultTiles::contains(grid[ty*gridW+tx]);
+                    return DefaultTiles::joins(grid[ty*gridW+tx],tx-x,ty-y);
                 };
                 if(generatedTerrain.draw(ren,id,x,y,SDL_FRect{(float)rc.x,(float)rc.y,(float)rc.w,(float)rc.h},occupied))continue;
                 const Frame* f = (id < blocksFrameById.size()) ? blocksFrameById[id] : nullptr;
