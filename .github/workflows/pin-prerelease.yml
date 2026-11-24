@@ -1,4 +1,4 @@
-name: Manually pin prerelease
+name: Update prerelease
 on:
   workflow_dispatch:
     inputs:
@@ -6,7 +6,6 @@ on:
         description: Published main build release to pin
         type: string
         required: true
-        default: draft-main-321
 permissions:
   contents: write
 concurrency:

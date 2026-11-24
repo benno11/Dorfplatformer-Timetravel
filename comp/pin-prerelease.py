@@ -16,7 +16,51 @@ def gh(*args):
     return subprocess.check_output(['gh', *args], text=True)
 
 
+def stable_document(document, config, sandbox_version, build, packages, source):
+    """Keep other channel settings and publish only packages present in this build."""
+    urls = {}
+    manifests = {}
+    for (target, edition), platforms in packages.items():
+        if edition == 'full':
+            for platform, architectures in platforms.items():
+                urls.setdefault(platform, {}).update(architectures)
+        platform, architecture = target.split('-')
+        manifests.setdefault(edition, {}).setdefault(platform, {})[architecture] = (
+            f'https://github.com/{REPO}/releases/download/stable-{target}-{edition}/update-manifest.json')
+    if not urls:
+        raise ValueError('Stable publication requires full-edition packages.')
+    document.update(version=config['version'], version_id=build, sandbox_version=sandbox_version,
+                    channel='stable', installer_urls=urls,
+                    notes=f'Manually selected stable release: {source}.')
+    document.pop('installer_url', None)
+    if urls.get('windows', {}).get('x64'):
+        document['installer_url'] = urls['windows']['x64']
+    document.setdefault('channels', {})['stable'] = {'manifest_urls': manifests,
+        'version': config['version'], 'version_id': build,
+        'source_release_url': f'https://github.com/{REPO}/releases/tag/{source}'}
+    return document
+
+
+def update_stable_api(config, sandbox_version, build, packages, source):
+    endpoint = 'repos/Benno111/Dorfplatformer-API/contents/update-manifest.json'
+    current = json.loads(gh('api', endpoint))
+    document = json.loads(base64.b64decode(current['content']))
+    document = stable_document(document, config, sandbox_version, build, packages, source)
+    payload = {'message': f'Update stable to {source}', 'sha': current['sha'],
+               'content': base64.b64encode((json.dumps(document, indent=2)+'\n').encode()).decode()}
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / 'request.json'
+        path.write_text(json.dumps(payload))
+        gh('api', '--method', 'PUT', endpoint, '--input', str(path))
+    saved = json.loads(gh('api', endpoint))
+    if json.loads(base64.b64decode(saved['content'])) != document:
+        raise RuntimeError('Stable API manifest verification failed')
+
+
 def main():
+    channel = os.environ.get('UPDATE_CHANNEL', 'prerelease')
+    if channel not in ('prerelease', 'stable'):
+        raise ValueError('Select prerelease or stable.')
     source = os.environ['SOURCE_RELEASE']
     match = re.fullmatch(r'draft-main-(\d+)', source)
     if not match:
@@ -48,6 +92,10 @@ def main():
         packages[('ios-arm64', 'full')] = {'ios': {'arm64': assets['platformer-ios-device.ipa']}}
     if not packages:
         raise ValueError('No supported packages in the source release.')
+    if channel == 'stable':
+        if not any(edition == 'full' for target, edition in packages):
+            raise ValueError('Stable publication requires full-edition packages.')
+        gh('api', 'repos/Benno111/Dorfplatformer-API/contents/update-manifest.json')
     now = dt.datetime.now(dt.timezone.utc)
     anchor = dt.datetime(2026, 11, 10, tzinfo=dt.timezone.utc)
     if now < anchor:
@@ -57,13 +105,14 @@ def main():
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / 'update-manifest.json'
         for (target, edition), urls in packages.items():
-            manifest = dict(version=config['version'], sandbox_version=sandbox_version, version_id=int(match[1]), channel='prerelease',
+            manifest = dict(version=config['version'], sandbox_version=sandbox_version, version_id=int(match[1]), channel=channel,
                             target=target, edition=edition, commit=commit, source_release=source,
                             source_release_url=release['html_url'], built_at=release['published_at'],
                             snapshot_date=snapshot, pinned_at=now.isoformat(), pin_mode='manual',
-                            installer_urls=urls, notes=f'Manually selected prerelease: {source}.')
+                            installer_urls=urls, notes=f'Manually selected {channel}: {source}.')
             path.write_text(json.dumps(manifest, indent=2) + '\n')
-            for tag in (f'prerelease-{snapshot}-{target}-{edition}', f'prerelease-{target}-{edition}'):
+            tags = (f'prerelease-{snapshot}-{target}-{edition}', f'prerelease-{target}-{edition}') if channel == 'prerelease' else (f'stable-{target}-{edition}',)
+            for tag in tags:
                 if tag not in existing:
                     gh('release', 'create', tag, '--repo', REPO, '--target', commit, '--prerelease',
                        '--title', tag, '--notes', f'Manually pinned to {source}.', '--latest=false')
@@ -74,6 +123,8 @@ def main():
                 if actual != manifest:
                     raise RuntimeError(f'Manifest verification failed: {tag}')
                 print(f'Pinned and verified {tag} -> {source}')
+        if channel == 'stable':
+            update_stable_api(config, sandbox_version, int(match[1]), packages, source)
 
 
 if __name__ == '__main__':

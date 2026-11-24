@@ -1,0 +1,32 @@
+name: Update stable
+on:
+  workflow_dispatch:
+    inputs:
+      source_release:
+        description: Published build release to use (draft-main-N)
+        type: string
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: manual-stable
+  cancel-in-progress: false
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check cross-repository publishing token
+        env:
+          GH_TOKEN: ${{ secrets.UPDATE_CHANNELS_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::Set UPDATE_CHANNELS_TOKEN with Contents write access to Dorfplatformer-Timetravel and Benno111/Dorfplatformer-API."
+            exit 1
+          fi
+      - name: Publish and verify stable manifests
+        env:
+          GH_TOKEN: ${{ secrets.UPDATE_CHANNELS_TOKEN }}
+          SOURCE_RELEASE: ${{ inputs.source_release }}
+          UPDATE_CHANNEL: stable
+        run: python3 comp/pin-prerelease.py
