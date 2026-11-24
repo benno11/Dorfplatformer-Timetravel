@@ -1080,7 +1080,7 @@ endif()
 target_compile_definitions(platformer PRIVATE SDL_ENABLE_OLD_NAMES=1)
 if(WIN32)
   target_compile_definitions(platformer PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-  target_link_libraries(platformer PRIVATE shell32)
+  target_link_libraries(platformer PRIVATE shell32 ole32 propsys uuid)
 endif()
 if(MSVC)
   target_compile_options(platformer PRIVATE /EHsc /FS)
@@ -1136,9 +1136,14 @@ if(BUILD_TESTING)
   include(cmake/Tests.cmake)
 endif()
 
+if(WIN32)
+  configure_file(cmake/WindowsMenuSkin.rc.in "${CMAKE_CURRENT_BINARY_DIR}/WindowsMenuSkin.rc" @ONLY)
+endif()
+
 if(WIN32 AND CURL_FOUND)
   add_executable(df-updater WIN32
     src/WindowsUpdater.cpp
+    "${CMAKE_CURRENT_BINARY_DIR}/WindowsMenuSkin.rc"
   )
   if(EXISTS "${PLATFORMER_ICON_FILE}")
     set(DF_UPDATER_RC "${CMAKE_CURRENT_BINARY_DIR}/df_updater_version.rc")
@@ -1163,7 +1168,7 @@ if(WIN32 AND CURL_FOUND)
     CURL::libcurl
     nlohmann_json::nlohmann_json
     shell32
-    comctl32
+    comctl32 gdiplus ole32 gdi32
   )
   target_compile_definitions(df-updater PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
   if(MSVC)
@@ -1176,6 +1181,7 @@ endif()
 if(WIN32)
   add_executable(df-launcher WIN32
     src/WindowsLauncher.cpp
+    "${CMAKE_CURRENT_BINARY_DIR}/WindowsMenuSkin.rc"
   )
   if(EXISTS "${PLATFORMER_ICON_FILE}")
     set(DF_LAUNCHER_RC "${CMAKE_CURRENT_BINARY_DIR}/df_launcher_version.rc")
@@ -1196,7 +1202,7 @@ if(WIN32)
     endif()
   endif()
   target_compile_definitions(df-launcher PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
-  target_link_libraries(df-launcher PRIVATE shell32)
+  target_link_libraries(df-launcher PRIVATE shell32 gdiplus ole32 gdi32)
   if(MSVC)
     target_compile_options(df-launcher PRIVATE /EHsc /FS)
   endif()

@@ -1,0 +1,4 @@
+201 RCDATA "@CMAKE_SOURCE_DIR@/Raw Images/Menus/window.png"
+202 RCDATA "@CMAKE_SOURCE_DIR@/Raw Images/Menus/button_genreaic.png"
+203 RCDATA "@CMAKE_SOURCE_DIR@/assets/UI/slider-track.png"
+204 RCDATA "@CMAKE_SOURCE_DIR@/assets/UI/slider-fill.png"

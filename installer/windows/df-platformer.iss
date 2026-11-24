@@ -236,3 +236,8 @@ begin
   if not RemoveExistingSystemInstall() then
     Result := 'The existing system-wide installation could not be removed. Please uninstall it first, then run the installer again.';
 end;
+
+[Registry]
+; Only the stable launcher should be pinned, never a per-version game binary.
+Root: HKCU; Subkey: "Software\Classes\Applications\platformer.exe"; ValueType: string; ValueName: "IsHostApp"; ValueData: ""; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\Applications\platformer.exe"; ValueType: string; ValueName: "NoStartPage"; ValueData: ""; Flags: uninsdeletevalue

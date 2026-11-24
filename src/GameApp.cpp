@@ -11,6 +11,7 @@
 #include "GameLog.h"
 #include "ScoreSystem.h"
 #include <SDL3/SDL.h>
+#include "WindowsGamePinning.h"
 #include <SDL3_image/SDL_image.h>
 #if defined(__ANDROID__)
 #include <SDL3/SDL_system.h>
@@ -766,6 +767,7 @@ int RunGameApp(int argc, char** argv) {
         SDL_Quit();
         return 1;
     }
+    DisableGameWindowPinning(win);
 #if !PLATFORMER_MOBILE
     if (Edition::lite) {
         if (SDL_Surface* icon = IMG_Load(ResolveAssetPath("assets/icons/lite.png").c_str())) {

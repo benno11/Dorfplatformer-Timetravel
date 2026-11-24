@@ -1,6 +1,7 @@
 #include <windows.h>
 #include <shellapi.h>
 #include <commctrl.h>
+#include "WindowsMenuSkin.h"
 #include <atomic>
 #include <thread>
 
@@ -62,50 +63,60 @@ private:
     std::atomic<int> percent{-1};
     std::atomic<bool> finished{false};
     std::thread worker;
+    WindowsMenuSkin::Skin* skin=nullptr; // Owned by the UI thread for its lifetime.
     static LRESULT CALLBACK procedure(HWND window, UINT message, WPARAM w, LPARAM l) {
-        if (message == WM_CLOSE) return 0; // Installation owns this window's lifetime.
-        if (message == WM_DESTROY) { PostQuitMessage(0); return 0; }
+        auto* self=reinterpret_cast<UpdateProgressWindow*>(GetWindowLongPtrW(window,GWLP_USERDATA));
+        if(message==WM_NCCREATE){
+            self=static_cast<UpdateProgressWindow*>(reinterpret_cast<CREATESTRUCTW*>(l)->lpCreateParams);
+            SetWindowLongPtrW(window,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(self));
+        }
+        if(message==WM_CLOSE)return 0;
+        if(message==WM_DESTROY){PostQuitMessage(0);return 0;}
+        if(message==WM_TIMER && self){
+            if(self->finished)DestroyWindow(window);
+            else InvalidateRect(window,nullptr,FALSE);
+            return 0;
+        }
+        if(message==WM_ERASEBKGND)return 1;
+        if(message==WM_PAINT && self && self->skin){
+            PAINTSTRUCT paint{};HDC dc=BeginPaint(window,&paint);
+            RECT rect{};GetClientRect(window,&rect);
+            HDC buffer=CreateCompatibleDC(dc);HBITMAP bitmap=CreateCompatibleBitmap(dc,rect.right,rect.bottom);
+            auto old=SelectObject(buffer,bitmap);
+            self->skin->background(buffer,rect);
+            SetBkMode(buffer,TRANSPARENT);SetTextColor(buffer,RGB(255,255,255));
+            auto font=SelectObject(buffer,GetStockObject(DEFAULT_GUI_FONT));
+            RECT title{24,20,rect.right-24,52};
+            DrawTextW(buffer,L"UPDATING DORFPLATFORMER",-1,&title,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
+            const int value=self->percent.load();
+            const auto text=value>=0 ? L"Downloading update... "+std::to_wstring(value)+L"%" : std::wstring(L"Connecting to update server...");
+            RECT label{24,62,rect.right-24,88};
+            DrawTextW(buffer,text.c_str(),-1,&label,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
+            self->skin->progress(buffer,RECT{24,104,rect.right-24,128},value,GetTickCount());
+            SelectObject(buffer,font);BitBlt(dc,0,0,rect.right,rect.bottom,buffer,0,0,SRCCOPY);
+            SelectObject(buffer,old);DeleteObject(bitmap);DeleteDC(buffer);EndPaint(window,&paint);return 0;
+        }
         return DefWindowProcW(window, message, w, l);
     }
     void run() {
+        WindowsMenuSkin::Skin theme;skin=&theme;
         const auto instance = GetModuleHandleW(nullptr);
-        INITCOMMONCONTROLSEX controls{sizeof(controls), ICC_PROGRESS_CLASS};
-        InitCommonControlsEx(&controls);
         WNDCLASSW type{};
         type.lpfnWndProc = procedure; type.hInstance = instance;
         type.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-        type.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
         type.lpszClassName = L"DFUpdateProgress";
         RegisterClassW(&type);
         HWND window = CreateWindowW(type.lpszClassName, L"Updating Dorfplatformer Timetravel",
             WS_OVERLAPPED | WS_CAPTION | WS_MINIMIZEBOX,
-            CW_USEDEFAULT, CW_USEDEFAULT, 460, 150, nullptr, nullptr, instance, nullptr);
-        if (!window) return;
-        HWND label = CreateWindowW(L"STATIC", L"Connecting to update server...",
-            WS_CHILD | WS_VISIBLE, 20, 20, 410, 24, window, nullptr, instance, nullptr);
-        HWND bar = CreateWindowW(PROGRESS_CLASSW, nullptr, WS_CHILD | WS_VISIBLE | PBS_MARQUEE,
-            20, 55, 410, 22, window, nullptr, instance, nullptr);
-        SendMessageW(bar, PBM_SETMARQUEE, TRUE, 30);
+            CW_USEDEFAULT, CW_USEDEFAULT, 500, 200, nullptr, nullptr, instance, this);
+        if (!window) {skin=nullptr;return;}
         ShowWindow(window, SW_SHOWNORMAL);
-        SetTimer(window, 1, 100, nullptr);
+        SetTimer(window, 1, 30, nullptr);
         MSG message{};
-        int last = -2;
         while (GetMessageW(&message, nullptr, 0, 0) > 0) {
-            if (finished) { DestroyWindow(window); break; }
-            const int value = percent.load();
-            if (value != last) {
-                const bool downloading = value >= 0 && value <= 100;
-                const auto style = GetWindowLongPtrW(bar, GWL_STYLE);
-                SetWindowLongPtrW(bar, GWL_STYLE, downloading ? style & ~PBS_MARQUEE : style | PBS_MARQUEE);
-                SendMessageW(bar, PBM_SETMARQUEE, !downloading, 30);
-                if (downloading) SendMessageW(bar, PBM_SETPOS, value, 0);
-                const auto text = downloading ? L"Downloading update... " + std::to_wstring(value) + L"%" :
-                    std::wstring(L"Connecting to update server...");
-                SetWindowTextW(label, text.c_str());
-                last = value;
-            }
             TranslateMessage(&message); DispatchMessageW(&message);
         }
+        skin=nullptr;
     }
 };
 

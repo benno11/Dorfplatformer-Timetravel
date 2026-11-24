@@ -1,6 +1,7 @@
 #include <windows.h>
 #include <shellapi.h>
 #include <shobjidl.h>
+#include "WindowsMenuSkin.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -290,6 +291,7 @@ std::wstring displayLabel(const InstalledVersion& version, const std::string& cu
 }
 
 struct PickerState {
+    WindowsMenuSkin::Skin skin;
     const std::filesystem::path* rootDir = nullptr;
     const std::vector<InstalledVersion>* versions = nullptr;
     std::string currentVersionId;
@@ -340,19 +342,19 @@ LRESULT CALLBACK pickerWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
             0, 0, 0, 0,
             hwnd, reinterpret_cast<HMENU>((INT_PTR)kControlHeader), GetModuleHandleW(nullptr), nullptr);
         HWND list = CreateWindowW(L"LISTBOX", nullptr,
-            WS_CHILD | WS_VISIBLE | WS_BORDER | LBS_NOTIFY | WS_VSCROLL,
+            WS_CHILD | WS_VISIBLE | WS_BORDER | LBS_NOTIFY | WS_VSCROLL | WS_TABSTOP,
             0, 0, 0, 0,
             hwnd, reinterpret_cast<HMENU>((INT_PTR)kControlVersionList), GetModuleHandleW(nullptr), nullptr);
         CreateWindowW(L"BUTTON", L"Launch",
-            WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
+            WS_CHILD | WS_VISIBLE | BS_OWNERDRAW | WS_TABSTOP,
             0, 0, 0, 0,
             hwnd, reinterpret_cast<HMENU>((INT_PTR)kControlLaunch), GetModuleHandleW(nullptr), nullptr);
         CreateWindowW(L"BUTTON", L"Set + Launch",
-            WS_CHILD | WS_VISIBLE,
+            WS_CHILD | WS_VISIBLE | BS_OWNERDRAW | WS_TABSTOP,
             0, 0, 0, 0,
             hwnd, reinterpret_cast<HMENU>((INT_PTR)kControlSetDefault), GetModuleHandleW(nullptr), nullptr);
         CreateWindowW(L"BUTTON", L"Cancel",
-            WS_CHILD | WS_VISIBLE,
+            WS_CHILD | WS_VISIBLE | BS_OWNERDRAW | WS_TABSTOP,
             0, 0, 0, 0,
             hwnd, reinterpret_cast<HMENU>((INT_PTR)kControlCancel), GetModuleHandleW(nullptr), nullptr);
         HFONT font = reinterpret_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
@@ -373,6 +375,19 @@ LRESULT CALLBACK pickerWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
         layoutPicker(hwnd);
         return 0;
     }
+    case WM_ERASEBKGND: {
+        if(state){RECT rect{};GetClientRect(hwnd,&rect);state->skin.background((HDC)wParam,rect);return 1;}
+        break;
+    }
+    case WM_CTLCOLORSTATIC:
+        SetBkMode((HDC)wParam,TRANSPARENT);SetTextColor((HDC)wParam,RGB(255,255,255));
+        return (LRESULT)GetStockObject(NULL_BRUSH);
+    case WM_CTLCOLORLISTBOX:
+        SetBkColor((HDC)wParam,RGB(115,115,115));SetTextColor((HDC)wParam,RGB(255,255,255));
+        SetDCBrushColor((HDC)wParam,RGB(115,115,115));return (LRESULT)GetStockObject(DC_BRUSH);
+    case WM_DRAWITEM:
+        if(state){state->skin.drawButton(*reinterpret_cast<DRAWITEMSTRUCT*>(lParam));return TRUE;}
+        break;
     case WM_SIZE:
         layoutPicker(hwnd);
         return 0;
@@ -452,8 +467,11 @@ std::string pickInstalledVersionId(const std::filesystem::path& rootDir,
 
     MSG msg{};
     while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
-        TranslateMessage(&msg);
-        DispatchMessageW(&msg);
+        if(msg.message==WM_KEYDOWN && (msg.wParam==VK_RETURN || msg.wParam==VK_ESCAPE)) {
+            int id=msg.wParam==VK_ESCAPE?kControlCancel:GetDlgCtrlID(GetFocus());
+            if(id!=kControlCancel && id!=kControlSetDefault)id=kControlLaunch;
+            SendMessageW(hwnd,WM_COMMAND,MAKEWPARAM(id,BN_CLICKED),0);
+        } else if (!IsDialogMessageW(hwnd,&msg)) {TranslateMessage(&msg);DispatchMessageW(&msg);}
     }
 
     if (!state.accepted || state.selected < 0 || state.selected >= (int)versions.size()) {
