@@ -34,7 +34,14 @@ int main(){
     require(!DefaultTiles::joins(86,1,0),"Ascending slope leaves its open left edge exposed");
     require(DefaultTiles::joins(84,1,-1) && !DefaultTiles::joins(84,0,-1),"Small left slope only connects its filled corner");
     require(DefaultTiles::joins(87,-1,-1) && !DefaultTiles::joins(87,0,-1),"Small right slope only connects its filled corner");
-    require(DefaultTiles::joins(85,0,1) && DefaultTiles::joins(85,1,0),"Slope infill connects like soil");
+    for(unsigned short id : {85,88}) {
+        for(int dy=-1;dy<=1;++dy)for(int dx=-1;dx<=1;++dx){
+            if(dx==0 && dy==0)continue;
+            require(DefaultTiles::joins(id,dx,dy),"Slope infill must connect in all eight directions");
+        }
+        require(TerrainVariants::mask(0,0,[&](int x,int y){return DefaultTiles::joins(id,x,y);})==255,
+            "Slope infill neighbors must select enclosed terrain without grass or outline seams");
+    }
     require(SDL_Init(0),"SDL init");
     {
         SDL_Surface* grass=SDL_CreateSurface(64,32,SDL_PIXELFORMAT_RGBA32);

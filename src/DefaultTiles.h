@@ -11,7 +11,8 @@ inline bool joins(unsigned short id, int dx, int dy) {
     switch (id) {
         case 83: corners = 1|4|8; break;
         case 84: corners = 4; break;
-        case 85: corners = 1|2|4|8; break;
+        case 85: // Slope infill blocks connect on every side and diagonal.
+        case 88: corners = 1|2|4|8; break;
         case 86: corners = 2|4|8; break;
         case 87: corners = 8; break;
         default: return false;
