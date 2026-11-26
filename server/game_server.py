@@ -192,7 +192,7 @@ class Store:
             raise ApiError(401, "Session expired or revoked. Please sign in again.")
         return user
 
-    def auth(self, action, body, token):
+    def auth(self, action, body, token, *, issue_login_session=True):
         with self.connect() as db:
             if action in ("register", "login"):
                 email = body.get("email")
@@ -216,6 +216,8 @@ class Store:
                 digest = password_hash(password, user["salt"] if user else "00" * 16)
                 if not user or not hmac.compare_digest(digest, user["password"]):
                     raise ApiError(401, "Invalid email or password.")
+                if action == "login" and not issue_login_session:
+                    return self.user_data(user, db)
                 return self.session(db, user)
 
             user = self.authenticate(db, token or body.get("idToken", ""))
@@ -456,9 +458,10 @@ class GameServer(ThreadingHTTPServer):
     daemon_threads = True
     def __init__(self, address, database, public_url="", releases=None,
                  update_manifest_url=DEFAULT_UPDATE_MANIFEST_URL, server_update_command=None,
-                 server_update_cwd=None, handler=None, server_update_timeout=900):
+                 server_update_cwd=None, handler=None, server_update_timeout=900, maze_tokens=None):
         self.releases = Path(releases or ROOT / "server/releases").resolve()
         self.store = Store(database)
+        self.maze_tokens = maze_tokens
         self.public_url = public_url.rstrip("/")
         self.update_manifest_url = (update_manifest_url or "").strip()
         self.server_update_command = normalize_command(server_update_command)
@@ -611,7 +614,7 @@ class Handler(BaseHTTPRequestHandler):
         # Never log request URLs, credentials or session tokens.
         logging.info("request from %s", self.client_address[0])
 
-    def send(self, status, value, content_type="application/json; charset=utf-8"):
+    def send(self, status, value, content_type="application/json; charset=utf-8", *, csp=None):
         payload = json.dumps(value, ensure_ascii=False).encode() if content_type.startswith("application/json") else value
         self.send_response(status)
         self.send_header("Content-Type", content_type)
@@ -620,6 +623,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("X-Frame-Options", "DENY")
+        if csp:
+            self.send_header("Content-Security-Policy", csp)
         self.end_headers()
         self.wfile.write(payload)
 
@@ -634,15 +639,15 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Referrer-Policy", "no-referrer")
         self.end_headers()
 
-    def body(self):
+    def body(self, limit=MAX_BODY):
         if self.headers.get("Transfer-Encoding"):
             raise ApiError(400, "Chunked request bodies are not supported.")
         try:
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             raise ApiError(400, "Invalid Content-Length.") from None
-        if length < 0 or length > MAX_BODY:
-            raise ApiError(413, "Request body exceeds 2 MiB.")
+        if length < 0 or length > limit:
+            raise ApiError(413, "Request body exceeds the size limit." if limit != MAX_BODY else "Request body exceeds 2 MiB.")
         if self.headers.get_content_type() != "application/json":
             raise ApiError(415, "Use application/json.")
         try:
@@ -655,6 +660,47 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(data, dict):
             raise ApiError(400, "JSON body must be an object.")
         return data
+
+    def handle_maze_auth(self, path, token):
+        if not self.server.maze_tokens:
+            raise ApiError(404, "Project 3D maze sign-in is disabled.")
+        from maze_auth import CHALLENGE, PORTAL_BODY_LIMIT, REDEMPTION_BODY, REDEMPTION_HEX_LENGTH, TOKEN_BYTES
+
+        if self.command == "GET" and path in ("/maze-connect", "/maze-connect.js"):
+            page = path == "/maze-connect"
+            asset = Path(__file__).resolve().parent / "web" / ("maze-connect.html" if page else "maze-connect.js")
+            self.send(200, asset.read_bytes(), "text/html; charset=utf-8" if page else "text/javascript; charset=utf-8",
+                      csp="default-src 'none'; script-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'")
+            return
+        if self.command == "POST" and path == "/maze-connect":
+            self.server.throttle(self.client_address[0])
+            body = self.body(PORTAL_BODY_LIMIT)
+            challenge = body.get("challenge")
+            if not isinstance(challenge, str) or not CHALLENGE.fullmatch(challenge):
+                raise ApiError(400, "Open sign-in from a valid Project 3D maze connection.")
+            if token:
+                user = self.server.store.auth("lookup", {}, token)["users"][0]
+            else:
+                user = self.server.store.auth("login", body, "", issue_login_session=False)
+            name = user["displayName"]
+            proof = self.server.maze_tokens.issue(name, challenge)
+            self.send(200, {"username": name, "proof": proof})
+            return
+        if self.command == "POST" and path == "/maze-redeem":
+            if (self.headers.get("Transfer-Encoding") or
+                    self.headers.get("Content-Length") != str(REDEMPTION_HEX_LENGTH) or
+                    self.headers.get_content_type() != "text/plain"):
+                raise ApiError(400, "Invalid maze token request.")
+            body = self.rfile.read(REDEMPTION_HEX_LENGTH).decode("ascii", errors="replace")
+            if not REDEMPTION_BODY.fullmatch(body):
+                raise ApiError(400, "Invalid maze token request.")
+            data = bytes.fromhex(body)
+            receipt = self.server.maze_tokens.redeem(data[:TOKEN_BYTES], data[TOKEN_BYTES:])
+            if receipt is None:
+                raise ApiError(401, "Invalid, expired or already used maze token.")
+            self.send(200, receipt, "text/plain; charset=ascii")
+            return
+        raise ApiError(405, "Method not allowed.")
 
     def handle_api(self):
         try:
@@ -688,6 +734,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.server.store.check_client_version(self.headers.get("User-Agent", ""))
             token = self.headers.get("Authorization", "")
             token = token[7:] if token.startswith("Bearer ") else ""
+            if path in ("/maze-connect", "/maze-connect.js", "/maze-redeem"):
+                self.handle_maze_auth(path, token)
+                return
             # Legacy level URLs are public reads; credentials are only accepted in headers/body.
             if self.command == "GET" and path == "/health":
                 self.send(200, {"status": "ok", "api_version": 1})
@@ -802,13 +851,37 @@ def main():
     parser.add_argument("--admin-port", type=int, default=int(os.environ.get("ADMIN_PORT", "8081")))
     parser.add_argument("--no-dashboard", action="store_true")
     parser.add_argument("--admin-key-file", default=os.environ.get("ADMIN_KEY_FILE", ""))
+    parser.add_argument("--maze-key", default=os.environ.get("PROJECT3D_MAZE_KEY", ""),
+                        help="Enable Project 3D maze auth with this Ed25519 PEM private key.")
+    parser.add_argument("--maze-database", default=os.environ.get("PROJECT3D_MAZE_DATABASE", ""),
+                        help="Outstanding maze tokens database, defaults to a file beside the key.")
+    parser.add_argument("--maze-public-key", action="store_true", help="Print the maze verification key and exit.")
     args = parser.parse_args()
     if not 1 <= args.server_update_timeout <= 86400:
         parser.error("--server-update-timeout must be from 1 to 86400 seconds")
+    maze_tokens = None
+    if args.maze_key:
+        try:
+            from maze_auth import MazeTokens, load_signing_key, public_key_hex
+            key_path = Path(args.maze_key)
+            key = load_signing_key(key_path)
+            if args.maze_public_key:
+                print(public_key_hex(key))
+                return
+            database = Path(args.maze_database) if args.maze_database else key_path.with_suffix(".sqlite3")
+            if database.resolve() == Path(args.database).resolve() or database.resolve() == key_path.resolve():
+                parser.error("Use a separate database for outstanding maze tokens.")
+            maze_tokens = MazeTokens(key, database)
+        except ImportError:
+            parser.error("Install Project 3D maze auth dependencies from server/requirements-maze.txt.")
+        except (OSError, ValueError, TypeError, sqlite3.Error) as error:
+            parser.error(f"Could not initialize Project 3D maze auth: {error}")
+    elif args.maze_public_key or args.maze_database:
+        parser.error("Set --maze-key to enable Project 3D maze auth.")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     server = GameServer((args.host, args.port), args.database, args.public_url, args.releases,
                         args.update_manifest_url, args.server_update_command, args.server_update_cwd,
-                        server_update_timeout=args.server_update_timeout)
+                        server_update_timeout=args.server_update_timeout, maze_tokens=maze_tokens)
     logging.info("Game server listening on %s:%s", args.host, server.server_port)
     dashboard = None
     dashboard_thread = None

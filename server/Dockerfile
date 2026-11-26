@@ -1,6 +1,8 @@
 FROM python:3.13-slim
 WORKDIR /app
-COPY server/game_server.py server/import_levels.py server/moderators.py server/admin_dashboard.py server/updater_config.py /app/server/
+COPY server/requirements-maze.txt /app/server/
+RUN pip install --no-cache-dir -r /app/server/requirements-maze.txt
+COPY server/game_server.py server/import_levels.py server/moderators.py server/admin_dashboard.py server/updater_config.py server/maze_auth.py /app/server/
 COPY pages /app/pages
 COPY server/web /app/server/web
 COPY server/admin /app/server/admin

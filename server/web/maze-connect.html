@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Project 3D multiplayer sign-in</title>
+<h1>Project 3D multiplayer sign-in</h1>
+<p>Sign in with your existing Dorfplatformer TimeTravel account.</p>
+<p id="http-notice" hidden>This HTTP connection sends your TimeTravel password without encryption. Use a trusted network.</p>
+<button id="session" hidden>Use existing TimeTravel sign-in</button>
+<form id="login" method="post">
+  <label>Email <input id="email" type="email" autocomplete="username" required></label>
+  <label>Password <input id="password" type="password" autocomplete="current-password" required></label>
+  <button id="submit">Sign in</button>
+</form>
+<p id="status" role="status"></p>
+<section id="proof" hidden>
+  <p>Copy the one-time proof, then return to Project 3D and select Paste proof.</p>
+  <button id="copy">Copy proof</button>
+  <label>Proof <textarea id="code" rows="4" readonly></textarea></label>
+</section>
+<script src="./maze-connect.js" defer></script>
+</html>

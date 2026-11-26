@@ -2,7 +2,7 @@
 
 The server replaces Firebase Authentication, Firebase level storage and the
 separately hosted account manager. Accounts, sessions and levels live in one
-SQLite database. No cloud keys or third-party Python packages are needed.
+SQLite database. The base server needs no cloud keys or third-party Python packages.
 
 Run from the repository root with Python 3.11 or newer:
 
@@ -32,6 +32,37 @@ points to the host and ports 80/443 are reachable. Run:
     DOMAIN=game.example.com docker compose -f server/compose.yaml up -d --build
 Set the game's configured URLs to https://game.example.com before building.
 This repository does not provision a host, DNS or certificates itself.
+
+## Project 3D maze sign-in
+
+TimeTravel can serve Project 3D maze sign-in and token redemption on its
+existing public address and port. The merged server uses the same TimeTravel
+accounts, session store, and sign-in rate limits. It keeps outstanding 12-hour,
+single-use maze tokens in a separate SQLite file.
+
+Install the optional dependency and start TimeTravel with a signing key.
+
+    python -m pip install -r server/requirements-maze.txt
+    mkdir -p server/data
+    (umask 077; openssl genpkey -algorithm ED25519 -out server/data/project3d-signing.pem)
+    python server/game_server.py --maze-key server/data/project3d-signing.pem --maze-public-key
+    python server/game_server.py --maze-key server/data/project3d-signing.pem
+
+If you already ran the standalone bridge, reuse its private signing key
+instead of generating a new one. Keep your usual TimeTravel startup flags.
+For Docker Compose, put the key in the persistent `/data` volume where the
+game container user can read it and set `PROJECT3D_MAZE_KEY` to its container path.
+The image already includes the dependency.
+
+Set `PROJECT3D_ACCOUNT_URL` to your TimeTravel address
+(`http://critique-unsmooth.tun.ply.gg:49642/` for the default public server)
+and `PROJECT3D_ACCOUNT_PUBLIC_KEY` to the printed key in the Project 3D build
+configuration. The public address serves `/maze-connect`, `/maze-connect.js`
+and `/maze-redeem` alongside the existing TimeTravel routes. Forward all
+three to TimeTravel if your proxy uses a route list. You can then stop the
+standalone Project 3D bridge. HTTP remains supported and transmits browser
+sign-in credentials without encryption.
+
 
 Persistence: keep the data directory or Docker volume across updates.
 Stop the server before copying the database for a backup (include any -wal and
