@@ -5,6 +5,7 @@ import os
 import re
 import sqlite3
 import struct
+import tempfile
 import time
 
 from cryptography.exceptions import InvalidSignature, InvalidTag
@@ -92,6 +93,31 @@ def load_signing_key(path):
     key = serialization.load_pem_private_key(path.read_bytes(), password=None)
     if not isinstance(key, Ed25519PrivateKey):
         raise ValueError("The maze signing key must be Ed25519.")
+    return key
+
+
+def load_or_create_signing_key(path):
+    try:
+        return load_signing_key(path)
+    except FileNotFoundError:
+        pass
+    path.parent.mkdir(parents=True, exist_ok=True)
+    key = Ed25519PrivateKey.generate()
+    pem = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                            serialization.NoEncryption())
+    with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".maze-key-", delete=False) as temporary:
+        temporary_path = temporary.name
+        try:
+            temporary.write(pem)
+            temporary.flush()
+            os.fsync(temporary.fileno())
+            temporary.close()
+            # Publish a complete key without replacing one created by another startup.
+            os.link(temporary_path, path)
+        except FileExistsError:
+            return load_signing_key(path)
+        finally:
+            os.unlink(temporary_path)
     return key
 
 

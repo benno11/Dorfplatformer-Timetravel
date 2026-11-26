@@ -852,19 +852,24 @@ def main():
     parser.add_argument("--no-dashboard", action="store_true")
     parser.add_argument("--admin-key-file", default=os.environ.get("ADMIN_KEY_FILE", ""))
     parser.add_argument("--maze-key", default=os.environ.get("PROJECT3D_MAZE_KEY", ""),
-                        help="Enable Project 3D maze auth with this Ed25519 PEM private key.")
+                        help="Use an existing Ed25519 PEM key instead of the generated default.")
+    parser.add_argument("--no-maze-auth", action="store_true", help="Disable Project 3D maze sign-in.")
     parser.add_argument("--maze-database", default=os.environ.get("PROJECT3D_MAZE_DATABASE", ""),
                         help="Outstanding maze tokens database, defaults to a file beside the key.")
     parser.add_argument("--maze-public-key", action="store_true", help="Print the maze verification key and exit.")
     args = parser.parse_args()
     if not 1 <= args.server_update_timeout <= 86400:
         parser.error("--server-update-timeout must be from 1 to 86400 seconds")
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     maze_tokens = None
-    if args.maze_key:
+    explicit_maze_settings = args.maze_key or args.maze_public_key or args.maze_database
+    if args.no_maze_auth and explicit_maze_settings:
+        parser.error("--no-maze-auth cannot be combined with maze key or database settings.")
+    if not args.no_maze_auth:
         try:
-            from maze_auth import MazeTokens, load_signing_key, public_key_hex
-            key_path = Path(args.maze_key)
-            key = load_signing_key(key_path)
+            from maze_auth import MazeTokens, load_or_create_signing_key, load_signing_key, public_key_hex
+            key_path = Path(args.maze_key) if args.maze_key else Path(args.database).parent / "project3d-signing.pem"
+            key = load_signing_key(key_path) if args.maze_key else load_or_create_signing_key(key_path)
             if args.maze_public_key:
                 print(public_key_hex(key))
                 return
@@ -873,12 +878,12 @@ def main():
                 parser.error("Use a separate database for outstanding maze tokens.")
             maze_tokens = MazeTokens(key, database)
         except ImportError:
-            parser.error("Install Project 3D maze auth dependencies from server/requirements-maze.txt.")
+            message = "Install Project 3D maze auth dependencies from server/requirements-maze.txt."
+            if explicit_maze_settings:
+                parser.error(message)
+            logging.warning("Maze sign-in disabled. %s", message)
         except (OSError, ValueError, TypeError, sqlite3.Error) as error:
             parser.error(f"Could not initialize Project 3D maze auth: {error}")
-    elif args.maze_public_key or args.maze_database:
-        parser.error("Set --maze-key to enable Project 3D maze auth.")
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     server = GameServer((args.host, args.port), args.database, args.public_url, args.releases,
                         args.update_manifest_url, args.server_update_command, args.server_update_cwd,
                         server_update_timeout=args.server_update_timeout, maze_tokens=maze_tokens)

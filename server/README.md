@@ -40,19 +40,20 @@ existing public address and port. The merged server uses the same TimeTravel
 accounts, session store, and sign-in rate limits. It keeps outstanding 12-hour,
 single-use maze tokens in a separate SQLite file.
 
-Install the optional dependency and start TimeTravel with a signing key.
+Install the maze auth dependency, then start TimeTravel with your usual options.
 
     python -m pip install -r server/requirements-maze.txt
-    mkdir -p server/data
-    (umask 077; openssl genpkey -algorithm ED25519 -out server/data/project3d-signing.pem)
-    python server/game_server.py --maze-key server/data/project3d-signing.pem --maze-public-key
-    python server/game_server.py --maze-key server/data/project3d-signing.pem
+    python server/game_server.py
+    python server/game_server.py --maze-public-key
 
-If you already ran the standalone bridge, reuse its private signing key
-instead of generating a new one. Keep your usual TimeTravel startup flags.
-For Docker Compose, put the key in the persistent `/data` volume where the
-game container user can read it and set `PROJECT3D_MAZE_KEY` to its container path.
-The image already includes the dependency.
+The first startup generates a random Ed25519 key named `project3d-signing.pem`
+beside the TimeTravel database. Later startups reuse it. Keep the data directory
+or Docker volume to preserve the key. The Docker image includes the dependency
+and generates the default key in its persistent `/data` volume.
+
+If you already configured a key, keep passing `--maze-key` or setting
+`PROJECT3D_MAZE_KEY` to preserve the public key your builds use.
+Use `--no-maze-auth` to disable maze sign-in.
 
 Set `PROJECT3D_ACCOUNT_URL` to your TimeTravel address
 (`http://critique-unsmooth.tun.ply.gg:49642/` for the default public server)
