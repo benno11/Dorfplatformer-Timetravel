@@ -48,3 +48,7 @@ docker run --rm -e PLATFORMER_LITE_EDITION=OFF -v "$PWD:$PWD" -w "$PWD" \
 The compatibility container builds checksum-verified Autoconf 2.72 for modern
 dependency configure scripts; Ubuntu 20.04’s system Autoconf 2.69 is too old.
 Failed Linux CI jobs upload dependency configure/build logs as artifacts.
+
+Python 3.12.12 is also built from checksum-verified source inside the same
+container, because current Meson requires Python 3.10 or newer. Its SSL, SQLite,
+and ctypes modules are checked before dependencies are built.

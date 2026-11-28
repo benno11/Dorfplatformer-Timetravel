@@ -2,12 +2,13 @@
 # Run inside Ubuntu 20.04: build every linked dependency against glibc 2.31.
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
-apt-get update
-apt-get install -y --no-install-recommends build-essential ninja-build git curl ca-certificates \
+apt-get -o Acquire::Retries=3 update
+apt-get -o Acquire::Retries=3 install -y --no-install-recommends build-essential ninja-build git curl ca-certificates \
   python3 python3-pip autoconf autoconf-archive automake libtool libltdl-dev pkg-config zip unzip \
   tar bzip2 xz-utils linux-libc-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
   libxi-dev libxfixes-dev libxss-dev libxtst-dev libwayland-dev libxkbcommon-dev \
-  libasound2-dev libpulse-dev libudev-dev libdbus-1-dev libgl1-mesa-dev libegl1-mesa-dev
+  libasound2-dev libpulse-dev libudev-dev libdbus-1-dev libgl1-mesa-dev libegl1-mesa-dev \
+  libssl-dev libffi-dev zlib1g-dev libbz2-dev liblzma-dev libreadline-dev libsqlite3-dev
 # Recent dependency configure scripts need Autoconf >= 2.70. Building the
 # tool from source upgrades tooling without upgrading the glibc baseline.
 autoconf_version=2.72
@@ -23,6 +24,22 @@ tar -xJf "$autoconf_archive" -C /tmp
 )
 export PATH="/opt/df-build-tools/bin:$PATH"
 autoconf --version
+# Meson and other build tools require a newer Python than Focal's 3.8.
+# Compile it against this container's libc rather than importing a newer distro.
+python_version=3.12.12
+python_archive="/tmp/Python-${python_version}.tar.xz"
+curl --fail --location --retry 3 "https://www.python.org/ftp/python/${python_version}/Python-${python_version}.tar.xz" -o "$python_archive"
+echo "fb85a13414b028c49ba18bbd523c2d055a30b56b18b92ce454ea2c51edc656c4  $python_archive" | sha256sum --check
+tar -xJf "$python_archive" -C /tmp
+(
+  cd "/tmp/Python-${python_version}"
+  ./configure --prefix=/opt/df-build-tools --with-ensurepip=install
+  make -j"$(nproc)"
+  make install
+)
+ln -sf python3.12 /opt/df-build-tools/bin/python3
+python3 --version
+python3 -c 'import ssl, sqlite3, ctypes; assert ssl.OPENSSL_VERSION'
 python3 -m pip install --no-cache-dir 'cmake==3.31.10'
 export VCPKG_ROOT="$PWD/.ci/vcpkg"
 # A separate cache namespace prevents reuse of packages built on a newer host.
@@ -30,7 +47,7 @@ export VCPKG_DEFAULT_BINARY_CACHE="$PWD/.ci/linux-glibc231-cache"
 mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
 "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
 "$VCPKG_ROOT/vcpkg" install sdl3 'sdl3-image[png,jpeg]' sdl3-ttf 'sdl3-mixer[mpg123]' curl nlohmann-json \
-  --triplet x64-linux --vcpkg-root "$VCPKG_ROOT"
+  --triplet x64-linux --vcpkg-root "$VCPKG_ROOT" --clean-after-build
 cmake -S . -B build-ci -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUILD_TESTING=OFF \
   -DPLATFORMER_LITE_EDITION="${PLATFORMER_LITE_EDITION:-OFF}" \
   -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
