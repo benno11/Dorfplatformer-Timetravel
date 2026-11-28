@@ -61,3 +61,7 @@ SDL audio/display/input backends remain enabled.
 PipeWire is built without optional systemd journal integration. A small C17
 compatibility patch adds empty statements after switch labels in its AVB
 module, preserving all audio backends while supporting Ubuntu 20.04’s GCC 9.
+
+Linux CI pins vcpkg to `ba33ef1a2fb3c6519e819cd767bb8fd1677f1323`,
+the dependency set validated with this toolchain. Update that pin only after
+rebuilding both editions and checking their ELF runtime requirements.

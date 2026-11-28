@@ -172,6 +172,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: microsoft/vcpkg
+          # Keep the old-libc build on the dependency set validated in its container.
+          ref: ${{ runner.os == 'Linux' && 'ba33ef1a2fb3c6519e819cd767bb8fd1677f1323' || 'master' }}
           path: .ci/vcpkg
 
       - name: Cache vcpkg packages
