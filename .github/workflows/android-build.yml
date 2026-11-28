@@ -262,6 +262,17 @@ jobs:
             ubuntu:20.04 bash comp/build-linux-compatible.sh
           sudo chown -R "$(id -u):$(id -g)" .ci build-ci
 
+      - name: Upload Linux dependency failure logs
+        if: failure() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-build-logs-${{ matrix.edition }}
+          path: |
+            .ci/vcpkg/buildtrees/**/*.log
+            .ci/vcpkg/installed/vcpkg/issue_body.md
+            build-ci/CMakeFiles/CMakeConfigureLog.yaml
+          if-no-files-found: ignore
+
       - name: Install LLVM BOLT tools
         if: runner.os == 'Linux' && hashFiles('build/profiles/desktop-bolt/*.fdata', 'build/profiles/desktop-bolt/*/*.fdata') != ''
         env:

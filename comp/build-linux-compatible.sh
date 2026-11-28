@@ -8,6 +8,21 @@ apt-get install -y --no-install-recommends build-essential ninja-build git curl 
   tar bzip2 xz-utils linux-libc-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
   libxi-dev libxfixes-dev libxss-dev libxtst-dev libwayland-dev libxkbcommon-dev \
   libasound2-dev libpulse-dev libudev-dev libdbus-1-dev libgl1-mesa-dev libegl1-mesa-dev
+# Recent dependency configure scripts need Autoconf >= 2.70. Building the
+# tool from source upgrades tooling without upgrading the glibc baseline.
+autoconf_version=2.72
+autoconf_archive="/tmp/autoconf-${autoconf_version}.tar.xz"
+curl --fail --location --retry 3 "https://ftp.gnu.org/gnu/autoconf/autoconf-${autoconf_version}.tar.xz" -o "$autoconf_archive"
+echo "ba885c1319578d6c94d46e9b0dceb4014caafe2490e437a0dbca3f270a223f5a  $autoconf_archive" | sha256sum --check
+tar -xJf "$autoconf_archive" -C /tmp
+(
+  cd "/tmp/autoconf-${autoconf_version}"
+  ./configure --prefix=/opt/df-build-tools
+  make -j"$(nproc)"
+  make install
+)
+export PATH="/opt/df-build-tools/bin:$PATH"
+autoconf --version
 python3 -m pip install --no-cache-dir 'cmake==3.31.10'
 export VCPKG_ROOT="$PWD/.ci/vcpkg"
 # A separate cache namespace prevents reuse of packages built on a newer host.

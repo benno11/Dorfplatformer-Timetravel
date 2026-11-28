@@ -44,3 +44,7 @@ To reproduce the release compilation from a checkout with vcpkg in `.ci/vcpkg`:
 docker run --rm -e PLATFORMER_LITE_EDITION=OFF -v "$PWD:$PWD" -w "$PWD" \
   ubuntu:20.04 bash comp/build-linux-compatible.sh
 ```
+
+The compatibility container builds checksum-verified Autoconf 2.72 for modern
+dependency configure scripts; Ubuntu 20.04’s system Autoconf 2.69 is too old.
+Failed Linux CI jobs upload dependency configure/build logs as artifacts.
