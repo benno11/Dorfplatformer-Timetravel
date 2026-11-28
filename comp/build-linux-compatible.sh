@@ -5,6 +5,7 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get -o Acquire::Retries=3 update
 apt-get -o Acquire::Retries=3 install -y --no-install-recommends build-essential ninja-build git curl ca-certificates \
   python3 python3-pip autoconf autoconf-archive automake libtool libltdl-dev pkg-config zip unzip \
+  bison flex gettext autopoint gperf texinfo nasm \
   tar bzip2 xz-utils linux-libc-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
   libxi-dev libxfixes-dev libxss-dev libxtst-dev libwayland-dev libxkbcommon-dev \
   libasound2-dev libpulse-dev libudev-dev libdbus-1-dev libgl1-mesa-dev libegl1-mesa-dev \
