@@ -52,3 +52,7 @@ Failed Linux CI jobs upload dependency configure/build logs as artifacts.
 Python 3.12.12 is also built from checksum-verified source inside the same
 container, because current Meson requires Python 3.10 or newer. Its SSL, SQLite,
 and ctypes modules are checked before dependencies are built.
+The container also uses checksum-verified Linux 6.12 UAPI headers for modern
+syscall declarations. These are headers only and do not upgrade glibc.
+A Linux-only libsystemd overlay retains allocator-statistics support on glibc
+2.31, where `mallinfo2` is unavailable.

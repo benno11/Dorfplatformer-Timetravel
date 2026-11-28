@@ -9,6 +9,14 @@ apt-get -o Acquire::Retries=3 install -y --no-install-recommends build-essential
   libxi-dev libxfixes-dev libxss-dev libxtst-dev libwayland-dev libxkbcommon-dev \
   libasound2-dev libpulse-dev libudev-dev libdbus-1-dev libgl1-mesa-dev libegl1-mesa-dev \
   libssl-dev libffi-dev zlib1g-dev libbz2-dev liblzma-dev libreadline-dev libsqlite3-dev
+# Modern libsystemd uses newer syscall declarations (for example mount_setattr).
+# UAPI headers contain no libc binaries, so this keeps glibc at 2.31.
+uapi_archive=/tmp/df-linux-uapi.deb
+curl --fail --location --retry 3 \
+  https://snapshot.debian.org/file/70a24f2faafa6d008249156b7ec085e6a5740c49 -o "$uapi_archive"
+echo "8b4848725a2705e5b1612f2135c44300716690ba762368ab87df127e9a5ed416  $uapi_archive" | sha256sum --check
+# Debian linux-libc-dev 6.12.117-1: extract declarations only; no package hooks.
+dpkg-deb --extract "$uapi_archive" /
 # Recent dependency configure scripts need Autoconf >= 2.70. Building the
 # tool from source upgrades tooling without upgrading the glibc baseline.
 autoconf_version=2.72
@@ -47,7 +55,8 @@ export VCPKG_DEFAULT_BINARY_CACHE="$PWD/.ci/linux-glibc231-cache"
 mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
 "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
 "$VCPKG_ROOT/vcpkg" install sdl3 'sdl3-image[png,jpeg]' sdl3-ttf 'sdl3-mixer[mpg123]' curl nlohmann-json \
-  --triplet x64-linux --vcpkg-root "$VCPKG_ROOT" --clean-after-build
+  --triplet x64-linux --vcpkg-root "$VCPKG_ROOT" --clean-after-build \
+  --overlay-ports "$PWD/cmake/vcpkg-ports"
 cmake -S . -B build-ci -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUILD_TESTING=OFF \
   -DPLATFORMER_LITE_EDITION="${PLATFORMER_LITE_EDITION:-OFF}" \
   -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \

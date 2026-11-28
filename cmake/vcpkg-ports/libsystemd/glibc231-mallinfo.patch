@@ -1,0 +1,17 @@
+--- a/src/libsystemd/sd-event/sd-event.c
++++ b/src/libsystemd/sd-event/sd-event.c
+@@ -7,6 +7,14 @@
+ #include <sys/wait.h>
+ #include <threads.h>
+ #include <unistd.h>
++
++/* mallinfo2 was added in glibc 2.33. Older glibc provides the same statistics
++ * fields through mallinfo; these values are used only for debug logging. */
++#if defined(__GLIBC__)
++#if !__GLIBC_PREREQ(2, 33)
++#define mallinfo2 mallinfo
++#endif
++#endif
+ 
+ #include "sd-daemon.h"
+ #include "sd-event.h"

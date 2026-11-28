@@ -182,7 +182,7 @@ jobs:
             .ci/vcpkg/buildtrees
             .ci/vcpkg/packages
             .ci/vcpkg/installed
-          key: vcpkg-glibc231-v1-${{ runner.os }}-${{ matrix.triplet }}-${{ hashFiles('CMakeLists.txt', '.github/workflows/android-build.yml', 'comp/build-linux-compatible.sh') }}
+          key: vcpkg-glibc231-v1-${{ runner.os }}-${{ matrix.triplet }}-${{ hashFiles('CMakeLists.txt', '.github/workflows/android-build.yml', 'comp/build-linux-compatible.sh', 'cmake/vcpkg-ports/**') }}
 
       - name: Bootstrap vcpkg
         if: runner.os == 'Windows'
