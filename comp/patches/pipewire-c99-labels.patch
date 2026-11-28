@@ -1,0 +1,87 @@
+--- a/src/modules/module-avb/acmp.c
++++ b/src/modules/module-avb/acmp.c
+@@ -103,13 +103,13 @@
+ 	struct stream *stream;
+ 
+ 	switch (direction) {
+-	case SPA_DIRECTION_INPUT:
++	case SPA_DIRECTION_INPUT:;
+ 		type = AVB_AEM_DESC_STREAM_INPUT;
+ 		break;
+-	case SPA_DIRECTION_OUTPUT:
++	case SPA_DIRECTION_OUTPUT:;
+ 		type = AVB_AEM_DESC_STREAM_OUTPUT;
+ 		break;
+-	default:
++	default:;
+ 		pw_log_error("Unkown direction\n");
+ 		return NULL;
+ 	}
+@@ -122,12 +122,12 @@
+ 	}
+ 
+ 	switch (direction) {
+-	case SPA_DIRECTION_INPUT:
++	case SPA_DIRECTION_INPUT:;
+ 		struct aecp_aem_stream_input_state *stream_in;
+ 		stream_in = desc->ptr;
+ 		stream = &stream_in->stream;
+ 		break;
+-	case SPA_DIRECTION_OUTPUT:
++	case SPA_DIRECTION_OUTPUT:;
+ 		struct  aecp_aem_stream_output_state *stream_out;
+ 		stream_out = desc->ptr;
+ 		stream = &stream_out->stream;
+--- a/src/modules/module-avb/es-builder.c
++++ b/src/modules/module-avb/es-builder.c
+@@ -67,7 +67,7 @@
+ 	enum spa_direction direction;
+ 
+ 	switch (type) {
+-	case AVB_AEM_DESC_STREAM_INPUT:
++	case AVB_AEM_DESC_STREAM_INPUT:;
+ 		struct aecp_aem_stream_input_state *pstream_input;
+ 		struct aecp_aem_stream_input_state stream_input = { 0 };
+ 
+@@ -83,7 +83,7 @@
+ 		stream = &pstream_input->stream;
+ 		direction = SPA_DIRECTION_INPUT;
+ 		break;
+-	case AVB_AEM_DESC_STREAM_OUTPUT:
++	case AVB_AEM_DESC_STREAM_OUTPUT:;
+ 		struct aecp_aem_stream_output_state *pstream_output;
+ 		struct aecp_aem_stream_output_state stream_output = { 0 };
+ 
+@@ -100,7 +100,7 @@
+ 		direction = SPA_DIRECTION_OUTPUT;
+ 
+ 		break;
+-	default:
++	default:;
+ 		pw_log_error("Only STREAM_INPUT and STREAM_OUTPUT\n");
+ 		return NULL;
+ 	}
+--- a/src/modules/module-avb/aecp-aem-cmds-resps/reply-unsol-helpers.c
++++ b/src/modules/module-avb/aecp-aem-cmds-resps/reply-unsol-helpers.c
+@@ -20,10 +20,10 @@
+ 	enum avb_mode mode = aecp->server->avb_mode;
+ 
+ 	switch (mode) {
+-	case AVB_MODE_LEGACY:
++	case AVB_MODE_LEGACY:;
+ 		pw_log_error("Not implemented\n");
+ 	break;
+-	case AVB_MODE_MILAN_V12:
++	case AVB_MODE_MILAN_V12:;
+ 		struct aecp_aem_entity_milan_state *entity_state;
+ 
+ 		entity_state = desc->ptr;
+@@ -31,7 +31,7 @@
+ 		*count = AECP_AEM_MILAN_MAX_CONTROLLER;
+ 
+ 	return 0;
+-	default:
++	default:;
+ 		pw_log_error("Invalid avb_mode %d\n", mode);
+ 	break;
+ 	}

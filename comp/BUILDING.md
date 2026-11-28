@@ -57,3 +57,7 @@ syscall declarations. These are headers only and do not upgrade glibc.
 D-Bus is built without its optional systemd at_console integration, which
 requires newer glibc in current upstream systemd. D-Bus client support and
 SDL audio/display/input backends remain enabled.
+
+PipeWire is built without optional systemd journal integration. A small C17
+compatibility patch adds empty statements after switch labels in its AVB
+module, preserving all audio backends while supporting Ubuntu 20.04’s GCC 9.

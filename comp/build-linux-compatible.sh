@@ -71,6 +71,24 @@ port['default-features'] = [feature for feature in port.get('default-features', 
     if (feature if isinstance(feature, str) else feature['name']) != 'systemd']
 path.write_text(json.dumps(port, indent=2) + '\n')
 PYTHON
+# GCC 9 supports C17; PipeWire's AVB module uses C23-style labels.
+# Empty statements after the labels preserve behavior on the older compiler.
+cp -R "$VCPKG_ROOT/ports/pipewire" "$overlay_ports/"
+cp comp/patches/pipewire-c99-labels.patch "$overlay_ports/pipewire/"
+python3 - "$overlay_ports/pipewire/portfile.cmake" <<'PYTHON'
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+port = path.read_text()
+marker = '    HEAD_REF master\n)'
+if marker not in port:
+    raise RuntimeError('PipeWire port layout changed; review the C99 compatibility patch')
+port = port.replace(marker, '    HEAD_REF master\n    PATCHES pipewire-c99-labels.patch\n)', 1)
+# Client audio support does not need systemd journal integration.
+port = port.replace('-Dsystemd-system-service=disabled',
+    '-Dlibsystemd=disabled\n        -Dsystemd-system-service=disabled', 1)
+path.write_text(port)
+PYTHON
 "$VCPKG_ROOT/vcpkg" install sdl3 'sdl3-image[png,jpeg]' sdl3-ttf 'sdl3-mixer[mpg123]' curl nlohmann-json \
   --triplet x64-linux --vcpkg-root "$VCPKG_ROOT" --clean-after-build \
   --overlay-ports "$overlay_ports"
