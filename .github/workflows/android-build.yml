@@ -155,12 +155,6 @@ jobs:
           done
           chmod +x build/*.sh 2>/dev/null || true
 
-      - name: Install Linux build tools
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential ninja-build autoconf autoconf-archive automake libtool libltdl-dev pkg-config zip unzip
-
       - name: Install Windows build tools
         if: runner.os == 'Windows'
         shell: pwsh
@@ -188,9 +182,10 @@ jobs:
             .ci/vcpkg/buildtrees
             .ci/vcpkg/packages
             .ci/vcpkg/installed
-          key: vcpkg-${{ runner.os }}-${{ matrix.triplet }}-${{ hashFiles('CMakeLists.txt', '.github/workflows/android-build.yml') }}
+          key: vcpkg-glibc231-v1-${{ runner.os }}-${{ matrix.triplet }}-${{ hashFiles('CMakeLists.txt', '.github/workflows/android-build.yml', 'comp/build-linux-compatible.sh') }}
 
       - name: Bootstrap vcpkg
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $vcpkgRoot = Join-Path $env:GITHUB_WORKSPACE ".ci/vcpkg"
@@ -202,6 +197,7 @@ jobs:
           }
 
       - name: Install desktop dependencies
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $vcpkgRoot = Join-Path $env:GITHUB_WORKSPACE ".ci/vcpkg"
@@ -220,6 +216,7 @@ jobs:
           }
 
       - name: Configure
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $vcpkgRoot = Join-Path $env:GITHUB_WORKSPACE ".ci/vcpkg"
@@ -238,6 +235,7 @@ jobs:
             -DPLATFORMER_REQUIRE_SDL3_MIXER=ON
 
       - name: Build
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           if ($env:RUNNER_OS -eq "Windows") {
@@ -253,6 +251,16 @@ jobs:
             cmake --build build-ci --config Release --target windows-installer --parallel
             if ($LASTEXITCODE -ne 0) { throw "Windows installer build failed with exit code $LASTEXITCODE" }
           }
+
+      - name: Build Linux against glibc 2.31
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          docker run --rm \
+            -e PLATFORMER_LITE_EDITION \
+            -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" -w "$GITHUB_WORKSPACE" \
+            ubuntu:20.04 bash comp/build-linux-compatible.sh
+          sudo chown -R "$(id -u):$(id -g)" .ci build-ci
 
       - name: Install LLVM BOLT tools
         if: runner.os == 'Linux' && hashFiles('build/profiles/desktop-bolt/*.fdata', 'build/profiles/desktop-bolt/*/*.fdata') != ''
@@ -275,6 +283,17 @@ jobs:
           } else {
             Write-Host "[INFO] Skipping binary layout rewrite on Windows: llvm-bolt targets ELF binaries, not PE/COFF executables."
           }
+
+      - name: Verify Linux runtime compatibility
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          binary=platformer
+          if [ "$PLATFORMER_LITE_EDITION" = ON ]; then binary=platformer-lite; fi
+          python3 comp/check-linux-libc.py --maximum 2.31 "build-ci/$binary"
+          if [ -f build-ci/sheet_config ]; then
+            python3 comp/check-linux-libc.py --maximum 2.31 build-ci/sheet_config
+          fi
 
       - name: Package desktop release
         shell: pwsh

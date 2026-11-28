@@ -28,3 +28,19 @@ or toolchain settings to the configure command as usual.
 When reusing an older build directory, explicitly set `-DBUILD_TESTING=OFF`:
 CMake preserves existing cache values when defaults change. New production
 preset directories start with testing disabled.
+
+Linux release compatibility uses glibc **2.31** (Ubuntu 20.04 baseline), rather
+than the moving `ubuntu-latest` runtime. The release workflow builds the game
+and vcpkg dependencies inside `ubuntu:20.04`, with a separate dependency cache.
+The GCC C++ runtimes are linked statically; glibc remains dynamically linked.
+After optional BOLT optimization, `comp/check-linux-libc.py` rejects packaged
+executables requiring newer glibc or a shared GCC C++ runtime. This supports
+Ubuntu 20.04+, Debian 11+, and distributions with compatible glibc 2.31+ runtimes;
+musl-based distributions such as Alpine need a glibc environment.
+
+To reproduce the release compilation from a checkout with vcpkg in `.ci/vcpkg`:
+
+```sh
+docker run --rm -e PLATFORMER_LITE_EDITION=OFF -v "$PWD:$PWD" -w "$PWD" \
+  ubuntu:20.04 bash comp/build-linux-compatible.sh
+```
