@@ -54,5 +54,6 @@ container, because current Meson requires Python 3.10 or newer. Its SSL, SQLite,
 and ctypes modules are checked before dependencies are built.
 The container also uses checksum-verified Linux 6.12 UAPI headers for modern
 syscall declarations. These are headers only and do not upgrade glibc.
-A Linux-only libsystemd overlay retains allocator-statistics support on glibc
-2.31, where `mallinfo2` is unavailable.
+D-Bus is built without its optional systemd at_console integration, which
+requires newer glibc in current upstream systemd. D-Bus client support and
+SDL audio/display/input backends remain enabled.

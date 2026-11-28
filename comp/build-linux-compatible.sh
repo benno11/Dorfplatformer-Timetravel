@@ -9,7 +9,7 @@ apt-get -o Acquire::Retries=3 install -y --no-install-recommends build-essential
   libxi-dev libxfixes-dev libxss-dev libxtst-dev libwayland-dev libxkbcommon-dev \
   libasound2-dev libpulse-dev libudev-dev libdbus-1-dev libgl1-mesa-dev libegl1-mesa-dev \
   libssl-dev libffi-dev zlib1g-dev libbz2-dev liblzma-dev libreadline-dev libsqlite3-dev
-# Modern libsystemd uses newer syscall declarations (for example mount_setattr).
+# Modern dependencies use newer syscall declarations (for example mount_setattr).
 # UAPI headers contain no libc binaries, so this keeps glibc at 2.31.
 uapi_archive=/tmp/df-linux-uapi.deb
 curl --fail --location --retry 3 \
@@ -54,9 +54,25 @@ export VCPKG_ROOT="$PWD/.ci/vcpkg"
 export VCPKG_DEFAULT_BINARY_CACHE="$PWD/.ci/linux-glibc231-cache"
 mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
 "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+# SDL needs the D-Bus client, not a newly built systemd service manager.
+# Disable only the port's optional at_console systemd integration; preserve
+# D-Bus itself and all game audio/display/input features.
+overlay_ports="$PWD/.ci/linux-compatible-ports"
+mkdir -p "$overlay_ports"
+cp -R "$VCPKG_ROOT/ports/dbus" "$overlay_ports/"
+python3 - "$overlay_ports/dbus/vcpkg.json" <<'PYTHON'
+import json
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+port = json.loads(path.read_text())
+port['default-features'] = [feature for feature in port.get('default-features', [])
+    if (feature if isinstance(feature, str) else feature['name']) != 'systemd']
+path.write_text(json.dumps(port, indent=2) + '\n')
+PYTHON
 "$VCPKG_ROOT/vcpkg" install sdl3 'sdl3-image[png,jpeg]' sdl3-ttf 'sdl3-mixer[mpg123]' curl nlohmann-json \
   --triplet x64-linux --vcpkg-root "$VCPKG_ROOT" --clean-after-build \
-  --overlay-ports "$PWD/cmake/vcpkg-ports"
+  --overlay-ports "$overlay_ports"
 cmake -S . -B build-ci -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUILD_TESTING=OFF \
   -DPLATFORMER_LITE_EDITION="${PLATFORMER_LITE_EDITION:-OFF}" \
   -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
